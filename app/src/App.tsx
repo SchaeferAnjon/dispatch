@@ -5,12 +5,13 @@ import { NewTask } from "./components/NewTask";
 import { Sidebar, type Filters } from "./components/Sidebar";
 import { AgentsView, Board, TableView } from "./components/views";
 import { PitfallsView } from "./components/Pitfalls";
+import { SessionsView } from "./components/Sessions";
 import { agentsFrom, columnOf, isReviewed, projectOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { board: "看板", table: "表格", agents: "Agents", pitfalls: "踩坑记录" };
-const VIEWS: View[] = ["board", "table", "agents", "pitfalls"];
+const VIEW_LABEL: Record<View, string> = { board: "看板", table: "表格", agents: "Agents", sessions: "会话记录", pitfalls: "踩坑记录" };
+const VIEWS: View[] = ["board", "table", "agents", "sessions", "pitfalls"];
 
 export default function App() {
   const [api, setApi] = useState<Api | null>(null);
@@ -181,7 +182,7 @@ export default function App() {
               {VIEWS.map((v) => <button key={v} className={view === v ? "on" : ""} onClick={() => setView(v)}>{VIEW_LABEL[v]}</button>)}
             </div>
             <span className="spacer" />
-            {view !== "agents" && view !== "pitfalls" && (<>
+            {view !== "agents" && view !== "pitfalls" && view !== "sessions" && (<>
               <button className={`chip${filters.project === null && !filters.agent && !filters.blocked && !filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, project: null, agent: null, blocked: false, review: false })}>全部</button>
               <button className={`chip${filters.mine ? " on" : ""}`} onClick={() => setFilters({ ...filters, mine: !filters.mine })}>只看我的</button>
               <button className={`chip${filters.urgent ? " on" : ""}`} onClick={() => setFilters({ ...filters, urgent: !filters.urgent })}>P0–P1</button>
@@ -194,6 +195,7 @@ export default function App() {
             {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} />}
             {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} />}
+            {view === "sessions" && api && <SessionsView api={api} me={me} live={presence.sessions} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
           </section>
         </main>

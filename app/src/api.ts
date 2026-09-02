@@ -1,4 +1,4 @@
-import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, SessionRef, UpdateFields } from "./types";
+import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, SessionDetail, SessionRef, UpdateFields } from "./types";
 import { fixtureApi } from "./fixtures";
 
 export interface Api {
@@ -17,6 +17,9 @@ export interface Api {
   create(input: NewIssue): Promise<Issue>;
   presence(): Promise<Presence>;
   taskSessions(id: string): Promise<SessionRef[]>;
+  sessionList(): Promise<SessionRef[]>;
+  sessionDetail(id: string): Promise<SessionDetail>;
+  focusSession(id: string): Promise<string>;
   resumeCmd(agent: string, sessionId: string, cwd: string): Promise<string>;
   memories(): Promise<Memory[]>;
   remember(key: string, value: string): Promise<void>;
@@ -62,8 +65,11 @@ async function tauriApi(): Promise<Api> {
       const r = parse<Issue | Issue[]>(await call("bd_create", { input }), [] as Issue[]);
       return Array.isArray(r) ? r[0] : r;
     },
-    presence: () => invoke<Presence>("sessions"),
-    taskSessions: (id) => invoke<SessionRef[]>("task_sessions", { id }),
+    presence: async () => ({ sessions: parse(await call("sessions"), []), apps: [] }),
+    taskSessions: async (id) => parse<SessionRef[]>(await call("task_sessions", { id }), []),
+    sessionList: async () => parse<SessionRef[]>(await call("session_list"), []),
+    sessionDetail: async (id) => { const d = parse<SessionDetail | null>(await call("session_detail", { id }), null); if (!d) throw new Error("读不到这个会话"); return d; },
+    focusSession: (id) => call("focus_session", { id }),
     resumeCmd: (agent, sessionId, cwd) => invoke<string>("resume_cmd", { agent, sessionId, cwd }),
     memories: () => invoke<Memory[]>("memories_list"),
     remember: async (key, value) => void (await call("memory_set", { key, value })),

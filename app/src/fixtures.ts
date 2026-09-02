@@ -69,10 +69,26 @@ export function fixtureApi(): Api {
         { agent: "codex", session_id: "s4", cwd: "/Users/x/Projects/poker-trainer", project: "poker-trainer", agent_pid: 4, source_kind: "terminal", source_app: "Terminal", entrypoint: "", started_at: now / 1000 - 2400, last_at: now / 1000 - 120, state: "working", prompts: 9, alive: true, registered: true },
       ],
     }),
-    taskSessions: async (id) => id === "task-9lo" ? [
-      { agent: "claude-code", session_id: "a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", cwd: "/Users/x/Projects/kanban", project: "kanban", last_at: now / 1000 - 120, mentions: 14, resume_cmd: "cd '/Users/x/Projects/kanban' && claude --resume a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8" },
-      { agent: "codex", session_id: "019deafa-bcc4-7100-8cdb-0193b715e090", cwd: "/Users/x/Projects/kanban", project: "kanban", last_at: now / 1000 - 5000, mentions: 2, resume_cmd: "cd '/Users/x/Projects/kanban' && codex resume 019deafa-bcc4-7100-8cdb-0193b715e090" },
-    ] : [],
+    taskSessions: async (id) => sessionRefs.filter((r) => r.tasks[id]),
+    sessionList: async () => sessionRefs,
+    sessionDetail: async (id) => {
+      const meta = sessionRefs.find((r) => r.session_id.startsWith(id)) ?? sessionRefs[0];
+      return {
+        meta,
+        messages: [
+          { ts: new Date(now - 3600e3).toISOString(), role: "user", text: "我想做一个软件，相当于一个任务集中营，所有的任务都在这里。", tools: [] },
+          { ts: new Date(now - 3500e3).toISOString(), role: "assistant", text: "先按研究复用流程做一轮调研。", tools: [{ name: "Bash", summary: "gh search repos \"kanban agents\"" }] },
+          { ts: new Date(now - 3000e3).toISOString(), role: "assistant", text: "", tools: [{ name: "Edit", summary: "/Users/x/Projects/kanban/app/src/App.tsx" }, { name: "Agent", summary: "Verify Claude Code hook fields" }] },
+          { ts: new Date(now - 120e3).toISOString(), role: "assistant", text: "Done — the new build is installed.", tools: [] },
+        ],
+        files: [
+          { path: "/Users/x/Projects/kanban/app/src/App.tsx", changes: [{ kind: "edit", old: "const a = 1;\nconst b = 2;\nreturn a + b;", new: "const a = 1;\nconst b = 3;\nconst c = 4;\nreturn a + b + c;", ts: "" }] },
+          { path: "/Users/x/Projects/kanban/app/scripts/install.sh", changes: [{ kind: "write", old: "", new: "#!/bin/bash\nset -euo pipefail\nnpm run tauri build", ts: "" }] },
+        ],
+        tool_counts: { Bash: 136, Edit: 71, Write: 29, Read: 14, Agent: 1 },
+      };
+    },
+    focusSession: async () => "浏览器预览里没有 Herdr",
     resumeCmd: async (agent, sid, cwd) => `cd '${cwd}' && ${agent === "codex" ? "codex resume" : "claude --resume"} ${sid}`,
     memories: async () => memories.map((m) => ({ ...m })),
     remember: async (key, value) => { const i = memories.findIndex((m) => m.key === key); if (i >= 0) memories[i] = { key, value }; else memories.push({ key, value }); notify(); },
@@ -81,6 +97,12 @@ export function fixtureApi(): Api {
     onChange: async (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
   };
 }
+
+const sessionRefs: import("./types").SessionRef[] = [
+  { agent: "claude-code", session_id: "a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", cwd: "/Users/x/Projects/kanban", project: "kanban", title: "任务集中营软件", last_at: now / 1000 - 120, first_ts: new Date(now - 4 * 3600e3).toISOString(), last_ts: new Date(now - 120e3).toISOString(), entrypoint: "cli", branch: "main", user_msgs: 299, assistant_msgs: 392, tools: { Bash: 136, Edit: 71 }, tasks: { "task-9lo": 124 }, mentions: 124, current_task: "task-9lo", resume_cmd: "cd '/Users/x/Projects/kanban' && claude --resume a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", path: "", size: 2_400_000, subagents: [{ agent_id: "a5bf41fb", type: "claude-code-guide", description: "Verify Claude Code hook fields", tool_use_id: "toolu_1", depth: 1, size: 40000, last_at: now / 1000 - 3000, path: "" }] },
+  { agent: "claude-code", session_id: "5d5bd874-5e65-4a4d-aab6-f2cb7985ca69", cwd: "/Users/x/Projects/bookmark", project: "bookmark", title: "Bookmark Chrome extension", last_at: now / 1000 - 7 * 3600, first_ts: "", last_ts: "", entrypoint: "cli", branch: "main", user_msgs: 133, assistant_msgs: 200, tools: {}, tasks: {}, mentions: 0, current_task: null, resume_cmd: "cd '/Users/x/Projects/bookmark' && claude --resume 5d5bd874-5e65-4a4d-aab6-f2cb7985ca69", path: "", size: 900_000, subagents: [] },
+  { agent: "codex", session_id: "019deafa-bcc4-7100-8cdb-0193b715e090", cwd: "/Users/x/Projects/poker-trainer", project: "poker-trainer", title: "河牌下注逻辑", last_at: now / 1000 - 5000, first_ts: "", last_ts: "", entrypoint: "", branch: "", user_msgs: 9, assistant_msgs: 12, tools: {}, tasks: { "task-4mk": 3 }, mentions: 3, current_task: "task-4mk", resume_cmd: "cd '/Users/x/Projects/poker-trainer' && codex resume 019deafa-bcc4-7100-8cdb-0193b715e090", path: "", size: 120_000, subagents: [] },
+];
 
 let memories: { key: string; value: string }[] = [
   { key: "pit-launchctl-beads-actor", value: "【坑】launchctl setenv BEADS_ACTOR cursor 会让所有从 Dock 启动的 GUI（包括 Dispatch）以 Cursor 身份写库。【解法】GUI 应用各自用专属变量（Dispatch 用 DISPATCH_ACTOR）。#project:kanban #task:task-9lo" },

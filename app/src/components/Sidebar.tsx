@@ -36,6 +36,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
         {nav("board", "▦", "看板", counts.total)}
         {nav("table", "☰", "表格")}
         {nav("agents", "◉", "Agents", counts.agents)}
+        {nav("sessions", "◷", "会话记录")}
         {nav("pitfalls", "⚠", "踩坑记录")}
         <a className={filters.blocked ? "on" : ""} onClick={() => { setView("table"); setFilters({ ...filters, blocked: !filters.blocked, review: false }); }}>
           <span className="ic">⊘</span>阻塞中<span className="n">{counts.blocked}</span>

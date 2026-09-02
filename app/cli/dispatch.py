@@ -149,6 +149,9 @@ def refresh_index():
     re_cwd = re.compile(r'"cwd":"([^"]+)"')
     re_title = re.compile(r'"aiTitle":"((?:[^"\\]|\\.)*)"')
     re_claim = re.compile(r"bd update (" + re.escape(prefix) + r"-[a-z0-9]{2,8}) --claim")
+    re_entry = re.compile(r'"entrypoint":"([^"]+)"')
+    re_branch = re.compile(r'"gitBranch":"([^"]*)"')
+    re_ts = re.compile(r'"timestamp":"([^"]+)"')
     files = []
     for p in glob.glob(os.path.join(HOME, ".claude", "projects", "**", "*.jsonl"), recursive=True):
         files.append((p, "claude-code"))
@@ -162,7 +165,9 @@ def refresh_index():
             st = os.stat(path)
         except OSError:
             continue
-        e = idx.get(path) or {"agent": agent, "session_id": "", "cwd": "", "title": "", "mtime": 0, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": "/subagents/" in path}
+        e = idx.get(path) or {"agent": agent, "session_id": "", "cwd": "", "title": "", "mtime": 0, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": "/subagents/" in path, "entrypoint": "", "branch": "", "first_ts": "", "last_ts": "", "user_msgs": 0, "assistant_msgs": 0, "tools": {}}
+        for k, v in (("entrypoint", ""), ("branch", ""), ("first_ts", ""), ("last_ts", ""), ("user_msgs", 0), ("assistant_msgs", 0), ("tools", {})):
+            e.setdefault(k, v)
         if e["mtime"] == st.st_mtime and e["size"] == st.st_size:
             idx[path] = e
             continue
@@ -195,6 +200,30 @@ def refresh_index():
             e["tasks"][m.group(0)] = e["tasks"].get(m.group(0), 0) + 1
         for m in re_claim.finditer(buf):
             e["claims"].append(m.group(1))
+        if not e["entrypoint"]:
+            m = re_entry.search(buf)
+            if m:
+                e["entrypoint"] = m.group(1)
+        if not e["branch"]:
+            m = re_branch.search(buf)
+            if m:
+                e["branch"] = m.group(1)
+        tss = re_ts.findall(buf)
+        if tss:
+            if not e["first_ts"]:
+                e["first_ts"] = tss[0]
+            e["last_ts"] = tss[-1]
+        if agent == "codex":
+            # CLI rollouts carry event_msg user_message; the desktop app only has response_item messages.
+            e["user_msgs"] += len(re.findall(r'"role":"user","content":\[\{"type":"input_text","text":"(?!<)', buf))
+            e["assistant_msgs"] += buf.count('"role":"assistant"')
+            for m in re.finditer(r'"type":"function_call","name":"([^"]+)"', buf):
+                e["tools"][m.group(1)] = e["tools"].get(m.group(1), 0) + 1
+        else:
+            e["user_msgs"] += buf.count('"type":"user"')
+            e["assistant_msgs"] += buf.count('"type":"assistant"')
+        for m in re.finditer(r'"type":"tool_use","id":"[^"]+","name":"([^"]+)"', buf):
+            e["tools"][m.group(1)] = e["tools"].get(m.group(1), 0) + 1
         e["off"], e["mtime"], e["size"] = st.st_size, st.st_mtime, st.st_size
         idx[path] = e
     for p in list(idx):
@@ -209,6 +238,26 @@ def resume_command(agent, sid, cwd):
     return f"{cd}{'codex resume' if agent == 'codex' else 'claude --resume'} {sid}"
 
 
+def subagents_of(path):
+    """Claude Code keeps subagent transcripts next to the parent: <sid>/subagents/agent-<id>.{jsonl,meta.json}."""
+    base = os.path.splitext(path)[0]
+    res = []
+    for meta in sorted(glob.glob(os.path.join(base, "subagents", "*.meta.json"))):
+        try:
+            m = json.load(open(meta))
+        except Exception:
+            m = {}
+        jl = meta.replace(".meta.json", ".jsonl")
+        aid = os.path.basename(meta).replace(".meta.json", "").replace("agent-", "")
+        st = os.stat(jl) if os.path.exists(jl) else None
+        res.append({"agent_id": aid, "type": m.get("agentType", ""), "description": m.get("description", ""), "tool_use_id": m.get("toolUseId", ""), "depth": m.get("spawnDepth", 1), "size": st.st_size if st else 0, "last_at": st.st_mtime if st else 0, "path": jl})
+    return res
+
+
+def ref_of(path, e, task_id=None):
+    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] == "claude-code" else []}
+
+
 def session_refs(idx, task_id=None, session_id=None):
     refs = []
     for path, e in idx.items():
@@ -218,9 +267,142 @@ def session_refs(idx, task_id=None, session_id=None):
             continue
         if session_id and not e["session_id"].startswith(session_id):
             continue
-        refs.append({"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "last_at": e["mtime"], "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path})
+        refs.append(ref_of(path, e, task_id))
     refs.sort(key=lambda r: -r["last_at"])
     return refs
+
+
+def cmd_index(a):
+    idx = refresh_index()
+    n = len([1 for e in idx.values() if not e.get("subagent")])
+    out({"files": len(idx), "sessions": n, "index": INDEX_FILE}, a.json, lambda o: print(f"索引 {o['files']} 个文件，{o['sessions']} 个会话 → {o['index']}"))
+
+
+def cmd_list(a):
+    idx = load_index() if a.cached else refresh_index()
+    refs = session_refs(idx)
+    if a.agent:
+        refs = [r for r in refs if r["agent"] == a.agent]
+    if a.project:
+        refs = [r for r in refs if r["project"] == a.project]
+    if a.query:
+        q = a.query.lower()
+        refs = [r for r in refs if q in (r["title"] or "").lower() or q in r["cwd"].lower() or q in r["session_id"]]
+    refs = refs[: a.limit]
+
+    def text(refs):
+        for r in refs:
+            print(f"{r['agent']:<12} {r['project']:<18} {ago(r['last_at']):<5} {r['user_msgs']:>4}轮 {len(r['subagents']):>2}子  {r['title'] or '(无标题)'}  {r['session_id'][:8]}")
+    out(refs, a.json, text)
+
+
+def _block_text(content):
+    if isinstance(content, str):
+        return content
+    parts = []
+    for b in content or []:
+        if isinstance(b, dict) and b.get("type") == "text":
+            parts.append(b.get("text", ""))
+    return "\n".join(parts)
+
+
+def read_session_detail(ref, limit=400):
+    """Parse one transcript into a compact timeline + file changes (from Edit/Write tool calls)."""
+    msgs, files, tool_names = [], {}, {}
+    path = ref["path"]
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            t = d.get("type")
+            if ref["agent"] == "codex":
+                # Codex rollouts: {"type":"event_msg"/"response_item", payload:{...}}; content blocks are input_text/output_text.
+                p = d.get("payload", {})
+                ts = d.get("timestamp", "")
+                if t == "response_item" and p.get("type") == "message":
+                    role = p.get("role", "")
+                    txt = "\n".join(b.get("text", "") for b in p.get("content") or [] if isinstance(b, dict) and b.get("type") in ("input_text", "output_text", "text"))
+                    if txt.strip() and role in ("user", "assistant") and not txt.lstrip().startswith("<"):
+                        msgs.append({"ts": ts, "role": role, "text": txt[:600], "tools": []})
+                elif t == "response_item" and p.get("type") == "function_call":
+                    name = p.get("name", "")
+                    tool_names[name] = tool_names.get(name, 0) + 1
+                    args = p.get("arguments", "")
+                    try:
+                        aj = json.loads(args) if isinstance(args, str) else args
+                        summary = aj.get("cmd") or aj.get("command") or aj.get("path") or aj.get("file_path") or args
+                        if isinstance(summary, list):
+                            summary = " ".join(map(str, summary))
+                        fp = aj.get("path") or aj.get("file_path")
+                        if name in ("apply_patch",) or (isinstance(args, str) and "*** Begin Patch" in args):
+                            files.setdefault("(apply_patch)", []).append({"kind": "edit", "old": "", "new": str(aj.get("input") or args)[:20000], "ts": ts})
+                        elif fp and name in ("write_file", "edit_file"):
+                            files.setdefault(fp, []).append({"kind": "write", "old": "", "new": str(aj.get("content", ""))[:20000], "ts": ts})
+                    except Exception:
+                        summary = args
+                    msgs.append({"ts": ts, "role": "tool", "text": "", "tools": [{"name": name, "summary": str(summary)[:200]}]})
+                continue
+            if t not in ("user", "assistant"):
+                continue
+            if d.get("isSidechain"):
+                continue
+            m = d.get("message") or {}
+            content = m.get("content")
+            ts = d.get("timestamp", "")
+            if t == "user":
+                if isinstance(content, list) and content and isinstance(content[0], dict) and content[0].get("type") == "tool_result":
+                    continue  # tool results are noise for the timeline
+                txt = _block_text(content)
+                if txt.strip():
+                    msgs.append({"ts": ts, "role": "user", "text": txt[:600], "tools": []})
+            else:
+                txt = _block_text(content)
+                tools = []
+                for b in content if isinstance(content, list) else []:
+                    if isinstance(b, dict) and b.get("type") == "tool_use":
+                        name = b.get("name", "")
+                        inp = b.get("input") or {}
+                        tool_names[name] = tool_names.get(name, 0) + 1
+                        summary = inp.get("command") or inp.get("file_path") or inp.get("description") or inp.get("prompt") or inp.get("pattern") or inp.get("url") or ""
+                        tools.append({"name": name, "summary": str(summary)[:200], "id": b.get("id", "")})
+                        fp = inp.get("file_path")
+                        if name == "Edit" and fp:
+                            files.setdefault(fp, []).append({"kind": "edit", "old": inp.get("old_string", ""), "new": inp.get("new_string", ""), "ts": ts})
+                        elif name == "Write" and fp:
+                            files.setdefault(fp, []).append({"kind": "write", "old": "", "new": inp.get("content", ""), "ts": ts})
+                        elif name in ("NotebookEdit",) and fp:
+                            files.setdefault(fp, []).append({"kind": "edit", "old": "", "new": inp.get("new_source", ""), "ts": ts})
+                if txt.strip() or tools:
+                    msgs.append({"ts": ts, "role": "assistant", "text": txt[:600], "tools": tools})
+    if len(msgs) > limit:
+        msgs = msgs[:40] + [{"ts": "", "role": "gap", "text": f"…省略 {len(msgs) - limit} 条…", "tools": []}] + msgs[-(limit - 40):]
+    return {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in files.items()], "tool_counts": tool_names}
+
+
+def cmd_session(a):
+    refs = resolve(load_index() or refresh_index(), a.key)
+    if not refs:
+        print(f"找不到 {a.key}", file=sys.stderr)
+        sys.exit(1)
+    d = read_session_detail(refs[0])
+
+    def text(d):
+        m = d["meta"]
+        print(f"{m['title'] or '(无标题)'}  ·  {m['agent']}  ·  {m['cwd']}  ·  {m['session_id']}")
+        print(f"{m['user_msgs']} 轮 · 子 Agent {len(m['subagents'])} · 改动文件 {len(d['files'])}")
+        for s in m["subagents"]:
+            print(f"  ↳ 子Agent {s['type']}: {s['description']}")
+        for f in d["files"]:
+            print(f"  ✎ {f['path']}  ({len(f['changes'])} 处)")
+        print("--- 时间线 ---")
+        for x in d["messages"][-30:]:
+            if x["role"] == "tool":
+                print(f"[tool] {x['tools'][0]['name']}: {x['tools'][0]['summary'][:80]}")
+            else:
+                print(f"[{x['role']}] {x['text'][:160].replace(chr(10), ' ')}" + (f"  ⚙ {', '.join(t['name'] for t in x['tools'])}" if x["tools"] else ""))
+    out(d, a.json, text)
 
 
 def cmd_find(a):
@@ -438,6 +620,9 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
+    s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
+    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--agent"); s.add_argument("--project"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
+    s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)

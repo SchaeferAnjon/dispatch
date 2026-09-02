@@ -1,16 +1,33 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "board" | "table" | "agents" | "pitfalls";
+export type View = "board" | "table" | "agents" | "sessions" | "pitfalls";
 
+export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string }
 export interface SessionRef {
   agent: string;
   session_id: string;
   cwd: string;
   project: string;
+  title: string;
   last_at: number;
+  first_ts: string;
+  last_ts: string;
+  entrypoint: string;
+  branch: string;
+  user_msgs: number;
+  assistant_msgs: number;
+  tools: Record<string, number>;
+  tasks: Record<string, number>;
   mentions: number;
+  current_task: string | null;
   resume_cmd: string;
+  path: string;
+  size: number;
+  subagents: SubagentRef[];
 }
+export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; text: string; tools: { name: string; summary: string; id?: string }[] }
+export interface FileChange { kind: "edit" | "write"; old: string; new: string; ts: string }
+export interface SessionDetail { meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
 export interface Memory { key: string; value: string }
 
 export interface Issue {
@@ -78,6 +95,7 @@ export interface Session {
   prompts: number;
   alive: boolean;
   registered: boolean;
+  herdr?: { pane_id: string; tab_id: string; title: string; status: string; focused: boolean };
 }
 export interface Presence { sessions: Session[]; apps: string[] }
 

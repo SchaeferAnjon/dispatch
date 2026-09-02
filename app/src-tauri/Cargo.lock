@@ -801,7 +801,6 @@ version = "0.1.0"
 dependencies = [
  "dirs",
  "notify",
- "regex",
  "serde",
  "serde_json",
  "tauri",

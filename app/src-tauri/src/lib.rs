@@ -124,11 +124,6 @@ async fn bd_info() -> Result<Info, String> {
 }
 
 #[tauri::command]
-async fn bd_run(argv: Vec<String>) -> Result<String, String> {
-    run_bd(argv).await
-}
-
-#[tauri::command]
 async fn bd_list() -> Result<String, String> {
     run_bd(args(&["list", "--all", "-n", "0", "--json"])).await.map(json_only)
 }
@@ -273,381 +268,87 @@ async fn bd_create(input: NewIssue) -> Result<String, String> {
     run_bd(a).await.map(json_only)
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-struct Session {
-    agent: String,
-    session_id: String,
-    #[serde(default)]
-    cwd: String,
-    #[serde(default)]
-    project: String,
-    #[serde(default)]
-    agent_pid: Option<i64>,
-    #[serde(default)]
-    source_kind: String,
-    #[serde(default)]
-    source_app: String,
-    #[serde(default)]
-    entrypoint: String,
-    #[serde(default)]
-    started_at: f64,
-    #[serde(default)]
-    last_at: f64,
-    #[serde(default)]
-    state: String,
-    #[serde(default)]
-    prompts: i64,
-    #[serde(default)]
-    alive: bool,
-    #[serde(default)]
-    registered: bool,
-}
+// ---------- sessions & transcripts: delegated to the `dispatch` CLI ----------
+// One implementation serves Agents (CLI) and the GUI; the app only renders.
 
-#[derive(Serialize)]
-struct Presence {
-    sessions: Vec<Session>,
-    apps: Vec<String>,
-}
-
-fn sessions_dir() -> PathBuf {
-    home().join("tasks/.dispatch/sessions")
-}
-
-// Registry written by the presence hook, cross-checked against live processes so
-// crashed sessions disappear and hook-less sessions (plain `claude`/`codex`
-// processes) still get counted.
-const APP_SOURCES: &[(&str, &str, &str)] = &[
-    ("Claude.app/", "desktop", "Claude 桌面端"),
-    ("ChatGPT.app/", "desktop", "ChatGPT 桌面端"),
-    ("Cursor.app/", "editor", "Cursor"),
-    ("Visual Studio Code.app/", "editor", "VS Code"),
-    ("Windsurf.app/", "editor", "Windsurf"),
-    ("Zed.app/", "editor", "Zed"),
-    ("Warp.app/", "terminal", "Warp"),
-    ("iTerm.app/", "terminal", "iTerm2"),
-    ("Terminal.app/", "terminal", "Terminal"),
-    ("Ghostty.app/", "terminal", "Ghostty"),
-    ("kitty.app/", "terminal", "kitty"),
-    ("Alacritty.app/", "terminal", "Alacritty"),
-    ("WezTerm.app/", "terminal", "WezTerm"),
-];
-
-// Same classification as presence.py: walk parents until an app bundle or a
-// known multiplexer shows up.
-fn classify_chain(pid: i64, table: &std::collections::HashMap<i64, (i64, String)>) -> (String, String) {
-    let mut cur = pid;
-    for _ in 0..25 {
-        let Some((ppid, comm)) = table.get(&cur) else { break };
-        for (needle, kind, label) in APP_SOURCES {
-            if comm.contains(needle) {
-                return (kind.to_string(), label.to_string());
-            }
-        }
-        let base = comm.rsplit('/').next().unwrap_or(comm).trim_start_matches('-');
-        match base {
-            "herdr" => return ("terminal".into(), "Herdr".into()),
-            "tmux" => return ("terminal".into(), "tmux".into()),
-            "zellij" => return ("terminal".into(), "zellij".into()),
-            _ => {}
-        }
-        if *ppid <= 1 {
-            break;
-        }
-        cur = *ppid;
+fn dispatch_bin() -> PathBuf {
+    if let Ok(b) = std::env::var("DISPATCH_CLI") {
+        return PathBuf::from(b);
     }
-    ("terminal".into(), "终端".into())
+    for c in [home().join(".local/bin/dispatch"), home().join("Projects/kanban/app/cli/dispatch.py")] {
+        if c.exists() {
+            return c;
+        }
+    }
+    PathBuf::from("dispatch")
 }
 
-fn cwd_of(pid: i64) -> String {
-    let out = Command::new("lsof")
-        .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
+fn run_dispatch_blocking(args: &[String]) -> Result<String, String> {
+    let bin = dispatch_bin();
+    let path = format!(
+        "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:{}:{}",
+        home().join(".local/bin").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = Command::new("python3")
+        .arg(&bin)
+        .args(args)
+        .env("BEADS_DIR", beads_dir())
+        .env("PATH", path)
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default();
-    out.lines()
-        .find(|l| l.starts_with('n'))
-        .map(|l| l[1..].to_string())
-        .unwrap_or_default()
+        .map_err(|e| format!("无法启动 dispatch（{}）：{}", bin.display(), e))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
 }
 
-fn read_presence() -> Presence {
-    let ps = Command::new("ps")
-        .args(["-axo", "pid=,ppid=,comm="])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default();
-    let mut alive: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
-    let mut table: std::collections::HashMap<i64, (i64, String)> = std::collections::HashMap::new();
-    let mut apps: Vec<String> = Vec::new();
-    for line in ps.lines() {
-        let mut it = line.trim().splitn(3, ' ');
-        let (Some(pid), Some(ppid), Some(comm)) = (it.next(), it.next(), it.next()) else { continue };
-        if let (Ok(pid), Ok(ppid)) = (pid.parse::<i64>(), ppid.trim().parse::<i64>()) {
-            {
-                let comm = comm.trim().to_string();
-                table.insert(pid, (ppid, comm.clone()));
-                for (needle, name) in [
-                    ("/Applications/Claude.app/Contents/MacOS/Claude", "Claude 桌面端"),
-                    ("/ChatGPT.app/Contents/MacOS/ChatGPT", "ChatGPT 桌面端"),
-                    ("/Cursor.app/Contents/MacOS/Cursor", "Cursor"),
-                    ("/Visual Studio Code.app/Contents/MacOS/Electron", "VS Code"),
-                ] {
-                    if comm.ends_with(needle) || comm.contains(needle) {
-                        if !apps.iter().any(|a| a == name) {
-                            apps.push(name.to_string());
-                        }
-                    }
-                }
-                alive.insert(pid, comm);
-            }
-        }
-    }
-    let mut sessions: Vec<Session> = Vec::new();
-    let mut seen_pids: std::collections::HashSet<i64> = std::collections::HashSet::new();
-    if let Ok(rd) = std::fs::read_dir(sessions_dir()) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.extension().map(|x| x != "json").unwrap_or(true) {
-                continue;
-            }
-            let Ok(txt) = std::fs::read_to_string(&p) else { continue };
-            let Ok(mut s) = serde_json::from_str::<Session>(&txt) else { continue };
-            s.registered = true;
-            s.alive = match s.agent_pid {
-                Some(pid) => alive.contains_key(&pid),
-                None => true,
-            };
-            if let Some(pid) = s.agent_pid {
-                seen_pids.insert(pid);
-            }
-            if s.alive {
-                sessions.push(s);
-            } else {
-                let _ = std::fs::remove_file(&p);
-            }
-        }
-    }
-    // Sessions that never ran the hook (started before it was installed).
-    for (pid, comm) in &alive {
-        if seen_pids.contains(pid) {
-            continue;
-        }
-        let base = comm.rsplit('/').next().unwrap_or(comm).trim_start_matches('-');
-        let agent = match base {
-            "claude" => "claude-code",
-            "codex" => "codex",
-            _ => continue,
-        };
-        let (kind, app) = classify_chain(*pid, &table);
-        let cwd = cwd_of(*pid);
-        let project = cwd.trim_end_matches('/').rsplit('/').next().unwrap_or("").to_string();
-        sessions.push(Session {
-            agent: agent.into(),
-            session_id: format!("pid-{pid}"),
-            cwd,
-            project,
-            agent_pid: Some(*pid),
-            source_kind: kind,
-            source_app: app,
-            entrypoint: String::new(),
-            started_at: 0.0,
-            last_at: 0.0,
-            state: "unknown".into(),
-            prompts: 0,
-            alive: true,
-            registered: false,
-        });
-    }
-    sessions.sort_by(|a, b| b.last_at.partial_cmp(&a.last_at).unwrap_or(std::cmp::Ordering::Equal));
-    Presence { sessions, apps }
-}
-
-#[tauri::command]
-async fn sessions() -> Result<Presence, String> {
-    tauri::async_runtime::spawn_blocking(read_presence)
+async fn run_dispatch(args: Vec<String>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || run_dispatch_blocking(&args))
         .await
-        .map_err(|e| e.to_string())
-}
-
-// ---------- transcript index: task id → sessions that touched it ----------
-
-#[derive(Clone)]
-struct Transcript {
-    agent: String,
-    session_id: String,
-    cwd: String,
-    mtime: f64,
-    size: u64,
-    scanned_to: u64,
-    tasks: std::collections::HashMap<String, u32>,
-}
-
-static INDEX: Mutex<Option<std::collections::HashMap<PathBuf, Transcript>>> = Mutex::new(None);
-
-fn walk_jsonl(dir: &Path, out: &mut Vec<PathBuf>, depth: u32) {
-    if depth > 6 {
-        return;
-    }
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            walk_jsonl(&p, out, depth + 1);
-        } else if p.extension().map(|x| x == "jsonl").unwrap_or(false) {
-            out.push(p);
-        }
-    }
-}
-
-fn epoch(t: std::io::Result<std::time::SystemTime>) -> f64 {
-    t.ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0)
-}
-
-fn task_prefix() -> String {
-    // The board's issue prefix doubles as the Dolt database name in metadata.json.
-    std::fs::read_to_string(beads_dir().join("metadata.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .and_then(|v| v.get("dolt_database").and_then(|p| p.as_str()).map(String::from))
-        .unwrap_or_else(|| "task".into())
-}
-
-// Incremental: only bytes appended since the last pass are re-read, so the
-// 60s refresh is cheap even with hundreds of MB of history on disk.
-fn refresh_index() {
-    let prefix = task_prefix();
-    let re_task = regex::Regex::new(&format!(r"\b{}-[a-z0-9]{{2,8}}\b", regex::escape(&prefix))).unwrap();
-    let re_cwd = regex::Regex::new(r#""cwd":"([^"]+)""#).unwrap();
-    let mut files: Vec<(PathBuf, &str)> = Vec::new();
-    let mut v = Vec::new();
-    walk_jsonl(&home().join(".claude/projects"), &mut v, 0);
-    files.extend(v.drain(..).map(|p| (p, "claude-code")));
-    walk_jsonl(&home().join(".codex/sessions"), &mut v, 0);
-    files.extend(v.drain(..).map(|p| (p, "codex")));
-
-    let mut idx = INDEX.lock().map(|g| g.clone().unwrap_or_default()).unwrap_or_default();
-    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
-    for (path, agent) in files {
-        seen.insert(path.clone());
-        let Ok(md) = std::fs::metadata(&path) else { continue };
-        let mtime = epoch(md.modified());
-        let size = md.len();
-        let entry = idx.entry(path.clone()).or_insert_with(|| Transcript {
-            agent: agent.into(),
-            session_id: String::new(),
-            cwd: String::new(),
-            mtime: 0.0,
-            size: 0,
-            scanned_to: 0,
-            tasks: Default::default(),
-        });
-        if entry.mtime == mtime && entry.size == size {
-            continue;
-        }
-        if size < entry.scanned_to {
-            entry.scanned_to = 0;
-            entry.tasks.clear();
-        }
-        use std::io::{Read, Seek, SeekFrom};
-        let Ok(mut f) = std::fs::File::open(&path) else { continue };
-        let _ = f.seek(SeekFrom::Start(entry.scanned_to));
-        let mut buf = String::new();
-        if f.read_to_string(&mut buf).is_err() {
-            // binary garbage or non-utf8 chunk: skip this file for now
-            entry.mtime = mtime;
-            entry.size = size;
-            continue;
-        }
-        if entry.session_id.is_empty() {
-            if agent == "claude-code" {
-                entry.session_id = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-            } else if let Some(first) = buf.lines().next() {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(first) {
-                    let p = v.get("payload").cloned().unwrap_or(v.clone());
-                    entry.session_id = p.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    entry.cwd = p.get("cwd").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                }
-            }
-        }
-        if entry.cwd.is_empty() {
-            if let Some(c) = re_cwd.captures(&buf) {
-                entry.cwd = c[1].to_string();
-            }
-        }
-        for m in re_task.find_iter(&buf) {
-            *entry.tasks.entry(m.as_str().to_string()).or_insert(0) += 1;
-        }
-        entry.scanned_to = size;
-        entry.mtime = mtime;
-        entry.size = size;
-    }
-    idx.retain(|p, _| seen.contains(p));
-    if let Ok(mut g) = INDEX.lock() {
-        *g = Some(idx);
-    }
+        .map_err(|e| e.to_string())?
 }
 
 fn start_indexer() {
     std::thread::spawn(|| loop {
-        refresh_index();
+        let _ = run_dispatch_blocking(&args(&["index", "--json"]));
         std::thread::sleep(Duration::from_secs(60));
     });
 }
 
-#[derive(Serialize)]
-struct SessionRef {
-    agent: String,
-    session_id: String,
-    cwd: String,
-    project: String,
-    last_at: f64,
-    mentions: u32,
-    resume_cmd: String,
-}
-
-fn resume_command(agent: &str, session_id: &str, cwd: &str) -> String {
-    let cd = if cwd.is_empty() { String::new() } else { format!("cd '{}' && ", cwd.replace('\'', "'\\''")) };
-    match agent {
-        "codex" => format!("{cd}codex resume {session_id}"),
-        _ => format!("{cd}claude --resume {session_id}"),
-    }
+#[tauri::command]
+async fn sessions() -> Result<String, String> {
+    run_dispatch(args(&["sessions", "--json"])).await
 }
 
 #[tauri::command]
-async fn task_sessions(id: String) -> Result<Vec<SessionRef>, String> {
-    let idx = INDEX.lock().map_err(|e| e.to_string())?.clone().unwrap_or_default();
-    let mut out: Vec<SessionRef> = idx
-        .values()
-        .filter(|t| !t.session_id.is_empty() && t.tasks.contains_key(&id))
-        .map(|t| SessionRef {
-            agent: t.agent.clone(),
-            session_id: t.session_id.clone(),
-            cwd: t.cwd.clone(),
-            project: t.cwd.trim_end_matches('/').rsplit('/').next().unwrap_or("").to_string(),
-            last_at: t.mtime,
-            mentions: t.tasks[&id],
-            resume_cmd: resume_command(&t.agent, &t.session_id, &t.cwd),
-        })
-        .collect();
-    out.sort_by(|a, b| b.last_at.partial_cmp(&a.last_at).unwrap_or(std::cmp::Ordering::Equal));
-    Ok(out)
+async fn task_sessions(id: String) -> Result<String, String> {
+    run_dispatch(args(&["find", &id, "--json"])).await
+}
+
+#[tauri::command]
+async fn session_list() -> Result<String, String> {
+    run_dispatch(args(&["list", "--cached", "--limit", "500", "--json"])).await
+}
+
+#[tauri::command]
+async fn session_detail(id: String) -> Result<String, String> {
+    run_dispatch(args(&["session", &id, "--json"])).await
+}
+
+#[tauri::command]
+async fn focus_session(id: String) -> Result<String, String> {
+    run_dispatch(args(&["focus", &id])).await
 }
 
 #[tauri::command]
 fn resume_cmd(agent: String, session_id: String, cwd: String) -> String {
-    resume_command(&agent, &session_id, &cwd)
-}
-
-#[tauri::command]
-async fn index_status() -> Result<(usize, bool), String> {
-    let g = INDEX.lock().map_err(|e| e.to_string())?;
-    Ok(match &*g {
-        Some(m) => (m.len(), true),
-        None => (0, false),
-    })
+    let cd = if cwd.is_empty() { String::new() } else { format!("cd '{}' && ", cwd.replace('\'', "'\\''")) };
+    match agent.as_str() {
+        "codex" => format!("{cd}codex resume {session_id}"),
+        _ => format!("{cd}claude --resume {session_id}"),
+    }
 }
 
 // ---------- memories (used as the shared pitfall log) ----------
@@ -759,9 +460,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            bd_info, bd_run, bd_list, bd_show, bd_comments, bd_history, bd_claim, bd_set_status,
+            bd_info, bd_list, bd_show, bd_comments, bd_history, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
-            task_sessions, resume_cmd, index_status, memories_list, memory_set, memory_forget
+            task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
