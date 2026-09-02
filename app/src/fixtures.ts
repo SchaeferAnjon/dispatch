@@ -49,6 +49,7 @@ export function fixtureApi(): Api {
         { CommitHash: "h1", Committer: "root", CommitDate: i.created_at, Issue: { ...i, status: "open", assignee: undefined, labels: (i.labels ?? []).filter((l) => l !== "reviewed") } },
       ];
     },
+    interactions: async () => [],
     claim: async (id) => { const i = find(id); i.assignee = "schaefer"; i.status = "in_progress"; i.started_at = new Date().toISOString(); touch(i); notify(); },
     setStatus: async (id, status) => { const i = find(id); i.status = status as Status; touch(i); notify(); },
     close: async (id, reason) => { const i = find(id); i.status = "closed"; i.close_reason = reason; i.closed_at = new Date().toISOString(); touch(i); notify(); },

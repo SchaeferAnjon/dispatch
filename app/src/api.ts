@@ -1,5 +1,6 @@
 import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, SessionDetail, SessionRef, Skill, UpdateFields } from "./types";
 import { fixtureApi } from "./fixtures";
+import type { Interaction } from "./derive";
 
 export interface Api {
   info(): Promise<Info>;
@@ -7,6 +8,7 @@ export interface Api {
   show(id: string): Promise<Issue | null>;
   comments(id: string): Promise<Comment[]>;
   history(id: string): Promise<HistoryEntry[]>;
+  interactions(id: string): Promise<Interaction[]>;
   claim(id: string): Promise<void>;
   setStatus(id: string, status: string): Promise<void>;
   close(id: string, reason: string): Promise<void>;
@@ -61,6 +63,7 @@ async function tauriApi(): Promise<Api> {
     show: async (id) => parse<Issue[]>(await call("bd_show", { id }), [])[0] ?? null,
     comments: async (id) => parse<Comment[]>(await call("bd_comments", { id }), []),
     history: async (id) => parse<HistoryEntry[]>(await call("bd_history", { id }), []),
+    interactions: async (id) => parse<Interaction[]>(await call("bd_interactions", { id }), []),
     claim: async (id) => void (await call("bd_claim", { id })),
     setStatus: async (id, status) => void (await call("bd_set_status", { id, status })),
     close: async (id, reason) => void (await call("bd_close", { id, reason })),

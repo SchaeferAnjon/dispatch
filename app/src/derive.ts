@@ -20,12 +20,19 @@ const KNOWN: Record<string, Omit<Actor, "id">> = {
   cursor: { name: "Cursor", kind: "cursor", glyph: "U" },
 };
 
+// Old records carry the git user.name; treat every human alias as "me" so the
+// board shows one person, not one per spelling.
+export const HUMAN_ALIASES = new Set(["schaefer", "schaeferanjon", "macbook14", "apple"]);
+export function isMe(raw: string | undefined, me: string): boolean {
+  if (!raw) return false;
+  return raw === me || HUMAN_ALIASES.has(raw.toLowerCase());
+}
 export function actorOf(raw: string | undefined, me: string): Actor | null {
   if (!raw) return null;
   const k = KNOWN[raw.toLowerCase()];
   if (k) return { id: raw, ...k };
-  const isMe = raw === me;
-  return { id: raw, name: isMe ? "我" : raw, kind: "human", glyph: isMe ? "我" : raw.slice(0, 1).toUpperCase() };
+  if (isMe(raw, me)) return { id: me, name: "我", kind: "human", glyph: "我" };
+  return { id: raw, name: raw, kind: "human", glyph: raw.slice(0, 1).toUpperCase() };
 }
 
 export const PROJECT_PREFIX = "project:";
@@ -88,7 +95,6 @@ export interface AgentPresence {
   online: boolean;
   lastActive?: string;
   current: Issue[];
-  doneToday: number;
   sessions: Session[];
   bySource: { kind: SourceKind; label: string; count: number; working: number }[];
 }
@@ -98,11 +104,10 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
   const map = new Map<string, AgentPresence>();
   const ensure = (raw: string) => {
     const a = actorOf(raw, me)!;
-    if (!map.has(a.id)) map.set(a.id, { actor: a, online: false, current: [], doneToday: 0, sessions: [], bySource: [] });
+    if (!map.has(a.id)) map.set(a.id, { actor: a, online: false, current: [], sessions: [], bySource: [] });
     return map.get(a.id)!;
   };
   ["claude-code", "codex", "cursor", me].forEach(ensure);
-  const dayAgo = Date.now() - 86_400_000;
   for (const i of issues) {
     const seen = new Set<string>();
     for (const raw of [i.assignee, i.created_by]) {
@@ -115,7 +120,6 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     if (i.assignee) {
       const p = ensure(i.assignee);
       if (i.status === "in_progress") p.current.push(i);
-      if (i.status === "closed" && i.closed_at && new Date(i.closed_at).getTime() > dayAgo) p.doneToday++;
     }
   }
   for (const s of sessions) {
@@ -144,9 +148,15 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
 }
 
 export interface Event { ts: string; actor?: string; kind: "created" | "claimed" | "status" | "closed" | "reviewed" | "comment" | "edited"; text: string; cmd?: string }
-// bd history has no per-commit actor; infer it from the fields that changed.
-export function eventsFrom(history: HistoryEntry[], comments: Comment[]): Event[] {
+export interface Interaction { id: string; kind: string; created_at: string; actor: string; issue_id: string; extra?: Record<string, unknown> }
+// bd history has no per-commit actor; infer it from the fields that changed,
+// then overlay the audit log (interactions.jsonl) which does record the actor.
+export function eventsFrom(history: HistoryEntry[], comments: Comment[], audit: Interaction[] = []): Event[] {
   const ev: Event[] = [];
+  const auditNear = (ts: string, field?: string) => {
+    const t = new Date(ts).getTime();
+    return audit.find((a) => Math.abs(new Date(a.created_at).getTime() - t) < 5000 && (!field || a.extra?.field === field));
+  };
   const h = [...history].sort((a, b) => a.CommitDate.localeCompare(b.CommitDate));
   let prev: Issue | null = null;
   for (const e of h) {
@@ -155,14 +165,15 @@ export function eventsFrom(history: HistoryEntry[], comments: Comment[]): Event[
     if (!prev) {
       ev.push({ ts, actor: cur.created_by, kind: "created", text: "创建", cmd: `bd create "${cur.title}"` });
     } else {
-      if (cur.assignee !== prev.assignee && cur.assignee) ev.push({ ts, actor: cur.assignee, kind: "claimed", text: "认领", cmd: `bd update ${cur.id} --claim` });
+      if (cur.assignee !== prev.assignee && cur.assignee) ev.push({ ts, actor: auditNear(ts, "assignee")?.actor ?? cur.assignee, kind: "claimed", text: prev.assignee ? `改派给 ${cur.assignee}` : "认领", cmd: `bd update ${cur.id} --claim` });
       if (cur.status !== prev.status) {
-        if (cur.status === "closed") ev.push({ ts, actor: cur.assignee, kind: "closed", text: "完成", cmd: `bd close ${cur.id}${cur.close_reason ? ` --reason "${cur.close_reason}"` : ""}` });
-        else if (!(cur.status === "in_progress" && cur.assignee !== prev.assignee)) ev.push({ ts, actor: cur.assignee, kind: "status", text: `状态 → ${statusLabel(cur).text}`, cmd: `bd update ${cur.id} --status ${cur.status}` });
+        const who = auditNear(ts, "status")?.actor ?? cur.assignee;
+        if (cur.status === "closed") ev.push({ ts, actor: who, kind: "closed", text: "完成", cmd: `bd close ${cur.id}${cur.close_reason ? ` --reason "${cur.close_reason}"` : ""}` });
+        else if (!(cur.status === "in_progress" && cur.assignee !== prev.assignee)) ev.push({ ts, actor: who, kind: "status", text: `状态 → ${statusLabel(cur).text}`, cmd: `bd update ${cur.id} --status ${cur.status}` });
       }
       const wasRev = (prev.labels ?? []).includes("reviewed"), isRev = (cur.labels ?? []).includes("reviewed");
-      if (isRev && !wasRev) ev.push({ ts, kind: "reviewed", text: "审核通过", cmd: `bd update ${cur.id} --add-label reviewed` });
-      if (cur.title !== prev.title || cur.description !== prev.description || cur.priority !== prev.priority) ev.push({ ts, kind: "edited", text: "编辑" });
+      if (isRev && !wasRev) ev.push({ ts, actor: auditNear(ts)?.actor, kind: "reviewed", text: "审核通过", cmd: `bd update ${cur.id} --add-label reviewed` });
+      if (cur.title !== prev.title || cur.description !== prev.description || cur.priority !== prev.priority || cur.acceptance_criteria !== prev.acceptance_criteria) ev.push({ ts, actor: auditNear(ts)?.actor, kind: "edited", text: "编辑" });
     }
     prev = cur;
   }

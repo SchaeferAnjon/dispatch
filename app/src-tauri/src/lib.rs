@@ -143,6 +143,20 @@ async fn bd_history(id: String) -> Result<String, String> {
     run_bd(args(&["history", &id, "--json"])).await.map(json_only)
 }
 
+// bd's audit log records the actor of every field change; bd history does not.
+#[tauri::command]
+async fn bd_interactions(id: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = beads_dir().join("interactions.jsonl");
+        let txt = std::fs::read_to_string(&p).unwrap_or_default();
+        let needle = format!("\"issue_id\":\"{id}\"");
+        let items: Vec<&str> = txt.lines().filter(|l| l.contains(&needle)).collect();
+        Ok(format!("[{}]", items.join(",")))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn bd_claim(id: String) -> Result<String, String> {
     run_bd(args(&["update", &id, "--claim", "--json"])).await.map(json_only)
@@ -554,7 +568,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            bd_info, bd_list, bd_show, bd_comments, bd_history, bd_claim, bd_set_status,
+            bd_info, bd_list, bd_show, bd_comments, bd_history, bd_interactions, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
             skills_list, skill_toggle, skill_read, skill_write, skill_open, tray_update

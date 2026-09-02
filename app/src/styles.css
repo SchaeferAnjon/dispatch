@@ -287,6 +287,12 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .pit-row .lbl{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;text-align:center;margin-top:2px}
 .pit-row .lbl.trap{color:var(--s-block);background:var(--s-block-bg)}
 .pit-row .lbl.fix{color:var(--s-done);background:var(--s-done-bg)}
+.rel-pits{display:flex;flex-direction:column;gap:6px}
+.rel-pit{border-left:3px solid var(--s-block);background:var(--panel);border-radius:6px;padding:6px 10px;font-size:12px;display:flex;flex-direction:column;gap:3px;user-select:text}
+.rel-pit .l1{display:grid;grid-template-columns:34px 1fr;gap:6px;align-items:start}
+.rel-pit .lbl{font-size:10.5px;font-weight:600;padding:0 5px;border-radius:4px;text-align:center;margin-top:2px}
+.rel-pit .lbl.trap{color:var(--s-block);background:var(--s-block-bg)}
+.rel-pit .lbl.fix{color:var(--s-done);background:var(--s-done-bg)}
 .sess-list{display:flex;flex-direction:column;gap:6px}
 .sref{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 8px;border-radius:6px;background:var(--panel);font-size:12px}
 .sref .av{width:18px;height:18px;font-size:8px}

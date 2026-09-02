@@ -9,7 +9,7 @@ import { SessionsView } from "./components/Sessions";
 import { SkillsView } from "./components/Skills";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { agentsFrom, columnOf, isReviewed, projectOf } from "./derive";
-import type { Column, Info, Issue, NewIssue, Presence, View } from "./types";
+import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
 const VIEW_LABEL: Record<View, string> = { inbox: "等你", board: "看板", table: "表格", agents: "Agents", sessions: "会话记录", skills: "技能", pitfalls: "踩坑记录" };
@@ -105,6 +105,17 @@ export default function App() {
 
   const agents = useMemo(() => agentsFrom(issues, me, presence.sessions), [issues, me, presence]);
   const liveSessions = presence.sessions.filter((s) => s.alive).length;
+
+  // Transcript index (titles, last claimed task) keyed by session id, for the Agents view.
+  const [refs, setRefs] = useState<Map<string, SessionRef>>(new Map());
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    const tick = async () => { try { const l = await api.sessionList(); if (alive) setRefs(new Map(l.map((r) => [r.session_id, r]))); } catch { /* index not ready */ } };
+    tick();
+    const t = window.setInterval(tick, 60_000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [api]);
   const projects = useMemo(() => {
     const m = new Map<string, number>();
     issues.forEach((i) => m.set(projectOf(i), (m.get(projectOf(i)) ?? 0) + 1));
@@ -157,8 +168,9 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     const working = presence.sessions.filter((s) => s.alive && s.state === "working").length;
-    const parts = [working ? `${working} 在跑` : "", inbox.waiting.length ? `${inbox.waiting.length} 等你` : "", inbox.review.length ? `${inbox.review.length} 待审` : ""].filter(Boolean);
-    api.tray(parts.join(" · ") || "bd", `Dispatch · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
+    // Menu bars fill up fast; keep the status text to a few characters.
+    const parts = [working ? `${working}跑` : "", inbox.waiting.length ? `${inbox.waiting.length}等` : "", inbox.review.length ? `${inbox.review.length}审` : ""].filter(Boolean);
+    api.tray(parts.join(" "), `Dispatch · ${working} 在跑 · ${inbox.waiting.length} 等你 · ${inbox.review.length} 待审 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
   }, [api, presence, inbox, issues]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
@@ -216,7 +228,6 @@ export default function App() {
             <span className="spacer" />
             {BOARD_VIEWS.includes(view) && (<>
               <button className={`chip${filters.project === null && !filters.agent && !filters.blocked && !filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, project: null, agent: null, blocked: false, review: false })}>全部</button>
-              <button className={`chip${filters.mine ? " on" : ""}`} onClick={() => setFilters({ ...filters, mine: !filters.mine })}>只看我的</button>
               <button className={`chip${filters.urgent ? " on" : ""}`} onClick={() => setFilters({ ...filters, urgent: !filters.urgent })}>P0–P1</button>
               {filters.agent && <button className="chip on" onClick={() => setFilters({ ...filters, agent: null })}>{filters.agent} ✕</button>}
               <span className="muted mono" style={{ fontSize: 11 }}>{visible.length} 项</span>
@@ -227,7 +238,7 @@ export default function App() {
             {view === "inbox" && <InboxView items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={(id) => api?.focusSession(id).then(say).catch((e) => say(String(e), true))} onReview={(id) => run("审核通过", () => api!.labels(id, ["reviewed"], []))} />}
             {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} />}
-            {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} />}
+            {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} refs={refs} />}
             {view === "sessions" && api && <SessionsView api={api} me={me} live={presence.sessions} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null} />}
             {view === "skills" && api && <SkillsView api={api} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}

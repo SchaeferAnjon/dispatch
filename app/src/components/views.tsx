@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { AgentPresence } from "../derive";
 import { COLUMNS, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
-import type { Column, Issue } from "../types";
+import type { Column, Issue, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 
 interface Common { issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string }
@@ -97,7 +97,7 @@ export function TableView({ issues, selected, onSelect, me }: Common) {
 
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
-export function AgentsView({ agents, apps, onSelect, onCopyResume }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void }) {
+export function AgentsView({ agents, apps, onSelect, onCopyResume, refs }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; refs: Map<string, SessionRef> }) {
   return (
     <div className="agrid">
       {apps.length > 0 && <div className="apps-bar">正在运行的应用：{apps.join(" · ")}</div>}
@@ -123,10 +123,12 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume }: { agents: A
                   </span>
                 ))}
               </div>
-              {a.sessions.map((s) => (
+              {a.sessions.map((s) => {
+                const r = refs.get(s.session_id);
+                return (
                 <div key={s.session_id} className={`sess ${s.state}`} title={s.cwd || s.session_id}>
                   <span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span>
-                  <span className="proj-name">{s.project || <span className="muted">未知目录</span>}</span>
+                  <span className="proj-name">{s.herdr?.title || r?.title || s.project || <span className="muted">未知目录</span>}{r?.current_task && <button className="link mono small" style={{ marginLeft: 6, color: "var(--s-prog)" }} onClick={() => onSelect(r.current_task!)}>正在做 {r.current_task}</button>}</span>
                   <span className="muted small">{s.source_app}</span>
                   <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`} title={s.registered ? "" : "钩子安装前启动的会话：只知道进程在，不知道忙不忙"}>{s.state === "working" ? "在跑" : s.state === "idle" ? "等你" : "未登记"}</span>
                   <span className="mono muted small right">{s.started_at ? `开了 ${durSince(s.started_at)}` : `pid ${s.agent_pid ?? "?"}`}{s.prompts ? ` · ${s.prompts} 轮` : ""}</span>
@@ -134,7 +136,8 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume }: { agents: A
                     <button className="copy-btn" onClick={() => onCopyResume(s.agent, s.session_id, s.cwd)} title="复制恢复命令到剪贴板">恢复</button>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {a.current.length ? a.current.map((i) => (
@@ -146,7 +149,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume }: { agents: A
           )) : (
             <div className="cur" style={{ cursor: "default" }}><div className="lbl">正在做</div><div className="t muted">—</div></div>
           )}
-          <div className="kv"><b>24h 完成</b><span>{a.doneToday}</span><b>身份</b><span className="mono">BEADS_ACTOR={a.actor.id}</span></div>
+          {!isHuman && <div className="kv"><b>身份</b><span className="mono">BEADS_ACTOR={a.actor.id}</span></div>}
         </div>
       );})}
     </div>

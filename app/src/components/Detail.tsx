@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Api } from "../api";
-import { actorOf, durSince, eventsFrom, fmtTime, isReviewed, parseAcceptance, projectOf, relTime, serializeAcceptance, statusLabel } from "../derive";
+import { actorOf, durSince, eventsFrom, fmtTime, isReviewed, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
 import type { Comment, HistoryEntry, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
@@ -13,7 +13,16 @@ export function Detail({ id, api, me, initial, stamp, live, onClose, onSelect, o
   const [issue, setIssue] = useState<Issue | null>(initial);
   const [comments, setComments] = useState<Comment[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [audit, setAudit] = useState<Interaction[]>([]);
   const [refs, setRefs] = useState<SessionRef[]>([]);
+  const [pits, setPits] = useState<Pitfall[]>([]);
+
+  // Pitfalls tagged with this task or its project — shown before anyone starts working.
+  useEffect(() => {
+    let alive = true;
+    api.memories().then((ms) => { if (alive) setPits(ms.map(parsePitfall).filter((p) => p.isPit)); }).catch(() => {});
+    return () => { alive = false; };
+  }, [id, api]);
 
   useEffect(() => {
     let alive = true;
@@ -37,9 +46,9 @@ export function Detail({ id, api, me, initial, stamp, live, onClose, onSelect, o
     let alive = true;
     (async () => {
       try {
-        const [i, c, h] = await Promise.all([api.show(id), api.comments(id), api.history(id)]);
+        const [i, c, h, au] = await Promise.all([api.show(id), api.comments(id), api.history(id), api.interactions(id)]);
         if (!alive) return;
-        setIssue(i); setComments(c); setHistory(h);
+        setIssue(i); setComments(c); setHistory(h); setAudit(au);
       } catch (e) { onError(String(e)); }
     })();
     return () => { alive = false; };
@@ -56,9 +65,11 @@ export function Detail({ id, api, me, initial, stamp, live, onClose, onSelect, o
   const who = actorOf(issue.assignee, me);
   const st = statusLabel(issue);
   const ac = parseAcceptance(issue.acceptance_criteria);
-  const events = eventsFrom(history, comments);
+  const events = eventsFrom(history, comments, audit);
   const reviewed = isReviewed(issue);
   const mine = issue.assignee === me;
+  const proj = projectOf(issue);
+  const related = pits.filter((p) => p.task === id || (proj && p.project === proj));
 
   const toggleAc = (idx: number) => act("验收项已更新", async () => {
     const next = ac.map((a, i) => (i === idx ? { ...a, done: !a.done } : a));
@@ -154,6 +165,20 @@ export function Detail({ id, api, me, initial, stamp, live, onClose, onSelect, o
               onBlur={() => { const v = editAc; setEditAc(null); if (v !== (issue.acceptance_criteria ?? "")) act("验收标准已改", () => api.update(id, { acceptance: v })); }} />
           )}
         </div>
+
+        {related.length > 0 && (
+          <div className="sec">
+            <h4>相关的坑 <span className="muted" style={{ textTransform: "none", letterSpacing: 0 }}>这个任务 / 项目下记过的</span></h4>
+            <div className="rel-pits">
+              {related.map((p) => (
+                <div key={p.key} className="rel-pit">
+                  <div className="l1"><span className="lbl trap">坑</span><span>{p.trap}</span></div>
+                  {p.fix && <div className="l1"><span className="lbl fix">解法</span><span>{p.fix}</span></div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="sec">
           <h4>会话 · 恢复对话{refs.length > 0 && <span className="muted" style={{ textTransform: "none", letterSpacing: 0 }}>提到过这个任务的 {refs.length} 个会话</span>}</h4>
