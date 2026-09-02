@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2B2925"/>
+      <stop offset="1" stop-color="#1A1917"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS squircle -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <!-- four status columns of the board -->
+  <g transform="translate(212 250)">
+    <rect x="0"   y="0" width="120" height="120" rx="26" fill="#8A857C"/>
+    <rect x="160" y="0" width="120" height="120" rx="26" fill="#C28A12"/>
+    <rect x="320" y="0" width="120" height="120" rx="26" fill="#2E8B57"/>
+    <rect x="480" y="0" width="120" height="120" rx="26" fill="#1D5FD1"/>
+    <!-- cards with agent identity colours -->
+    <rect x="0"   y="160" width="120" height="72" rx="18" fill="#F4F3EF" opacity=".92"/>
+    <rect x="160" y="160" width="120" height="72" rx="18" fill="#C9683F"/>
+    <rect x="160" y="256" width="120" height="72" rx="18" fill="#F4F3EF" opacity=".92"/>
+    <rect x="320" y="160" width="120" height="72" rx="18" fill="#2F6F73"/>
+    <rect x="480" y="160" width="120" height="72" rx="18" fill="#6E56CF"/>
+    <rect x="0"   y="256" width="120" height="72" rx="18" fill="#F4F3EF" opacity=".55"/>
+  </g>
+  <!-- live dot -->
+  <circle cx="776" cy="734" r="58" fill="#2E8B57"/>
+  <circle cx="776" cy="734" r="26" fill="#F4F3EF"/>
+</svg>
