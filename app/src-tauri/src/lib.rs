@@ -471,8 +471,32 @@ fn manifest_fingerprint(dir: &Path) -> Option<Vec<u8>> {
     if out.is_empty() { None } else { Some(out) }
 }
 
+// In shared-server mode the data lives under ~/.beads/shared-server/dolt/<db>
+// and only the server writes there (reads go over TCP), so plain mtime works.
+fn server_data_dir() -> Option<PathBuf> {
+    let cfg = std::fs::read_to_string(beads_dir().join("config.yaml")).ok()?;
+    if !cfg.contains("mode: server") {
+        return None;
+    }
+    let db = cfg
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("database:").map(|v| v.trim().to_string()))
+        .unwrap_or_else(|| "task".into());
+    let dir = home().join(".beads/shared-server/dolt").join(db);
+    if dir.exists() { Some(dir) } else { None }
+}
+
+// bd does not resurrect the shared Dolt server; `bd dolt start` is idempotent.
+fn ensure_dolt_server() {
+    std::thread::spawn(|| loop {
+        let _ = run_bd_blocking(&args(&["dolt", "start"]));
+        std::thread::sleep(Duration::from_secs(120));
+    });
+}
+
 fn start_watcher(app: AppHandle) {
-    let dir = beads_dir();
+    let server_dir = server_data_dir();
+    let dir = server_dir.clone().unwrap_or_else(beads_dir);
     std::thread::spawn(move || {
         let (tx, rx) = mpsc::channel();
         let mut watcher = match notify::recommended_watcher(move |res| {
@@ -505,6 +529,10 @@ fn start_watcher(app: AppHandle) {
             if let Some(t) = dirty_since {
                 if t.elapsed() >= Duration::from_millis(600) {
                     dirty_since = None;
+                    if server_dir.is_some() {
+                        let _ = app.emit("beads-changed", ());
+                        continue;
+                    }
                     let now = manifest_fingerprint(&dir);
                     if now.is_some() && now != last {
                         last = now;
@@ -562,6 +590,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            ensure_dolt_server();
             start_watcher(app.handle().clone());
             start_indexer();
             build_tray(app)?;

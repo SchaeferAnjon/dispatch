@@ -128,5 +128,7 @@ dispatch pit list [关键词]        # 搜坑
 
 ## 常见问题
 
-- `database is locked`：嵌入模式单写者，另一个 `bd` 进程正在写，等一秒重试。频繁出现再迁 server 模式（`bd backup` → `bd init --server`）。
+- 全局板跑在 Beads **shared-server 模式**（一台机器一个 Dolt 服务，127.0.0.1:3308，数据在 `~/.beads/shared-server/dolt/task`）：多 Agent 可并发写，单次命令 ~0.15s。
+- `Dolt server unreachable … connection refused`：服务没起来，跑 `bd dolt start`（幂等）。LaunchAgent `dev.schaefer.beads-dolt` 每 2 分钟会自动拉起，Dispatch 启动时也会。
+- 旧的嵌入式数据保留在 `~/tasks/.beads.embedded`（2026-09-02 迁移前的快照），备份在 `~/tasks/.beads-backup`。
 - 跨机器（Mac mini）同步：Dolt remote（`bd dolt push/pull`），尚未配置。
