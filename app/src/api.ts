@@ -1,0 +1,87 @@
+import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, SessionRef, UpdateFields } from "./types";
+import { fixtureApi } from "./fixtures";
+
+export interface Api {
+  info(): Promise<Info>;
+  list(): Promise<Issue[]>;
+  show(id: string): Promise<Issue | null>;
+  comments(id: string): Promise<Comment[]>;
+  history(id: string): Promise<HistoryEntry[]>;
+  claim(id: string): Promise<void>;
+  setStatus(id: string, status: string): Promise<void>;
+  close(id: string, reason: string): Promise<void>;
+  reopen(id: string): Promise<void>;
+  comment(id: string, text: string): Promise<void>;
+  labels(id: string, add: string[], remove: string[]): Promise<void>;
+  update(id: string, fields: UpdateFields): Promise<void>;
+  create(input: NewIssue): Promise<Issue>;
+  presence(): Promise<Presence>;
+  taskSessions(id: string): Promise<SessionRef[]>;
+  resumeCmd(agent: string, sessionId: string, cwd: string): Promise<string>;
+  memories(): Promise<Memory[]>;
+  remember(key: string, value: string): Promise<void>;
+  forget(key: string): Promise<void>;
+  copy(text: string): Promise<void>;
+  onChange(cb: () => void): Promise<() => void>;
+}
+
+export async function copyFallback(text: string) {
+  await navigator.clipboard.writeText(text);
+}
+
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+function parse<T>(s: string, fallback: T): T {
+  const t = s.trim();
+  if (!t) return fallback;
+  try {
+    return JSON.parse(t) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+async function tauriApi(): Promise<Api> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const { listen } = await import("@tauri-apps/api/event");
+  const call = (cmd: string, args?: Record<string, unknown>) => invoke<string>(cmd, args);
+  return {
+    info: () => invoke<Info>("bd_info"),
+    list: async () => parse<Issue[]>(await call("bd_list"), []),
+    show: async (id) => parse<Issue[]>(await call("bd_show", { id }), [])[0] ?? null,
+    comments: async (id) => parse<Comment[]>(await call("bd_comments", { id }), []),
+    history: async (id) => parse<HistoryEntry[]>(await call("bd_history", { id }), []),
+    claim: async (id) => void (await call("bd_claim", { id })),
+    setStatus: async (id, status) => void (await call("bd_set_status", { id, status })),
+    close: async (id, reason) => void (await call("bd_close", { id, reason })),
+    reopen: async (id) => void (await call("bd_reopen", { id })),
+    comment: async (id, text) => void (await call("bd_comment", { id, text })),
+    labels: async (id, add, remove) => void (await call("bd_labels", { id, add, remove })),
+    update: async (id, fields) => void (await call("bd_update", { id, fields })),
+    create: async (input) => {
+      const r = parse<Issue | Issue[]>(await call("bd_create", { input }), [] as Issue[]);
+      return Array.isArray(r) ? r[0] : r;
+    },
+    presence: () => invoke<Presence>("sessions"),
+    taskSessions: (id) => invoke<SessionRef[]>("task_sessions", { id }),
+    resumeCmd: (agent, sessionId, cwd) => invoke<string>("resume_cmd", { agent, sessionId, cwd }),
+    memories: () => invoke<Memory[]>("memories_list"),
+    remember: async (key, value) => void (await call("memory_set", { key, value })),
+    forget: async (key) => void (await call("memory_forget", { key })),
+    copy: async (text) => {
+      try {
+        const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+        await writeText(text);
+      } catch {
+        await copyFallback(text);
+      }
+    },
+    onChange: async (cb) => listen("beads-changed", () => cb()),
+  };
+}
+
+let apiPromise: Promise<Api> | null = null;
+export function getApi(): Promise<Api> {
+  if (!apiPromise) apiPromise = isTauri ? tauriApi() : Promise.resolve(fixtureApi());
+  return apiPromise;
+}

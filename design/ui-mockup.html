@@ -1,0 +1,670 @@
+<title>Dispatch 调度台</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F4F3EF; --win:#FFFFFF; --panel:#F8F7F4; --panel-2:#F1EFEA;
+  --ink:#2B2925; --ink-2:#6B675F; --ink-3:#9B968C; --line:#E6E3DC; --line-2:#D9D5CC;
+  --accent:#1D5FD1; --accent-soft:#E7EEFB; --accent-ink:#1D5FD1;
+  --claude:#C9683F; --codex:#2F6F73; --cursor:#6E56CF; --human:#2B2925;
+  --s-open:#8A857C; --s-prog:#C28A12; --s-done:#2E8B57; --s-rev:#1D5FD1; --s-block:#C43D3D;
+  --s-open-bg:#EEECE7; --s-prog-bg:#FBF1D8; --s-done-bg:#E1F2E8; --s-rev-bg:#E7EEFB; --s-block-bg:#FBE4E4;
+  --shadow:0 1px 2px rgba(30,28,24,.06),0 12px 40px rgba(30,28,24,.10);
+  --card-shadow:0 1px 1px rgba(30,28,24,.05),0 1px 3px rgba(30,28,24,.06);
+  --sans:"IBM Plex Sans","PingFang SC","Hiragino Sans GB","Noto Sans CJK SC",-apple-system,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#161513; --win:#1E1D1B; --panel:#242321; --panel-2:#2B2A27;
+    --ink:#ECEAE4; --ink-2:#A39E93; --ink-3:#77726A; --line:#33312D; --line-2:#3F3C37;
+    --accent:#6D9BFF; --accent-soft:#22314F; --accent-ink:#9DBBFF;
+    --claude:#E08A62; --codex:#5FB0B3; --cursor:#A08CFF; --human:#ECEAE4;
+    --s-open:#8F8A80; --s-prog:#E0A83A; --s-done:#4FB27C; --s-rev:#7FA7FF; --s-block:#E06666;
+    --s-open-bg:#2C2B28; --s-prog-bg:#3A3120; --s-done-bg:#1F352A; --s-rev-bg:#22314F; --s-block-bg:#3D2424;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 48px rgba(0,0,0,.5);
+    --card-shadow:0 1px 1px rgba(0,0,0,.3),0 1px 3px rgba(0,0,0,.3);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161513; --win:#1E1D1B; --panel:#242321; --panel-2:#2B2A27;
+  --ink:#ECEAE4; --ink-2:#A39E93; --ink-3:#77726A; --line:#33312D; --line-2:#3F3C37;
+  --accent:#6D9BFF; --accent-soft:#22314F; --accent-ink:#9DBBFF;
+  --claude:#E08A62; --codex:#5FB0B3; --cursor:#A08CFF; --human:#ECEAE4;
+  --s-open:#8F8A80; --s-prog:#E0A83A; --s-done:#4FB27C; --s-rev:#7FA7FF; --s-block:#E06666;
+  --s-open-bg:#2C2B28; --s-prog-bg:#3A3120; --s-done-bg:#1F352A; --s-rev-bg:#22314F; --s-block-bg:#3D2424;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 48px rgba(0,0,0,.5);
+  --card-shadow:0 1px 1px rgba(0,0,0,.3),0 1px 3px rgba(0,0,0,.3);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.page{max-width:1380px;margin:0 auto;padding:40px 24px 80px}
+.intro{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:22px;flex-wrap:wrap}
+.intro h1{font-size:22px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em;text-wrap:balance}
+.intro p{margin:0;color:var(--ink-2);max-width:62ch}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:500;margin-bottom:8px}
+.intro-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:2px}
+.seg button{padding:5px 11px;border-radius:6px;color:var(--ink-2);font-weight:500}
+.seg button.on{background:var(--win);color:var(--ink);box-shadow:var(--card-shadow)}
+
+/* ---------- window ---------- */
+.win{background:var(--win);border:1px solid var(--line-2);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;display:grid;grid-template-rows:44px 1fr;height:820px;position:relative}
+.titlebar{display:grid;grid-template-columns:232px 1fr auto;align-items:center;border-bottom:1px solid var(--line);background:var(--panel);}
+.lights{display:flex;gap:8px;padding-left:14px;align-items:center}
+.lights i{width:12px;height:12px;border-radius:50%;background:#E5E3DE;border:1px solid rgba(0,0,0,.08)}
+.lights i:nth-child(1){background:#FF5F57}.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+.crumb{display:flex;align-items:center;gap:6px;color:var(--ink-2);padding-left:6px}
+.crumb b{color:var(--ink);font-weight:500}
+.crumb .sep{color:var(--ink-3)}
+.tb-right{display:flex;align-items:center;gap:8px;padding-right:12px}
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--win);border-radius:7px;padding:5px 10px;color:var(--ink-3);width:260px}
+.search kbd{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-3);border:1px solid var(--line);border-radius:4px;padding:0 5px;background:var(--panel)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);border-radius:7px;padding:5px 10px;font-weight:500;background:var(--win)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ghost{border-color:transparent;color:var(--ink-2)}
+.btn.ghost:hover{background:var(--panel-2);color:var(--ink)}
+
+.body{display:grid;grid-template-columns:232px 1fr;min-height:0}
+.body.with-detail{grid-template-columns:232px 1fr 420px}
+
+/* sidebar */
+.side{border-right:1px solid var(--line);background:var(--panel);padding:12px 10px;display:flex;flex-direction:column;gap:18px;overflow:auto}
+.ws{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px}
+.ws:hover{background:var(--panel-2)}
+.ws .glyph{width:22px;height:22px;border-radius:6px;background:var(--ink);color:var(--win);display:grid;place-items:center;font-family:var(--mono);font-size:11px;font-weight:500}
+.ws .name{font-weight:600}
+.ws .path{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.nav{display:flex;flex-direction:column;gap:1px}
+.nav .h{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:500;padding:0 8px 6px}
+.nav a{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;color:var(--ink-2);text-decoration:none;cursor:pointer}
+.nav a:hover{background:var(--panel-2);color:var(--ink)}
+.nav a.on{background:var(--win);color:var(--ink);box-shadow:var(--card-shadow);font-weight:500}
+.nav a .n{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.nav a .ic{width:14px;text-align:center;color:var(--ink-3)}
+.proj{width:8px;height:8px;border-radius:2px;background:var(--ink-3)}
+
+.agents{display:flex;flex-direction:column;gap:2px}
+.agent{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:6px 8px;border-radius:7px;align-items:start}
+.agent:hover{background:var(--panel-2)}
+.av{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:600;position:relative;font-family:var(--mono)}
+.av.claude{background:var(--claude)}.av.codex{background:var(--codex)}.av.cursor{background:var(--cursor)}.av.human{background:var(--human);color:var(--win)}
+.av .dot{position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;border-radius:50%;background:var(--s-done);border:2px solid var(--panel)}
+.av .dot.idle{background:var(--ink-3)}
+.agent .nm{font-weight:500;display:flex;align-items:center;gap:6px}
+.agent .nm small{font-weight:400;color:var(--ink-3)}
+.agent .cur{color:var(--ink-2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agent .cur .id{font-family:var(--mono);color:var(--ink-3)}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--s-done);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+
+/* main */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.toolbar{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.toolbar h2{font-size:15px;font-weight:600;margin:0 8px 0 0}
+.views{display:flex;gap:2px}
+.views button{padding:4px 9px;border-radius:6px;color:var(--ink-2)}
+.views button.on{background:var(--panel-2);color:var(--ink);font-weight:500}
+.toolbar{white-space:nowrap;overflow:hidden}
+.toolbar .btn,.views button{white-space:nowrap;flex:none}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:var(--ink-2);background:var(--win);white-space:nowrap;flex:none}
+.search{white-space:nowrap;flex:none}
+.search span{overflow:hidden;text-overflow:ellipsis}
+.nav a,.agent .nm,.crumb{white-space:nowrap}
+.body.with-detail{grid-template-columns:232px minmax(0,1fr) 380px}
+@media (max-width:1240px){.body.with-detail{grid-template-columns:200px minmax(0,1fr) 340px}.side{padding:12px 8px}.search{width:200px}}
+.chip.on{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}
+.spacer{flex:1}
+.view{flex:1;overflow:auto;min-height:0}
+.view[hidden]{display:none}
+
+/* board */
+.board{display:grid;grid-template-columns:repeat(4,minmax(232px,1fr));gap:12px;padding:14px 16px;height:100%;min-width:980px}
+.col{display:flex;flex-direction:column;gap:8px;min-height:0}
+.col-h{display:flex;align-items:center;gap:8px;padding:2px 4px 6px;position:sticky;top:0}
+.col-h .st{display:inline-flex;align-items:center;gap:6px;font-weight:600;padding:2px 8px;border-radius:5px}
+.col-h .st i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.col-h .cnt{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.col-h .add{margin-left:auto;color:var(--ink-3);font-size:16px;line-height:1}
+.st.open{color:var(--s-open);background:var(--s-open-bg)}
+.st.prog{color:var(--s-prog);background:var(--s-prog-bg)}
+.st.done{color:var(--s-done);background:var(--s-done-bg)}
+.st.rev{color:var(--s-rev);background:var(--s-rev-bg)}
+.st.block{color:var(--s-block);background:var(--s-block-bg)}
+.cards{display:flex;flex-direction:column;gap:8px;overflow:auto;padding:2px}
+.card{background:var(--win);border:1px solid var(--line);border-radius:9px;padding:10px 12px;box-shadow:var(--card-shadow);cursor:pointer;position:relative;text-align:left;display:flex;flex-direction:column;gap:7px;transition:transform .12s ease,box-shadow .12s ease}
+.card:hover{transform:translateY(-1px);box-shadow:0 2px 4px rgba(30,28,24,.06),0 8px 20px rgba(30,28,24,.10)}
+.card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.card.blocked::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 2px 2px 0;background:var(--s-block)}
+.card .t{font-weight:500;line-height:1.35;text-wrap:balance}
+.card .meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--ink-3);font-size:11.5px}
+.card .id{font-family:var(--mono);color:var(--ink-3)}
+.pri{font-family:var(--mono);font-size:11px;font-weight:500;padding:0 5px;border-radius:4px;border:1px solid var(--line)}
+.pri.p0{color:var(--s-block);border-color:var(--s-block)}.pri.p1{color:var(--s-prog);border-color:var(--s-prog)}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-2)}
+.tag .proj{width:7px;height:7px}
+.card .who{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:11.5px;color:var(--ink-2)}
+.card .who .av{width:16px;height:16px;font-size:8px}
+.card .who .ago{margin-left:auto;font-family:var(--mono);color:var(--ink-3)}
+.card .blk{display:inline-flex;align-items:center;gap:5px;color:var(--s-block);font-size:11.5px}
+.card .blk .id{color:var(--s-block)}
+.card .rev-by{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--s-rev)}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-3)}
+.chk .bar{width:56px;height:4px;border-radius:2px;background:var(--panel-2);overflow:hidden}
+.chk .bar i{display:block;height:100%;background:var(--s-prog)}
+
+/* table */
+table{border-collapse:collapse;width:100%;min-width:900px}
+th{position:sticky;top:0;background:var(--win);text-align:left;font-weight:500;color:var(--ink-3);font-size:11.5px;letter-spacing:.02em;padding:9px 12px;border-bottom:1px solid var(--line)}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:hover td{background:var(--panel)}
+td .t{font-weight:500}
+.tw{padding:0 16px}
+.st.sm{font-weight:500;font-size:12px;padding:1px 7px}
+.who-i{display:inline-flex;align-items:center;gap:6px}
+.who-i .av{width:16px;height:16px;font-size:8px}
+
+/* agents view */
+.agrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:16px}
+.acard{border:1px solid var(--line);border-radius:10px;background:var(--win);padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--card-shadow)}
+.acard .hd{display:flex;align-items:center;gap:10px}
+.acard .hd .av{width:30px;height:30px;font-size:12px}
+.acard .hd .nm{font-weight:600}
+.acard .hd .sub{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.acard .hd .state{margin-left:auto}
+.acard .cur{border:1px solid var(--line);border-radius:7px;padding:8px 10px;background:var(--panel)}
+.acard .cur .lbl{font-size:11px;color:var(--ink-3);margin-bottom:2px}
+.acard .cur .t{font-weight:500}
+.log{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);display:flex;flex-direction:column;gap:3px}
+.log div{display:flex;gap:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.log .ts{color:var(--ink-3);flex:none}
+.log .cmd{color:var(--ink)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;color:var(--ink-2)}
+.kv b{font-weight:500;color:var(--ink-3)}
+
+/* detail */
+.detail{border-left:1px solid var(--line);background:var(--win);display:flex;flex-direction:column;min-height:0}
+.detail .dh{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);color:var(--ink-3)}
+.detail .dh .id{font-family:var(--mono)}
+.detail .dh .x{margin-left:auto;font-size:16px;color:var(--ink-3)}
+.dbody{overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:18px}
+.dbody h3{font-size:19px;font-weight:600;margin:0;line-height:1.3;letter-spacing:-.01em;text-wrap:balance}
+.props{display:grid;grid-template-columns:96px 1fr;gap:6px 10px;align-items:center;font-size:12.5px}
+.props .k{color:var(--ink-3)}
+.props .v{display:flex;align-items:center;gap:6px;min-height:22px}
+.props .v .av{width:16px;height:16px;font-size:8px}
+.props .v .mono{color:var(--ink-2)}
+.sec h4{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:500;margin:0 0 8px}
+.sec p{margin:0 0 6px;color:var(--ink);max-width:60ch}
+.sec ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.sec li{display:flex;gap:8px;align-items:flex-start}
+.box{width:14px;height:14px;border:1.5px solid var(--line-2);border-radius:4px;flex:none;margin-top:2px;display:grid;place-items:center;font-size:10px;color:#fff}
+.box.on{background:var(--s-done);border-color:var(--s-done)}
+.act{display:flex;flex-direction:column;gap:10px}
+.ev{display:grid;grid-template-columns:18px 1fr;gap:8px}
+.ev .av{width:18px;height:18px;font-size:8px}
+.ev .l1{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.ev .l1 b{font-weight:500}
+.ev .l1 .ts{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto}
+.ev .cmd{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 8px;margin-top:4px;display:inline-block}
+.ev .note{color:var(--ink-2);margin-top:2px}
+.compose{margin-top:auto;border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:8px;align-items:center}
+.compose .in{flex:1;border:1px solid var(--line);border-radius:7px;padding:6px 10px;color:var(--ink-3)}
+
+/* notes */
+.notes{margin-top:36px;display:grid;grid-template-columns:1.1fr 1fr 1.2fr;gap:28px}
+.notes h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:500;margin:0 0 10px}
+.sw{display:flex;flex-direction:column;gap:6px}
+.sw div{display:flex;align-items:center;gap:10px;color:var(--ink-2)}
+.sw i{width:26px;height:18px;border-radius:4px;border:1px solid rgba(0,0,0,.08)}
+.sw code{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto}
+.notes ol{margin:0;padding-left:18px;color:var(--ink-2);display:flex;flex-direction:column;gap:6px;max-width:60ch}
+.notes ol b{color:var(--ink);font-weight:500}
+.type-demo{display:flex;flex-direction:column;gap:6px;color:var(--ink-2)}
+.type-demo .a{font-size:19px;font-weight:600;color:var(--ink)}
+.type-demo .c{font-family:var(--mono)}
+@media (max-width:1100px){.notes{grid-template-columns:1fr}.win{height:auto;min-height:820px}}
+
+/* ---------- annotation ---------- */
+#anno-btn{position:fixed;right:20px;bottom:20px;z-index:60;border-radius:999px;padding:9px 14px;background:var(--ink);color:var(--win);font-weight:500;box-shadow:0 6px 20px rgba(0,0,0,.2);display:flex;align-items:center;gap:6px}
+#anno-btn.on{background:var(--s-block);color:#fff}
+body.anno-on{cursor:crosshair}
+body.anno-on .card,body.anno-on button:not(.anno-ui){cursor:crosshair}
+.pin{position:absolute;z-index:55;width:22px;height:22px;border-radius:50%;background:var(--s-block);color:#fff;font-family:var(--mono);font-size:11px;font-weight:600;display:grid;place-items:center;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,.3);border:2px solid #fff;cursor:pointer}
+#anno-form{position:absolute;z-index:58;background:var(--win);border:1px solid var(--line-2);border-radius:10px;box-shadow:var(--shadow);padding:10px;width:280px;display:flex;flex-direction:column;gap:8px}
+#anno-form[hidden]{display:none}
+#anno-form .near{font-size:11px;color:var(--ink-3);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#anno-form textarea{font:inherit;width:100%;min-height:64px;border:1px solid var(--line-2);border-radius:7px;padding:6px 8px;resize:vertical;background:var(--win);color:var(--ink)}
+#anno-form .row{display:flex;gap:6px;justify-content:flex-end}
+#anno-panel{position:fixed;right:20px;bottom:64px;width:340px;max-height:60vh;z-index:59;background:var(--win);border:1px solid var(--line-2);border-radius:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+#anno-panel[hidden]{display:none}
+#anno-panel .ph{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:500}
+#anno-panel .ph .n{font-family:var(--mono);color:var(--ink-3);font-weight:400}
+#anno-panel .ph .btn{margin-left:auto}
+#anno-list{overflow:auto;padding:6px 0;display:flex;flex-direction:column}
+#anno-list .it{display:grid;grid-template-columns:22px 1fr auto;gap:8px;padding:7px 12px;align-items:start;border-bottom:1px solid var(--line)}
+#anno-list .it .num{width:18px;height:18px;border-radius:50%;background:var(--s-block);color:#fff;font-family:var(--mono);font-size:10px;display:grid;place-items:center;font-weight:600}
+#anno-list .it .where{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+#anno-list .it .del{color:var(--ink-3)}
+#anno-list .empty{padding:16px 12px;color:var(--ink-3);text-align:center}
+#anno-out{margin:8px 12px 12px;font-family:var(--mono);font-size:11px;min-height:90px;border:1px solid var(--line-2);border-radius:7px;padding:6px 8px;background:var(--panel);color:var(--ink)}
+#anno-out[hidden]{display:none}
+</style>
+
+<div class="page">
+  <header class="intro">
+    <div>
+      <div class="eyebrow">方案 A · 桌面应用 UI 稿 · 2026-09-02</div>
+      <h1>Dispatch 调度台 — 所有 Agent 共用的一块任务板</h1>
+      <p>Notion 的纸面质感，加一条实时的 Agent 轨。四列看板正好对应你的四个状态；点任意卡片打开右侧详情。名字是占位，可换。</p>
+    </div>
+    <div class="intro-ctl">
+      <div class="seg" role="group" aria-label="主题">
+        <button class="anno-ui" data-theme-set="light">浅色</button>
+        <button class="anno-ui" data-theme-set="dark">深色</button>
+        <button class="anno-ui on" data-theme-set="">跟随系统</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="win" id="win">
+    <div class="titlebar">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="crumb"><b>全局板</b><span class="sep">›</span><span id="crumb-view">看板</span></div>
+      <div class="tb-right">
+        <div class="search">🔍 <span>搜任务、ID、Agent…</span><kbd>⌘K</kbd></div>
+        <button class="btn ghost anno-ui" data-view="agents" title="在线 Agent">
+          <span class="av claude" style="width:18px;height:18px;font-size:8px">C</span>
+          <span class="av codex" style="width:18px;height:18px;font-size:8px;margin-left:-8px">X</span>
+          <span class="av human" style="width:18px;height:18px;font-size:8px;margin-left:-8px">你</span>
+          <span style="margin-left:2px">3 在线</span>
+        </button>
+        <button class="btn primary anno-ui">＋ 新任务</button>
+      </div>
+    </div>
+
+    <div class="body" id="body">
+      <aside class="side">
+        <div class="ws">
+          <div class="glyph">bd</div>
+          <div><div class="name">全局板</div><div class="path">~/tasks/.beads</div></div>
+        </div>
+        <nav class="nav">
+          <div class="h">视图</div>
+          <a class="on anno-ui" data-view="board"><span class="ic">▦</span>看板<span class="n">11</span></a>
+          <a class="anno-ui" data-view="table"><span class="ic">☰</span>表格</a>
+          <a class="anno-ui" data-view="agents"><span class="ic">◉</span>Agents<span class="n">4</span></a>
+          <a><span class="ic">⊘</span>阻塞中<span class="n">1</span></a>
+          <a><span class="ic">✓</span>待审核<span class="n">2</span></a>
+        </nav>
+        <nav class="nav">
+          <div class="h">项目</div>
+          <a><span class="proj" style="background:#1D5FD1"></span>kanban<span class="n">4</span></a>
+          <a><span class="proj" style="background:#C28A12"></span>poker-trainer<span class="n">3</span></a>
+          <a><span class="proj" style="background:#2E8B57"></span>海德堡 2026SS<span class="n">2</span></a>
+          <a><span class="proj" style="background:#6E56CF"></span>dotfiles<span class="n">2</span></a>
+        </nav>
+        <div class="nav">
+          <div class="h">Agent 在线</div>
+          <div class="agents">
+            <div class="agent"><span class="av claude">C<span class="dot"></span></span><div><div class="nm">Claude Code <small>kanban</small></div><div class="cur"><span class="id">task-9lo</span> 调度台 UI 稿</div></div></div>
+            <div class="agent"><span class="av codex">X<span class="dot"></span></span><div><div class="nm">Codex <small>poker-trainer</small></div><div class="cur"><span class="id">task-4mk</span> 河牌下注逻辑</div></div></div>
+            <div class="agent"><span class="av human">你<span class="dot"></span></span><div><div class="nm">Schaefer</div><div class="cur">审核中 · 2 条待审</div></div></div>
+            <div class="agent"><span class="av cursor">U<span class="dot idle"></span></span><div><div class="nm">Cursor <small>未安装</small></div><div class="cur" style="color:var(--ink-3)">离线</div></div></div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="toolbar">
+          <h2 id="view-title">看板</h2>
+          <div class="views">
+            <button class="on anno-ui" data-view="board">看板</button>
+            <button class="anno-ui" data-view="table">表格</button>
+            <button class="anno-ui" data-view="agents">Agents</button>
+          </div>
+          <span class="spacer"></span>
+          <span class="chip on">全部项目</span>
+          <span class="chip">只看我的</span>
+          <span class="chip">P0–P1</span>
+          <button class="btn ghost anno-ui">筛选</button>
+          <button class="btn ghost anno-ui">排序</button>
+        </div>
+
+        <!-- BOARD -->
+        <section class="view" id="view-board">
+          <div class="board">
+            <div class="col">
+              <div class="col-h"><span class="st open"><i></i>待办</span><span class="cnt">4</span><button class="add anno-ui">＋</button></div>
+              <div class="cards">
+                <button class="card blocked anno-ui" data-task="ss0">
+                  <div class="t">给全局板配跨机器同步（Mac mini）</div>
+                  <div class="meta"><span class="pri">P3</span><span class="tag"><span class="proj" style="background:#1D5FD1"></span>kanban</span><span class="id">task-ss0</span></div>
+                  <div class="blk">⊘ 等 <span class="id">task-7dn</span> 装 Dolt</div>
+                </button>
+                <button class="card anno-ui" data-task="7dn">
+                  <div class="t">Mac mini 上安装 Dolt 并验证 bd dolt pull</div>
+                  <div class="meta"><span class="pri">P3</span><span class="tag"><span class="proj" style="background:#1D5FD1"></span>kanban</span><span class="id">task-7dn</span></div>
+                </button>
+                <button class="card anno-ui" data-task="c2e">
+                  <div class="t">2026SS 讲义 PDF 批量转 vault 笔记（Rechnerarchitektur 第 3–5 讲）</div>
+                  <div class="meta"><span class="pri p1">P1</span><span class="tag"><span class="proj" style="background:#2E8B57"></span>海德堡 2026SS</span><span class="id">task-c2e</span></div>
+                </button>
+                <button class="card anno-ui" data-task="p8a">
+                  <div class="t">settings.json 的 PATH 改成脚本生成，别再手写</div>
+                  <div class="meta"><span class="pri">P4</span><span class="tag"><span class="proj" style="background:#6E56CF"></span>dotfiles</span><span class="id">task-p8a</span></div>
+                </button>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="col-h"><span class="st prog"><i></i>进行中</span><span class="cnt">3</span><button class="add anno-ui">＋</button></div>
+              <div class="cards">
+                <button class="card anno-ui" data-task="9lo">
+                  <div class="t">调度台桌面应用 UI 稿（方案 A）</div>
+                  <div class="meta"><span class="pri p1">P1</span><span class="tag"><span class="proj" style="background:#1D5FD1"></span>kanban</span><span class="id">task-9lo</span></div>
+                  <div class="chk"><span class="bar"><i style="width:60%"></i></span>3/5 验收项</div>
+                  <div class="who"><span class="av claude">C</span>Claude Code<span class="ago">12m</span></div>
+                </button>
+                <button class="card anno-ui" data-task="4mk">
+                  <div class="t">河牌下注逻辑：按底池比例出注，替换固定 bet size</div>
+                  <div class="meta"><span class="pri p1">P1</span><span class="tag"><span class="proj" style="background:#C28A12"></span>poker-trainer</span><span class="id">task-4mk</span></div>
+                  <div class="chk"><span class="bar"><i style="width:25%"></i></span>1/4 验收项</div>
+                  <div class="who"><span class="av codex">X</span>Codex<span class="ago">41m</span></div>
+                </button>
+                <button class="card anno-ui" data-task="e1q">
+                  <div class="t">Herdr 开局脚本偶发端口占用，加重试</div>
+                  <div class="meta"><span class="pri">P2</span><span class="tag"><span class="proj" style="background:#C28A12"></span>poker-trainer</span><span class="id">task-e1q</span></div>
+                  <div class="who"><span class="av human">你</span>Schaefer<span class="ago">2h</span></div>
+                </button>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="col-h"><span class="st done"><i></i>已完成 · 待审</span><span class="cnt">2</span></div>
+              <div class="cards">
+                <button class="card anno-ui" data-task="a1c">
+                  <div class="t">全局板初始化 + 三处 BEADS_DIR + Claude/Codex 钩子</div>
+                  <div class="meta"><span class="pri">P2</span><span class="tag"><span class="proj" style="background:#1D5FD1"></span>kanban</span><span class="id">task-a1c</span></div>
+                  <div class="who"><span class="av claude">C</span>Claude Code 完成<span class="ago">1h</span></div>
+                </button>
+                <button class="card anno-ui" data-task="m3r">
+                  <div class="t">poker-start.sh 改成 launchd 常驻，不再每次 spawn</div>
+                  <div class="meta"><span class="pri">P2</span><span class="tag"><span class="proj" style="background:#C28A12"></span>poker-trainer</span><span class="id">task-m3r</span></div>
+                  <div class="who"><span class="av codex">X</span>Codex 完成<span class="ago">3h</span></div>
+                </button>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="col-h"><span class="st rev"><i></i>已审核</span><span class="cnt">2</span></div>
+              <div class="cards">
+                <button class="card anno-ui" data-task="k5v">
+                  <div class="t">技能池软链误删事故：循环删除前强制回显清单</div>
+                  <div class="meta"><span class="pri">P2</span><span class="tag"><span class="proj" style="background:#6E56CF"></span>dotfiles</span><span class="id">task-k5v</span></div>
+                  <div class="rev-by">✓ 你审核 · 昨天</div>
+                </button>
+                <button class="card anno-ui" data-task="x9b">
+                  <div class="t">Rechnerarchitektur 第 1–2 讲笔记入库</div>
+                  <div class="meta"><span class="pri">P2</span><span class="tag"><span class="proj" style="background:#2E8B57"></span>海德堡 2026SS</span><span class="id">task-x9b</span></div>
+                  <div class="rev-by">✓ Claude Code 审核 · 2 天前</div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TABLE -->
+        <section class="view" id="view-table" hidden>
+          <div class="tw">
+          <table>
+            <thead><tr><th>ID</th><th>任务</th><th>状态</th><th>负责</th><th>优先</th><th>项目</th><th>依赖</th><th>更新</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">task-9lo</td><td class="t">调度台桌面应用 UI 稿（方案 A）</td><td><span class="st prog sm">进行中</span></td><td><span class="who-i"><span class="av claude">C</span>Claude Code</span></td><td class="mono">P1</td><td>kanban</td><td></td><td class="mono">12m</td></tr>
+              <tr><td class="mono">task-4mk</td><td class="t">河牌下注逻辑：按底池比例出注</td><td><span class="st prog sm">进行中</span></td><td><span class="who-i"><span class="av codex">X</span>Codex</span></td><td class="mono">P1</td><td>poker-trainer</td><td></td><td class="mono">41m</td></tr>
+              <tr><td class="mono">task-c2e</td><td class="t">2026SS 讲义 PDF 批量转 vault 笔记</td><td><span class="st open sm">待办</span></td><td style="color:var(--ink-3)">未认领</td><td class="mono">P1</td><td>海德堡 2026SS</td><td></td><td class="mono">1d</td></tr>
+              <tr><td class="mono">task-e1q</td><td class="t">Herdr 开局脚本偶发端口占用，加重试</td><td><span class="st prog sm">进行中</span></td><td><span class="who-i"><span class="av human">你</span>Schaefer</span></td><td class="mono">P2</td><td>poker-trainer</td><td></td><td class="mono">2h</td></tr>
+              <tr><td class="mono">task-a1c</td><td class="t">全局板初始化 + 三处 BEADS_DIR + 钩子</td><td><span class="st done sm">待审</span></td><td><span class="who-i"><span class="av claude">C</span>Claude Code</span></td><td class="mono">P2</td><td>kanban</td><td></td><td class="mono">1h</td></tr>
+              <tr><td class="mono">task-m3r</td><td class="t">poker-start.sh 改成 launchd 常驻</td><td><span class="st done sm">待审</span></td><td><span class="who-i"><span class="av codex">X</span>Codex</span></td><td class="mono">P2</td><td>poker-trainer</td><td></td><td class="mono">3h</td></tr>
+              <tr><td class="mono">task-ss0</td><td class="t">给全局板配跨机器同步（Mac mini）</td><td><span class="st block sm">阻塞</span></td><td style="color:var(--ink-3)">未认领</td><td class="mono">P3</td><td>kanban</td><td class="mono">← task-7dn</td><td class="mono">1h</td></tr>
+              <tr><td class="mono">task-7dn</td><td class="t">Mac mini 上安装 Dolt 并验证 bd dolt pull</td><td><span class="st open sm">待办</span></td><td style="color:var(--ink-3)">未认领</td><td class="mono">P3</td><td>kanban</td><td></td><td class="mono">1h</td></tr>
+              <tr><td class="mono">task-k5v</td><td class="t">技能池软链误删事故：循环删除前强制回显清单</td><td><span class="st rev sm">已审核</span></td><td><span class="who-i"><span class="av human">你</span>Schaefer</span></td><td class="mono">P2</td><td>dotfiles</td><td></td><td class="mono">1d</td></tr>
+              <tr><td class="mono">task-x9b</td><td class="t">Rechnerarchitektur 第 1–2 讲笔记入库</td><td><span class="st rev sm">已审核</span></td><td><span class="who-i"><span class="av claude">C</span>Claude Code</span></td><td class="mono">P2</td><td>海德堡 2026SS</td><td></td><td class="mono">2d</td></tr>
+              <tr><td class="mono">task-p8a</td><td class="t">settings.json 的 PATH 改成脚本生成</td><td><span class="st open sm">待办</span></td><td style="color:var(--ink-3)">未认领</td><td class="mono">P4</td><td>dotfiles</td><td></td><td class="mono">3d</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </section>
+
+        <!-- AGENTS -->
+        <section class="view" id="view-agents" hidden>
+          <div class="agrid">
+            <div class="acard">
+              <div class="hd"><span class="av claude">C<span class="dot"></span></span><div><div class="nm">Claude Code</div><div class="sub">~/Projects/kanban · 会话 01YVUm…</div></div><span class="st prog sm state">工作中</span></div>
+              <div class="cur"><div class="lbl">正在做</div><div class="t">调度台桌面应用 UI 稿（方案 A）</div><div class="mono" style="font-size:11px;color:var(--ink-3)">task-9lo · 认领 12 分钟前</div></div>
+              <div class="log">
+                <div><span class="ts">14:23</span><span class="cmd">bd comments add task-9lo "设计方案定稿，开始写 HTML"</span></div>
+                <div><span class="ts">14:11</span><span class="cmd">bd update task-9lo --claim</span></div>
+                <div><span class="ts">14:10</span><span class="cmd">bd ready --json</span></div>
+              </div>
+              <div class="kv"><b>本次会话</b><span>已完成 1 · 创建 3</span><b>启动</b><span class="mono">13:58</span></div>
+            </div>
+            <div class="acard">
+              <div class="hd"><span class="av codex">X<span class="dot"></span></span><div><div class="nm">Codex</div><div class="sub">~/Projects/poker-trainer</div></div><span class="st prog sm state">工作中</span></div>
+              <div class="cur"><div class="lbl">正在做</div><div class="t">河牌下注逻辑：按底池比例出注</div><div class="mono" style="font-size:11px;color:var(--ink-3)">task-4mk · 认领 41 分钟前</div></div>
+              <div class="log">
+                <div><span class="ts">14:19</span><span class="cmd">bd create "发现：allin 时 pot 计算漏 side pot" --deps discovered-from:task-4mk</span></div>
+                <div><span class="ts">13:42</span><span class="cmd">bd update task-4mk --claim</span></div>
+              </div>
+              <div class="kv"><b>本次会话</b><span>已完成 1 · 创建 1</span><b>启动</b><span class="mono">13:40</span></div>
+            </div>
+            <div class="acard">
+              <div class="hd"><span class="av human">你<span class="dot"></span></span><div><div class="nm">Schaefer</div><div class="sub">MacBook Pro 大哥</div></div><span class="st rev sm state">审核中</span></div>
+              <div class="cur"><div class="lbl">待你审核</div><div class="t">task-a1c 全局板初始化 · task-m3r launchd 常驻</div></div>
+              <div class="log">
+                <div><span class="ts">昨天</span><span class="cmd">bd update task-k5v --add-label reviewed</span></div>
+              </div>
+              <div class="kv"><b>手上</b><span>1 进行中</span></div>
+            </div>
+            <div class="acard" style="opacity:.6">
+              <div class="hd"><span class="av cursor">U<span class="dot idle"></span></span><div><div class="nm">Cursor</div><div class="sub">未安装 · 规则已备好</div></div><span class="st open sm state">离线</span></div>
+              <div class="cur"><div class="lbl">上次活动</div><div class="t" style="color:var(--ink-3)">—</div></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="detail" id="detail" hidden>
+        <div class="dh"><span class="id" id="d-id">task-9lo</span><span>·</span><span>kanban</span><button class="x anno-ui" id="d-close" aria-label="关闭">✕</button></div>
+        <div class="dbody">
+          <h3 id="d-title">调度台桌面应用 UI 稿（方案 A）</h3>
+          <div class="props">
+            <span class="k">状态</span><span class="v"><span class="st prog sm" id="d-status">进行中</span></span>
+            <span class="k">负责</span><span class="v" id="d-who"><span class="av claude">C</span>Claude Code</span>
+            <span class="k">优先级</span><span class="v"><span class="pri p1">P1</span></span>
+            <span class="k">项目</span><span class="v"><span class="tag"><span class="proj" style="background:#1D5FD1"></span>kanban</span></span>
+            <span class="k">依赖</span><span class="v mono" id="d-deps">无</span>
+            <span class="k">创建</span><span class="v mono">2026-09-02 14:10 · Claude Code</span>
+          </div>
+          <div class="sec"><h4>描述</h4><p id="d-desc">先出一版可点的高保真稿，Notion 式三栏。看板四列对应 to do / 进行中 / finished / reviewed，阻塞任务用红边条标出。右栏详情要能看到 Agent 敲过的 bd 命令。</p></div>
+          <div class="sec"><h4>验收标准</h4>
+            <ul id="d-ac">
+              <li><span class="box on">✓</span>四种状态一眼能分</li>
+              <li><span class="box on">✓</span>每张卡能看出谁认领了</li>
+              <li><span class="box on">✓</span>浅色 / 深色都能读</li>
+              <li><span class="box"></span>Agents 视图显示实时命令</li>
+              <li><span class="box"></span>用户在稿上打标注反馈</li>
+            </ul>
+          </div>
+          <div class="sec"><h4>活动</h4>
+            <div class="act" id="d-act">
+              <div class="ev"><span class="av claude">C</span><div><div class="l1"><b>Claude Code</b> 留言<span class="ts">14:23</span></div><div class="note">设计方案定稿：Plex Sans + Mono，调度蓝只用在选中。</div></div></div>
+              <div class="ev"><span class="av claude">C</span><div><div class="l1"><b>Claude Code</b> 认领<span class="ts">14:11</span></div><span class="cmd">bd update task-9lo --claim</span></div></div>
+              <div class="ev"><span class="av human">你</span><div><div class="l1"><b>Schaefer</b> 创建<span class="ts">14:10</span></div><div class="note">"我比较看重效果。"</div></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="compose"><span class="in">留言给下一个接手的 Agent…</span><button class="btn anno-ui">发送</button></div>
+      </aside>
+    </div>
+  </div>
+
+  <section class="notes">
+    <div>
+      <h3>色板</h3>
+      <div class="sw">
+        <div><i style="background:#F4F3EF"></i>纸底<code>#F4F3EF</code></div>
+        <div><i style="background:#2B2925"></i>墨<code>#2B2925</code></div>
+        <div><i style="background:#1D5FD1"></i>调度蓝（仅选中 / 主按钮 / 已审核）<code>#1D5FD1</code></div>
+        <div><i style="background:#C9683F"></i>Claude Code<code>#C9683F</code></div>
+        <div><i style="background:#2F6F73"></i>Codex<code>#2F6F73</code></div>
+        <div><i style="background:#6E56CF"></i>Cursor<code>#6E56CF</code></div>
+        <div><i style="background:#C28A12"></i>进行中<code>#C28A12</code></div>
+        <div><i style="background:#2E8B57"></i>已完成<code>#2E8B57</code></div>
+        <div><i style="background:#C43D3D"></i>阻塞<code>#C43D3D</code></div>
+      </div>
+    </div>
+    <div>
+      <h3>字体</h3>
+      <div class="type-demo">
+        <div class="a">IBM Plex Sans · 标题 19/600</div>
+        <div>IBM Plex Sans · 正文 13/400，中文回落 PingFang SC</div>
+        <div class="c">IBM Plex Mono · task-9lo · bd update --claim</div>
+        <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)">Plex Sans 11 · 栏目小标</div>
+      </div>
+    </div>
+    <div>
+      <h3>三个有意的决定</h3>
+      <ol>
+        <li><b>Agent 是一等公民。</b>每个 Agent 有身份色，卡片、表格、详情、活动流里都用同一枚头像；左栏 Agent 轨常驻，你一眼看到谁在哪个项目做哪条任务。</li>
+        <li><b>看板四列 = 你的四个状态。</b>不另造一套；阻塞不占列，用红边条在"待办"里标出，因为它本质还是待办。</li>
+        <li><b>等宽字排 ID 和命令。</b>task-9lo、bd update --claim 都是这块板的"母语"，活动流直接显示 Agent 敲了什么，审核时不用猜。</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<!-- annotation UI -->
+<button id="anno-btn" class="anno-ui" type="button">📍 标注</button>
+<div id="anno-panel" hidden>
+  <div class="ph">标注 <span class="n" id="anno-count">0</span><button class="btn anno-ui" id="anno-copy">复制全部标注</button><button class="btn ghost anno-ui" id="anno-clear">清空</button></div>
+  <div id="anno-list"></div>
+  <textarea id="anno-out" class="anno-ui" hidden readonly></textarea>
+</div>
+<div id="anno-form" class="anno-ui" hidden>
+  <div class="near" id="anno-near"></div>
+  <textarea id="anno-text" class="anno-ui" placeholder="这里要改什么？"></textarea>
+  <div class="row"><button class="btn ghost anno-ui" id="anno-cancel">取消</button><button class="btn primary anno-ui" id="anno-save">保存</button></div>
+</div>
+
+<script>
+(function(){
+  var TASKS={
+    '9lo':{t:'调度台桌面应用 UI 稿（方案 A）',s:'prog',sl:'进行中',who:'<span class="av claude">C</span>Claude Code',deps:'无',desc:'先出一版可点的高保真稿，Notion 式三栏。看板四列对应 to do / 进行中 / finished / reviewed，阻塞任务用红边条标出。右栏详情要能看到 Agent 敲过的 bd 命令。'},
+    '4mk':{t:'河牌下注逻辑：按底池比例出注，替换固定 bet size',s:'prog',sl:'进行中',who:'<span class="av codex">X</span>Codex',deps:'无',desc:'现在 river 固定下注 2 个大盲，改成 pot 的 33% / 66% / 100% 三档，按对手范围选档。验收：六人桌跑 200 手不报错，下注额都在 pot 比例上。'},
+    'e1q':{t:'Herdr 开局脚本偶发端口占用，加重试',s:'prog',sl:'进行中',who:'<span class="av human">你</span>Schaefer',deps:'无',desc:'poker-start.sh 有时报 EADDRINUSE。先 lsof 检查，占用则等 2 秒重试 3 次。'},
+    'ss0':{t:'给全局板配跨机器同步（Mac mini）',s:'block',sl:'阻塞',who:'<span style="color:var(--ink-3)">未认领</span>',deps:'← task-7dn（Mac mini 装 Dolt）',desc:'用 Dolt remote 把 ~/tasks 同步到 Mac mini（apple@100.118.80.86）。注意对端家目录是 /Users/apple，不要推本机绝对路径。'},
+    '7dn':{t:'Mac mini 上安装 Dolt 并验证 bd dolt pull',s:'open',sl:'待办',who:'<span style="color:var(--ink-3)">未认领</span>',deps:'无',desc:'ssh 过去 brew install beads dolt；注意对端也是 fish，命令包进 bash -c。'},
+    'c2e':{t:'2026SS 讲义 PDF 批量转 vault 笔记（Rechnerarchitektur 第 3–5 讲）',s:'open',sl:'待办',who:'<span style="color:var(--ink-3)">未认领</span>',deps:'无',desc:'源：iCloud/海德堡大学/2026ss。产出到 Schaefer_Master/30-Areas/35-Study/海德堡大学/2026SS-夏季学期。笔记用简体中文，缩写首次出现展开。'},
+    'p8a':{t:'settings.json 的 PATH 改成脚本生成，别再手写',s:'open',sl:'待办',who:'<span style="color:var(--ink-3)">未认领</span>',deps:'无',desc:'装了新 runtime 忘同步 PATH 会让 hook 静默失效（node、bun 各咬过一次）。写个 fish 函数从当前 PATH 生成。'},
+    'a1c':{t:'全局板初始化 + 三处 BEADS_DIR + Claude/Codex 钩子',s:'done',sl:'待审',who:'<span class="av claude">C</span>Claude Code',deps:'无',desc:'brew install beads；~/tasks/.beads 嵌入模式；BEADS_DIR 落到 fish / settings.json / launchctl；bd setup claude|codex --global。'},
+    'm3r':{t:'poker-start.sh 改成 launchd 常驻，不再每次 spawn',s:'done',sl:'待审',who:'<span class="av codex">X</span>Codex',deps:'无',desc:'"Persistent process" 就得是常驻。改 LaunchAgent，poker stop 只发信号。'},
+    'k5v':{t:'技能池软链误删事故：循环删除前强制回显清单',s:'rev',sl:'已审核',who:'<span class="av human">你</span>Schaefer',deps:'无',desc:'eza 把软链渲染成箭头导致 rm -rf 打到池子本体。批量删除先导出清单，校验循环次数 == 清单条数。'},
+    'x9b':{t:'Rechnerarchitektur 第 1–2 讲笔记入库',s:'rev',sl:'已审核',who:'<span class="av claude">C</span>Claude Code',deps:'无',desc:'两讲笔记已入 vault，图注按"怎么读图"写。'}
+  };
+  var VIEWS={board:'看板',table:'表格',agents:'Agents'};
+  var body=document.getElementById('body'),detail=document.getElementById('detail');
+  function q(s,r){return (r||document).querySelector(s)}
+  function qa(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
+  var curView='board';
+  function setView(v){
+    curView=v;
+    qa('.view').forEach(function(el){el.hidden=(el.id!=='view-'+v)});
+    qa('[data-view]').forEach(function(el){el.classList.toggle('on',el.getAttribute('data-view')===v)});
+    q('#view-title').textContent=VIEWS[v]; q('#crumb-view').textContent=VIEWS[v];
+  }
+  qa('[data-view]').forEach(function(el){el.addEventListener('click',function(e){if(annoOn)return;e.preventDefault();setView(el.getAttribute('data-view'))})});
+  function openTask(id){
+    var t=TASKS[id]; if(!t)return;
+    q('#d-id').textContent='task-'+id; q('#d-title').textContent=t.t;
+    var st=q('#d-status'); st.className='st sm '+t.s; st.textContent=t.sl;
+    q('#d-who').innerHTML=t.who; q('#d-deps').textContent=t.deps; q('#d-desc').textContent=t.desc;
+    detail.hidden=false; body.classList.add('with-detail');
+    qa('.card').forEach(function(c){c.classList.toggle('sel',c.getAttribute('data-task')===id)});
+  }
+  qa('.card').forEach(function(c){c.addEventListener('click',function(){if(annoOn)return;openTask(c.getAttribute('data-task'))})});
+  q('#d-close').addEventListener('click',function(){if(annoOn)return;detail.hidden=true;body.classList.remove('with-detail');qa('.card.sel').forEach(function(c){c.classList.remove('sel')})});
+  openTask('9lo');
+  qa('[data-theme-set]').forEach(function(b){b.addEventListener('click',function(){
+    var v=b.getAttribute('data-theme-set'); if(v)document.documentElement.setAttribute('data-theme',v); else document.documentElement.removeAttribute('data-theme');
+    qa('[data-theme-set]').forEach(function(x){x.classList.toggle('on',x===b)});
+  })});
+
+  /* ---- annotation ---- */
+  var KEY='dispatch-ui-anno-v1', annoOn=false, pins=[], pending=null;
+  try{pins=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){pins=[]}
+  var btn=q('#anno-btn'),panel=q('#anno-panel'),list=q('#anno-list'),form=q('#anno-form'),out=q('#anno-out');
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(pins))}catch(e){}}
+  function screenName(){return VIEWS[curView]+(body.classList.contains('with-detail')?' + 详情 '+q('#d-id').textContent:'')}
+  function nearText(el){
+    var n=el; while(n&&n!==document.body){var tx=(n.innerText||'').trim().replace(/\s+/g,' ');if(tx){return tx.slice(0,40)}n=n.parentElement}
+    return '';
+  }
+  function render(){
+    qa('.pin').forEach(function(p){p.remove()});
+    pins.forEach(function(p,i){
+      var d=document.createElement('button');d.className='pin anno-ui';d.type='button';d.textContent=i+1;d.style.left=p.x+'px';d.style.top=p.y+'px';d.title=p.text;
+      d.addEventListener('click',function(e){e.stopPropagation();if(confirmDel(i))render()});
+      document.body.appendChild(d);
+    });
+    q('#anno-count').textContent=pins.length;
+    list.innerHTML=pins.length?'':'<div class="empty">开启标注后，点击页面任意位置打钉</div>';
+    pins.forEach(function(p,i){
+      var it=document.createElement('div');it.className='it';
+      it.innerHTML='<span class="num">'+(i+1)+'</span><div><div>'+esc(p.text)+'</div><div class="where">['+esc(p.screen)+'] near "'+esc(p.near)+'"</div></div><button class="del anno-ui" title="删除" type="button">✕</button>';
+      q('.del',it).addEventListener('click',function(){pins.splice(i,1);save();render()});
+      list.appendChild(it);
+    });
+  }
+  function confirmDel(i){pins.splice(i,1);save();return true}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  btn.addEventListener('click',function(){
+    annoOn=!annoOn; btn.classList.toggle('on',annoOn); document.body.classList.toggle('anno-on',annoOn);
+    btn.textContent=annoOn?'📍 标注中 · 点击页面打钉':'📍 标注'; panel.hidden=!annoOn; form.hidden=true;
+  });
+  document.addEventListener('click',function(e){
+    if(!annoOn)return;
+    if(e.target.closest('#anno-panel,#anno-form,#anno-btn,.pin'))return;
+    e.preventDefault(); e.stopPropagation();
+    pending={x:e.pageX,y:e.pageY,screen:screenName(),near:nearText(e.target)};
+    q('#anno-near').textContent='['+pending.screen+'] near "'+pending.near+'"';
+    q('#anno-text').value='';
+    form.hidden=false;
+    var fx=Math.min(e.pageX+12,document.documentElement.scrollWidth-300),fy=e.pageY+12;
+    form.style.left=fx+'px';form.style.top=fy+'px';
+    q('#anno-text').focus();
+  },true);
+  q('#anno-cancel').addEventListener('click',function(){form.hidden=true;pending=null});
+  q('#anno-save').addEventListener('click',function(){
+    var t=q('#anno-text').value.trim(); if(!t||!pending)return;
+    pending.text=t; pins.push(pending); pending=null; form.hidden=true; save(); render();
+  });
+  q('#anno-text').addEventListener('keydown',function(e){if((e.metaKey||e.ctrlKey)&&e.key==='Enter')q('#anno-save').click()});
+  q('#anno-clear').addEventListener('click',function(){pins=[];save();render();out.hidden=true});
+  q('#anno-copy').addEventListener('click',function(){
+    var txt=pins.map(function(p,i){return (i+1)+'. ['+p.screen+'] near "'+p.near+'": '+p.text}).join('\n');
+    if(!txt){return}
+    out.value=txt; out.hidden=false;
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){q('#anno-copy').textContent='已复制 ✓';setTimeout(function(){q('#anno-copy').textContent='复制全部标注'},1500)},function(){out.select()})}
+    else{out.select()}
+  });
+  render();
+})();
+</script>

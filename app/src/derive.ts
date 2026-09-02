@@ -1,0 +1,207 @@
+import type { Column, Comment, HistoryEntry, Issue, Session, SourceKind } from "./types";
+
+export function durSince(epochSec: number): string {
+  if (!epochSec) return "";
+  const m = Math.max(0, Math.round((Date.now() / 1000 - epochSec) / 60));
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m} 分钟`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时 ${m % 60} 分`;
+  return `${Math.floor(h / 24)} 天`;
+}
+
+export type AgentKind = "claude" | "codex" | "cursor" | "human";
+export interface Actor { id: string; name: string; kind: AgentKind; glyph: string }
+
+const KNOWN: Record<string, Omit<Actor, "id">> = {
+  "claude-code": { name: "Claude Code", kind: "claude", glyph: "C" },
+  claude: { name: "Claude Code", kind: "claude", glyph: "C" },
+  codex: { name: "Codex", kind: "codex", glyph: "X" },
+  cursor: { name: "Cursor", kind: "cursor", glyph: "U" },
+};
+
+export function actorOf(raw: string | undefined, me: string): Actor | null {
+  if (!raw) return null;
+  const k = KNOWN[raw.toLowerCase()];
+  if (k) return { id: raw, ...k };
+  const isMe = raw === me;
+  return { id: raw, name: isMe ? "我" : raw, kind: "human", glyph: isMe ? "我" : raw.slice(0, 1).toUpperCase() };
+}
+
+export const PROJECT_PREFIX = "project:";
+export function projectOf(i: Issue): string {
+  const l = (i.labels ?? []).find((x) => x.startsWith(PROJECT_PREFIX));
+  return l ? l.slice(PROJECT_PREFIX.length) : "";
+}
+export function isReviewed(i: Issue): boolean {
+  return i.status === "closed" && (i.labels ?? []).includes("reviewed");
+}
+export function columnOf(i: Issue): Column {
+  if (i.status === "closed") return isReviewed(i) ? "reviewed" : "done";
+  if (i.status === "in_progress") return "prog";
+  return "todo";
+}
+export const COLUMNS: { key: Column; label: string; cls: string }[] = [
+  { key: "todo", label: "待办", cls: "open" },
+  { key: "prog", label: "进行中", cls: "prog" },
+  { key: "done", label: "已完成 · 待审", cls: "done" },
+  { key: "reviewed", label: "已审核", cls: "rev" },
+];
+export function statusLabel(i: Issue): { text: string; cls: string } {
+  if (isReviewed(i)) return { text: "已审核", cls: "rev" };
+  switch (i.status) {
+    case "closed": return { text: "待审", cls: "done" };
+    case "in_progress": return { text: "进行中", cls: "prog" };
+    case "blocked": return { text: "阻塞", cls: "block" };
+    case "deferred": return { text: "搁置", cls: "open" };
+    default: return { text: "待办", cls: "open" };
+  }
+}
+
+const PALETTE = ["#1D5FD1", "#C28A12", "#2E8B57", "#6E56CF", "#C43D3D", "#2F6F73", "#B5488A", "#7A6A2F"];
+export function projectColor(name: string): string {
+  if (!name) return "#9B968C";
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+
+export function relTime(iso?: string): string {
+  if (!iso) return "";
+  const d = Date.now() - new Date(iso).getTime();
+  const m = Math.max(0, Math.round(d / 60_000));
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+}
+export function fmtTime(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+export interface AgentPresence {
+  actor: Actor;
+  online: boolean;
+  lastActive?: string;
+  current: Issue[];
+  doneToday: number;
+  sessions: Session[];
+  bySource: { kind: SourceKind; label: string; count: number; working: number }[];
+}
+export const SOURCE_LABEL: Record<SourceKind, string> = { terminal: "终端", desktop: "桌面端", editor: "编辑器", unknown: "未登记" };
+const ONLINE_WINDOW_MIN = 30;
+export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []): AgentPresence[] {
+  const map = new Map<string, AgentPresence>();
+  const ensure = (raw: string) => {
+    const a = actorOf(raw, me)!;
+    if (!map.has(a.id)) map.set(a.id, { actor: a, online: false, current: [], doneToday: 0, sessions: [], bySource: [] });
+    return map.get(a.id)!;
+  };
+  ["claude-code", "codex", "cursor", me].forEach(ensure);
+  const dayAgo = Date.now() - 86_400_000;
+  for (const i of issues) {
+    const seen = new Set<string>();
+    for (const raw of [i.assignee, i.created_by]) {
+      if (!raw || seen.has(raw)) continue;
+      seen.add(raw);
+      const p = ensure(raw);
+      const ts = raw === i.assignee ? i.updated_at : i.created_at;
+      if (!p.lastActive || ts > p.lastActive) p.lastActive = ts;
+    }
+    if (i.assignee) {
+      const p = ensure(i.assignee);
+      if (i.status === "in_progress") p.current.push(i);
+      if (i.status === "closed" && i.closed_at && new Date(i.closed_at).getTime() > dayAgo) p.doneToday++;
+    }
+  }
+  for (const s of sessions) {
+    if (!s.alive) continue;
+    const p = ensure(s.agent);
+    p.sessions.push(s);
+  }
+  for (const p of map.values()) {
+    const bs = new Map<string, { kind: SourceKind; label: string; count: number; working: number }>();
+    for (const s of p.sessions) {
+      const key = `${s.source_kind}:${s.source_app}`;
+      const b = bs.get(key) ?? { kind: s.source_kind, label: s.source_app || SOURCE_LABEL[s.source_kind], count: 0, working: 0 };
+      b.count++;
+      if (s.state === "working") b.working++;
+      bs.set(key, b);
+    }
+    p.bySource = [...bs.values()].sort((a, b) => b.count - a.count);
+    p.sessions.sort((a, b) => Number(b.state === "working") - Number(a.state === "working") || b.last_at - a.last_at);
+    const recentWrite = !!p.lastActive && Date.now() - new Date(p.lastActive).getTime() < ONLINE_WINDOW_MIN * 60_000;
+    // A live process is the truth; bd write recency only covers agents without hooks.
+    p.online = p.sessions.length > 0 || (p.actor.kind === "human" ? false : recentWrite && p.actor.kind === "cursor");
+    p.current.sort((a, b) => a.priority - b.priority);
+  }
+  const order: Record<AgentKind, number> = { claude: 0, codex: 1, human: 2, cursor: 3 };
+  return [...map.values()].sort((a, b) => Number(b.online) - Number(a.online) || order[a.actor.kind] - order[b.actor.kind]);
+}
+
+export interface Event { ts: string; actor?: string; kind: "created" | "claimed" | "status" | "closed" | "reviewed" | "comment" | "edited"; text: string; cmd?: string }
+// bd history has no per-commit actor; infer it from the fields that changed.
+export function eventsFrom(history: HistoryEntry[], comments: Comment[]): Event[] {
+  const ev: Event[] = [];
+  const h = [...history].sort((a, b) => a.CommitDate.localeCompare(b.CommitDate));
+  let prev: Issue | null = null;
+  for (const e of h) {
+    const cur = e.Issue;
+    const ts = new Date(e.CommitDate).toISOString();
+    if (!prev) {
+      ev.push({ ts, actor: cur.created_by, kind: "created", text: "创建", cmd: `bd create "${cur.title}"` });
+    } else {
+      if (cur.assignee !== prev.assignee && cur.assignee) ev.push({ ts, actor: cur.assignee, kind: "claimed", text: "认领", cmd: `bd update ${cur.id} --claim` });
+      if (cur.status !== prev.status) {
+        if (cur.status === "closed") ev.push({ ts, actor: cur.assignee, kind: "closed", text: "完成", cmd: `bd close ${cur.id}${cur.close_reason ? ` --reason "${cur.close_reason}"` : ""}` });
+        else if (!(cur.status === "in_progress" && cur.assignee !== prev.assignee)) ev.push({ ts, actor: cur.assignee, kind: "status", text: `状态 → ${statusLabel(cur).text}`, cmd: `bd update ${cur.id} --status ${cur.status}` });
+      }
+      const wasRev = (prev.labels ?? []).includes("reviewed"), isRev = (cur.labels ?? []).includes("reviewed");
+      if (isRev && !wasRev) ev.push({ ts, kind: "reviewed", text: "审核通过", cmd: `bd update ${cur.id} --add-label reviewed` });
+      if (cur.title !== prev.title || cur.description !== prev.description || cur.priority !== prev.priority) ev.push({ ts, kind: "edited", text: "编辑" });
+    }
+    prev = cur;
+  }
+  for (const c of comments) ev.push({ ts: c.created_at, actor: c.author, kind: "comment", text: c.text });
+  return ev.sort((a, b) => b.ts.localeCompare(a.ts));
+}
+
+export interface Pitfall { key: string; raw: string; trap: string; fix: string; project: string; task: string; isPit: boolean }
+// Pitfalls are ordinary bd memories following one convention:
+//   key `pit-<slug>`, content `【坑】… 【解法】… #project:<name> #task:<id>`
+export function parsePitfall(m: { key: string; value: string }): Pitfall {
+  const v = m.value;
+  const tag = (name: string) => (v.match(new RegExp(`#${name}:(\\S+)`)) ?? [])[1] ?? "";
+  const body = v.replace(/#(project|task):\S+/g, "").trim();
+  const trap = (body.match(/【坑】([\s\S]*?)(?=【解法】|$)/) ?? [])[1]?.trim() ?? body;
+  const fix = (body.match(/【解法】([\s\S]*)$/) ?? [])[1]?.trim() ?? "";
+  return { key: m.key, raw: v, trap, fix, project: tag("project"), task: tag("task"), isPit: m.key.startsWith("pit-") || v.includes("【坑】") };
+}
+export function composePitfall(trap: string, fix: string, project: string, task: string): string {
+  let s = `【坑】${trap.trim()}`;
+  if (fix.trim()) s += ` 【解法】${fix.trim()}`;
+  if (project.trim()) s += ` #project:${project.trim()}`;
+  if (task.trim()) s += ` #task:${task.trim()}`;
+  return s;
+}
+export function slugify(s: string): string {
+  const ascii = s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  return ascii || Math.random().toString(36).slice(2, 8);
+}
+
+export interface AcItem { done: boolean; text: string }
+export function parseAcceptance(s?: string): AcItem[] {
+  if (!s) return [];
+  return s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+    const m = l.match(/^[-*]\s*(\[( |x|X)\])?\s*(.*)$/);
+    if (!m) return { done: false, text: l };
+    return { done: (m[2] ?? " ").toLowerCase() === "x", text: m[3] };
+  });
+}
+export function serializeAcceptance(items: AcItem[]): string {
+  return items.map((i) => `- [${i.done ? "x" : " "}] ${i.text}`).join("\n");
+}

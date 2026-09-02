@@ -1,0 +1,10 @@
+# node / vite
+app/node_modules/
+app/dist/
+# rust / tauri
+app/src-tauri/target/
+app/src-tauri/gen/schemas/
+# tooling noise
+.playwright-mcp/
+.DS_Store
+*.log
