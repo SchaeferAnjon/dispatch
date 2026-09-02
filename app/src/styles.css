@@ -219,6 +219,23 @@ pre.diff .ln.add{background:var(--s-done-bg);color:var(--s-done)}
 pre.diff .ln.del{background:var(--s-block-bg);color:var(--s-block)}
 pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .task-links{display:flex;flex-wrap:wrap;gap:6px}
+.sk-wrap{display:grid;grid-template-columns:360px minmax(0,1fr);height:100%;min-height:0}
+.sk-side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.sk-item{text-align:left;padding:8px 10px;border-radius:8px;display:flex;flex-direction:column;gap:3px;border:1px solid transparent}
+.sk-item:hover{background:var(--panel-2)}
+.sk-item.sel{background:var(--win);border-color:var(--line);box-shadow:var(--card-shadow)}
+.sk-item .l1{display:flex;align-items:center;gap:6px}
+.sk-item .l1 .t{font-weight:500}
+.sk-item .l2{font-size:11.5px;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sk-item .l3{display:flex;gap:4px}
+.mount{font-size:10.5px;padding:0 6px;border-radius:999px;border:1px solid var(--line);color:var(--ink-3)}
+.mount.on.claude{border-color:var(--claude);color:var(--claude);background:color-mix(in srgb,var(--claude) 10%,transparent)}
+.mount.on.codex{border-color:var(--codex);color:var(--codex);background:color-mix(in srgb,var(--codex) 10%,transparent)}
+.sk-mounts{display:flex;align-items:center;gap:14px;padding:6px 16px 10px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.mount-row{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.mount-row .av{width:16px;height:16px;font-size:8px}
+pre.skill-md{margin:0;white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;line-height:1.55;max-width:80ch;color:var(--ink)}
+textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:12px;line-height:1.5;background:var(--win);resize:none}
 .pit-wrap{padding:14px 16px;display:flex;flex-direction:column;gap:10px;max-width:960px}
 .pit-head{display:flex;align-items:center;gap:8px}
 .pit-hint{margin:0;color:var(--ink-3);font-size:12px;max-width:70ch}

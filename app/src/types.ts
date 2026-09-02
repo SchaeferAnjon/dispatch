@@ -1,6 +1,6 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "board" | "table" | "agents" | "sessions" | "pitfalls";
+export type View = "board" | "table" | "agents" | "sessions" | "skills" | "pitfalls";
 
 export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string }
 export interface SessionRef {
@@ -29,6 +29,7 @@ export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" |
 export interface FileChange { kind: "edit" | "write"; old: string; new: string; ts: string }
 export interface SessionDetail { meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
 export interface Memory { key: string; value: string }
+export interface Skill { name: string; path: string; in_pool: boolean; description: string; agents: Record<string, boolean> }
 
 export interface Issue {
   id: string;

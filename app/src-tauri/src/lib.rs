@@ -351,6 +351,59 @@ fn resume_cmd(agent: String, session_id: String, cwd: String) -> String {
     }
 }
 
+// ---------- skills: pool + per-agent mounts, via the CLI ----------
+
+#[tauri::command]
+async fn skills_list() -> Result<String, String> {
+    run_dispatch(args(&["skills", "list", "--json"])).await
+}
+
+#[tauri::command]
+async fn skill_toggle(name: String, agent: String, on: bool) -> Result<String, String> {
+    let op = if on { "enable" } else { "disable" };
+    run_dispatch(args(&["skills", op, &name, "--agent", &agent])).await
+}
+
+fn skill_file(name: &str) -> Result<PathBuf, String> {
+    let p = run_dispatch_blocking(&args(&["skills", "path", name]))?;
+    let path = PathBuf::from(p.trim());
+    let real = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    // Only files inside the skill pool or an agent's skills dir may be edited.
+    let allowed = [home().join(".cc-switch/skills"), home().join(".claude/skills"), home().join(".agents/skills"), home().join("Projects")];
+    if !allowed.iter().any(|d| std::fs::canonicalize(d).map(|d| real.starts_with(d)).unwrap_or(false)) {
+        return Err(format!("不在技能目录里，拒绝：{}", real.display()));
+    }
+    Ok(real)
+}
+
+#[tauri::command]
+async fn skill_read(name: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = skill_file(&name)?;
+        std::fs::read_to_string(&p).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skill_write(name: String, content: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = skill_file(&name)?;
+        let bak = p.with_extension("md.bak");
+        let _ = std::fs::copy(&p, &bak);
+        std::fs::write(&p, content).map_err(|e| e.to_string())?;
+        Ok(p.display().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skill_open(name: String) -> Result<String, String> {
+    run_dispatch(args(&["skills", "open", &name])).await
+}
+
 // ---------- memories (used as the shared pitfall log) ----------
 
 #[derive(Serialize)]
@@ -462,7 +515,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
-            task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget
+            task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
+            skills_list, skill_toggle, skill_read, skill_write, skill_open
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

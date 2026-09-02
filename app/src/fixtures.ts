@@ -90,6 +90,11 @@ export function fixtureApi(): Api {
     },
     focusSession: async () => "浏览器预览里没有 Herdr",
     resumeCmd: async (agent, sid, cwd) => `cd '${cwd}' && ${agent === "codex" ? "codex resume" : "claude --resume"} ${sid}`,
+    skills: async () => skills.map((s) => ({ ...s, agents: { ...s.agents } })),
+    skillToggle: async (name, agent, on) => { const s = skills.find((x) => x.name === name)!; (agent === "all" ? ["claude", "codex"] : [agent]).forEach((a) => (s.agents[a] = on)); return on ? "已挂载" : "已卸载"; },
+    skillRead: async (name) => `---\nname: ${name}\ndescription: ${skills.find((x) => x.name === name)?.description ?? ""}\n---\n\n# ${name}\n\n（浏览器预览：示例内容）\n`,
+    skillWrite: async (name) => `/pool/${name}/SKILL.md`,
+    skillOpen: async () => {},
     memories: async () => memories.map((m) => ({ ...m })),
     remember: async (key, value) => { const i = memories.findIndex((m) => m.key === key); if (i >= 0) memories[i] = { key, value }; else memories.push({ key, value }); notify(); },
     forget: async (key) => { memories = memories.filter((m) => m.key !== key); notify(); },
@@ -102,6 +107,14 @@ const sessionRefs: import("./types").SessionRef[] = [
   { agent: "claude-code", session_id: "a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", cwd: "/Users/x/Projects/kanban", project: "kanban", title: "任务集中营软件", last_at: now / 1000 - 120, first_ts: new Date(now - 4 * 3600e3).toISOString(), last_ts: new Date(now - 120e3).toISOString(), entrypoint: "cli", branch: "main", user_msgs: 299, assistant_msgs: 392, tools: { Bash: 136, Edit: 71 }, tasks: { "task-9lo": 124 }, mentions: 124, current_task: "task-9lo", resume_cmd: "cd '/Users/x/Projects/kanban' && claude --resume a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", path: "", size: 2_400_000, subagents: [{ agent_id: "a5bf41fb", type: "claude-code-guide", description: "Verify Claude Code hook fields", tool_use_id: "toolu_1", depth: 1, size: 40000, last_at: now / 1000 - 3000, path: "" }] },
   { agent: "claude-code", session_id: "5d5bd874-5e65-4a4d-aab6-f2cb7985ca69", cwd: "/Users/x/Projects/bookmark", project: "bookmark", title: "Bookmark Chrome extension", last_at: now / 1000 - 7 * 3600, first_ts: "", last_ts: "", entrypoint: "cli", branch: "main", user_msgs: 133, assistant_msgs: 200, tools: {}, tasks: {}, mentions: 0, current_task: null, resume_cmd: "cd '/Users/x/Projects/bookmark' && claude --resume 5d5bd874-5e65-4a4d-aab6-f2cb7985ca69", path: "", size: 900_000, subagents: [] },
   { agent: "codex", session_id: "019deafa-bcc4-7100-8cdb-0193b715e090", cwd: "/Users/x/Projects/poker-trainer", project: "poker-trainer", title: "河牌下注逻辑", last_at: now / 1000 - 5000, first_ts: "", last_ts: "", entrypoint: "", branch: "", user_msgs: 9, assistant_msgs: 12, tools: {}, tasks: { "task-4mk": 3 }, mentions: 3, current_task: "task-4mk", resume_cmd: "cd '/Users/x/Projects/poker-trainer' && codex resume 019deafa-bcc4-7100-8cdb-0193b715e090", path: "", size: 120_000, subagents: [] },
+];
+
+const skills: import("./types").Skill[] = [
+  { name: "task-board", path: "/pool/task-board", in_pool: true, description: "全局任务板（Beads / bd CLI）。所有 Agent 共用同一块板。", agents: { claude: true, codex: false } },
+  { name: "herdr", path: "/pool/herdr", in_pool: true, description: "Control Herdr, a terminal multiplexer for coding agents.", agents: { claude: true, codex: true } },
+  { name: "frontend-design", path: "/pool/frontend-design", in_pool: true, description: "Guidance for distinctive, intentional visual design.", agents: { claude: true, codex: false } },
+  { name: "academic-plotting", path: "/pool/academic-plotting", in_pool: true, description: "Publication-quality matplotlib figures.", agents: { claude: false, codex: true } },
+  { name: "beads", path: "/Users/x/.agents/skills/beads", in_pool: false, description: "Use when working in a repository that uses bd or Beads.", agents: { claude: false, codex: true } },
 ];
 
 let memories: { key: string; value: string }[] = [

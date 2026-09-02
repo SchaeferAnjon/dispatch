@@ -1,4 +1,4 @@
-import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, SessionDetail, SessionRef, UpdateFields } from "./types";
+import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, SessionDetail, SessionRef, Skill, UpdateFields } from "./types";
 import { fixtureApi } from "./fixtures";
 
 export interface Api {
@@ -21,6 +21,11 @@ export interface Api {
   sessionDetail(id: string): Promise<SessionDetail>;
   focusSession(id: string): Promise<string>;
   resumeCmd(agent: string, sessionId: string, cwd: string): Promise<string>;
+  skills(): Promise<Skill[]>;
+  skillToggle(name: string, agent: string, on: boolean): Promise<string>;
+  skillRead(name: string): Promise<string>;
+  skillWrite(name: string, content: string): Promise<string>;
+  skillOpen(name: string): Promise<void>;
   memories(): Promise<Memory[]>;
   remember(key: string, value: string): Promise<void>;
   forget(key: string): Promise<void>;
@@ -71,6 +76,11 @@ async function tauriApi(): Promise<Api> {
     sessionDetail: async (id) => { const d = parse<SessionDetail | null>(await call("session_detail", { id }), null); if (!d) throw new Error("读不到这个会话"); return d; },
     focusSession: (id) => call("focus_session", { id }),
     resumeCmd: (agent, sessionId, cwd) => invoke<string>("resume_cmd", { agent, sessionId, cwd }),
+    skills: async () => parse<Skill[]>(await call("skills_list"), []),
+    skillToggle: (name, agent, on) => call("skill_toggle", { name, agent, on }),
+    skillRead: (name) => call("skill_read", { name }),
+    skillWrite: (name, content) => call("skill_write", { name, content }),
+    skillOpen: async (name) => void (await call("skill_open", { name })),
     memories: () => invoke<Memory[]>("memories_list"),
     remember: async (key, value) => void (await call("memory_set", { key, value })),
     forget: async (key) => void (await call("memory_forget", { key })),
