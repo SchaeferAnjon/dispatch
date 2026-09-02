@@ -96,7 +96,7 @@ bd recall pit-<slug>        # 看全文
 dispatch sessions                 # 现在有哪些 Agent 会话在跑：谁、哪个目录、在跑/等你、来源（终端/桌面端/Herdr 标签）
 dispatch find task-9lo            # 哪些会话提到过这个任务（标题、目录、最近时间）+ 每个的恢复命令
 dispatch resume task-9lo --copy   # 恢复命令复制到剪贴板（也可给 session id 前缀）：cd '<目录>' && claude --resume <id>
-dispatch focus task-9lo           # 直接切到 Herdr 里跑着这个任务的标签
+dispatch focus task-9lo           # 打开这个任务所在的会话：Herdr 标签 + 唤起终端；ZCode 通过辅助功能点侧栏对应会话（不是新开）；Claude 桌面端走 claude://
 dispatch skills list [-q 关键词] [--agent claude|codex]   # 技能池（~/.cc-switch/skills）+ 每个 Agent 挂没挂
 dispatch skills show <name> / path <name> / open <name>   # 看 SKILL.md / 路径 / 用默认编辑器打开
 dispatch skills enable <name> --agent claude|codex|all   # 挂载（软链）；disable 卸载（只删软链，本体不动）

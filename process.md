@@ -229,3 +229,20 @@
 - `app/cli/dispatch.py`（focus_session、host_app_of）、`app/src/components/{Inbox,views,Sessions}.tsx`、`app/src/App.tsx`
 - `~/tasks/.beads`（server 模式配置）、`~/tasks/.beads.embedded`（旧数据）、`~/tasks/.beads-backup`、`~/.beads/shared-server/`
 - `agent/skills/task-board/SKILL.md`（shared-server、ZCode、dispatch 命令）
+
+---
+
+## 2026-09-02 · 修复 ZCode "打开会话"进的是新会话
+
+### What I did
+- 用户反馈：`zcode://workspace/open?path=` 弹"是否在 ZCode 中打开此文件夹"，确认后是**新会话**。解开 `app.asar`（`npx @electron/asar extract`）读主进程 `out/main/index.js`：deep-link 处理器 `Ih()` 只认三种——工作区打开、支付回调、OAuth，没有会话路由；渲染层也没有按 session id 的路由或 localStorage 键。
+- 改走 macOS 辅助功能：`osascript` 给 ZCode 进程设 `AXManualAccessibility=true` 后，侧栏会话行以其标题作为 name 暴露（选中行是 "UI element"，其余是 static text，都可 click）。`dispatch focus <zcode 会话>` 现在：activate ZCode → 只遍历左侧栏容器（x<420pt）→ 精确匹配标题 → click；无窗口先 activate 再试一次；找不到就提示手动点。
+- 首版全树 `entire contents` 在内嵌浏览器打开时超过 2 分钟超时，故限定侧栏。
+
+### Bugs / surprises
+- AppleScript 没有 `min()`；`role of el` 对部分节点报错会让整条被 try 吞掉。
+- 测到一半用户退出了 ZCode（`count of windows` = 0），侧栏点击路径**未在真机验证**，用户打开 ZCode 后在 Dispatch 点"打开会话"即可验证。
+
+### Files touched
+- `app/cli/dispatch.py` — `zcode_click_session`、`focus_session` 的 zcode 分支
+- pit `pit-zcode-focus-session`（bd memory）
