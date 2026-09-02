@@ -557,6 +557,81 @@ def activate(app_name):
         sh(["open", "-a", app_name], timeout=5)
 
 
+def zcode_click_session(title):
+    """ZCode's deep links can only open a workspace (which starts a *new* session), so
+    jump to an existing one by clicking its sidebar row through Accessibility.
+    Electron only exposes the tree after AXManualAccessibility is switched on."""
+    safe = title.replace("\\", "\\\\").replace('"', '\\"')
+    # Only walk the left sidebar (x < 420 pt); the main pane can hold an embedded
+    # browser with thousands of nodes and a full walk takes minutes.
+    script = f'''
+tell application "System Events"
+  tell process "ZCode"
+    try
+      set value of attribute "AXManualAccessibility" to true
+    end try
+    if (count of windows) is 0 then return "nowindow"
+    set w to window 1
+    set wx to item 1 of (position of w)
+    set pool to {{}}
+    set queue to UI elements of w
+    repeat 6 times
+      set nextq to {{}}
+      repeat with a in queue
+        try
+          set ax to item 1 of (position of a)
+          set aw to item 1 of (size of a)
+          if (ax - wx) < 420 and aw < 460 and aw > 120 then
+            set end of pool to a
+          else if (ax - wx) < 420 then
+            set nextq to nextq & (UI elements of a)
+          end if
+        end try
+      end repeat
+      set queue to nextq
+      if (count of queue) is 0 then exit repeat
+    end repeat
+    set best to missing value
+    repeat with grp in pool
+      repeat with el in entire contents of grp
+        try
+          if (name of el as text) is "{safe}" then
+            if (class of el as text) is not "static text" then
+              set best to el
+              exit repeat
+            else if best is missing value then
+              set best to el
+            end if
+          end if
+        end try
+      end repeat
+      if best is not missing value then exit repeat
+    end repeat
+    if best is missing value then return "notfound"
+    try
+      click best
+    on error
+      perform action "AXPress" of best
+    end try
+    return "clicked"
+  end tell
+end tell'''
+    for attempt in range(2):
+        try:
+            code, out, err = sh(["osascript", "-e", script], timeout=45)
+        except Exception:
+            return False
+        res = out.strip()
+        if res == "clicked":
+            return True
+        if res == "nowindow" and attempt == 0:
+            activate("ZCode")
+            time.sleep(2)
+            continue
+        return False
+    return False
+
+
 def focus_session(s):
     """Bring the app that hosts this session to the front and, where the app
     supports it, jump to the session itself. Returns a message."""
@@ -572,10 +647,14 @@ def focus_session(s):
         activate(host or "Ghostty")
         return f"已切到 {host or '终端'} 里的 Herdr 标签 {h['tab_id']}：{h.get('title', '')}"
     if agent == "zcode":
-        cwd = s.get("cwd", "")
-        from urllib.parse import quote
-        sh(["open", f"zcode://workspace/open?path={quote(cwd, safe='/')}"], timeout=5) if cwd else activate("ZCode")
-        return f"已打开 ZCode 的工作区 {os.path.basename(cwd) or ''}（会话：{s.get('title') or s.get('session_id')}）"
+        title = s.get("title") or ""
+        if not title:
+            row = zcode_query("select title from session where id=?", (s.get("session_id"),))
+            title = row[0]["title"] if row else ""
+        activate("ZCode")
+        if title and zcode_click_session(title):
+            return f"已在 ZCode 里切到会话「{title}」"
+        return f"已切到 ZCode，但没在侧栏找到「{title or s.get('session_id')}」——可能被折叠或已归档，手动点一下"
     if agent == "claude-code" and (s.get("source_kind") == "desktop" or s.get("entrypoint") == "desktop"):
         sh(["open", f"claude://code/continue?session={s['session_id']}"], timeout=5)
         return "已让 Claude 桌面端打开这个会话"
