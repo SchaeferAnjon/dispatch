@@ -204,3 +204,28 @@
 - `app/src-tauri/{src/lib.rs,Cargo.toml,capabilities/default.json,tauri.conf.json}`
 - `app/src/{App.tsx,api.ts,types.ts,derive.ts,diff.ts,fixtures.ts,styles.css}`、`app/src/components/{Sessions,Skills,Inbox,Markdown,Detail,views,Sidebar,Pitfalls}.tsx`
 - `~/.local/bin/dispatch`、`~/.cc-switch/skills/task-board`、`~/tasks/.dispatch/presence.py` — 软链到仓库
+
+---
+
+## 2026-09-02 · v0.5 — 图标、测试、shared-server、打开会话
+
+### What I did
+- `chore` 应用图标：`design/icon.svg`（四列 + Agent 色卡片 + 在线点）→ `qlmanage -t -s 1024` 转 PNG → `npm run tauri icon`。删掉生成的 android/ios 图标。
+- `test` vitest（`app/src/derive.test.ts`，21 个：状态映射、项目标签、身份别名、验收清单、坑解析、活动流推断 + 审计叠加、在场分组、diff）+ unittest（`app/cli/test_dispatch.py`，8 个：恢复命令、宿主 app 查找、Claude 记录解析、frontmatter）。`npm test` / `npm run test:py`。
+- `perf` **shared-server 迁移**：`brew install dolt`；`bd backup init ~/tasks/.beads-backup && bd backup sync`；旧目录改名 `.beads.embedded`；`bd init --shared-server` 起了服务但**没写 config.yaml / metadata.json**，手写后 `bd backup restore --force`。结果：`bd list` 0.34s → 0.14s，多写者。服务不会自动拉起 → LaunchAgent `dev.schaefer.beads-dolt`（`bd dolt start`，幂等，登录 + 每 120s）+ Dispatch 启动/每 2 分钟也跑一次。Rust 监听器：server 模式监听 `~/.beads/shared-server/dolt/task` 的 mtime（读走 TCP 不碰文件，无自触发），嵌入模式仍用 manifest 指纹。轮询兜底 20s → 10s。
+- `feat` **打开会话**（用户："切过去"应该是打开对应软件的对应会话）：Herdr 标签 + 激活宿主终端 Ghostty（沿 herdr 进程父链找 .app）；ZCode `zcode://workspace/open?path=`；Claude 桌面端 `claude://code/continue?session=<id>`（从 app.asar 里 grep 出来的 scheme，未实测）；Codex 桌面端激活 ChatGPT。
+- 只打 `.app`（`targets: ["app"]`），dmg 步骤每次都会弹 Finder 窗口。
+- 关了 Cursor 接入任务（用户不用 Cursor）；task-9lo 验收更新 + 交接留言。
+
+### Bugs / surprises
+- `bd init --shared-server`（1.2.2）报 "Setup incomplete"，不写工作区配置；已记成 pit-bd-shared-server-init。
+- `bd dolt start` 幂等，可当保活用；`bd doctor` 在嵌入模式不可用。
+- server 模式下 `bd create` 后 FSEvents 到达有 1–3s 延迟，截图 4s 后还没刷新过一次；10s 轮询兜底。
+
+### Files touched
+- `app/src-tauri/icons/*`、`design/icon.svg`、`design/icon-1024.png`
+- `app/src/derive.test.ts`、`app/cli/test_dispatch.py`、`app/package.json`（test 脚本、vitest）
+- `app/src-tauri/src/lib.rs`（server 模式监听、ensure_dolt_server）、`app/scripts/dev.schaefer.beads-dolt.plist` → `~/Library/LaunchAgents/`
+- `app/cli/dispatch.py`（focus_session、host_app_of）、`app/src/components/{Inbox,views,Sessions}.tsx`、`app/src/App.tsx`
+- `~/tasks/.beads`（server 模式配置）、`~/tasks/.beads.embedded`（旧数据）、`~/tasks/.beads-backup`、`~/.beads/shared-server/`
+- `agent/skills/task-board/SKILL.md`（shared-server、ZCode、dispatch 命令）

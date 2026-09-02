@@ -74,7 +74,8 @@ export default function App() {
 
   useEffect(() => {
     if (!api) return;
-    const t = window.setInterval(() => reload(), 20_000);
+    // Backstop for the file watcher; cheap now that bd runs against the shared server.
+    const t = window.setInterval(() => reload(), 10_000);
     return () => window.clearInterval(t);
   }, [api, reload]);
 
