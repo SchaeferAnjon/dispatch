@@ -537,23 +537,85 @@ def cmd_resume(a):
         print(cmd)
 
 
+def host_app_of(pid, table):
+    """Walk up from a pid to the .app that owns it (e.g. Ghostty hosting Herdr)."""
+    for _ in range(30):
+        ent = table.get(pid)
+        if not ent:
+            return None
+        ppid, comm = ent
+        m = re.search(r"/([^/]+)\.app/", comm)
+        if m:
+            return m.group(1)
+        if ppid <= 1:
+            return None
+        pid = ppid
+
+
+def activate(app_name):
+    if app_name:
+        sh(["open", "-a", app_name], timeout=5)
+
+
+def focus_session(s):
+    """Bring the app that hosts this session to the front and, where the app
+    supports it, jump to the session itself. Returns a message."""
+    agent = s.get("agent", "")
+    table = ps_table()
+    h = s.get("herdr")
+    if h:
+        sh([HERDR, "agent", "focus", h["pane_id"]], timeout=5)
+        host = None
+        for pid, (_, comm) in table.items():
+            if os.path.basename(comm) == "herdr" and host is None:
+                host = host_app_of(pid, table)
+        activate(host or "Ghostty")
+        return f"已切到 {host or '终端'} 里的 Herdr 标签 {h['tab_id']}：{h.get('title', '')}"
+    if agent == "zcode":
+        cwd = s.get("cwd", "")
+        from urllib.parse import quote
+        sh(["open", f"zcode://workspace/open?path={quote(cwd, safe='/')}"], timeout=5) if cwd else activate("ZCode")
+        return f"已打开 ZCode 的工作区 {os.path.basename(cwd) or ''}（会话：{s.get('title') or s.get('session_id')}）"
+    if agent == "claude-code" and (s.get("source_kind") == "desktop" or s.get("entrypoint") == "desktop"):
+        sh(["open", f"claude://code/continue?session={s['session_id']}"], timeout=5)
+        return "已让 Claude 桌面端打开这个会话"
+    if agent == "codex" and s.get("source_kind") == "desktop":
+        activate("ChatGPT")
+        return "已切到 ChatGPT（Codex 桌面端）；会话得在里面点"
+    app = s.get("source_app", "")
+    if s.get("source_kind") == "terminal" and app and app not in ("终端", "Herdr"):
+        activate(app)
+        return f"已切到 {app}（找 {s.get('project') or s.get('cwd')} 那个标签）"
+    pid = s.get("agent_pid")
+    host = host_app_of(pid, table) if pid else None
+    if host:
+        activate(host)
+        return f"已切到 {host}"
+    return None
+
+
 def cmd_focus(a):
     live = live_sessions()
-    refs = resolve(refresh_index(), a.key)
-    for r in refs:
-        for s in live:
-            if s.get("session_id") == r["session_id"] and s.get("herdr"):
-                sh([HERDR, "agent", "focus", s["herdr"]["pane_id"]], timeout=5)
-                print(f"已切到 Herdr 标签 {s['herdr']['tab_id']}：{s['herdr'].get('title', '')}")
+    refs = resolve(load_index() or refresh_index(), a.key)
+    wanted = {r["session_id"] for r in refs} | {a.key}
+    for s in live:
+        if s.get("session_id") in wanted or any(s.get("session_id", "").startswith(k) for k in wanted):
+            msg = focus_session(s)
+            if msg:
+                print(msg)
                 return
-    # fall back: match by cwd
+    # not live: fall back to a Herdr tab in the same directory, else say so
     for r in refs:
         for ag in herdr_agents():
             if ag.get("cwd") == r["cwd"]:
                 sh([HERDR, "agent", "focus", ag["pane_id"]], timeout=5)
-                print(f"已切到 Herdr 标签 {ag['tab_id']}（按目录匹配）")
+                activate("Ghostty")
+                print(f"这个会话已结束；已切到同目录的 Herdr 标签 {ag['tab_id']}")
                 return
-    print("这个会话不在 Herdr 里跑，用 `dispatch resume` 复制恢复命令吧", file=sys.stderr)
+        if r["agent"] == "zcode":
+            print(focus_session({"agent": "zcode", "cwd": r["cwd"], "title": r["title"], "session_id": r["session_id"]}))
+            return
+    print("这个会话现在没在跑，用 `dispatch resume` 复制恢复命令吧", file=sys.stderr)
     sys.exit(1)
 
 

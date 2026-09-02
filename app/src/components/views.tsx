@@ -97,7 +97,7 @@ export function TableView({ issues, selected, onSelect, me }: Common) {
 
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
-export function AgentsView({ agents, apps, onSelect, onCopyResume, refs }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; refs: Map<string, SessionRef> }) {
+export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef> }) {
   return (
     <div className="agrid">
       {apps.length > 0 && <div className="apps-bar">正在运行的应用：{apps.join(" · ")}</div>}
@@ -132,9 +132,12 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, refs }: { age
                   <span className="muted small">{s.source_app}</span>
                   <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`} title={s.registered ? "" : "钩子安装前启动的会话：只知道进程在，不知道忙不忙"}>{s.state === "working" ? "在跑" : s.state === "idle" ? "等你" : "未登记"}</span>
                   <span className="mono muted small right">{s.started_at ? `开了 ${durSince(s.started_at)}` : `pid ${s.agent_pid ?? "?"}`}{s.prompts ? ` · ${s.prompts} 轮` : ""}</span>
-                  {s.registered && !s.session_id.startsWith("pid-") && (
-                    <button className="copy-btn" onClick={() => onCopyResume(s.agent, s.session_id, s.cwd)} title="复制恢复命令到剪贴板">恢复</button>
-                  )}
+                  <span style={{ display: "inline-flex", gap: 4 }}>
+                    <button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到这个会话所在的软件/标签">打开</button>
+                    {s.registered && !s.session_id.startsWith("pid-") && s.agent !== "zcode" && (
+                      <button className="copy-btn" onClick={() => onCopyResume(s.agent, s.session_id, s.cwd)} title="复制恢复命令到剪贴板">恢复</button>
+                    )}
+                  </span>
                 </div>
                 );
               })}

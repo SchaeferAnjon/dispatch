@@ -14,6 +14,8 @@ bd where          # 必须显示 /Users/macbook14/tasks/.beads，前缀 task
 echo $BEADS_ACTOR # Claude Code 应为 claude-code；Codex 为 codex；人是 schaefer
 ```
 
+在 **ZCode** 里（桌面应用，没有环境变量入口）：每条写命令都带 `--actor zcode`，且 `BEADS_DIR=$HOME/tasks/.beads` 前缀不能省。ZCode 的会话由 Dispatch 直接从 `~/.zcode/cli/db/db.sqlite` 读取，不需要钩子。用户已不用 Cursor。
+
 路径不对就给命令加前缀 `BEADS_DIR=$HOME/tasks/.beads bd ...`。身份不对说明环境没继承，加 `BEADS_ACTOR=claude-code`。**身份决定看板上"谁在干什么"**，别用别人的身份写。
 
 ## 状态约定（用户定义的四个状态 → bd 字段）
