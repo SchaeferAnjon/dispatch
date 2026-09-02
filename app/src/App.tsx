@@ -7,12 +7,13 @@ import { AgentsView, Board, TableView } from "./components/views";
 import { PitfallsView } from "./components/Pitfalls";
 import { SessionsView } from "./components/Sessions";
 import { SkillsView } from "./components/Skills";
+import { InboxView, type InboxItems } from "./components/Inbox";
 import { agentsFrom, columnOf, isReviewed, projectOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { board: "看板", table: "表格", agents: "Agents", sessions: "会话记录", skills: "技能", pitfalls: "踩坑记录" };
-const VIEWS: View[] = ["board", "table", "agents", "sessions", "skills", "pitfalls"];
+const VIEW_LABEL: Record<View, string> = { inbox: "等你", board: "看板", table: "表格", agents: "Agents", sessions: "会话记录", skills: "技能", pitfalls: "踩坑记录" };
+const VIEWS: View[] = ["inbox", "board", "table", "agents", "sessions", "skills", "pitfalls"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 
 export default function App() {
@@ -124,12 +125,41 @@ export default function App() {
     }).sort((a, b) => a.priority - b.priority || b.updated_at.localeCompare(a.updated_at));
   }, [issues, filters, query, me]);
 
+  const inbox = useMemo<InboxItems>(() => ({
+    waiting: presence.sessions.filter((s) => s.alive && s.state === "idle" && s.registered).sort((a, b) => b.last_at - a.last_at),
+    review: issues.filter((i) => i.status === "closed" && !isReviewed(i)).sort((a, b) => (b.closed_at ?? b.updated_at).localeCompare(a.closed_at ?? a.updated_at)),
+    blocked: issues.filter((i) => i.status === "blocked"),
+  }), [issues, presence]);
+
   const counts = useMemo(() => ({
     total: issues.filter((i) => i.status !== "closed").length,
-    blocked: issues.filter((i) => i.status === "blocked").length,
-    review: issues.filter((i) => i.status === "closed" && !isReviewed(i)).length,
+    blocked: inbox.blocked.length,
+    review: inbox.review.length,
     agents: agents.filter((a) => a.online).length,
-  }), [issues, agents]);
+    inbox: inbox.waiting.length + inbox.review.length + inbox.blocked.length,
+  }), [issues, agents, inbox]);
+
+  // Notifications: only for things that newly entered the inbox after the first load.
+  const seen = useRef<{ ready: boolean; waiting: Set<string>; review: Set<string> }>({ ready: false, waiting: new Set(), review: new Set() });
+  useEffect(() => {
+    if (!api) return;
+    const s = seen.current;
+    const w = new Set(inbox.waiting.map((x) => x.session_id));
+    const r = new Set(inbox.review.map((x) => x.id));
+    if (s.ready) {
+      for (const x of inbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : "Claude Code"} 在等你`, `${x.herdr?.title || x.project || x.cwd}（${x.source_app}）`);
+      for (const x of inbox.review) if (!s.review.has(x.id)) api.notify("有任务待你审核", `${x.id} ${x.title}`);
+    }
+    s.waiting = w; s.review = r;
+    if (!s.ready && (presence.sessions.length > 0 || issues.length > 0)) s.ready = true;
+  }, [inbox, api, presence.sessions.length, issues.length]);
+
+  useEffect(() => {
+    if (!api) return;
+    const working = presence.sessions.filter((s) => s.alive && s.state === "working").length;
+    const parts = [working ? `${working} 在跑` : "", inbox.waiting.length ? `${inbox.waiting.length} 等你` : "", inbox.review.length ? `${inbox.review.length} 待审` : ""].filter(Boolean);
+    api.tray(parts.join(" · ") || "bd", `Dispatch · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
+  }, [api, presence, inbox, issues]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try { await fn(); say(label); await reload(); } catch (e) { say(String(e), true); }
@@ -194,6 +224,7 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
+            {view === "inbox" && <InboxView items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={(id) => api?.focusSession(id).then(say).catch((e) => say(String(e), true))} onReview={(id) => run("审核通过", () => api!.labels(id, ["reviewed"], []))} />}
             {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} />}
             {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} />}

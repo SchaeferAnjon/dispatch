@@ -10,6 +10,9 @@
     "opener:default",
     "core:window:allow-start-dragging",
     "core:window:allow-toggle-maximize",
-    "clipboard-manager:allow-write-text"
+    "clipboard-manager:allow-write-text",
+    "notification:default",
+    "core:tray:default",
+    "core:menu:default"
   ]
 }

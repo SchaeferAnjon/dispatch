@@ -30,6 +30,8 @@ export interface Api {
   remember(key: string, value: string): Promise<void>;
   forget(key: string): Promise<void>;
   copy(text: string): Promise<void>;
+  notify(title: string, body: string): Promise<void>;
+  tray(title: string, tooltip: string): Promise<void>;
   onChange(cb: () => void): Promise<() => void>;
 }
 
@@ -92,6 +94,13 @@ async function tauriApi(): Promise<Api> {
         await copyFallback(text);
       }
     },
+    notify: async (title, body) => {
+      const n = await import("@tauri-apps/plugin-notification");
+      let ok = await n.isPermissionGranted();
+      if (!ok) ok = (await n.requestPermission()) === "granted";
+      if (ok) n.sendNotification({ title, body });
+    },
+    tray: async (title, tooltip) => void (await invoke("tray_update", { title, tooltip })),
     onChange: async (cb) => listen("beads-changed", () => cb()),
   };
 }

@@ -99,6 +99,8 @@ export function fixtureApi(): Api {
     remember: async (key, value) => { const i = memories.findIndex((m) => m.key === key); if (i >= 0) memories[i] = { key, value }; else memories.push({ key, value }); notify(); },
     forget: async (key) => { memories = memories.filter((m) => m.key !== key); notify(); },
     copy: async (text) => { await navigator.clipboard.writeText(text); },
+    notify: async (title, body) => { console.log("[notify]", title, body); },
+    tray: async () => {},
     onChange: async (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
   };
 }

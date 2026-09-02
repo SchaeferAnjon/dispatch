@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 // Embedded Dolt is single-writer with a file lock; serialize our own calls so they
 // never contend with each other (only with external agents).
@@ -502,21 +502,62 @@ fn start_watcher(app: AppHandle) {
     });
 }
 
+// ---------- menu bar item: "2 在跑 · 1 等你" ----------
+
+#[tauri::command]
+fn tray_update(app: AppHandle, title: String, tooltip: String) -> Result<(), String> {
+    if let Some(tray) = app.tray_by_id("main") {
+        let t = if title.is_empty() { None } else { Some(title) };
+        tray.set_title(t).map_err(|e| e.to_string())?;
+        tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::TrayIconBuilder;
+    let show = MenuItem::with_id(app, "show", "打开 Dispatch", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+    TrayIconBuilder::with_id("main")
+        .icon(app.default_window_icon().cloned().expect("app icon"))
+        .icon_as_template(true)
+        .title("bd")
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, ev| match ev.id().as_ref() {
+            "show" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             start_watcher(app.handle().clone());
             start_indexer();
+            build_tray(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
-            skills_list, skill_toggle, skill_read, skill_write, skill_open
+            skills_list, skill_toggle, skill_read, skill_write, skill_open, tray_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

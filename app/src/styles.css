@@ -219,6 +219,17 @@ pre.diff .ln.add{background:var(--s-done-bg);color:var(--s-done)}
 pre.diff .ln.del{background:var(--s-block-bg);color:var(--s-block)}
 pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .task-links{display:flex;flex-wrap:wrap;gap:6px}
+.inbox{padding:14px 16px;display:flex;flex-direction:column;gap:18px;max-width:900px}
+.inbox section{display:flex;flex-direction:column;gap:6px}
+.inbox h4{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);font-weight:500;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+.inbox h4 .n{font-family:var(--mono);color:var(--ink);background:var(--panel-2);border-radius:999px;padding:0 7px}
+.inbox h4 .muted{text-transform:none;letter-spacing:0;font-weight:400}
+.ib-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:var(--win);box-shadow:var(--card-shadow)}
+.ib-row[role=button]{cursor:pointer}
+.ib-row[role=button]:hover{border-color:var(--line-2)}
+.ib-main{flex:1;min-width:0}
+.ib-main .t{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav a .badge{margin-left:auto;font-family:var(--mono);font-size:11px;color:#fff;background:var(--s-block);border-radius:999px;padding:0 6px}
 .sk-wrap{display:grid;grid-template-columns:360px minmax(0,1fr);height:100%;min-height:0}
 .sk-side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
 .sk-item{text-align:left;padding:8px 10px;border-radius:8px;display:flex;flex-direction:column;gap:3px;border:1px solid transparent}

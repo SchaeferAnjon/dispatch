@@ -9,7 +9,7 @@ interface Props {
   info: Info | null;
   view: View;
   setView: (v: View) => void;
-  counts: { total: number; blocked: number; review: number; agents: number };
+  counts: { total: number; blocked: number; review: number; agents: number; inbox: number };
   projects: { name: string; count: number }[];
   agents: AgentPresence[];
   filters: Filters;
@@ -33,6 +33,9 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       </div>
       <nav className="nav">
         <div className="h">视图</div>
+        <a className={view === "inbox" ? "on" : ""} onClick={() => { setView("inbox"); setFilters({ ...filters, blocked: false, review: false }); }}>
+          <span className="ic">◎</span>等你{counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>}
+        </a>
         {nav("board", "▦", "看板", counts.total)}
         {nav("table", "☰", "表格")}
         {nav("agents", "◉", "Agents", counts.agents)}
