@@ -174,3 +174,33 @@
 - `app/src/components/Pitfalls.tsx`（新）、`Detail.tsx`、`views.tsx`、`Sidebar.tsx`、`App.tsx`、`api.ts`、`types.ts`、`derive.ts`、`fixtures.ts`、`styles.css`
 - `~/.cc-switch/skills/task-board/SKILL.md` — 踩坑 + 恢复会话约定
 - `~/tasks/.beads` — 5 条 pit-* memory
+
+---
+
+## 2026-09-02 · v0.4 — git 化、Agent 专用 CLI、会话浏览、技能管理、收件箱、ZCode、Markdown
+
+用户定调：**这软件是给 Agent 用的，用户主要查看**；先 `git init`，之后一功能一 commit。
+
+### What I did（按 commit）
+1. `chore` 快照 v0.3，`.gitignore`。
+2. `feat(cli)` **`dispatch` 命令**（`app/cli/dispatch.py` → `~/.local/bin/dispatch`）：`sessions`（在场登记 + ps + Herdr `agent list` 匹配）、`find <task>` / `resume` / `focus`、`skills list|show|path|open|enable|disable`（技能池 `~/.cc-switch/skills`，Claude 挂 `~/.claude/skills`，Codex 挂 `~/.codex/skills` ∪ `~/.agents/skills`，软链；同步 cc-switch.db 标志）、`pit add|list|show`。skill 与 presence.py 移入仓库（`agent/skills/task-board`、`app/cli/presence.py`），原位置改软链。
+3. `feat` **会话记录视图**：`dispatch index/list/session` 增量索引 `~/.claude/projects/**.jsonl`（标题 ai-title、entrypoint、分支、轮数、工具计数、最后一次 `--claim`、子 Agent 树 `<sid>/subagents/*.meta.json`）和 `~/.codex/sessions/**.jsonl`；`session` 解析时间线 + Edit/Write 改动。App 侧 Rust 删掉自带索引器和 `bd_run`，全部委托 CLI。前端：列表 + 详情（时间线 / 改动 diff（LCS）/ 任务），复制恢复命令、切 Herdr。
+4. `feat` **技能视图**：池 + 每 Agent 挂载开关 + 打开/在线编辑 SKILL.md（写前留 .bak）。
+5. `feat` **等你（收件箱）**：等回复的会话 + 待审任务 + 阻塞任务；macOS 通知（首屏静默）；菜单栏状态项（用户菜单栏已满，被挤到屏幕外 X=-4571，缩短为 "2跑 1等"）。
+6. `feat` **Markdown**（marked + DOMPurify，链接走系统浏览器）用于 SKILL.md（frontmatter 表头）、任务描述、留言、会话时间线、坑。
+7. `feat` 活动流叠加 `interactions.jsonl` 拿到操作者；任务详情显示相关的坑；Agents 视图会话行显示标题和"正在做 task-x"；人类别名合并；删 24h 统计和"只看我的"。
+8. `feat` **ZCode**（`/Applications/ZCode.app`，OpenCode 系，会话在 `~/.zcode/cli/db/db.sqlite`：session/message/part，parent_id = 子会话）作为一等 Agent，替换 Cursor：索引、详情、在场（30 分钟内有更新算在线，90 秒内算在跑）。无恢复 CLI。
+9. `feat` **打开会话**：Herdr 标签 + 激活宿主终端（Ghostty）；ZCode `zcode://workspace/open?path=`；Claude 桌面端 `claude://code/continue?session=`；Codex 桌面端激活 ChatGPT。只打 `.app` 不打 dmg（dmg 步骤会弹 Finder 窗口）。
+
+### Bugs / surprises
+- 用 python 脚本重写 lib.rs 时区间切多了，把 memories/session 命令一并删掉 → 编译报 `__cmd__xxx` 宏找不到。教训：改 Rust 用 Edit 精确替换。
+- Codex 桌面端 rollout 没有 `event_msg user_message`，轮数用 `"role":"user"` 的 input_text 计数。
+- `core:window:default` 不含 start-dragging（前一轮）；`screencapture -l` 要选最高的那个窗口号（Tauri 有多个同名窗口）。
+- 用户菜单栏满了，状态项在屏幕外，只能缩短文字。
+- 首次 `dispatch index` 扫 720MB 约 13–15s，之后增量。
+
+### Files touched
+- `app/cli/{dispatch.py,presence.py}`、`agent/skills/task-board/SKILL.md`
+- `app/src-tauri/{src/lib.rs,Cargo.toml,capabilities/default.json,tauri.conf.json}`
+- `app/src/{App.tsx,api.ts,types.ts,derive.ts,diff.ts,fixtures.ts,styles.css}`、`app/src/components/{Sessions,Skills,Inbox,Markdown,Detail,views,Sidebar,Pitfalls}.tsx`
+- `~/.local/bin/dispatch`、`~/.cc-switch/skills/task-board`、`~/tasks/.dispatch/presence.py` — 软链到仓库
