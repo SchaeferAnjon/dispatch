@@ -45,7 +45,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
           <div className="views" style={{ marginTop: 6 }}>
-            {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
+            {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["zcode", "ZCode"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
             <span className="spacer" /><span className="muted mono small">{items.length}</span>
           </div>
         </div>
@@ -80,7 +80,8 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
                 {l?.herdr && <button className="btn sm" onClick={() => focus(m.session_id)} title={`Herdr ${l.herdr.tab_id}`}>切到 Herdr 标签</button>}
-                <button className="btn primary sm" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>{l ? "已在跑 · 复制恢复命令" : "复制恢复命令"}</button>
+                {m.agent === "zcode" ? <button className="btn primary sm" onClick={() => copy(m.resume_cmd)} title="ZCode 没有命令行恢复；在 ZCode 里按标题找这个会话">打开 ZCode</button>
+                  : <button className="btn primary sm" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>{l ? "已在跑 · 复制恢复命令" : "复制恢复命令"}</button>}
               </div>
               <div className="sess-meta kv">
                 <b>开始</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>

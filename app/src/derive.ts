@@ -10,15 +10,17 @@ export function durSince(epochSec: number): string {
   return `${Math.floor(h / 24)} 天`;
 }
 
-export type AgentKind = "claude" | "codex" | "cursor" | "human";
+export type AgentKind = "claude" | "codex" | "zcode" | "cursor" | "human";
 export interface Actor { id: string; name: string; kind: AgentKind; glyph: string }
 
 const KNOWN: Record<string, Omit<Actor, "id">> = {
   "claude-code": { name: "Claude Code", kind: "claude", glyph: "C" },
   claude: { name: "Claude Code", kind: "claude", glyph: "C" },
   codex: { name: "Codex", kind: "codex", glyph: "X" },
+  zcode: { name: "ZCode", kind: "zcode", glyph: "Z" },
   cursor: { name: "Cursor", kind: "cursor", glyph: "U" },
 };
+export const DEFAULT_AGENTS = ["claude-code", "codex", "zcode"];
 
 // Old records carry the git user.name; treat every human alias as "me" so the
 // board shows one person, not one per spelling.
@@ -107,7 +109,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     if (!map.has(a.id)) map.set(a.id, { actor: a, online: false, current: [], sessions: [], bySource: [] });
     return map.get(a.id)!;
   };
-  ["claude-code", "codex", "cursor", me].forEach(ensure);
+  [...DEFAULT_AGENTS, me].forEach(ensure);
   for (const i of issues) {
     const seen = new Set<string>();
     for (const raw of [i.assignee, i.created_by]) {
@@ -140,10 +142,10 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     p.sessions.sort((a, b) => Number(b.state === "working") - Number(a.state === "working") || b.last_at - a.last_at);
     const recentWrite = !!p.lastActive && Date.now() - new Date(p.lastActive).getTime() < ONLINE_WINDOW_MIN * 60_000;
     // A live process is the truth; bd write recency only covers agents without hooks.
-    p.online = p.sessions.length > 0 || (p.actor.kind === "human" ? false : recentWrite && p.actor.kind === "cursor");
+    p.online = p.sessions.length > 0 || (p.actor.kind !== "human" && p.sessions.length === 0 && recentWrite && p.actor.kind === "cursor");
     p.current.sort((a, b) => a.priority - b.priority);
   }
-  const order: Record<AgentKind, number> = { claude: 0, codex: 1, human: 2, cursor: 3 };
+  const order: Record<AgentKind, number> = { claude: 0, codex: 1, zcode: 2, human: 3, cursor: 4 };
   return [...map.values()].sort((a, b) => Number(b.online) - Number(a.online) || order[a.actor.kind] - order[b.actor.kind]);
 }
 

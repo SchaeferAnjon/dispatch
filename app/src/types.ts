@@ -97,6 +97,7 @@ export interface Session {
   alive: boolean;
   registered: boolean;
   herdr?: { pane_id: string; tab_id: string; title: string; status: string; focused: boolean };
+  title?: string;
 }
 export interface Presence { sessions: Session[]; apps: string[] }
 

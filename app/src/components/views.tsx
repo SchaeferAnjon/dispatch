@@ -116,7 +116,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, refs }: { age
           {!isHuman && (
             <div className="sessions">
               <div className="src-row">
-                {a.bySource.length === 0 && <span className="muted">没有检测到会话{a.actor.kind === "cursor" ? "（Cursor 未接入钩子）" : ""}</span>}
+                {a.bySource.length === 0 && <span className="muted">没有检测到会话{a.actor.kind === "zcode" ? "（ZCode 没开，或 30 分钟内没有会话活动）" : ""}</span>}
                 {a.bySource.map((b) => (
                   <span key={b.label} className={`chip src ${b.kind}`} title={SOURCE_LABEL[b.kind]}>
                     <span className="ic">{SOURCE_ICON[b.kind]}</span>{SOURCE_LABEL[b.kind]}{b.label && b.label !== SOURCE_LABEL[b.kind] ? ` · ${b.label}` : ""} <b>{b.count}</b>{b.working ? <span className="pulse" title="在跑" /> : null}

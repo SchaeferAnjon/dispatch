@@ -22,11 +22,11 @@ export function InboxView({ items, me, onSelect, onResume, onFocus, onReview }: 
               <div key={s.session_id} className="ib-row">
                 <Avatar actor={a} />
                 <div className="ib-main">
-                  <div className="t">{s.herdr?.title || s.project || s.cwd || s.session_id}</div>
+                  <div className="t">{s.herdr?.title || s.title || s.project || s.cwd || s.session_id}</div>
                   <div className="muted small">{a?.name} · {s.source_app}{s.project ? ` · ${s.project}` : ""} · 等了 {durSince(s.last_at)}{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
                 </div>
                 {s.herdr && <button className="btn sm" onClick={() => onFocus(s.session_id)}>切过去</button>}
-                {s.registered && !s.session_id.startsWith("pid-") && <button className="copy-btn" onClick={() => onResume(s.agent, s.session_id, s.cwd)}>恢复命令</button>}
+                {s.registered && !s.session_id.startsWith("pid-") && s.agent !== "zcode" && <button className="copy-btn" onClick={() => onResume(s.agent, s.session_id, s.cwd)}>恢复命令</button>}
               </div>
             );
           })}
