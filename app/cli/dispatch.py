@@ -21,7 +21,13 @@ SESS_DIR = os.path.join(DISPATCH_DIR, "sessions")
 INDEX_FILE = os.path.join(DISPATCH_DIR, "transcript-index.json")
 BEADS_DIR = os.environ.get("BEADS_DIR", os.path.join(HOME, "tasks", ".beads"))
 POOL = os.path.join(HOME, ".cc-switch", "skills")
-AGENT_SKILL_DIRS = {"claude": os.path.join(HOME, ".claude", "skills"), "codex": os.path.join(HOME, ".agents", "skills")}
+# Where each agent looks for skills. The first dir is where `enable` creates the
+# symlink; the rest are also scanned (Codex reads both its own dir and the
+# cross-agent ~/.agents/skills).
+AGENT_SKILL_DIRS = {
+    "claude": [os.path.join(HOME, ".claude", "skills")],
+    "codex": [os.path.join(HOME, ".codex", "skills"), os.path.join(HOME, ".agents", "skills")],
+}
 CC_SWITCH_DB = os.path.join(HOME, ".cc-switch", "cc-switch.db")
 HERDR = os.path.join(HOME, ".local", "bin", "herdr")
 PATH_EXTRA = "/opt/homebrew/bin:/usr/local/bin:" + os.path.join(HOME, ".local", "bin")
@@ -477,13 +483,15 @@ def read_frontmatter(skill_dir):
 
 
 def mounted(agent):
-    d = AGENT_SKILL_DIRS[agent]
+    """name -> (mount path, real path) for every skill an agent can see."""
     res = {}
-    if os.path.isdir(d):
+    for d in AGENT_SKILL_DIRS[agent]:
+        if not os.path.isdir(d):
+            continue
         for n in os.listdir(d):
             p = os.path.join(d, n)
-            if os.path.isdir(p):
-                res[n] = os.path.realpath(p)
+            if os.path.isdir(p) and not n.startswith(".") and n not in res:
+                res[n] = (p, os.path.realpath(p))
     return res
 
 
@@ -495,12 +503,12 @@ def all_skills():
                 names[n] = os.path.join(POOL, n)
     m = {ag: mounted(ag) for ag in AGENT_SKILL_DIRS}
     for ag in m:
-        for n, real in m[ag].items():
+        for n, (_, real) in m[ag].items():
             names.setdefault(n, real)
     rows = []
     for n, path in sorted(names.items()):
         fm = read_frontmatter(path)
-        rows.append({"name": n, "path": path, "in_pool": path.startswith(POOL), "description": fm.get("description", ""), "agents": {ag: n in m[ag] for ag in m}})
+        rows.append({"name": n, "path": path, "in_pool": path.startswith(POOL), "description": fm.get("description", ""), "agents": {ag: n in m[ag] for ag in m}, "mounts": {ag: (m[ag][n][0] if n in m[ag] else None) for ag in m}})
     return rows
 
 
@@ -549,24 +557,25 @@ def cmd_skills(a):
     elif a.op in ("enable", "disable"):
         agents = list(AGENT_SKILL_DIRS) if a.agent in (None, "all") else [a.agent]
         for ag in agents:
-            d = AGENT_SKILL_DIRS[ag]
-            os.makedirs(d, exist_ok=True)
-            link = os.path.join(d, a.name)
+            existing = mounted(ag).get(a.name)
             if a.op == "enable":
-                if os.path.lexists(link):
-                    print(f"{ag}: 已经挂着")
+                if existing:
+                    print(f"{ag}: 已经挂着（{existing[0]}）")
                 else:
+                    d = AGENT_SKILL_DIRS[ag][0]
+                    os.makedirs(d, exist_ok=True)
+                    link = os.path.join(d, a.name)
                     os.symlink(r["path"], link)
                     print(f"{ag}: 已挂载 {link} -> {r['path']}")
                 cc_switch_flag(a.name, ag, True)
             else:
-                if os.path.islink(link):
-                    os.remove(link)
-                    print(f"{ag}: 已卸载（本体仍在 {r['path']}）")
-                elif os.path.isdir(link):
-                    print(f"{ag}: {link} 是真目录不是软链，不敢删。先把它移进技能池 {POOL} 再用软链。")
-                else:
+                if not existing:
                     print(f"{ag}: 本来就没挂")
+                elif os.path.islink(existing[0]):
+                    os.remove(existing[0])
+                    print(f"{ag}: 已卸载（本体仍在 {r['path']}）")
+                else:
+                    print(f"{ag}: {existing[0]} 是真目录不是软链，不敢删。先把它移进技能池 {POOL} 再用软链。")
                 cc_switch_flag(a.name, ag, False)
         print("提示：Claude Code / Codex 重启会话后生效")
 

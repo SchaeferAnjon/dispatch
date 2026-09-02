@@ -3,6 +3,7 @@ import type { Api } from "../api";
 import { actorOf, durSince, eventsFrom, fmtTime, isReviewed, parseAcceptance, projectOf, relTime, serializeAcceptance, statusLabel } from "../derive";
 import type { Comment, HistoryEntry, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
+import { Markdown } from "./Markdown";
 
 interface Props { id: string; api: Api; me: string; initial: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
 
@@ -134,7 +135,8 @@ export function Detail({ id, api, me, initial, stamp, live, onClose, onSelect, o
         <div className="sec">
           <h4>描述</h4>
           {editDesc === null ? (
-            <p className={issue.description ? "" : "empty-p"} onClick={() => setEditDesc(issue.description ?? "")} title="点击编辑">{issue.description || "还没写描述——下一个接手的 Agent 会不知道为什么做这件事。"}</p>
+            issue.description ? <div className="md-edit" onDoubleClick={() => setEditDesc(issue.description ?? "")} title="双击编辑"><Markdown src={issue.description} className="compact" /></div>
+              : <p className="empty-p" onClick={() => setEditDesc("")} title="点击编辑">还没写描述——下一个接手的 Agent 会不知道为什么做这件事。</p>
           ) : (
             <textarea className="edit" value={editDesc} autoFocus onChange={(e) => setEditDesc(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") setEditDesc(null); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.target as HTMLTextAreaElement).blur(); }}
@@ -188,7 +190,7 @@ export function Detail({ id, api, me, initial, stamp, live, onClose, onSelect, o
                   {a ? <Avatar actor={a} /> : <span className="av" style={{ background: "var(--line-2)", color: "var(--ink-2)" }}>·</span>}
                   <div>
                     <div className="l1"><b>{a?.name ?? "系统"}</b><span className="muted">{ev.kind === "comment" ? "留言" : ev.text}</span><span className="ts" title={fmtTime(ev.ts)}>{relTime(ev.ts)}</span></div>
-                    {ev.kind === "comment" ? <div className="note">{ev.text}</div> : ev.cmd ? <span className="cmd">{ev.cmd}</span> : null}
+                    {ev.kind === "comment" ? <div className="note"><Markdown src={ev.text} className="compact" /></div> : ev.cmd ? <span className="cmd">{ev.cmd}</span> : null}
                   </div>
                 </div>
               );

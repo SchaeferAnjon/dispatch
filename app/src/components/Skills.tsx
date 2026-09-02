@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import type { Skill } from "../types";
+import { Markdown, splitFrontmatter } from "./Markdown";
 
 interface Props { api: Api; onDone: (m: string) => void; onError: (m: string) => void }
 
@@ -91,15 +92,22 @@ export function SkillsView({ api, onDone, onError }: Props) {
                   <input type="checkbox" checked={!!cur.agents[a.id]} disabled={busy} onChange={() => toggle(cur, a.id)} />
                   <span className={`av ${a.cls}`}>{a.id === "claude" ? "C" : "X"}</span>
                   <span>{a.label} {cur.agents[a.id] ? "可用" : "未挂载"}</span>
-                  <span className="muted small mono">{a.id === "claude" ? "~/.claude/skills" : "~/.agents/skills"}</span>
+                  <span className="muted small mono">{(cur.mounts?.[a.id] ?? (a.id === "claude" ? "~/.claude/skills" : "~/.codex/skills")).replace(/^\/Users\/[^/]+/, "~")}</span>
                 </label>
               ))}
               <span className="muted small">挂载 = 软链到 Agent 的技能目录；新会话生效。卸载只删软链，本体不动。</span>
             </div>
             <div className="sess-body">
-              {draft === null ? (
-                <pre className="skill-md sel-text">{content || "读取中…"}</pre>
-              ) : (
+              {draft === null ? (() => {
+                if (!content) return <div className="empty">读取中…</div>;
+                const { meta, body } = splitFrontmatter(content);
+                return (
+                  <>
+                    {meta.length > 0 && <div className="fm">{meta.map(([k, v]) => <><b key={k + "k"}>{k}</b><span key={k + "v"}>{v}</span></>)}</div>}
+                    <Markdown src={body} />
+                  </>
+                );
+              })() : (
                 <textarea className="skill-edit" value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false}
                   onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); } if (e.key === "Escape") setDraft(null); }} />
               )}

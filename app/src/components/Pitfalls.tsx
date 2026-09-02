@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import { composePitfall, parsePitfall, projectColor, slugify, type Pitfall } from "../derive";
 import type { Memory } from "../types";
+import { Markdown } from "./Markdown";
 
 interface Props { api: Api; projects: string[]; version: number; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
 
@@ -56,11 +57,11 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
             </div>
             {p.isPit ? (
               <>
-                <div className="pit-row"><span className="lbl trap">坑</span><div className="sel-text">{p.trap}</div></div>
-                {p.fix && <div className="pit-row"><span className="lbl fix">解法</span><div className="sel-text">{p.fix}</div></div>}
+                <div className="pit-row"><span className="lbl trap">坑</span><Markdown src={p.trap} className="compact" /></div>
+                {p.fix && <div className="pit-row"><span className="lbl fix">解法</span><Markdown src={p.fix} className="compact" /></div>}
               </>
             ) : (
-              <div className="pit-row"><span className="lbl">记忆</span><div className="sel-text">{p.raw}</div></div>
+              <div className="pit-row"><span className="lbl">记忆</span><Markdown src={p.raw} className="compact" /></div>
             )}
           </div>
         ))}

@@ -4,6 +4,7 @@ import { actorOf, durSince, fmtTime, projectColor, relTime } from "../derive";
 import { lineDiff, withContext } from "../diff";
 import type { Session, SessionDetail, SessionRef } from "../types";
 import { Avatar } from "./ui";
+import { Markdown } from "./Markdown";
 
 interface Props { api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null }
 
@@ -100,7 +101,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                     {x.role === "gap" ? <div className="muted">{x.text}</div> : (
                       <>
                         <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : a?.name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
-                        {x.text && <div className="tl-t sel-text">{x.text}</div>}
+                        {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text">{x.text}</div>)}
                         {x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
                       </>
                     )}
