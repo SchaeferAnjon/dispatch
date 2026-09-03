@@ -8,9 +8,9 @@ import { Avatar, Pri, ProjectTag } from "./ui";
 function untilText(epoch: number | null): string {
   if (!epoch) return "";
   const m = Math.max(0, Math.round((epoch * 1000 - Date.now()) / 60_000));
-  if (m < 60) return `${m} 分钟后重置`;
+  if (m < 60) return `${m}m 后重置`;
   const h = Math.floor(m / 60);
-  return h < 48 ? `${h} 小时 ${m % 60} 分后重置` : `${Math.round(h / 24)} 天后重置`;
+  return h < 48 ? `${h}h${String(m % 60).padStart(2, "0")} 后重置` : `${Math.round(h / 24)}d 后重置`;
 }
 
 function QuotaBar({ w }: { w: { label: string; used_percent: number | null; resets_at: number | null } }) {
