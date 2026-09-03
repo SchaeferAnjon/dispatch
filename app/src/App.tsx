@@ -11,7 +11,7 @@ import { RulesView } from "./components/Rules";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { HomeView } from "./components/Home";
 import { GraphView } from "./components/Graph";
-import { agentsFrom, columnOf, isReviewed, projectOf } from "./derive";
+import { agentsFrom, columnOf, isReviewed, projectOf, rootsOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
@@ -106,6 +106,16 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Lineage roots (which thread each task belongs to), refreshed with the issue list.
+  const [roots, setRoots] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    api.graph().then((g) => { if (alive) setRoots(rootsOf(g.edges)); }).catch(() => {});
+    return () => { alive = false; };
+  }, [api, version]);
+  const rootIssue = useCallback((id: string): Issue | undefined => { const r = roots.get(id); return r ? issues.find((i) => i.id === r) : undefined; }, [roots, issues]);
 
   const agents = useMemo(() => agentsFrom(issues, me, presence.sessions), [issues, me, presence]);
   const liveSessions = presence.sessions.filter((s) => s.alive).length;
@@ -252,8 +262,8 @@ export default function App() {
             {view === "home" && api && <HomeView api={api} issues={issues} agents={agents} refs={refs} me={me} counts={{ working: presence.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={setView} onFocus={focusSession} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} onReview={(id) => run("审核通过", () => api!.labels(id, ["reviewed"], []))} />}
-            {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} onMove={move} onAdd={() => setCreating(true)} />}
-            {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} />}
+            {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
+            {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refs} />}
             {view === "sessions" && api && <SessionsView api={api} me={me} live={presence.sessions} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null} />}
             {view === "skills" && api && <SkillsView api={api} onDone={say} onError={(m) => say(m, true)} />}
@@ -262,7 +272,7 @@ export default function App() {
           </section>
         </main>
         {selected && api && (
-          <Detail id={selected} api={api} me={me} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
+          <Detail id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
         )}
       </div>
 

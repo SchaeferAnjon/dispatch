@@ -4,9 +4,9 @@ import { COLUMNS, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAc
 import type { Column, Issue, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 
-interface Common { issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string }
+interface Common { issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
 
-export function Card({ issue, selected, onSelect, me, draggable, onDragStart, onDragEnd }: { issue: Issue; selected: boolean; onSelect: (id: string) => void; me: string } & Pick<React.HTMLAttributes<HTMLElement>, "draggable" | "onDragStart" | "onDragEnd">) {
+export function Card({ issue, selected, onSelect, me, root, draggable, onDragStart, onDragEnd }: { issue: Issue; selected: boolean; onSelect: (id: string) => void; me: string; root?: Issue } & Pick<React.HTMLAttributes<HTMLElement>, "draggable" | "onDragStart" | "onDragEnd">) {
   const who = actorOf(issue.assignee, me);
   const ac = parseAcceptance(issue.acceptance_criteria);
   const done = ac.filter((a) => a.done).length;
@@ -14,6 +14,7 @@ export function Card({ issue, selected, onSelect, me, draggable, onDragStart, on
   return (
     <div className={`card${selected ? " sel" : ""}${blocked ? " blocked" : ""}`} onClick={() => onSelect(issue.id)} draggable={draggable} onDragStart={onDragStart} onDragEnd={onDragEnd} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(issue.id)}>
       <div className="t">{issue.title}</div>
+      {root && <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={`这条线的根任务：${root.title}`}>↑ 源自 <span className="mono">{root.id}</span> {root.title}</button>}
       <div className="meta">
         <Pri p={issue.priority} />
         <ProjectTag name={projectOf(issue)} />
@@ -36,7 +37,7 @@ export function Card({ issue, selected, onSelect, me, draggable, onDragStart, on
   );
 }
 
-export function Board({ issues, selected, onSelect, me, onMove, onAdd }: Common & { onMove: (id: string, to: Column) => void; onAdd: (col: Column) => void }) {
+export function Board({ issues, selected, onSelect, me, rootOf, onMove, onAdd }: Common & { onMove: (id: string, to: Column) => void; onAdd: (col: Column) => void }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<Column | null>(null);
   return (
@@ -55,7 +56,7 @@ export function Board({ issues, selected, onSelect, me, onMove, onAdd }: Common 
             </div>
             <div className="cards">
               {list.map((i) => (
-                <Card key={i.id} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} draggable
+                <Card key={i.id} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable
                   onDragStart={(e) => { setDragId(i.id); e.dataTransfer.effectAllowed = "move"; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
                   onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); setDragId(null); setOver(null); }} />
               ))}
@@ -67,19 +68,21 @@ export function Board({ issues, selected, onSelect, me, onMove, onAdd }: Common 
   );
 }
 
-export function TableView({ issues, selected, onSelect, me }: Common) {
+export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
   if (issues.length === 0) return <div className="empty">没有符合条件的任务</div>;
   return (
     <div className="tw">
       <table>
-        <thead><tr><th>ID</th><th>任务</th><th>状态</th><th>负责</th><th>优先</th><th>项目</th><th>依赖</th><th>更新</th></tr></thead>
+        <thead><tr><th>ID</th><th>任务</th><th>源自</th><th>状态</th><th>负责</th><th>优先</th><th>项目</th><th>依赖</th><th>更新</th></tr></thead>
         <tbody>
           {issues.map((i) => {
             const who = actorOf(i.assignee, me);
+            const root = rootOf?.(i.id);
             return (
               <tr key={i.id} className={selected === i.id ? "sel" : ""} onClick={() => onSelect(i.id)}>
                 <td className="mono">{i.id}</td>
                 <td className="t">{i.title}</td>
+                <td>{root ? <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={root.title}><span className="mono">{root.id}</span></button> : <span className="muted">—</span>}</td>
                 <td><StatusPill issue={i} sm /></td>
                 <td>{who ? <span className="who-i"><Avatar actor={who} />{who.name}</span> : <span className="muted">未认领</span>}</td>
                 <td className="mono">P{i.priority}</td>

@@ -206,6 +206,30 @@ export function slugify(s: string): string {
   return ascii || Math.random().toString(36).slice(2, 8);
 }
 
+// Root of the thread a task sits on: follow lineage edges (discovered-from,
+// parent-child) upstream until nothing else points at it. `blocks` is ordering,
+// not lineage, so it is ignored.
+export function rootsOf(edges: { from: string; to: string; type: string }[]): Map<string, string> {
+  const up = new Map<string, string[]>();
+  for (const e of edges) {
+    if (e.type === "blocks" || e.type === "related" || e.type === "relates_to") continue;
+    (up.get(e.to) ?? up.set(e.to, []).get(e.to)!).push(e.from);
+  }
+  const memo = new Map<string, string>();
+  const root = (id: string, seen: Set<string>): string => {
+    if (memo.has(id)) return memo.get(id)!;
+    const parents = (up.get(id) ?? []).filter((p) => !seen.has(p));
+    if (parents.length === 0) return id;
+    seen.add(id);
+    const r = root(parents[0], seen);
+    memo.set(id, r);
+    return r;
+  };
+  const out = new Map<string, string>();
+  for (const id of up.keys()) { const r = root(id, new Set()); if (r !== id) out.set(id, r); }
+  return out;
+}
+
 export interface AcItem { done: boolean; text: string }
 export function parseAcceptance(s?: string): AcItem[] {
   if (!s) return [];

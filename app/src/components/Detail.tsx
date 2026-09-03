@@ -5,11 +5,11 @@ import type { Comment, HistoryEntry, Issue, Session, SessionRef } from "../types
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
 
-interface Props { id: string; api: Api; me: string; initial: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
+interface Props { id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
 
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
-export function Detail({ id, api, me, initial, stamp, live, onClose, onSelect, onError, onDone }: Props) {
+export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
   const [issue, setIssue] = useState<Issue | null>(initial);
   const [comments, setComments] = useState<Comment[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -121,6 +121,7 @@ export function Detail({ id, api, me, initial, stamp, live, onClose, onSelect, o
           </span>
           <span className="k">类型</span><span className="v">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>
           <span className="k">项目</span><span className="v"><ProjectTag name={projectOf(issue)} /></span>
+          {root && (<><span className="k">源自</span><span className="v"><span className="link" onClick={() => onSelect(root.id)} title={root.title}>{root.id}</span><span className="muted" style={{ fontSize: 12 }}>{root.title}</span></span></>)}
           {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && l !== "reviewed").length > 0 && (<><span className="k">标签</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && l !== "reviewed").join(" · ")}</span></>)}
           {(issue.dependencies ?? []).length > 0 && (<><span className="k">依赖</span><span className="v">{issue.dependencies!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}{d.status === "closed" ? " ✓" : ""}</span>)}</span></>)}
           {(issue.dependents ?? []).length > 0 && (<><span className="k">被依赖</span><span className="v">{issue.dependents!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}</span>)}</span></>)}
