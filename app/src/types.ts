@@ -1,6 +1,6 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "inbox" | "board" | "table" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
+export type View = "home" | "inbox" | "board" | "table" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
 export interface RuleTarget { agent: string; path: string; state: "synced" | "stale" | "absent" | "missing"; mode: "import" | "inline" }
 export interface RulesStatus { hash: string; source: string; targets: RuleTarget[] }
 

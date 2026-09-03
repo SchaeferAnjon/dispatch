@@ -27,7 +27,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
   const taskView = view === "board" || view === "table";
   return (
     <aside className="side">
-      <div className="ws">
+      <div className={`ws link${view === "home" ? " on" : ""}`} onClick={() => go("home")} role="button" tabIndex={0} title="总览">
         <div className="glyph">bd</div>
         <div style={{ minWidth: 0 }}>
           <div className="name">全局板</div>
@@ -37,6 +37,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
 
       <nav className="nav">
         <div className="h">任务</div>
+        {item("home", "⌂", "总览")}
         {item("inbox", "◎", "等你", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
         <a className={taskView ? "on" : ""} onClick={() => go(view === "table" ? "table" : "board")}>
           <span className="ic">▦</span>全部任务<span className="n">{counts.total}</span>

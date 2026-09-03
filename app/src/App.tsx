@@ -9,12 +9,13 @@ import { SessionsView } from "./components/Sessions";
 import { SkillsView } from "./components/Skills";
 import { RulesView } from "./components/Rules";
 import { InboxView, type InboxItems } from "./components/Inbox";
+import { HomeView } from "./components/Home";
 import { agentsFrom, columnOf, isReviewed, projectOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { inbox: "等你", board: "全部任务", table: "全部任务", agents: "Agents", sessions: "会话", skills: "技能", rules: "规则", pitfalls: "踩坑" };
-const VIEWS: View[] = ["inbox", "board", "table", "agents", "sessions", "skills", "rules", "pitfalls"];
+const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", agents: "Agents", sessions: "会话", skills: "技能", rules: "规则", pitfalls: "踩坑" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "agents", "sessions", "skills", "rules", "pitfalls"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 
 export default function App() {
@@ -24,7 +25,7 @@ export default function App() {
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; err?: boolean } | null>(null);
-  const [view, setView] = useState<View>("board");
+  const [view, setView] = useState<View>("home");
   const [selected, setSelected] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>({ project: null, mine: false, urgent: false, agent: null, blocked: false, review: false });
   const [query, setQuery] = useState("");
@@ -212,7 +213,7 @@ export default function App() {
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
-          <b>全局板</b><span className="sep">›</span><span>{VIEW_LABEL[view]}</span>
+          <b className="link" onClick={() => setView("home")}>全局板</b><span className="sep">›</span><span>{VIEW_LABEL[view]}</span>
           {filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
           <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && " · 浏览器预览"}</span>
         </div>
@@ -247,6 +248,7 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
+            {view === "home" && api && <HomeView api={api} issues={issues} agents={agents} refs={refs} me={me} counts={{ working: presence.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={setView} onFocus={focusSession} />}
             {view === "inbox" && <InboxView items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} onReview={(id) => run("审核通过", () => api!.labels(id, ["reviewed"], []))} />}
             {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} />}
