@@ -897,6 +897,29 @@ def cmd_done(a):
     out({"closed": a.task, "next": created}, a.json, lambda o: print(msg))
 
 
+# ---------------------------------------------------------------- lineage graph (tasks as a thread)
+
+def cmd_graph(a):
+    """Nodes = every task, edges = bd dependencies. bd's dot output is the one call
+    that carries edge *types*; direction is normalised to upstream → downstream
+    (a task points at the ones it spawned / unblocks)."""
+    code, o, err = sh(["bd", "list", "--all", "-n", "0", "--json"])
+    if code != 0:
+        print(err.strip(), file=sys.stderr)
+        sys.exit(code)
+    issues = json.loads(o[o.find("["):])
+    code, dot, err = sh(["bd", "list", "--all", "-n", "0", "--format", "dot"])
+    edges = []
+    for m in re.finditer(r'"([a-z]+-[a-z0-9]+)"\s*->\s*"([a-z]+-[a-z0-9]+)"\s*\[([^\]]*)\]', dot):
+        src, dst, attrs = m.group(1), m.group(2), m.group(3)
+        lm = re.search(r'label="([^"]*)"', attrs)
+        typ = lm.group(1) if lm else "blocks"
+        # "A -> B" in bd's dot means A depends on B (A was discovered from B / A is blocked by B)
+        edges.append({"from": dst, "to": src, "type": typ})
+    nodes = [{k: i.get(k) for k in ("id", "title", "status", "priority", "issue_type", "assignee", "created_at", "updated_at", "closed_at", "labels", "acceptance_criteria")} for i in issues]
+    out({"nodes": nodes, "edges": edges}, a.json, lambda g: [print(f"{e['from']} → {e['to']}  ({e['type']})") for e in g["edges"]] and print(f"{len(g['nodes'])} 个任务，{len(g['edges'])} 条边"))
+
+
 # ---------------------------------------------------------------- quota (usage limits per agent)
 
 QUOTA_DIR = os.path.join(DISPATCH_DIR, "quota")
@@ -1172,6 +1195,7 @@ def main():
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
+    s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)

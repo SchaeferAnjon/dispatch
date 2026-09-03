@@ -10,12 +10,13 @@ import { SkillsView } from "./components/Skills";
 import { RulesView } from "./components/Rules";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { HomeView } from "./components/Home";
+import { GraphView } from "./components/Graph";
 import { agentsFrom, columnOf, isReviewed, projectOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", agents: "Agents", sessions: "会话", skills: "技能", rules: "规则", pitfalls: "踩坑" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "agents", "sessions", "skills", "rules", "pitfalls"];
+const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", agents: "Agents", sessions: "会话", skills: "技能", rules: "规则", pitfalls: "踩坑" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "agents", "sessions", "skills", "rules", "pitfalls"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 
 export default function App() {
@@ -249,6 +250,7 @@ export default function App() {
           {err && <div className="err">{err}</div>}
           <section className="view">
             {view === "home" && api && <HomeView api={api} issues={issues} agents={agents} refs={refs} me={me} counts={{ working: presence.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={setView} onFocus={focusSession} />}
+            {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} onReview={(id) => run("审核通过", () => api!.labels(id, ["reviewed"], []))} />}
             {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} />}

@@ -13,6 +13,7 @@
     "test:py": "python3 -m unittest discover -s cli -p \"test_*.py\""
   },
   "dependencies": {
+    "@dagrejs/dagre": "^1.1.8",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.3",
     "@tauri-apps/plugin-notification": "^2.4.0",

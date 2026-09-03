@@ -96,6 +96,11 @@ export function fixtureApi(): Api {
     skillRead: async (name) => `---\nname: ${name}\ndescription: ${skills.find((x) => x.name === name)?.description ?? ""}\n---\n\n# ${name}\n\n（浏览器预览：示例内容）\n`,
     skillWrite: async (name) => `/pool/${name}/SKILL.md`,
     skillOpen: async () => {},
+    graph: async () => ({ nodes: issues.map((i) => ({ ...i })), edges: [
+      { from: "task-9lo", to: "task-4mk", type: "discovered-from" }, { from: "task-9lo", to: "task-e1q", type: "discovered-from" },
+      { from: "task-4mk", to: "task-m3r", type: "discovered-from" }, { from: "task-e1q", to: "task-m3r", type: "discovered-from" },
+      { from: "task-bzz", to: "task-ss0", type: "blocks" }, { from: "task-a1c", to: "task-9lo", type: "discovered-from" },
+    ] }),
     quota: async () => [
       { agent: "claude-code", plan: "Max", windows: [{ label: "5 小时", used_percent: 9, resets_at: now / 1000 + 9900 }, { label: "每周", used_percent: 5, resets_at: now / 1000 + 46500 }], updated_at: now / 1000 - 60, source: "statusline", note: "" },
       { agent: "codex", plan: "plus", windows: [{ label: "5 小时", used_percent: 0, resets_at: now / 1000 + 4000 }, { label: "每周", used_percent: 21, resets_at: now / 1000 + 400000 }], updated_at: now / 1000 - 3600, source: "rollout", note: "" },

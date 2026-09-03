@@ -1,6 +1,8 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "home" | "inbox" | "board" | "table" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
+export type View = "home" | "inbox" | "board" | "table" | "graph" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
+export interface GraphEdge { from: string; to: string; type: string }
+export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }
 export interface QuotaWindow { used_percent: number | null; resets_at: number | null; label: string }
 export interface Quota { agent: string; plan: string; windows: QuotaWindow[]; updated_at: number | null; source: string; note: string }
 export interface RuleTarget { agent: string; path: string; state: "synced" | "stale" | "absent" | "missing"; mode: "import" | "inline" }
