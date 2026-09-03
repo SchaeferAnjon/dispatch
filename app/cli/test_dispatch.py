@@ -61,6 +61,56 @@ class SessionDetailClaude(unittest.TestCase):
         os.unlink(f.name)
 
 
+class RulesSync(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.rules = os.path.join(self.tmp, "GLOBAL.md")
+        with open(self.rules, "w") as f:
+            f.write("# rules\n- fish, not bash\n")
+        self._orig = (dispatch.RULES_FILE, dict(dispatch.RULE_TARGETS))
+        dispatch.RULES_FILE = self.rules
+        dispatch.RULE_TARGETS = {
+            "claude": {"path": os.path.join(self.tmp, "CLAUDE.md"), "mode": "import"},
+            "codex": {"path": os.path.join(self.tmp, "AGENTS.md"), "mode": "inline"},
+        }
+        with open(dispatch.RULE_TARGETS["claude"]["path"], "w") as f:
+            f.write("# claude only\n")
+
+    def tearDown(self):
+        dispatch.RULES_FILE, dispatch.RULE_TARGETS = self._orig
+
+    def _sync(self, force=False):
+        import io, contextlib
+        a = type("A", (), {"op": "sync", "force": force, "json": True})()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            dispatch.cmd_rules(a)
+        return json.loads(buf.getvalue())
+
+    def test_sync_creates_appends_and_is_idempotent(self):
+        r = self._sync()
+        self.assertEqual({x["agent"]: x["action"] for x in r["results"]}, {"claude": "appended", "codex": "created"})
+        claude = open(dispatch.RULE_TARGETS["claude"]["path"]).read()
+        self.assertTrue(claude.startswith("# claude only\n"))
+        self.assertIn("@" + self.rules, claude)  # import, not a copy
+        codex = open(dispatch.RULE_TARGETS["codex"]["path"]).read()
+        self.assertIn("- fish, not bash", codex)  # inlined
+        r2 = self._sync()
+        self.assertTrue(all(x["action"] == "unchanged" for x in r2["results"]))
+
+    def test_edit_marks_stale_and_updates_in_place(self):
+        self._sync()
+        with open(self.rules, "a") as f:
+            f.write("- new rule\n")
+        h = dispatch.rules_hash(dispatch.rules_text())
+        self.assertEqual(dispatch.target_state("codex", h)[0], "stale")
+        r = self._sync()
+        self.assertEqual({x["agent"]: x["action"] for x in r["results"]}, {"claude": "updated", "codex": "updated"})
+        codex = open(dispatch.RULE_TARGETS["codex"]["path"]).read()
+        self.assertEqual(codex.count(dispatch.RULES_BEGIN), 1)
+        self.assertIn("- new rule", codex)
+
+
 class Frontmatter(unittest.TestCase):
     def test_reads_name_and_description(self):
         d = tempfile.mkdtemp()

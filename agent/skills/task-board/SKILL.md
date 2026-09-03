@@ -114,6 +114,7 @@ dispatch focus task-9lo           # 打开这个任务所在的会话：Herdr �
 dispatch skills list [-q 关键词] [--agent claude|codex]   # 技能池（~/.cc-switch/skills）+ 每个 Agent 挂没挂
 dispatch skills show <name> / path <name> / open <name>   # 看 SKILL.md / 路径 / 用默认编辑器打开
 dispatch skills enable <name> --agent claude|codex|all   # 挂载（软链）；disable 卸载（只删软链，本体不动）
+dispatch rules show|status|sync   # 这台电脑所有 Agent 的共同规则（来源 ~/Projects/kanban/agent/rules/GLOBAL.md）；改完 sync 写入 Claude/Codex/ZCode 的全局文件
 dispatch pit add "坑" --fix "解法" --project kanban --task task-9lo   # = bd remember，key 自动 pit-…
 dispatch pit list [关键词]        # 搜坑
 ```

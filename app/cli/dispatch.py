@@ -897,6 +897,107 @@ def cmd_done(a):
     out({"closed": a.task, "next": created}, a.json, lambda o: print(msg))
 
 
+# ---------------------------------------------------------------- global rules (one file → every agent)
+
+RULES_FILE = os.path.join(DISPATCH_DIR, "GLOBAL_RULES.md")
+RULES_BEGIN = "<!-- BEGIN DISPATCH GLOBAL RULES"
+RULES_END = "<!-- END DISPATCH GLOBAL RULES -->"
+# Where each agent reads machine-wide instructions. Claude Code can @import a
+# file; the others get the content inlined inside the managed block.
+RULE_TARGETS = {
+    "claude": {"path": os.path.join(HOME, ".claude", "CLAUDE.md"), "mode": "import"},
+    "codex": {"path": os.path.join(HOME, ".codex", "AGENTS.md"), "mode": "inline"},
+    "zcode": {"path": os.path.join(HOME, ".zcode", "AGENTS.md"), "mode": "inline"},
+}
+
+
+def rules_text():
+    try:
+        return open(RULES_FILE, encoding="utf-8").read()
+    except FileNotFoundError:
+        return ""
+
+
+def rules_hash(text):
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def render_block(agent, text, h):
+    mode = RULE_TARGETS[agent]["mode"]
+    if mode == "import":
+        body = f"@{RULES_FILE}\n"
+    else:
+        body = text.rstrip() + "\n"
+    return f"{RULES_BEGIN} hash:{h} source:{RULES_FILE} -->\n{body}{RULES_END}\n"
+
+
+def target_state(agent, h):
+    p = RULE_TARGETS[agent]["path"]
+    if not os.path.exists(p):
+        return "missing", p, ""
+    s = open(p, encoding="utf-8").read()
+    i = s.find(RULES_BEGIN)
+    if i < 0:
+        return "absent", p, s
+    m = re.search(r"hash:([0-9a-f]+)", s[i:i + 200])
+    return ("synced" if m and m.group(1) == h else "stale"), p, s
+
+
+def cmd_rules(a):
+    if a.op == "path":
+        print(RULES_FILE)
+        return
+    if a.op == "show":
+        print(rules_text() or f"（还没有规则文件：{RULES_FILE}）")
+        return
+    if a.op == "open":
+        subprocess.run(["open", RULES_FILE])
+        return
+    text = rules_text()
+    h = rules_hash(text)
+    if a.op == "status":
+        rows = []
+        for ag in RULE_TARGETS:
+            st, p, _ = target_state(ag, h)
+            rows.append({"agent": ag, "path": p, "state": st, "mode": RULE_TARGETS[ag]["mode"]})
+        out({"hash": h, "source": RULES_FILE, "targets": rows}, a.json, lambda o: [print(f"{r['agent']:<8} {r['state']:<8} {r['path']}") for r in o["targets"]])
+        return
+    if a.op == "sync":
+        if not text.strip():
+            print(f"规则文件为空：{RULES_FILE}", file=sys.stderr)
+            sys.exit(1)
+        results = []
+        for ag in RULE_TARGETS:
+            st, p, s = target_state(ag, h)
+            if st == "synced" and not a.force:
+                results.append({"agent": ag, "path": p, "action": "unchanged"})
+                continue
+            block = render_block(ag, text, h)
+            if st in ("missing", "absent"):
+                head = "" if st == "missing" else s.rstrip() + "\n\n"
+                new = head + block
+                action = "created" if st == "missing" else "appended"
+            else:
+                i = s.find(RULES_BEGIN)
+                j = s.find(RULES_END, i)
+                j = j + len(RULES_END) if j >= 0 else len(s)
+                if s[j:j + 1] == "\n":
+                    j += 1
+                new = s[:i] + block + s[j:]
+                action = "updated"
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            bak = p + ".bak"
+            if os.path.exists(p):
+                import shutil
+                shutil.copy2(p, bak)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(new)
+            results.append({"agent": ag, "path": p, "action": action})
+        out({"hash": h, "results": results}, a.json, lambda o: [print(f"{r['agent']:<8} {r['action']:<10} {r['path']}") for r in o["results"]] and print("新会话生效"))
+        return
+
+
 # ---------------------------------------------------------------- pitfalls
 
 def cmd_pit(a):
@@ -955,6 +1056,7 @@ def main():
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
+    s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     a = p.parse_args()
     if a.cmd == "skills" and a.op != "list" and not a.name:

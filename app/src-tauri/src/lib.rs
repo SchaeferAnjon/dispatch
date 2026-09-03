@@ -418,6 +418,46 @@ async fn skill_open(name: String) -> Result<String, String> {
     run_dispatch(args(&["skills", "open", &name])).await
 }
 
+// ---------- global rules: one markdown file synced into every agent ----------
+
+fn rules_path() -> Result<PathBuf, String> {
+    let p = run_dispatch_blocking(&args(&["rules", "path"]))?;
+    Ok(PathBuf::from(p.trim()))
+}
+
+#[tauri::command]
+async fn rules_read() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let p = rules_path()?;
+        Ok(std::fs::read_to_string(&p).unwrap_or_default())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn rules_write(content: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = rules_path()?;
+        let real = std::fs::canonicalize(&p).unwrap_or(p.clone());
+        let _ = std::fs::copy(&real, real.with_extension("md.bak"));
+        std::fs::write(&real, content).map_err(|e| e.to_string())?;
+        run_dispatch_blocking(&args(&["rules", "sync", "--json"]))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn rules_status() -> Result<String, String> {
+    run_dispatch(args(&["rules", "status", "--json"])).await
+}
+
+#[tauri::command]
+async fn rules_sync() -> Result<String, String> {
+    run_dispatch(args(&["rules", "sync", "--force", "--json"])).await
+}
+
 // ---------- memories (used as the shared pitfall log) ----------
 
 #[derive(Serialize)]
@@ -600,7 +640,8 @@ pub fn run() {
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_interactions, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
-            skills_list, skill_toggle, skill_read, skill_write, skill_open, tray_update
+            skills_list, skill_toggle, skill_read, skill_write, skill_open, tray_update,
+            rules_read, rules_write, rules_status, rules_sync
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

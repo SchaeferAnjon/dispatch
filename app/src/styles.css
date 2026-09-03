@@ -258,6 +258,12 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .ib-main{flex:1;min-width:0}
 .ib-main .t{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav a .badge{margin-left:auto;font-family:var(--mono);font-size:11px;color:#fff;background:var(--s-block);border-radius:999px;padding:0 6px}
+.rules-wrap{display:grid;grid-template-columns:300px minmax(0,1fr);height:100%;min-height:0}
+.rules-side{border-right:1px solid var(--line);background:var(--panel);padding:14px 12px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.rules-side h4{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:500;margin:0}
+.rule-target{border:1px solid var(--line);border-radius:8px;background:var(--win);padding:8px 10px;display:flex;flex-direction:column;gap:3px}
+.rule-target .l1{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rules-actions{display:flex;gap:6px}
 .sk-wrap{display:grid;grid-template-columns:360px minmax(0,1fr);height:100%;min-height:0}
 .sk-side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
 .sk-item{text-align:left;padding:8px 10px;border-radius:8px;display:flex;flex-direction:column;gap:3px;border:1px solid transparent}

@@ -96,6 +96,14 @@ export function fixtureApi(): Api {
     skillRead: async (name) => `---\nname: ${name}\ndescription: ${skills.find((x) => x.name === name)?.description ?? ""}\n---\n\n# ${name}\n\n（浏览器预览：示例内容）\n`,
     skillWrite: async (name) => `/pool/${name}/SKILL.md`,
     skillOpen: async () => {},
+    rulesRead: async () => rulesText,
+    rulesWrite: async (c) => { rulesText = c; },
+    rulesStatus: async () => ({ hash: "abc123", source: "~/Projects/kanban/agent/rules/GLOBAL.md", targets: [
+      { agent: "claude", path: "/Users/x/.claude/CLAUDE.md", state: "synced", mode: "import" },
+      { agent: "codex", path: "/Users/x/.codex/AGENTS.md", state: "stale", mode: "inline" },
+      { agent: "zcode", path: "/Users/x/.zcode/AGENTS.md", state: "missing", mode: "inline" },
+    ] }),
+    rulesSync: async () => {},
     memories: async () => memories.map((m) => ({ ...m })),
     remember: async (key, value) => { const i = memories.findIndex((m) => m.key === key); if (i >= 0) memories[i] = { key, value }; else memories.push({ key, value }); notify(); },
     forget: async (key) => { memories = memories.filter((m) => m.key !== key); notify(); },
@@ -119,6 +127,8 @@ const skills: import("./types").Skill[] = [
   { name: "academic-plotting", path: "/pool/academic-plotting", in_pool: true, description: "Publication-quality matplotlib figures.", agents: { claude: false, codex: true } },
   { name: "beads", path: "/Users/x/.agents/skills/beads", in_pool: false, description: "Use when working in a repository that uses bd or Beads.", agents: { claude: false, codex: true } },
 ];
+
+let rulesText = "# 这台电脑上所有 Agent 的共同规则\n\n## 0. Shell 环境\n\n- 默认 shell 是 **fish**。\n\n## 4. 过程记录\n\n- 开工前板上不会有任务……\n";
 
 let memories: { key: string; value: string }[] = [
   { key: "pit-launchctl-beads-actor", value: "【坑】launchctl setenv BEADS_ACTOR cursor 会让所有从 Dock 启动的 GUI（包括 Dispatch）以 Cursor 身份写库。【解法】GUI 应用各自用专属变量（Dispatch 用 DISPATCH_ACTOR）。#project:kanban #task:task-9lo" },

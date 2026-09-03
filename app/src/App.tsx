@@ -7,13 +7,14 @@ import { AgentsView, Board, TableView } from "./components/views";
 import { PitfallsView } from "./components/Pitfalls";
 import { SessionsView } from "./components/Sessions";
 import { SkillsView } from "./components/Skills";
+import { RulesView } from "./components/Rules";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { agentsFrom, columnOf, isReviewed, projectOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { inbox: "等你", board: "看板", table: "表格", agents: "Agents", sessions: "会话记录", skills: "技能", pitfalls: "踩坑记录" };
-const VIEWS: View[] = ["inbox", "board", "table", "agents", "sessions", "skills", "pitfalls"];
+const VIEW_LABEL: Record<View, string> = { inbox: "等你", board: "看板", table: "表格", agents: "Agents", sessions: "会话记录", skills: "技能", rules: "全局规则", pitfalls: "踩坑记录" };
+const VIEWS: View[] = ["inbox", "board", "table", "agents", "sessions", "skills", "rules", "pitfalls"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 
 export default function App() {
@@ -247,6 +248,7 @@ export default function App() {
             {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refs} />}
             {view === "sessions" && api && <SessionsView api={api} me={me} live={presence.sessions} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null} />}
             {view === "skills" && api && <SkillsView api={api} onDone={say} onError={(m) => say(m, true)} />}
+            {view === "rules" && api && <RulesView api={api} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
           </section>
         </main>

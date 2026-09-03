@@ -1,4 +1,4 @@
-import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, SessionDetail, SessionRef, Skill, UpdateFields } from "./types";
+import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, RulesStatus, SessionDetail, SessionRef, Skill, UpdateFields } from "./types";
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
@@ -28,6 +28,10 @@ export interface Api {
   skillRead(name: string): Promise<string>;
   skillWrite(name: string, content: string): Promise<string>;
   skillOpen(name: string): Promise<void>;
+  rulesRead(): Promise<string>;
+  rulesWrite(content: string): Promise<void>;
+  rulesStatus(): Promise<RulesStatus>;
+  rulesSync(): Promise<void>;
   memories(): Promise<Memory[]>;
   remember(key: string, value: string): Promise<void>;
   forget(key: string): Promise<void>;
@@ -86,6 +90,10 @@ async function tauriApi(): Promise<Api> {
     skillRead: (name) => call("skill_read", { name }),
     skillWrite: (name, content) => call("skill_write", { name, content }),
     skillOpen: async (name) => void (await call("skill_open", { name })),
+    rulesRead: () => call("rules_read"),
+    rulesWrite: async (content) => void (await call("rules_write", { content })),
+    rulesStatus: async () => parse<RulesStatus>(await call("rules_status"), { hash: "", source: "", targets: [] }),
+    rulesSync: async () => void (await call("rules_sync")),
     memories: () => invoke<Memory[]>("memories_list"),
     remember: async (key, value) => void (await call("memory_set", { key, value })),
     forget: async (key) => void (await call("memory_forget", { key })),
