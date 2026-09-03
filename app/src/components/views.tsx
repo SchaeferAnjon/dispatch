@@ -14,7 +14,7 @@ export function Card({ issue, selected, onSelect, me, root, draggable, onDragSta
   return (
     <div className={`card${selected ? " sel" : ""}${blocked ? " blocked" : ""}`} onClick={() => onSelect(issue.id)} draggable={draggable} onDragStart={onDragStart} onDragEnd={onDragEnd} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(issue.id)}>
       <div className="t">{issue.title}</div>
-      {root && <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={`这条线的根任务：${root.title}`}>↑ 源自 <span className="mono">{root.id}</span> {root.title}</button>}
+      {root && <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={`这条线的根任务：${root.title}`}><span className="rl-id">↑ 源自 <span className="mono">{root.id}</span></span><span className="rl-t">{root.title}</span></button>}
       <div className="meta">
         <Pri p={issue.priority} />
         <ProjectTag name={projectOf(issue)} />

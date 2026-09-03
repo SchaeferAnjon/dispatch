@@ -144,7 +144,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .pri.p0{color:var(--s-block);border-color:var(--s-block)}.pri.p1{color:var(--s-prog);border-color:var(--s-prog)}
 .tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
 .tag .proj{width:7px;height:7px}
-.root-link{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--accent-ink);background:var(--accent-soft);border-radius:5px;padding:1px 7px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.root-link{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--accent-ink);background:var(--accent-soft);border-radius:5px;padding:1px 7px;max-width:100%;text-align:left;min-width:0}
+.root-link .rl-id{flex:none;white-space:nowrap}
+.root-link .rl-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
 .root-link:hover{filter:brightness(.95)}
 .card .who{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:11.5px;color:var(--ink-2)}
 .card .who .av{width:16px;height:16px;font-size:8px}
