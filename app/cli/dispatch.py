@@ -899,7 +899,8 @@ def cmd_done(a):
 
 # ---------------------------------------------------------------- global rules (one file → every agent)
 
-RULES_FILE = os.path.join(DISPATCH_DIR, "GLOBAL_RULES.md")
+# Machine-wide rules live next to the cross-agent skills dir, not inside any one agent's home.
+RULES_FILE = os.path.join(HOME, ".agents", "rules", "GLOBAL.md")
 RULES_BEGIN = "<!-- BEGIN DISPATCH GLOBAL RULES"
 RULES_END = "<!-- END DISPATCH GLOBAL RULES -->"
 # Where each agent reads machine-wide instructions. Claude Code can @import a

@@ -37,7 +37,7 @@ export function RulesView({ api, onDone, onError }: Props) {
   return (
     <div className="rules-wrap">
       <div className="rules-side">
-        <h4>同步到</h4>
+        <h4>改一处，同步到</h4>
         {status?.targets.map((t) => {
           const st = STATE_LABEL[t.state] ?? { text: t.state, cls: "open" };
           return (
@@ -51,11 +51,14 @@ export function RulesView({ api, onDone, onError }: Props) {
         <div className="rules-actions">
           <button className={`btn sm${stale ? " primary" : ""}`} disabled={busy} onClick={sync}>{stale ? `同步（${stale} 个未更新）` : "重新同步"}</button>
         </div>
-        <p className="small muted">来源：<span className="mono">{status?.source?.replace(/^\/Users\/[^/]+/, "~") ?? "…"}</span><br />版本 <span className="mono">{status?.hash}</span><br />Agent 自己也能查：<span className="mono">dispatch rules show|status|sync</span></p>
+        <p className="small muted">Agent 自己也能查：<span className="mono">dispatch rules show|status|sync</span></p>
       </div>
       <div className="sess-main">
         <div className="sess-head">
-          <div style={{ minWidth: 0, flex: 1 }}><div className="ttl">全局规则</div><div className="sub">这台电脑上所有 Agent 都要遵守的规则，改一处，处处生效</div></div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="ttl">这台电脑上所有 Agent 的共同规则</div>
+            <div className="sub mono" title={status?.source}>{status?.source?.replace(/^\/Users\/[^/]+/, "~") ?? "…"}{status?.hash ? ` · 版本 ${status.hash}` : ""}</div>
+          </div>
           {draft === null ? <button className="btn primary sm" onClick={() => setDraft(content)}>在这里改</button> : (
             <>
               <button className="btn ghost sm" onClick={() => setDraft(null)}>放弃</button>

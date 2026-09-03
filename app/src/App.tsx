@@ -13,7 +13,7 @@ import { agentsFrom, columnOf, isReviewed, projectOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { inbox: "等你", board: "看板", table: "表格", agents: "Agents", sessions: "会话记录", skills: "技能", rules: "全局规则", pitfalls: "踩坑记录" };
+const VIEW_LABEL: Record<View, string> = { inbox: "等你", board: "全部任务", table: "全部任务", agents: "Agents", sessions: "会话", skills: "技能", rules: "规则", pitfalls: "踩坑" };
 const VIEWS: View[] = ["inbox", "board", "table", "agents", "sessions", "skills", "rules", "pitfalls"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 
@@ -228,13 +228,18 @@ export default function App() {
         <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} />
         <main className="main">
           <div className="toolbar">
-            <h2>{VIEW_LABEL[view]}</h2>
-            <div className="views">
-              {VIEWS.map((v) => <button key={v} className={view === v ? "on" : ""} onClick={() => setView(v)}>{VIEW_LABEL[v]}</button>)}
-            </div>
+            <h2>{VIEW_LABEL[view]}{BOARD_VIEWS.includes(view) && filters.project !== null && <span className="muted"> · {filters.project || "未分项目"}</span>}</h2>
+            {BOARD_VIEWS.includes(view) && (
+              <div className="views">
+                <button className={view === "board" ? "on" : ""} onClick={() => setView("board")}>看板</button>
+                <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>表格</button>
+              </div>
+            )}
             <span className="spacer" />
             {BOARD_VIEWS.includes(view) && (<>
-              <button className={`chip${filters.project === null && !filters.agent && !filters.blocked && !filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, project: null, agent: null, blocked: false, review: false })}>全部</button>
+              <button className={`chip${!filters.blocked && !filters.review && !filters.agent ? " on" : ""}`} onClick={() => setFilters({ ...filters, agent: null, blocked: false, review: false })}>全部</button>
+              <button className={`chip${filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>待审核 {counts.review}</button>
+              <button className={`chip${filters.blocked ? " on" : ""}`} onClick={() => setFilters({ ...filters, blocked: !filters.blocked, review: false })}>阻塞 {counts.blocked}</button>
               <button className={`chip${filters.urgent ? " on" : ""}`} onClick={() => setFilters({ ...filters, urgent: !filters.urgent })}>P0–P1</button>
               {filters.agent && <button className="chip on" onClick={() => setFilters({ ...filters, agent: null })}>{filters.agent} ✕</button>}
               <span className="muted mono" style={{ fontSize: 11 }}>{visible.length} 项</span>
