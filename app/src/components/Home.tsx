@@ -2,8 +2,29 @@ import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import type { AgentPresence } from "../derive";
 import { actorOf, durSince, parseAcceptance, projectOf, relTime, statusLabel } from "../derive";
-import type { Comment, Issue, Session, SessionRef, View } from "../types";
+import type { Comment, Issue, Quota, Session, SessionRef, View } from "../types";
 import { Avatar, Pri, ProjectTag } from "./ui";
+
+function untilText(epoch: number | null): string {
+  if (!epoch) return "";
+  const m = Math.max(0, Math.round((epoch * 1000 - Date.now()) / 60_000));
+  if (m < 60) return `${m} 分钟后重置`;
+  const h = Math.floor(m / 60);
+  return h < 48 ? `${h} 小时 ${m % 60} 分后重置` : `${Math.round(h / 24)} 天后重置`;
+}
+
+function QuotaBar({ w }: { w: { label: string; used_percent: number | null; resets_at: number | null } }) {
+  const p = w.used_percent ?? 0;
+  const cls = p >= 90 ? "crit" : p >= 70 ? "warn" : "";
+  return (
+    <div className={`quota ${cls}`} title={untilText(w.resets_at)}>
+      <span className="ql">{w.label}</span>
+      <span className="qbar"><i style={{ width: `${Math.min(100, p)}%` }} /></span>
+      <span className="qv mono">{w.used_percent === null ? "—" : `${Math.round(p)}%`}</span>
+      <span className="qr muted small">{untilText(w.resets_at)}</span>
+    </div>
+  );
+}
 
 interface Props {
   api: Api;
@@ -23,6 +44,17 @@ interface Lane { agent: AgentPresence; items: { issue: Issue; session?: Session;
 // one lane per agent, one row per task in progress, with the newest progress note.
 export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onView, onFocus }: Props) {
   const [lastNote, setLastNote] = useState<Record<string, Comment | undefined>>({});
+  const [quota, setQuota] = useState<Quota[]>([]);
+
+  // Usage limits per agent: Claude Code from its statusline feed, Codex from its
+  // rollout events; refreshed every minute.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => { try { const q = await api.quota(); if (alive) setQuota(q); } catch { /* keep last */ } };
+    tick();
+    const t = window.setInterval(tick, 60_000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [api]);
 
   const inProgress = useMemo(() => issues.filter((i) => i.status === "in_progress"), [issues]);
   const key = inProgress.map((i) => i.id + i.updated_at).join("|");
@@ -79,6 +111,16 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
                 <b>{a.actor.name}</b>
                 <span className="muted small">{a.sessions.length ? `${a.sessions.length} 个会话 · ${a.sessions.filter((s) => s.state === "working").length} 在跑` : a.online ? "在线" : "离线"}</span>
               </div>
+              {(() => {
+                const q = quota.find((x) => x.agent === a.actor.id);
+                if (!q || a.actor.kind === "human") return null;
+                return (
+                  <div className="quotas" title={q.updated_at ? `额度数据更新于 ${relTime(new Date(q.updated_at * 1000).toISOString())} 前 · 来源 ${q.source}` : q.note}>
+                    {q.windows.length ? q.windows.map((w) => <QuotaBar key={w.label} w={w} />) : <span className="muted small">{q.note || "没有额度数据"}</span>}
+                    {q.plan && <span className="plan muted small">{q.plan}</span>}
+                  </div>
+                );
+              })()}
               {items.length === 0 && <div className="lane-empty muted">没有认领任务{idleSessions.length ? "，但有会话开着" : ""}</div>}
               {items.map(({ issue: i, session: s, last }) => {
                 const ac = parseAcceptance(i.acceptance_criteria);

@@ -96,6 +96,11 @@ export function fixtureApi(): Api {
     skillRead: async (name) => `---\nname: ${name}\ndescription: ${skills.find((x) => x.name === name)?.description ?? ""}\n---\n\n# ${name}\n\n（浏览器预览：示例内容）\n`,
     skillWrite: async (name) => `/pool/${name}/SKILL.md`,
     skillOpen: async () => {},
+    quota: async () => [
+      { agent: "claude-code", plan: "Max", windows: [{ label: "5 小时", used_percent: 9, resets_at: now / 1000 + 9900 }, { label: "每周", used_percent: 5, resets_at: now / 1000 + 46500 }], updated_at: now / 1000 - 60, source: "statusline", note: "" },
+      { agent: "codex", plan: "plus", windows: [{ label: "5 小时", used_percent: 0, resets_at: now / 1000 + 4000 }, { label: "每周", used_percent: 21, resets_at: now / 1000 + 400000 }], updated_at: now / 1000 - 3600, source: "rollout", note: "" },
+      { agent: "zcode", plan: "GLM Coding", windows: [], updated_at: null, source: "", note: "ZCode 的凭证是加密的，额度只能在 ZCode 里看" },
+    ],
     rulesRead: async () => rulesText,
     rulesWrite: async (c) => { rulesText = c; },
     rulesStatus: async () => ({ hash: "abc123", source: "~/Projects/kanban/agent/rules/GLOBAL.md", targets: [

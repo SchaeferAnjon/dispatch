@@ -897,6 +897,121 @@ def cmd_done(a):
     out({"closed": a.task, "next": created}, a.json, lambda o: print(msg))
 
 
+# ---------------------------------------------------------------- quota (usage limits per agent)
+
+QUOTA_DIR = os.path.join(DISPATCH_DIR, "quota")
+
+
+def quota_claude():
+    """Claude Code feeds rate_limits to the statusline; statusline-tee.sh caches that JSON."""
+    p = os.path.join(QUOTA_DIR, "claude-code.json")
+    try:
+        st = os.stat(p)
+        d = json.load(open(p))
+    except Exception:
+        return {"agent": "claude-code", "plan": "", "windows": [], "updated_at": None, "source": "statusline", "note": "还没拿到数据：Claude Code 新会话开一句话后状态栏会写入"}
+    rl = d.get("rate_limits") or {}
+    wins = []
+    for key, label in (("five_hour", "5 小时"), ("seven_day", "每周")):
+        w = rl.get(key) or {}
+        if w:
+            wins.append({"label": label, "used_percent": w.get("used_percentage"), "resets_at": w.get("resets_at")})
+    plan = (d.get("model") or {}).get("display_name", "")
+    return {"agent": "claude-code", "plan": plan, "windows": wins, "updated_at": st.st_mtime, "source": "statusline", "note": "" if wins else "状态栏数据里没有 rate_limits（可能是 API key 计费而非订阅）"}
+
+
+def quota_codex():
+    """Codex writes a token_count event with rate_limits into each rollout; take the newest."""
+    best = None
+    files = sorted(glob.glob(os.path.join(HOME, ".codex", "sessions", "**", "*.jsonl"), recursive=True), key=os.path.getmtime, reverse=True)[:12]
+    for f in files:
+        try:
+            with open(f, "rb") as fh:
+                fh.seek(max(0, os.path.getsize(f) - 400_000))
+                tail = fh.read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        for line in reversed(tail.splitlines()):
+            if '"token_count"' not in line or '"rate_limits"' not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            rl = (d.get("payload") or {}).get("rate_limits")
+            if not rl:
+                continue
+            ts = d.get("timestamp", "")
+            if best is None or ts > best[0]:
+                best = (ts, rl)
+            break
+    if not best:
+        return {"agent": "codex", "plan": "", "windows": [], "updated_at": None, "source": "rollout", "note": "没有找到 Codex 的用量记录"}
+    ts, rl = best
+    wins = []
+    for key, label in (("primary", "5 小时"), ("secondary", "每周")):
+        w = rl.get(key) or {}
+        if w:
+            mins = w.get("window_minutes")
+            lab = label if not mins else ("5 小时" if mins <= 360 else "每周" if mins >= 10000 else f"{mins // 60} 小时")
+            wins.append({"label": lab, "used_percent": w.get("used_percent"), "resets_at": w.get("resets_at")})
+    try:
+        upd = time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+    except Exception:
+        upd = None
+    return {"agent": "codex", "plan": rl.get("plan_type") or "", "windows": wins, "updated_at": upd, "source": "rollout", "note": ""}
+
+
+def quota_zcode():
+    """ZCode's credentials are encrypted, so the API is off limits; scan its JSONL logs for the
+    last quota snapshot it fetched itself (usage-stats logger)."""
+    logs = sorted(glob.glob(os.path.join(HOME, ".zcode", "cli", "log", "zcode-*.jsonl")), reverse=True)[:2]
+    for lg in logs:
+        try:
+            with open(lg, "rb") as fh:
+                fh.seek(max(0, os.path.getsize(lg) - 2_000_000))
+                tail = fh.read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        for line in reversed(tail.splitlines()):
+            if "percentage" not in line and "TIME_LIMIT" not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            blob = json.dumps(d, ensure_ascii=False)
+            m = re.search(r'"percentage":\s*([0-9.]+)', blob)
+            if not m:
+                continue
+            pct = float(m.group(1))
+            mr = re.search(r'"nextResetTime":\s*([0-9]+)', blob)
+            reset = int(mr.group(1)) if mr else None
+            if reset and reset > 10**11:
+                reset //= 1000
+            ml = re.search(r'"level":\s*"([^"]+)"', blob)
+            ts = d.get("time") or d.get("timestamp") or d.get("ts")
+            upd = None
+            if isinstance(ts, (int, float)):
+                upd = ts / 1000 if ts > 10**11 else ts
+            return {"agent": "zcode", "plan": ("GLM Coding " + ml.group(1).capitalize()) if ml else "GLM Coding", "windows": [{"label": "当前周期", "used_percent": 100 - pct if pct <= 100 else None, "resets_at": reset}], "updated_at": upd, "source": "zcode log", "note": "ZCode 日志里的剩余比例换算"}
+    return {"agent": "zcode", "plan": "", "windows": [], "updated_at": None, "source": "", "note": "ZCode 的凭证是加密的，额度只能在 ZCode 里看（或它的日志里还没记录）"}
+
+
+def cmd_quota(a):
+    rows = [quota_claude(), quota_codex(), quota_zcode()]
+
+    def until(epoch):
+        m = int((epoch - time.time()) / 60)
+        return f"{m}m 后重置" if m < 60 else f"{m // 60}h{m % 60:02d} 后重置" if m < 2880 else f"{m // 1440}d 后重置"
+
+    def text(rows):
+        for r in rows:
+            parts = [f"{w['label']} {round(w['used_percent']) if w['used_percent'] is not None else '?'}%" + (f"（{until(w['resets_at'])}）" if w.get("resets_at") and w["resets_at"] > time.time() else "") for w in r["windows"]]
+            print(f"{r['agent']:<12} {r['plan']:<14} {' · '.join(parts) if parts else r['note']}" + (f"   [数据 {ago(r['updated_at'])} 前]" if r.get("updated_at") else ""))
+    out(rows, a.json, text)
+
+
 # ---------------------------------------------------------------- global rules (one file → every agent)
 
 # Machine-wide rules live next to the cross-agent skills dir, not inside any one agent's home.
@@ -1057,6 +1172,7 @@ def main():
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
+    s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     a = p.parse_args()

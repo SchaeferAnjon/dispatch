@@ -1,4 +1,4 @@
-import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, RulesStatus, SessionDetail, SessionRef, Skill, UpdateFields } from "./types";
+import type { Comment, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, UpdateFields } from "./types";
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
@@ -28,6 +28,7 @@ export interface Api {
   skillRead(name: string): Promise<string>;
   skillWrite(name: string, content: string): Promise<string>;
   skillOpen(name: string): Promise<void>;
+  quota(): Promise<Quota[]>;
   rulesRead(): Promise<string>;
   rulesWrite(content: string): Promise<void>;
   rulesStatus(): Promise<RulesStatus>;
@@ -90,6 +91,7 @@ async function tauriApi(): Promise<Api> {
     skillRead: (name) => call("skill_read", { name }),
     skillWrite: (name, content) => call("skill_write", { name, content }),
     skillOpen: async (name) => void (await call("skill_open", { name })),
+    quota: async () => parse<Quota[]>(await call("quota"), []),
     rulesRead: () => call("rules_read"),
     rulesWrite: async (content) => void (await call("rules_write", { content })),
     rulesStatus: async () => parse<RulesStatus>(await call("rules_status"), { hash: "", source: "", targets: [] }),

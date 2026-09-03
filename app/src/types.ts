@@ -1,6 +1,8 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
 export type View = "home" | "inbox" | "board" | "table" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
+export interface QuotaWindow { used_percent: number | null; resets_at: number | null; label: string }
+export interface Quota { agent: string; plan: string; windows: QuotaWindow[]; updated_at: number | null; source: string; note: string }
 export interface RuleTarget { agent: string; path: string; state: "synced" | "stale" | "absent" | "missing"; mode: "import" | "inline" }
 export interface RulesStatus { hash: string; source: string; targets: RuleTarget[] }
 
