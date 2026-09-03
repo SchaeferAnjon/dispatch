@@ -815,6 +815,88 @@ def cmd_skills(a):
         print("提示：Claude Code / Codex 重启会话后生效")
 
 
+# ---------------------------------------------------------------- task workflow (begin / log / done)
+
+def bd_json(argv):
+    code, o, err = sh(["bd"] + argv)
+    if code != 0:
+        print(err.strip() or o.strip(), file=sys.stderr)
+        sys.exit(code)
+    j = o[o.find("[") if o.find("[") >= 0 and (o.find("{") < 0 or o.find("[") < o.find("{")) else o.find("{"):]
+    try:
+        d = json.loads(j)
+        return d[0] if isinstance(d, list) and d else d
+    except Exception:
+        return {}
+
+
+def cmd_begin(a):
+    """Create + claim a task in one go: the first thing an Agent does once it knows what it is doing."""
+    labels = [f"project:{a.project}"] if a.project else []
+    argv = ["create", a.title, "-t", a.type, "-p", str(a.priority), "--json"]
+    if labels:
+        argv += ["-l", ",".join(labels)]
+    if a.desc:
+        argv += ["--description", a.desc]
+    if a.acceptance:
+        argv += ["--acceptance", a.acceptance]
+    if a.deps:
+        argv += ["--deps", a.deps]
+    issue = bd_json(argv)
+    tid = issue.get("id")
+    if not tid:
+        print("创建失败", file=sys.stderr)
+        sys.exit(1)
+    bd_json(["update", tid, "--claim", "--json"])
+    out({"id": tid, "title": a.title, "project": a.project}, a.json, lambda o: print(f"{tid} 已创建并认领。接下来在对话里提到 {tid}，进展用 `dispatch log {tid} \"…\"`，做完 `dispatch done {tid} --reason \"…\"`。"))
+
+
+def cmd_log(a):
+    """Progress note on a task — this is the process log, visible to everyone in Dispatch."""
+    text = a.text
+    if a.tick:
+        # flip matching acceptance items to [x]
+        issue = bd_json(["show", a.task, "--json"])
+        ac = issue.get("acceptance_criteria") or ""
+        lines = ac.splitlines()
+        hit = 0
+        for i, line in enumerate(lines):
+            if any(t.lower() in line.lower() for t in a.tick) and "[ ]" in line:
+                lines[i] = line.replace("[ ]", "[x]", 1)
+                hit += 1
+        if hit:
+            bd_json(["update", a.task, "--acceptance", "\n".join(lines), "--json"])
+            text = (text + " " if text else "") + f"（勾掉 {hit} 条验收项）"
+    if text:
+        code, o, err = sh(["bd", "comments", "add", a.task, text])
+        if code != 0:
+            print(err.strip(), file=sys.stderr)
+            sys.exit(code)
+    print(f"{a.task} 已记录")
+
+
+def cmd_done(a):
+    """Close a task with a reason; unverified work lands in 已完成·待审. Follow-ups become new tasks."""
+    reason = a.reason
+    if not a.verified:
+        reason = reason + "（未核验）" if "核验" not in reason else reason
+    bd_json(["close", a.task, "--reason", reason, "--json"])
+    created = []
+    issue = bd_json(["show", a.task, "--json"])
+    proj = next((l.split(":", 1)[1] for l in issue.get("labels", []) if l.startswith("project:")), "")
+    for nxt in a.next or []:
+        argv = ["create", nxt, "-t", "task", "-p", "2", "--deps", f"discovered-from:{a.task}", "--json"]
+        if proj:
+            argv += ["-l", f"project:{proj}"]
+        d = bd_json(argv)
+        if d.get("id"):
+            created.append(d["id"])
+    msg = f"{a.task} 已完成" + ("（已核验）" if a.verified else "，在「已完成 · 待审」等人验收")
+    if created:
+        msg += f"；后续任务：{', '.join(created)}"
+    out({"closed": a.task, "next": created}, a.json, lambda o: print(msg))
+
+
 # ---------------------------------------------------------------- pitfalls
 
 def cmd_pit(a):
@@ -870,6 +952,9 @@ def main():
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
+    s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
+    s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
+    s = sub.add_parser("done", help="close a task; --next creates follow-ups"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("pit", help="pitfall log"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     a = p.parse_args()
     if a.cmd == "skills" and a.op != "list" and not a.name:

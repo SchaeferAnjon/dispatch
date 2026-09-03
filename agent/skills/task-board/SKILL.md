@@ -41,16 +41,30 @@ bd update <id> --add-label project:poker-trainer  # 补上
 
 名字用仓库目录名（kanban、poker-trainer、dotfiles、"海德堡 2026SS"）。当前在哪个项目目录里工作就标哪个。
 
-## 核心流程
+## 核心流程（用户的真实习惯：先随口描述，任务由你来建）
+
+用户开工前**不会**先建任务。他在终端里描述一件事，你理清思路、确认自己要干什么之后，**自己**把它变成板上的任务，然后再动手。板上的留言就是过程记录（取代 process.md）。
 
 ```bash
-bd ready --json                         # 1. 找没有阻塞的可认领任务
-bd show <id> --json                     # 2. 看清描述、验收标准、依赖、评论再动手
-bd update <id> --claim --json           # 3. 原子认领（别的 Agent 同时抢不会撞车）
-bd comments add <id> "进展/决定/踩坑"    # 4. 关键信息留在任务上，Dispatch 活动流里能看到
-bd close <id> --reason="做了什么" --json # 5. 完成
-bd update <id> --add-label reviewed     # 6. 检查通过后（AI 或人）打 reviewed
+# 1. 明白要干什么了 → 建任务 + 认领（一条命令），然后在对话里提到这个 ID
+dispatch begin "标题" -P <项目> -d "背景 + 要做什么" -a "- [ ] 验收项一
+- [ ] 验收项二"
+#    如果板上已有相关任务（bd ready / bd list），改为认领它：bd update <id> --claim
+
+# 2. 过程中：进展、决定、踩坑 → 留在任务上（Dispatch 活动流可见，换会话也不丢）
+dispatch log <id> "做到哪了 / 决定了什么"
+dispatch log <id> --tick "验收项一"          # 勾掉做完的验收项
+dispatch pit add "坑" --fix "解法" -P <项目> --task <id>
+
+# 3. 收尾：写清做了什么、怎么验证的；没亲手核验就不要 --verified（会停在"已完成 · 待审"）
+dispatch done <id> --reason "做了什么；跑过哪些验证" [--verified] [--next "没做完的一件" "另一件"]
+
+# 手工等价（bd 原命令）
+bd ready --json / bd show <id> --json / bd update <id> --claim / bd comments add <id> "…" / bd close <id> --reason="…"
+bd update <id> --add-label reviewed     # 验收通过后（人或 AI）打 reviewed
 ```
+
+会话结束前检查：板上是否有你这次工作的任务；状态是否对（在跑 / 待审 / 已审）；没做完的有没有变成任务。
 
 创建任务**必须带描述和验收标准**，否则下一个接手的 Agent 不知道为什么做、做到什么程度算完：
 
