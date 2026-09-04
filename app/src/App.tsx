@@ -75,7 +75,7 @@ export default function App() {
         const inf = await a.info();
         setInfo(inf);
         if ((VIEWS as string[]).includes(inf.initial_view ?? "")) setView(inf.initial_view as View);
-        if (inf.initial_task) setSelected(inf.initial_task);
+        if (inf.initial_task && !inf.initial_task.startsWith("session:")) setSelected(inf.initial_task);
       } catch (e) { setErr(String(e)); }
       await reload(a);
       off = await a.onChange(() => reload(a));
