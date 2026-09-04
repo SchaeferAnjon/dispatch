@@ -93,7 +93,7 @@ export function FoldersView({ api, me, issues, onOpenSession, onSelectTask, onDo
                           <span className="mono muted small">{s.first_ts ? fmtTime(s.first_ts) : ""} · {s.user_msgs} 轮{s.subagents.length ? ` · ${s.subagents.length} 子 Agent` : ""}</span>
                         </div>
                         {s.first_prompt && <div className="fp"><span className="lbl">你说</span><span className="sel-text">{s.first_prompt}</span></div>}
-                        <div className="l3 muted small">{s.last_at ? `最近 ${durSince(s.last_at)}前` : ""}{Object.keys(s.tasks).length ? ` · 提到 ${Object.keys(s.tasks).join(", ")}` : ""}<span className="spacer" /><span className="link">查看对话 →</span></div>
+                        <div className="l3 muted small"><span className="mention">{s.last_at ? `最近 ${durSince(s.last_at)}前` : ""}{Object.keys(s.tasks).length ? ` · 提到 ${Object.keys(s.tasks).slice(0, 6).join(", ")}${Object.keys(s.tasks).length > 6 ? ` 等 ${Object.keys(s.tasks).length} 个` : ""}` : ""}</span><span className="spacer" /><span className="link">查看对话 →</span></div>
                       </div>
                     ))}
                   </section>

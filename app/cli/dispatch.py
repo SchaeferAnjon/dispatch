@@ -360,8 +360,24 @@ def ref_of(path, e, task_id=None):
     return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode") else []}
 
 
+_KNOWN_IDS = None
+
+
+def known_task_ids():
+    """The regex also matches English like 'task-board'; keep only ids that exist on the board."""
+    global _KNOWN_IDS
+    if _KNOWN_IDS is None:
+        try:
+            code, o, _ = sh(["bd", "list", "--all", "-n", "0", "--json"], timeout=15)
+            _KNOWN_IDS = {i["id"] for i in json.loads(o[o.find("["):])} if code == 0 else set()
+        except Exception:
+            _KNOWN_IDS = set()
+    return _KNOWN_IDS
+
+
 def session_refs(idx, task_id=None, session_id=None):
     refs = []
+    known = known_task_ids()
     for path, e in idx.items():
         if not e.get("session_id") or e.get("subagent"):
             continue
@@ -369,6 +385,8 @@ def session_refs(idx, task_id=None, session_id=None):
             continue
         if session_id and not e["session_id"].startswith(session_id):
             continue
+        if known:
+            e = dict(e, tasks={k: v for k, v in e["tasks"].items() if k in known}, claims=[c for c in e.get("claims", []) if c in known])
         refs.append(ref_of(path, e, task_id))
     refs.sort(key=lambda r: -r["last_at"])
     return refs
