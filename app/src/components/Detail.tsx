@@ -67,7 +67,6 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
   const ac = parseAcceptance(issue.acceptance_criteria);
   const events = eventsFrom(history, comments, audit);
   const reviewed = isReviewed(issue);
-  const mine = issue.assignee === me;
   const proj = projectOf(issue);
   const related = pits.filter((p) => p.task === id || (proj && p.project === proj));
 
@@ -130,7 +129,6 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
         </div>
 
         <div className="actions">
-          {issue.status !== "closed" && !mine && <button className="btn sm" disabled={busy} title={`把负责人设成你本人（${me}），一般由 Agent 在会话里 dispatch begin 认领，这个按钮只在你要亲自做时用`} onClick={() => act("已记到你名下", () => api.claim(id))}>你来做</button>}
           {issue.status !== "closed" && !closing && <button className="btn sm" disabled={busy} onClick={() => setClosing(true)}>标记完成</button>}
           {issue.status === "closed" && !reviewed && <button className="btn primary sm" disabled={busy} onClick={() => act("审核通过", () => api.labels(id, ["reviewed"], []))}>✓ 审核通过</button>}
           {issue.status === "closed" && <button className="btn sm" disabled={busy} onClick={() => act("已重新打开", () => api.reopen(id))}>重新打开</button>}

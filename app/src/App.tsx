@@ -13,11 +13,12 @@ import { HomeView } from "./components/Home";
 import { GraphView } from "./components/Graph";
 import { FoldersView } from "./components/Folders";
 import { ProjectsView } from "./components/Projects";
+import { Tour, ViewIntro } from "./components/Guide";
 import { agentsFrom, columnOf, isReviewed, projectOf, rootsOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agents", sessions: "会话", skills: "技能", rules: "规则", pitfalls: "踩坑" };
+const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "聊天记录", skills: "技能", rules: "规则", pitfalls: "踩坑" };
 const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "skills", "rules", "pitfalls"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 
@@ -34,6 +35,8 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [sessionFocus, setSessionFocus] = useState<string | null>(null);
+  const [tour, setTour] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tour-done") !== "1"; } catch { return true; } });
+  const closeTour = () => { setTour(false); try { localStorage.setItem("dispatch-tour-done", "1"); } catch { /* ignore */ } };
   const openSession = (id: string) => { setSessionFocus(id); setView("sessions"); };
   const [version, setVersion] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -201,7 +204,8 @@ export default function App() {
     if (!i || columnOf(i) === to) return;
     const closed = i.status === "closed";
     if (to === "todo") return run("移到待办", async () => { if (closed) await api.reopen(id); else await api.setStatus(id, "open"); });
-    if (to === "prog") return run("认领并开始", async () => { if (closed) await api.reopen(id); await api.claim(id); });
+    // Moving to 进行中 only changes status; the person viewing never becomes the assignee.
+    if (to === "prog") return run("移到进行中", async () => { if (closed) await api.reopen(id); await api.setStatus(id, "in_progress"); });
     if (to === "done") return run("标记完成", async () => { if (closed) await api.labels(id, [], ["reviewed"]); else await api.close(id, "在 Dispatch 里拖到已完成"); });
     if (to === "reviewed") return run("审核通过", async () => { if (!closed) await api.close(id, "在 Dispatch 里拖到已审核"); await api.labels(id, ["reviewed"], []); });
   };
@@ -234,6 +238,7 @@ export default function App() {
         </div>
         <div className="tb-right">
           <label className="search">🔍<input ref={searchRef} placeholder="搜任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} /><kbd>⌘K</kbd></label>
+          <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
           <button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
           <button className="btn ghost" onClick={() => setView("agents")} title="在线 Agent / 会话数"><span className="pulse" />{counts.agents} 在线 · {liveSessions} 会话</button>
           <button className="btn primary" onClick={() => setCreating(true)}>＋ 新任务</button>
@@ -262,6 +267,7 @@ export default function App() {
             </>)}
           </div>
           {err && <div className="err">{err}</div>}
+          <ViewIntro view={view} />
           <section className="view">
             {view === "home" && api && <HomeView api={api} issues={issues} agents={agents} refs={refs} me={me} counts={{ working: presence.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={setView} onFocus={focusSession} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
@@ -282,6 +288,7 @@ export default function App() {
         )}
       </div>
 
+      {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
     </div>

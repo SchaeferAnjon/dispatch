@@ -497,6 +497,15 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .reason{display:flex;gap:6px;align-items:center;width:100%}
 .reason input{flex:1;border:1px solid var(--line-2);border-radius:6px;padding:4px 8px;background:var(--win)}
 
+.view-intro{display:flex;align-items:center;gap:12px;margin:0;padding:8px 16px;background:var(--accent-soft);color:var(--ink);font-size:12.5px;line-height:1.5;border-bottom:1px solid var(--line)}
+.view-intro span{flex:1;max-width:90ch}
+.view-intro .btn{flex:none}
+.dialog.tour{width:460px;gap:10px}
+.dialog.tour p{margin:0;color:var(--ink-2);line-height:1.6}
+.tour-dots{display:flex;gap:6px;justify-content:center;margin-top:4px}
+.tour-dots i{width:7px;height:7px;border-radius:50%;background:var(--line-2);cursor:pointer}
+.tour-dots i.on{background:var(--accent)}
+.nav .h[title]{cursor:help}
 .overlay{position:fixed;inset:0;background:rgba(20,18,15,.35);display:grid;place-items:center;z-index:50}
 .dialog{width:520px;max-width:92vw;background:var(--win);border:1px solid var(--line-2);border-radius:12px;box-shadow:var(--pop-shadow);padding:18px 20px;display:flex;flex-direction:column;gap:12px}
 .dialog h3{margin:0;font-size:15px;font-weight:600}

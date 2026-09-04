@@ -36,7 +36,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       </div>
 
       <nav className="nav">
-        <div className="h">任务</div>
+        <div className="h" title="任务是 Agent 自己建的；你只看">任务</div>
         {item("home", "⌂", "总览")}
         {item("inbox", "◎", "等你", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
         <a className={taskView ? "on" : ""} onClick={() => go(view === "table" ? "table" : "board")}>
@@ -53,9 +53,9 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       </nav>
 
       <nav className="nav">
-        <div className="h">Agent<span className="n">{agents.filter((a) => a.online).length}/{agents.length} 在线</span></div>
-        {item("agents", "◉", "Agents")}
-        {item("sessions", "◷", "会话")}
+        <div className="h" title="谁在干活、聊过什么">Agent 与聊天<span className="n">{agents.filter((a) => a.online).length}/{agents.length} 在线</span></div>
+        {item("sessions", "◷", "聊天记录")}
+        {item("agents", "◉", "Agent 状态")}
         <div className="agents sub">
           {agents.map((a) => (
             <button key={a.actor.id} className={`agent${a.online ? "" : " off"}`} onClick={() => { setView("table"); setFilters({ ...filters, agent: filters.agent === a.actor.id ? null : a.actor.id }); }} title={`按 ${a.actor.name} 筛选任务`}>
@@ -72,7 +72,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       </nav>
 
       <nav className="nav">
-        <div className="h">知识</div>
+        <div className="h" title="Agent 会什么、守什么规矩、踩过什么坑">知识</div>
         {item("skills", "✦", "技能")}
         {item("rules", "§", "规则")}
         {item("pitfalls", "⚠", "踩坑")}
