@@ -130,7 +130,7 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
 
         <div className="actions">
           {issue.status !== "closed" && !closing && <button className="btn sm" disabled={busy} onClick={() => setClosing(true)}>标记完成</button>}
-          {issue.status === "closed" && !reviewed && <button className="btn primary sm" disabled={busy} onClick={() => act("审核通过", () => api.labels(id, ["reviewed"], []))}>✓ 审核通过</button>}
+          {issue.status === "closed" && !reviewed && <button className="btn primary ok sm" disabled={busy} onClick={() => act("审核通过", () => api.labels(id, ["reviewed"], []))}>✓ 审核通过</button>}
           {issue.status === "closed" && <button className="btn sm" disabled={busy} onClick={() => act("已重新打开", () => api.reopen(id))}>重新打开</button>}
           {reviewed && <button className="btn ghost sm" disabled={busy} onClick={() => act("已撤销审核", () => api.labels(id, [], ["reviewed"]))}>撤销审核</button>}
           {closing && (

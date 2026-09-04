@@ -13,7 +13,7 @@ import { HomeView } from "./components/Home";
 import { GraphView } from "./components/Graph";
 import { FoldersView } from "./components/Folders";
 import { ProjectsView } from "./components/Projects";
-import { Tour, ViewIntro } from "./components/Guide";
+import { Tour } from "./components/Guide";
 import { agentsFrom, columnOf, isReviewed, projectOf, rootsOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
@@ -35,8 +35,9 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [sessionFocus, setSessionFocus] = useState<string | null>(null);
-  const [tour, setTour] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tour-done") !== "1"; } catch { return true; } });
-  const closeTour = () => { setTour(false); try { localStorage.setItem("dispatch-tour-done", "1"); } catch { /* ignore */ } };
+  // The tour never opens on its own; the design should carry itself. `?` still has it.
+  const [tour, setTour] = useState(false);
+  const closeTour = () => setTour(false);
   const openSession = (id: string) => { setSessionFocus(id); setView("sessions"); };
   const [version, setVersion] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -240,8 +241,8 @@ export default function App() {
           <label className="search">🔍<input ref={searchRef} placeholder="搜任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} /><kbd>⌘K</kbd></label>
           <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
           <button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
-          <button className="btn ghost" onClick={() => setView("agents")} title="在线 Agent / 会话数"><span className="pulse" />{counts.agents} 在线 · {liveSessions} 会话</button>
-          <button className="btn primary" onClick={() => setCreating(true)}>＋ 新任务</button>
+          <button className="btn ghost status" onClick={() => setView("agents")} title="查看 Agent 状态"><span className="pulse" />{counts.agents} 在线 · {liveSessions} 窗口 ›</button>
+          <button className="btn ghost" onClick={() => setCreating(true)} title="任务通常由 Agent 自己建；这里手动建一条">＋</button>
         </div>
       </div>
 
@@ -267,7 +268,6 @@ export default function App() {
             </>)}
           </div>
           {err && <div className="err">{err}</div>}
-          <ViewIntro view={view} />
           <section className="view">
             {view === "home" && api && <HomeView api={api} issues={issues} agents={agents} refs={refs} me={me} counts={{ working: presence.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={setView} onFocus={focusSession} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}

@@ -67,6 +67,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .btn.ghost{border-color:transparent;color:var(--ink-2)}
 .btn.ghost:hover{background:var(--panel-2);color:var(--ink)}
 .btn.danger{color:var(--s-block)}
+.btn.primary.ok{background:var(--s-done);border-color:var(--s-done)}
+.link-btn{color:var(--accent-ink);cursor:pointer;font-size:12.5px;margin-top:6px}
+.empty.big{font-size:15px;color:var(--ink);padding:48px 20px}
+.empty.big .muted{font-size:12.5px}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.sm{padding:2px 8px;font-size:12px}
 
@@ -82,11 +86,17 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .nav{display:flex;flex-direction:column;gap:1px}
 .nav .h{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:500;padding:0 8px 6px;display:flex;align-items:center}
 .nav .h .n{margin-left:auto;font-family:var(--mono);text-transform:none;letter-spacing:0}
-.nav a{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;color:var(--ink-2);text-decoration:none;cursor:pointer;white-space:nowrap}
+.nav a{display:flex;align-items:center;gap:9px;padding:5px 8px 5px 10px;border-radius:6px;color:var(--ink-2);text-decoration:none;cursor:pointer;white-space:nowrap;position:relative;transition:background .1s}
 .nav a:hover{background:var(--panel-2);color:var(--ink)}
-.nav a.on{background:var(--win);color:var(--ink);box-shadow:var(--card-shadow);font-weight:500}
+.nav a.on{background:var(--win);color:var(--ink);font-weight:500}
+.nav a.on::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:2px;background:var(--accent)}
+.nav a.on .ic{color:var(--accent)}
 .nav a .n{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
-.nav a .ic{width:14px;text-align:center;color:var(--ink-3)}
+.nav a .ic{width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-3)}
+.nav a.filter-row{color:var(--accent-ink);background:var(--accent-soft);font-size:12px;margin-top:2px}
+.nav a.filter-row:hover{filter:brightness(.97)}
+.titlebar .status{color:var(--ink-2)}
+.titlebar .status:hover{color:var(--accent-ink)}
 .proj{width:8px;height:8px;border-radius:2px;background:var(--ink-3);flex:none}
 .agents{display:flex;flex-direction:column;gap:2px}
 .agent{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:6px 8px;border-radius:7px;align-items:start;cursor:pointer;text-align:left}
@@ -497,6 +507,12 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .reason{display:flex;gap:6px;align-items:center;width:100%}
 .reason input{flex:1;border:1px solid var(--line-2);border-radius:6px;padding:4px 8px;background:var(--win)}
 
+/* Anything that opens something else says so on hover: lighter surface + a › on the right. */
+.opens{position:relative;cursor:pointer;transition:background .1s,border-color .1s,transform .12s}
+.opens::after{content:"›";position:absolute;right:10px;top:50%;transform:translateY(-55%);font-size:16px;color:var(--ink-3);opacity:0;transition:opacity .1s}
+.opens:hover::after{opacity:1}
+.opens:hover{border-color:var(--line-2)}
+.card.opens::after{top:14px;transform:none}
 .view-intro{display:flex;align-items:center;gap:12px;margin:0;padding:8px 16px;background:var(--accent-soft);color:var(--ink);font-size:12.5px;line-height:1.5;border-bottom:1px solid var(--line)}
 .view-intro span{flex:1;max-width:90ch}
 .view-intro .btn{flex:none}

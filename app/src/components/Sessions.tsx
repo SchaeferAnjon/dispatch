@@ -80,7 +80,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
                 {(l || m.agent === "zcode") && <button className="btn primary sm" onClick={() => focus(m.session_id)} title={l?.herdr ? `Herdr ${l.herdr.tab_id}` : l?.source_app ?? "ZCode"}>打开会话</button>}
-                {m.agent !== "zcode" && <button className={`btn sm${l ? "" : " primary"}`} onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
+                {m.agent !== "zcode" && <button className="btn sm" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
               </div>
               <div className="sess-meta kv">
                 <b>开始</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>

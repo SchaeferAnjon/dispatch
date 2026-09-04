@@ -12,7 +12,7 @@ export function InboxView({ items, me, onSelect, onResume, onFocus, onReview }: 
   const total = items.waiting.length + items.review.length + items.blocked.length;
   return (
     <div className="inbox">
-      {total === 0 && <div className="empty">没有在等你的东西。Agent 都在跑，或者都空着。</div>}
+      {total === 0 && <div className="empty big">✓ 没有在等你的事<br /><span className="muted">Agent 都在跑，或者都空着。</span></div>}
       {items.waiting.length > 0 && (
         <section>
           <h4>等你回复 <span className="n">{items.waiting.length}</span><span className="muted">Agent 答完了，光标停在输入框</span></h4>
@@ -38,7 +38,7 @@ export function InboxView({ items, me, onSelect, onResume, onFocus, onReview }: 
           {items.review.map((i) => {
             const a = actorOf(i.assignee, me);
             return (
-              <div key={i.id} className="ib-row" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
+              <div key={i.id} className="ib-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
                 <Avatar actor={a} />
                 <div className="ib-main">
                   <div className="t">{i.title}</div>
@@ -54,7 +54,7 @@ export function InboxView({ items, me, onSelect, onResume, onFocus, onReview }: 
         <section>
           <h4>被卡住 <span className="n">{items.blocked.length}</span><span className="muted">有未完成的依赖</span></h4>
           {items.blocked.map((i) => (
-            <div key={i.id} className="ib-row" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
+            <div key={i.id} className="ib-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
               <span className="st sm block">⊘</span>
               <div className="ib-main"><div className="t">{i.title}</div><div className="muted small"><Pri p={i.priority} /> <ProjectTag name={projectOf(i)} /> <span className="mono">{i.id}</span> · 依赖 {i.dependency_count} 项</div></div>
             </div>

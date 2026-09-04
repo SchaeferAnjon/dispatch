@@ -2,6 +2,7 @@ import type { AgentPresence } from "../derive";
 import { projectColor } from "../derive";
 import type { Info, View } from "../types";
 import { Avatar } from "./ui";
+import { Icon } from "./icons";
 
 export interface Filters { project: string | null; mine: boolean; urgent: boolean; agent: string | null; blocked: boolean; review: boolean }
 
@@ -16,18 +17,20 @@ interface Props {
   setFilters: (f: Filters) => void;
 }
 
-// Three groups, one job each: 任务 (what to do), Agent (who is doing it), 知识 (what everyone should know).
+// The sidebar is the map. Three groups, each answering one question; the
+// current place is marked by a colour bar, counts stay quiet unless they are
+// asking for you (等你 turns red).
 export function Sidebar({ info, view, setView, counts, projects, agents, filters, setFilters }: Props) {
   const go = (v: View) => { setView(v); setFilters({ ...filters, blocked: false, review: false }); };
-  const item = (v: View, icon: string, label: string, right?: React.ReactNode) => (
-    <a className={view === v ? "on" : ""} onClick={() => go(v)}>
-      <span className="ic">{icon}</span>{label}{right}
+  const item = (v: View, icon: string, label: string, right?: React.ReactNode, active?: boolean) => (
+    <a className={(active ?? view === v) ? "on" : ""} onClick={() => go(v)}>
+      <span className="ic"><Icon name={icon} /></span>{label}{right}
     </a>
   );
   const taskView = view === "board" || view === "table";
   return (
     <aside className="side">
-      <div className={`ws link${view === "home" ? " on" : ""}`} onClick={() => go("home")} role="button" tabIndex={0} title="总览">
+      <div className={`ws link${view === "home" ? " on" : ""}`} onClick={() => go("home")} role="button" tabIndex={0}>
         <div className="glyph">bd</div>
         <div style={{ minWidth: 0 }}>
           <div className="name">全局板</div>
@@ -36,34 +39,35 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       </div>
 
       <nav className="nav">
-        <div className="h" title="任务是 Agent 自己建的；你只看">任务</div>
-        {item("home", "⌂", "总览")}
-        {item("inbox", "◎", "等你", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
-        <a className={taskView ? "on" : ""} onClick={() => go(view === "table" ? "table" : "board")}>
-          <span className="ic">▦</span>全部任务<span className="n">{counts.total}</span>
-        </a>
-        {item("graph", "⌥", "脉络")}
-        {item("projects", "◫", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>)}
-        {item("folders", "▤", "文件夹")}
+        {item("home", "home", "总览")}
+        {item("inbox", "inbox", "等你", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
+      </nav>
+
+      <nav className="nav">
+        <div className="h">任务</div>
+        {item("board", "board", "全部任务", <span className="n">{counts.total}</span>, taskView)}
+        {item("graph", "graph", "脉络")}
+        {item("projects", "project", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>)}
+        {item("folders", "folder", "文件夹")}
         {filters.project !== null && taskView && (
-          <a className="on" onClick={() => setFilters({ ...filters, project: null })} title="点击清除项目筛选">
-            <span className="proj" style={{ background: projectColor(filters.project) }} />筛选：{filters.project || "未分项目"}<span className="n">✕</span>
+          <a className="filter-row" onClick={() => setFilters({ ...filters, project: null })} title="点击清除筛选">
+            <span className="proj" style={{ background: projectColor(filters.project) }} />只看 {filters.project || "未分项目"}<span className="n">✕</span>
           </a>
         )}
       </nav>
 
       <nav className="nav">
-        <div className="h" title="谁在干活、聊过什么">Agent 与聊天<span className="n">{agents.filter((a) => a.online).length}/{agents.length} 在线</span></div>
-        {item("sessions", "◷", "聊天记录")}
-        {item("agents", "◉", "Agent 状态")}
+        <div className="h">Agent<span className="n">{agents.filter((a) => a.online).length}/{agents.length} 在线</span></div>
+        {item("sessions", "chat", "聊天记录")}
+        {item("agents", "agent", "Agent 状态")}
         <div className="agents sub">
           {agents.map((a) => (
-            <button key={a.actor.id} className={`agent${a.online ? "" : " off"}`} onClick={() => { setView("table"); setFilters({ ...filters, agent: filters.agent === a.actor.id ? null : a.actor.id }); }} title={`按 ${a.actor.name} 筛选任务`}>
+            <button key={a.actor.id} className={`agent${a.online ? "" : " off"}`} onClick={() => { setView("table"); setFilters({ ...filters, agent: filters.agent === a.actor.id ? null : a.actor.id }); }} title={`只看 ${a.actor.name} 的任务`}>
               <Avatar actor={a.actor} online={a.online} />
               <div style={{ minWidth: 0 }}>
-                <div className="nm">{a.actor.name}{a.sessions.length > 0 && <small>{a.sessions.length} 会话{a.sessions.some((s) => s.state === "working") ? ` · ${a.sessions.filter((s) => s.state === "working").length} 在跑` : ""}</small>}</div>
+                <div className="nm">{a.actor.name}{a.sessions.length > 0 && <small>{a.sessions.length} 窗口{a.sessions.some((s) => s.state === "working") ? ` · ${a.sessions.filter((s) => s.state === "working").length} 在跑` : ""}</small>}</div>
                 <div className="cur">
-                  {a.current[0] ? <><span className="id">{a.current[0].id}</span> {a.current[0].title}</> : a.sessions.length ? a.bySource.map((b) => `${b.label} ${b.count}`).join(" · ") : a.actor.kind === "human" ? "" : a.online ? "空闲" : a.lastActive ? "离线" : "还没来过"}
+                  {a.current[0] ? <><span className="id">{a.current[0].id}</span> {a.current[0].title}</> : a.sessions.length ? a.bySource.map((b) => `${b.label} ${b.count}`).join(" · ") : a.online ? "空闲" : a.lastActive ? "离线" : "还没来过"}
                 </div>
               </div>
             </button>
@@ -72,10 +76,10 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       </nav>
 
       <nav className="nav">
-        <div className="h" title="Agent 会什么、守什么规矩、踩过什么坑">知识</div>
-        {item("skills", "✦", "技能")}
-        {item("rules", "§", "规则")}
-        {item("pitfalls", "⚠", "踩坑")}
+        <div className="h">知识</div>
+        {item("skills", "skill", "技能")}
+        {item("rules", "rule", "规则")}
+        {item("pitfalls", "pit", "踩坑")}
       </nav>
     </aside>
   );

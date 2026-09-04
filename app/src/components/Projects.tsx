@@ -68,7 +68,7 @@ export function ProjectsView({ api, me, issues, onSelect, onBoard, onFolder }: P
                 <div className="ttl">{cur.name || "未分项目"}</div>
                 <div className="sub">{cur.list.length} 个任务 · {cur.open} 未完成 · 最近更新 {cur.last ? relTime(cur.last) : "—"}</div>
               </div>
-              <button className="btn primary sm" onClick={() => onBoard(cur.name)}>在看板里筛选</button>
+              <button className="btn sm" onClick={() => onBoard(cur.name)}>在看板里筛选 ›</button>
             </div>
             <div className="sess-meta kv">
               <b>参与的 Agent</b><span>{cur.agents.size ? AGENT_ORDER.filter((a) => cur.agents.has(a)).map((a) => `${actorOf(a, me)!.name} ${cur.agents.get(a)} 项`).join(" · ") : "—"}</span>
@@ -81,7 +81,7 @@ export function ProjectsView({ api, me, issues, onSelect, onBoard, onFolder }: P
                   {g.items.map((i) => {
                     const a = actorOf(i.assignee, me); const st = statusLabel(i);
                     return (
-                      <div key={i.id} className="proj-row" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
+                      <div key={i.id} className="proj-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
                         <Pri p={i.priority} />
                         <span className="t">{i.title}</span>
                         <span className="mono muted small">{i.id}</span>

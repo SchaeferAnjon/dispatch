@@ -102,7 +102,7 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
 
       <section>
         <h4>现在在做 <span className="muted">每个 Agent 手上的任务，和它做到哪了</span></h4>
-        {lanes.length === 0 && <div className="empty">没有进行中的任务，也没有会话在跑。</div>}
+        {lanes.length === 0 && <div className="empty">没有进行中的任务，也没有会话在跑。<br /><button className="link-btn" onClick={() => onView("board")}>看看待办里有什么 ›</button></div>}
         <div className="lanes">
           {lanes.map(({ agent: a, items, idleSessions }) => (
             <div key={a.actor.id} className={`lane${a.online ? "" : " off"}`}>
@@ -132,7 +132,7 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
                 const done = ac.filter((x) => x.done).length;
                 const st = s ? (s.state === "working" ? { text: "在跑", cls: "prog" } : s.state === "idle" ? { text: "等你", cls: "done" } : { text: "开着", cls: "open" }) : { text: "没有会话在跑", cls: "open" };
                 return (
-                  <div key={i.id} className="now-card" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
+                  <div key={i.id} className="now-card opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
                     <div className="l1">
                       <span className="t">{i.title}</span>
                       <span className={`st sm ${st.cls}`}>{st.text}</span>
@@ -177,7 +177,7 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
             const a = actorOf(i.assignee ?? i.created_by, me);
             const st = statusLabel(i);
             return (
-              <div key={i.id} className="recent-row" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
+              <div key={i.id} className="recent-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
                 <Avatar actor={a} />
                 <span className="who">{a?.name ?? "—"}</span>
                 <span className={`st sm ${st.cls}`}>{st.text}</span>
