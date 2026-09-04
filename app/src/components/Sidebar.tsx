@@ -43,16 +43,13 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
           <span className="ic">▦</span>全部任务<span className="n">{counts.total}</span>
         </a>
         {item("graph", "⌥", "脉络")}
+        {item("projects", "◫", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>)}
         {item("folders", "▤", "文件夹")}
-        <div className="sub">
-          <div className="h">项目{filters.project !== null && <button className="n" onClick={() => setFilters({ ...filters, project: null })}>清除</button>}</div>
-          {projects.length === 0 && <a className="muted" style={{ cursor: "default" }}>用 label <span className="mono">project:名字</span> 归类</a>}
-          {projects.map((p) => (
-            <a key={p.name || "_"} className={filters.project === p.name ? "on" : ""} onClick={() => { if (!taskView) setView("board"); setFilters({ ...filters, project: filters.project === p.name ? null : p.name, blocked: false, review: false }); }}>
-              <span className="proj" style={{ background: projectColor(p.name) }} />{p.name || "未分项目"}<span className="n">{p.count}</span>
-            </a>
-          ))}
-        </div>
+        {filters.project !== null && taskView && (
+          <a className="on" onClick={() => setFilters({ ...filters, project: null })} title="点击清除项目筛选">
+            <span className="proj" style={{ background: projectColor(filters.project) }} />筛选：{filters.project || "未分项目"}<span className="n">✕</span>
+          </a>
+        )}
       </nav>
 
       <nav className="nav">

@@ -542,6 +542,9 @@ def read_session_detail(ref, limit=400):
                 if isinstance(content, list) and content and isinstance(content[0], dict) and content[0].get("type") == "tool_result":
                     continue  # tool results are noise for the timeline
                 txt = _block_text(content)
+                # Slash-command echoes and caveats are injected by the CLI, not typed by the user.
+                if txt.lstrip().startswith(("<local-command", "<command-name>", "<command-message>", "<system-reminder>")):
+                    continue
                 if txt.strip():
                     msgs.append({"ts": ts, "role": "user", "text": txt[:600], "tools": []})
             else:

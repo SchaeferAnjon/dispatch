@@ -1,6 +1,6 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "home" | "inbox" | "board" | "table" | "graph" | "folders" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
+export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "folders" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
 export interface Folder { cwd: string; name: string; sessions: number; agents: Record<string, number>; last_at: number; first_at: string | null; turns: number; tasks: string[]; exists: boolean }
 export interface GraphEdge { from: string; to: string; type: string }
 export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }
