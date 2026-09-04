@@ -351,6 +351,8 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .quota.crit .qbar i{background:var(--s-block)}
 .quota .qv{text-align:right}
 .quota .qr{white-space:nowrap}
+.quotas .prov{display:block;margin-top:2px}
+.quotas .prov.stale{color:var(--s-prog)}
 .now-card{background:var(--win);border:1px solid var(--line);border-radius:9px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;cursor:pointer;box-shadow:var(--card-shadow)}
 .now-card:hover{border-color:var(--line-2)}
 .now-card .l1{display:flex;align-items:flex-start;gap:8px;justify-content:space-between}

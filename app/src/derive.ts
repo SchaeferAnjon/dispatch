@@ -33,7 +33,8 @@ export function actorOf(raw: string | undefined, me: string): Actor | null {
   if (!raw) return null;
   const k = KNOWN[raw.toLowerCase()];
   if (k) return { id: raw, ...k };
-  if (isMe(raw, me)) return { id: me, name: "我", kind: "human", glyph: "我" };
+  // The person at the keyboard. The app addresses them as 你, never 我.
+  if (isMe(raw, me)) return { id: me, name: "你", kind: "human", glyph: "你" };
   return { id: raw, name: raw, kind: "human", glyph: raw.slice(0, 1).toUpperCase() };
 }
 
@@ -109,12 +110,15 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     if (!map.has(a.id)) map.set(a.id, { actor: a, online: false, current: [], sessions: [], bySource: [] });
     return map.get(a.id)!;
   };
-  [...DEFAULT_AGENTS, me].forEach(ensure);
+  // Agents always get a lane; the human only appears if they actually hold or wrote tasks.
+  DEFAULT_AGENTS.forEach(ensure);
   for (const i of issues) {
     const seen = new Set<string>();
     for (const raw of [i.assignee, i.created_by]) {
       if (!raw || seen.has(raw)) continue;
       seen.add(raw);
+      // Creating a task from Dispatch shouldn't turn the user into an "agent" lane.
+      if (isMe(raw, me) && raw !== i.assignee) continue;
       const p = ensure(raw);
       const ts = raw === i.assignee ? i.updated_at : i.created_at;
       if (!p.lastActive || ts > p.lastActive) p.lastActive = ts;

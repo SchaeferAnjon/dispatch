@@ -30,7 +30,7 @@ describe("actors", () => {
   });
   it("human aliases collapse into me", () => {
     expect(actorOf("SchaeferAnjon", "schaefer")?.id).toBe("schaefer");
-    expect(actorOf("schaefer", "schaefer")?.name).toBe("我");
+    expect(actorOf("schaefer", "schaefer")?.name).toBe("你");
   });
   it("unknown names stay themselves", () => expect(actorOf("bob", "schaefer")?.name).toBe("bob"));
 });
