@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AgentPresence } from "../derive";
-import { COLUMNS, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
+import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
 import type { Column, Issue, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 
@@ -137,7 +137,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
                   <span className="mono muted small right">{s.started_at ? `开了 ${durSince(s.started_at)}` : `pid ${s.agent_pid ?? "?"}`}{s.prompts ? ` · ${s.prompts} 轮` : ""}</span>
                   <span style={{ display: "inline-flex", gap: 4 }}>
                     <button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到这个会话所在的软件/标签">打开</button>
-                    {s.registered && !s.session_id.startsWith("pid-") && s.agent !== "zcode" && (
+                    {s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && (
                       <button className="copy-btn" onClick={() => onCopyResume(s.agent, s.session_id, s.cwd)} title="复制恢复命令到剪贴板">恢复</button>
                     )}
                   </span>

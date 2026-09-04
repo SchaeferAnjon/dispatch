@@ -14,6 +14,8 @@ bd where          # 必须显示 /Users/macbook14/tasks/.beads，前缀 task
 echo $BEADS_ACTOR # Claude Code 应为 claude-code；Codex 为 codex；人是 schaefer
 ```
 
+在 **Qoder**（桌面版 / CLI）和 **Qoder IDE** 里：两者共用 `~/.qoder/settings.json` 和 `~/.qoder/AGENTS.md`，没法各设一个环境变量，所以每条写命令带 `--actor qoder`（桌面版 / CLI）或 `--actor qoder-ide`（IDE），`BEADS_DIR=$HOME/tasks/.beads` 前缀不能省。Dispatch 直接读它们的 SQLite：桌面版的对话是明文，IDE 的正文加密、只能看到标题和工具调用。
+
 在 **ZCode** 里（桌面应用，没有环境变量入口）：每条写命令都带 `--actor zcode`，且 `BEADS_DIR=$HOME/tasks/.beads` 前缀不能省。ZCode 的会话由 Dispatch 直接从 `~/.zcode/cli/db/db.sqlite` 读取，不需要钩子。用户已不用 Cursor。
 
 路径不对就给命令加前缀 `BEADS_DIR=$HOME/tasks/.beads bd ...`。身份不对说明环境没继承，加 `BEADS_ACTOR=claude-code`。**身份决定看板上"谁在干什么"**，别用别人的身份写。

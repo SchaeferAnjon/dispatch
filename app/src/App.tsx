@@ -181,7 +181,7 @@ export default function App() {
     const w = new Set(inbox.waiting.map((x) => x.session_id));
     const r = new Set(inbox.review.map((x) => x.id));
     if (s.ready) {
-      for (const x of inbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : "Claude Code"} 在等你`, `${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`);
+      for (const x of inbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : x.agent === "qoder" ? "Qoder" : x.agent === "qoder-ide" ? "Qoder IDE" : "Claude Code"} 在等你`, `${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`);
       for (const x of inbox.review) if (!s.review.has(x.id)) api.notify("有任务待你审核", `${x.id} ${x.title}`);
     }
     s.waiting = w; s.review = r;

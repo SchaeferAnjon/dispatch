@@ -13,6 +13,8 @@ DIR = os.path.expanduser("~/tasks/.dispatch/sessions")
 SHELLS = {"sh", "bash", "zsh", "fish", "-fish", "-zsh", "-bash", "login", "python3", "python", "env", "node"}
 # comm/app name → (kind, label)
 APPS = [
+    ("Qoder CN IDE.app/", ("editor", "Qoder IDE")),
+    ("Qoder CN.app/", ("desktop", "Qoder")),
     ("Claude.app/", ("desktop", "Claude 桌面端")),
     ("ChatGPT.app/", ("desktop", "ChatGPT 桌面端")),
     ("Cursor.app/", ("editor", "Cursor")),
@@ -61,8 +63,8 @@ def main():
         data = json.load(sys.stdin)
     except Exception:
         data = {}
-    sid = data.get("session_id") or os.environ.get("CLAUDE_SESSION_ID") or ""
-    cwd = data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    sid = data.get("session_id") or os.environ.get("CLAUDE_SESSION_ID") or os.environ.get("QODER_SESSION_ID") or ""
+    cwd = data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("QODER_CWD") or os.getcwd()
 
     table = ps_table()
     chain, agent_pid = [], None
@@ -80,6 +82,9 @@ def main():
     if not sid:
         sid = f"pid-{agent_pid or os.getppid()}"
     kind, label = classify(chain)
+    # Both Qoder apps run the same ~/.qoder/settings.json hooks; tell them apart by the host app.
+    if agent == "qoder" and label == "Qoder IDE":
+        agent = "qoder-ide"
 
     os.makedirs(DIR, exist_ok=True)
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in sid)

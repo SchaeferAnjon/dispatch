@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
-import { actorOf, durSince, fmtTime, projectColor, relTime } from "../derive";
+import { actorOf, durSince, fmtTime, NO_RESUME, projectColor, relTime } from "../derive";
 import { lineDiff, withContext } from "../diff";
 import type { Session, SessionDetail, SessionRef } from "../types";
 import { Avatar } from "./ui";
@@ -48,7 +48,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
           <div className="views" style={{ marginTop: 6 }}>
-            {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["zcode", "ZCode"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
+            {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["zcode", "ZCode"], ["qoder", "Qoder"], ["qoder-ide", "Qoder IDE"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
             <span className="spacer" /><span className="muted mono small">{items.length}</span>
           </div>
         </div>
@@ -82,8 +82,8 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                   <div className="ttl">{m.title || "（无标题）"}</div>
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
-                {(l || m.agent === "zcode") && <button className="btn primary sm" onClick={() => focus(m.session_id)} title={l?.herdr ? `Herdr ${l.herdr.tab_id}` : l?.source_app ?? "ZCode"}>打开会话</button>}
-                {m.agent !== "zcode" && <button className="btn sm" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
+                {(l || NO_RESUME.has(m.agent)) && <button className="btn primary sm" onClick={() => focus(m.session_id)} title={l?.herdr ? `Herdr ${l.herdr.tab_id}` : l?.source_app ?? "ZCode"}>打开会话</button>}
+                {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
               </div>
               <div className="sess-meta kv">
                 <b>开始</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>
@@ -132,8 +132,10 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                     <summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {f.changes.length} 处</span></summary>
                     {f.changes.map((c, i) => (
                       <div key={i} className="hunk">
-                        <div className="hunk-h muted small">{c.kind === "write" ? "写入整个文件" : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>
-                        <pre className="diff">{withContext(lineDiff(c.old, c.new)).map((ln, k) => ln.kind === "skip" ? <div key={k} className="skip">… {ln.count} 行未变 …</div> : <div key={k} className={`ln ${ln.kind}`}>{ln.kind === "add" ? "+" : ln.kind === "del" ? "-" : " "} {ln.text}</div>)}</pre>
+                        <div className="hunk-h muted small">{c.kind === "write" ? "写入整个文件" : c.kind === "patch" ? `${c.op ?? "修改"}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>
+                        {c.kind === "patch"
+                          ? <pre className="diff">{c.new ? c.new.split("\n").map((ln, k) => <div key={k} className={`ln ${ln.startsWith("+") && !ln.startsWith("+++") ? "add" : ln.startsWith("-") && !ln.startsWith("---") ? "del" : "same"}`}>{ln}</div>) : <div className="skip">补丁内容没存下来</div>}</pre>
+                          : <pre className="diff">{withContext(lineDiff(c.old, c.new)).map((ln, k) => ln.kind === "skip" ? <div key={k} className="skip">… {ln.count} 行未变 …</div> : <div key={k} className={`ln ${ln.kind}`}>{ln.kind === "add" ? "+" : ln.kind === "del" ? "-" : " "} {ln.text}</div>)}</pre>}
                       </div>
                     ))}
                   </details>

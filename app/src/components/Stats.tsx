@@ -5,8 +5,8 @@ import type { Stats, StatsDay, StatsRank } from "../types";
 
 interface Props { api: Api; me: string; onError: (m: string) => void }
 
-const AGENTS = ["claude-code", "codex", "zcode"];
-const COLOR: Record<string, string> = { "claude-code": "var(--claude)", codex: "var(--codex)", zcode: "var(--cursor)" };
+const AGENTS = ["claude-code", "codex", "zcode", "qoder", "qoder-ide"];
+const COLOR: Record<string, string> = { "claude-code": "var(--claude)", codex: "var(--codex)", zcode: "var(--cursor)", qoder: "var(--qoder)", "qoder-ide": "var(--qoder-2)" };
 const RANGES: [number, string][] = [[7, "7 天"], [30, "30 天"], [90, "90 天"], [365, "一年"], [0, "全部"]];
 const WD = ["一", "二", "三", "四", "五", "六", "日"];
 

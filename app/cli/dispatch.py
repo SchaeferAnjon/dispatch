@@ -31,6 +31,11 @@ AGENT_SKILL_DIRS = {
 CC_SWITCH_DB = os.path.join(HOME, ".cc-switch", "cc-switch.db")
 HERDR = os.path.join(HOME, ".local", "bin", "herdr")
 ZCODE_DB = os.path.join(HOME, ".zcode", "cli", "db", "db.sqlite")
+# Qoder ships two apps that share one account, one ~/.qoder/settings.json (hooks) and
+# one ~/.qoder/AGENTS.md, but keep separate chat stores.
+QODER_APP_DB = os.path.join(HOME, "Library", "Application Support", "com.qodercn.app.stable", "main.sqlite")
+QODER_IDE_DB = os.path.join(HOME, "Library", "Application Support", "QoderCN", "SharedClientCache", "cache", "db", "local.db")
+QODER_APPS = {"qoder": ("Qoder CN.app/Contents/MacOS/", "Qoder CN", "Qoder"), "qoder-ide": ("Qoder CN IDE.app/Contents/MacOS/", "Qoder CN IDE", "Qoder IDE")}
 PATH_EXTRA = "/opt/homebrew/bin:/usr/local/bin:" + os.path.join(HOME, ".local", "bin")
 
 
@@ -112,10 +117,56 @@ def zcode_live(table):
     return out
 
 
+def sqlite_rows(path, sql, params=()):
+    """Read-only query against some app's SQLite file; never raises, never locks it."""
+    if not os.path.exists(path):
+        return []
+    try:
+        import sqlite3
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
+        con.row_factory = sqlite3.Row
+        rows = [dict(r) for r in con.execute(sql, params)]
+        con.close()
+        return rows
+    except Exception:
+        return []
+
+
+def qoder_pids(table):
+    """pid of each running Qoder app, keyed by agent id. The IDE's path contains the
+    app's path as a prefix-free sibling, so match the longer name first."""
+    pids = {}
+    for pid, (_, comm) in table.items():
+        if QODER_APPS["qoder-ide"][0] in comm:
+            pids.setdefault("qoder-ide", pid)
+        elif QODER_APPS["qoder"][0] in comm:
+            pids.setdefault("qoder", pid)
+    return pids
+
+
+def qoder_live(table):
+    """Fallback for sessions the presence hook did not register: a session touched in the
+    last 30 minutes while its app is running counts as live."""
+    pids = qoder_pids(table)
+    now = time.time()
+    since = (now - 30 * 60) * 1000
+    out = []
+    if "qoder" in pids:
+        for r in sqlite_rows(QODER_APP_DB, "select session_id, title, cwd, created_at, updated_at from chat_sessions where deleted_at is null and archived = 0 and updated_at > ? order by updated_at desc", (since,)):
+            last = r["updated_at"] / 1000
+            out.append({"agent": "qoder", "session_id": r["session_id"], "cwd": r["cwd"] or "", "project": os.path.basename((r["cwd"] or "").rstrip("/")), "agent_pid": pids["qoder"], "source_kind": "desktop", "source_app": "Qoder", "entrypoint": "desktop", "started_at": r["created_at"] / 1000, "last_at": last, "state": "working" if now - last < 90 else "idle", "prompts": 0, "alive": True, "registered": True, "title": r["title"]})
+    if "qoder-ide" in pids:
+        for r in sqlite_rows(QODER_IDE_DB, "select session_id, session_title, project_uri, gmt_create, gmt_modified from chat_session where (parent_session_id = '' or parent_session_id is null) and gmt_modified > ? order by gmt_modified desc", (since,)):
+            last = r["gmt_modified"] / 1000
+            out.append({"agent": "qoder-ide", "session_id": r["session_id"], "cwd": r["project_uri"] or "", "project": os.path.basename((r["project_uri"] or "").rstrip("/")), "agent_pid": pids["qoder-ide"], "source_kind": "editor", "source_app": "Qoder IDE", "entrypoint": "editor", "started_at": r["gmt_create"] / 1000, "last_at": last, "state": "working" if now - last < 90 else "idle", "prompts": 0, "alive": True, "registered": True, "title": r["session_title"]})
+    return out
+
+
 def live_sessions():
     table = ps_table()
     sessions = zcode_live(table)
     seen = set()
+    seen_sids = set()
     for p in glob.glob(os.path.join(SESS_DIR, "*.json")):
         try:
             r = json.load(open(p))
@@ -127,7 +178,11 @@ def live_sessions():
         r["alive"] = True
         r["registered"] = True
         seen.add(pid)
+        seen_sids.add((r.get("agent"), r.get("session_id")))
         sessions.append(r)
+    for s in qoder_live(table):
+        if (s["agent"], s["session_id"]) not in seen_sids:
+            sessions.append(s)
     for pid, (ppid, comm) in table.items():
         base = os.path.basename(comm).lstrip("-")
         if base in ("claude", "codex") and pid not in seen:
@@ -457,6 +512,7 @@ def refresh_index():
             e["claims"].append(m.group(1))
         e["size"] = len(blob)
         idx[key] = e
+    index_qoder(idx, seen, re_task, re_claim)
     for p in list(idx):
         if p not in seen:
             del idx[p]
@@ -464,10 +520,151 @@ def refresh_index():
     return idx
 
 
+def _tool_summary(inp):
+    if not isinstance(inp, dict):
+        return str(inp or "")[:200]
+    for k in ("command", "file_path", "filePath", "path", "query", "pattern", "description", "url", "prompt"):
+        if inp.get(k):
+            return str(inp[k])[:200]
+    return ""
+
+
+def _tool_file_change(name, inp, ts, files):
+    """Edit/Write-style tool inputs, whatever the agent calls its tools."""
+    if not isinstance(inp, dict):
+        return
+    fp = inp.get("file_path") or inp.get("filePath") or inp.get("path")
+    if not fp:
+        return
+    n = name.lower()
+    if "old_string" in inp or "oldString" in inp:
+        files.setdefault(fp, []).append({"kind": "edit", "old": inp.get("old_string") or inp.get("oldString") or "", "new": inp.get("new_string") or inp.get("newString") or "", "ts": ts})
+    elif "content" in inp and any(w in n for w in ("write", "create", "save")):
+        files.setdefault(fp, []).append({"kind": "write", "old": "", "new": inp.get("content") or "", "ts": ts})
+
+
+def index_qoder(idx, seen, re_task, re_claim):
+    """Qoder desktop: chat_sessions + chat_session_messages (plain JSON payloads).
+    Qoder IDE: chat_session + chat_message; message text is encrypted at rest, but titles,
+    token_info, tool calls (name + parameters) and expert sub-sessions are readable."""
+    for r in sqlite_rows(QODER_APP_DB, "select session_id, title, cwd, model, git_branch, created_at, updated_at from chat_sessions where deleted_at is null"):
+        key = "qoder:" + r["session_id"]
+        seen.add(key)
+        mtime = (r["updated_at"] or 0) / 1000
+        e = idx.get(key)
+        if e and e.get("mtime") == mtime and e.get("stats_v") == STATS_V:
+            continue
+        e = {"agent": "qoder", "session_id": r["session_id"], "cwd": r["cwd"] or "", "title": r["title"] or "", "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": "desktop", "branch": r["git_branch"] or "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime((r["created_at"] or 0) / 1000)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": "", "stats_v": STATS_V, **stats_fields()}
+        blob = []
+        for m in sqlite_rows(QODER_APP_DB, "select payload_json, created_at from chat_session_messages where session_id = ? order by sequence", (r["session_id"],)):
+            try:
+                d = json.loads(m["payload_json"])
+            except Exception:
+                continue
+            role = d.get("role")
+            dt = local_dt(d.get("timestamp") or "") or local_dt_ms(m["created_at"])
+            txt = d.get("text") or ""
+            if role == "user":
+                e["user_msgs"] += 1
+                blob.append(txt)
+                if not e["first_prompt"] and txt.strip():
+                    e["first_prompt"] = txt.strip()[:240]
+                bump_time(e, dt, 1, 0)
+            elif role == "assistant":
+                e["assistant_msgs"] += 1
+                blob.append(txt)
+                for t in d.get("tools") or []:
+                    n = t.get("name") or ""
+                    e["tools"][n] = e["tools"].get(n, 0) + 1
+                    inp = t.get("input")
+                    if isinstance(inp, dict):
+                        blob.append(json.dumps(inp, ensure_ascii=False)[:2000])
+                        if n == "Skill" and inp.get("skill"):
+                            e["skills"][inp["skill"]] = e["skills"].get(inp["skill"], 0) + 1
+                        elif n in ("Task", "Agent") and inp.get("subagent_type"):
+                            e["subs"][inp["subagent_type"]] = e["subs"].get(inp["subagent_type"], 0) + 1
+                tm = d.get("turnMetrics") or {}
+                tm = tm if isinstance(tm, dict) else {}
+                i = tm.get("inputTokens") or tm.get("input_tokens") or 0
+                o = tm.get("outputTokens") or tm.get("output_tokens") or 0
+                cr = tm.get("cacheReadTokens") or tm.get("cache_read_input_tokens") or 0
+                cw = tm.get("cacheWriteTokens") or tm.get("cache_creation_input_tokens") or 0
+                T = e["tokens"]
+                T["in"] += i; T["out"] += o; T["cr"] += cr; T["cw"] += cw
+                if r["model"]:
+                    e["models"][r["model"]] = e["models"].get(r["model"], 0) + 1
+                bump_time(e, dt, 1, i + o + cr + cw, (i, o, cr, cw))
+        text = "\n".join(blob)
+        for m in re_task.finditer(text):
+            e["tasks"][m.group(0)] = e["tasks"].get(m.group(0), 0) + 1
+        for m in re_claim.finditer(text):
+            e["claims"].append(m.group(1))
+        e["size"] = len(text)
+        idx[key] = e
+
+    for r in sqlite_rows(QODER_IDE_DB, "select session_id, session_title, project_uri, project_name, gmt_create, gmt_modified from chat_session where parent_session_id = '' or parent_session_id is null"):
+        key = "qoder-ide:" + r["session_id"]
+        seen.add(key)
+        mtime = (r["gmt_modified"] or 0) / 1000
+        e = idx.get(key)
+        if e and e.get("mtime") == mtime and e.get("stats_v") == STATS_V:
+            continue
+        title = (r["session_title"] or "").strip()
+        e = {"agent": "qoder-ide", "session_id": r["session_id"], "cwd": r["project_uri"] or "", "title": title.split("\n", 1)[0][:120], "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": "editor", "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime((r["gmt_create"] or 0) / 1000)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": title[:240], "stats_v": STATS_V, **stats_fields()}
+        blob = [title]
+        for m in sqlite_rows(QODER_IDE_DB, "select role, token_info, model_info, tool_result, gmt_create from chat_message where session_id = ? order by gmt_create", (r["session_id"],)):
+            dt = local_dt_ms(m["gmt_create"])
+            role = m["role"]
+            if role == "user":
+                e["user_msgs"] += 1
+                bump_time(e, dt, 1, 0)
+            elif role == "assistant":
+                e["assistant_msgs"] += 1
+                try:
+                    ti = json.loads(m["token_info"] or "{}")
+                    mi = json.loads(m["model_info"] or "{}")
+                except Exception:
+                    ti, mi = {}, {}
+                p, c, cached = ti.get("prompt_tokens", 0) or 0, ti.get("completion_tokens", 0) or 0, ti.get("cached_tokens", 0) or 0
+                i, cr = max(0, p - cached), cached
+                T = e["tokens"]
+                T["in"] += i; T["out"] += c; T["cr"] += cr
+                mk = mi.get("model_key") or mi.get("model")
+                if mk:
+                    e["models"][mk] = e["models"].get(mk, 0) + 1
+                bump_time(e, dt, 1, i + c + cr, (i, c, cr, 0))
+            elif role == "tool":
+                try:
+                    tr = json.loads(m["tool_result"] or "{}")
+                except Exception:
+                    tr = {}
+                n = tr.get("toolCallName") or ""
+                if n:
+                    e["tools"][n] = e["tools"].get(n, 0) + 1
+                params = tr.get("parameters")
+                if params:
+                    blob.append(params if isinstance(params, str) else json.dumps(params, ensure_ascii=False)[:2000])
+        for c in sqlite_rows(QODER_IDE_DB, "select extra from chat_session where parent_session_id = ?", (r["session_id"],)):
+            try:
+                t = json.loads(c["extra"] or "{}").get("subAgentType") or "子会话"
+            except Exception:
+                t = "子会话"
+            e["subs"][t] = e["subs"].get(t, 0) + 1
+        text = "\n".join(blob)
+        for m in re_task.finditer(text):
+            e["tasks"][m.group(0)] = e["tasks"].get(m.group(0), 0) + 1
+        for m in re_claim.finditer(text):
+            e["claims"].append(m.group(1))
+        e["size"] = len(text)
+        idx[key] = e
+
+
 def resume_command(agent, sid, cwd):
     if agent == "zcode":
         # ZCode is a desktop app without a resume CLI; the session id identifies it inside the app.
         return f"open -a ZCode  # 会话 {sid}"
+    if agent in QODER_APPS:
+        return f"open -a '{QODER_APPS[agent][1]}'  # 会话 {sid}"
     cd = f"cd '{cwd.replace(chr(39), chr(39) + chr(92) + chr(39) + chr(39))}' && " if cwd else ""
     return f"{cd}{'codex resume' if agent == 'codex' else 'claude --resume'} {sid}"
 
@@ -479,6 +676,19 @@ def subagents_of(path):
         sid = path[6:]
         rows = zcode_query("select s.id, s.title, s.time_updated, s.summary_files, l.agent_type, l.label, l.depth from session s left join session_task_link l on l.child_session_id = s.id where s.parent_id = ? order by s.time_created", (sid,))
         return [{"agent_id": r["id"], "type": r["agent_type"] or "子会话", "description": r["label"] or r["title"], "tool_use_id": "", "depth": r["depth"] or 1, "size": 0, "last_at": r["time_updated"] / 1000, "path": "zcode:" + r["id"]} for r in rows]
+    if path.startswith("qoder-ide:"):
+        # Experts mode spawns child sessions; extra_json names the expert (subAgentName/Role/Type).
+        res = []
+        for r in sqlite_rows(QODER_IDE_DB, "select session_id, session_title, gmt_modified, extra from chat_session where parent_session_id = ? order by gmt_create", (path[10:],)):
+            try:
+                x = json.loads(r["extra"] or "{}")
+            except Exception:
+                x = {}
+            who = " · ".join(v for v in (x.get("subAgentName"), x.get("subAgentRole")) if v)
+            res.append({"agent_id": r["session_id"], "type": x.get("subAgentType") or "子会话", "description": (who + "：" if who else "") + (r["session_title"] or "")[:160], "tool_use_id": "", "depth": 1, "size": 0, "last_at": r["gmt_modified"] / 1000, "path": "qoder-ide:" + r["session_id"]})
+        return res
+    if path.startswith("qoder:"):
+        return []
     base = os.path.splitext(path)[0]
     res = []
     for meta in sorted(glob.glob(os.path.join(base, "subagents", "*.meta.json"))):
@@ -494,7 +704,7 @@ def subagents_of(path):
 
 
 def ref_of(path, e, task_id=None):
-    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode") else []}
+    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode", "qoder-ide") else []}
 
 
 _KNOWN_IDS = None
@@ -751,10 +961,86 @@ def read_zcode_detail(ref, limit):
     return {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in files.items()], "tool_counts": tool_names}
 
 
+def read_qoder_detail(ref, limit):
+    """Qoder desktop: payload_json per message (role, text, tools[{name,input,response}], parts).
+    File changes come from Edit/Write-style tool inputs plus the app's own turn_file_change
+    patches (unified diffs, deflate-raw)."""
+    sid = ref["session_id"]
+    msgs, files, tool_names = [], {}, {}
+    for m in sqlite_rows(QODER_APP_DB, "select payload_json from chat_session_messages where session_id = ? order by sequence", (sid,)):
+        try:
+            d = json.loads(m["payload_json"])
+        except Exception:
+            continue
+        role, ts, txt = d.get("role"), d.get("timestamp") or "", (d.get("text") or "").strip()
+        if role == "user" and txt:
+            msgs.append({"ts": ts, "role": "user", "text": txt[:600], "tools": []})
+        elif role == "assistant":
+            tools = []
+            for t in d.get("tools") or []:
+                name = t.get("name") or ""
+                inp = t.get("input")
+                tool_names[name] = tool_names.get(name, 0) + 1
+                tools.append({"name": name, "summary": _tool_summary(inp)})
+                _tool_file_change(name, inp, ts, files)
+            if txt or tools:
+                msgs.append({"ts": ts, "role": "assistant", "text": txt[:600], "tools": tools})
+    import zlib
+    for p in sqlite_rows(QODER_APP_DB, "select f.path, f.display_path, f.operation, f.additions, f.deletions, p.content, p.compression, s.created_at from turn_file_change_sets s join turn_file_change_files f on f.change_set_id = s.change_set_id left join turn_file_change_patches p on p.change_set_id = f.change_set_id and p.path = f.path where s.session_id = ? order by s.created_at", (sid,)):
+        diff = ""
+        raw = p["content"]
+        if raw:
+            try:
+                diff = (zlib.decompress(raw, -15) if p["compression"] == "deflate-raw" else raw).decode("utf-8", "replace")
+            except Exception:
+                diff = ""
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime((p["created_at"] or 0) / 1000))
+        files.setdefault(p["display_path"] or p["path"], []).append({"kind": "patch", "old": "", "new": diff, "ts": ts, "op": p["operation"], "add": p["additions"], "del": p["deletions"]})
+    if len(msgs) > limit:
+        msgs = msgs[:40] + [{"ts": "", "role": "gap", "text": f"…省略 {len(msgs) - limit} 条…", "tools": []}] + msgs[-(limit - 40):]
+    return {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in files.items()], "tool_counts": tool_names}
+
+
+def read_qoder_ide_detail(ref, limit):
+    """Qoder IDE encrypts message bodies; the timeline shows turns and tool calls with their
+    (plain) parameters, which is where the commands and file edits are anyway."""
+    sid = ref["session_id"]
+    msgs = [{"ts": "", "role": "gap", "text": "Qoder IDE 把对话正文加密存储，这里只能看到轮次和工具调用（含参数）", "tools": []}]
+    files, tool_names = {}, {}
+    for m in sqlite_rows(QODER_IDE_DB, "select role, tool_result, gmt_create from chat_message where session_id = ? order by gmt_create", (sid,)):
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime((m["gmt_create"] or 0) / 1000))
+        if m["role"] == "user":
+            msgs.append({"ts": ts, "role": "user", "text": "（正文已加密）", "tools": []})
+        elif m["role"] == "tool":
+            try:
+                tr = json.loads(m["tool_result"] or "{}")
+            except Exception:
+                continue
+            name = tr.get("toolCallName") or ""
+            if not name:
+                continue
+            params = tr.get("parameters")
+            if isinstance(params, str):
+                try:
+                    params = json.loads(params)
+                except Exception:
+                    params = {"raw": params}
+            tool_names[name] = tool_names.get(name, 0) + 1
+            msgs.append({"ts": ts, "role": "tool", "text": "", "tools": [{"name": name, "summary": _tool_summary(params)}]})
+            _tool_file_change(name, params, ts, files)
+    if len(msgs) > limit:
+        msgs = msgs[:40] + [{"ts": "", "role": "gap", "text": f"…省略 {len(msgs) - limit} 条…", "tools": []}] + msgs[-(limit - 40):]
+    return {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in files.items()], "tool_counts": tool_names}
+
+
 def read_session_detail(ref, limit=400):
     """Parse one transcript into a compact timeline + file changes (from Edit/Write tool calls)."""
     if ref["agent"] == "zcode":
         return read_zcode_detail(ref, limit)
+    if ref["agent"] == "qoder":
+        return read_qoder_detail(ref, limit)
+    if ref["agent"] == "qoder-ide":
+        return read_qoder_ide_detail(ref, limit)
     msgs, files, tool_names = [], {}, {}
     path = ref["path"]
     with open(path, encoding="utf-8", errors="replace") as f:
@@ -1005,6 +1291,10 @@ def focus_session(s):
         if title and zcode_click_session(title):
             return f"已在 ZCode 里切到会话「{title}」"
         return f"已切到 ZCode，但没在侧栏找到「{title or s.get('session_id')}」——可能被折叠或已归档，手动点一下"
+    if agent in QODER_APPS:
+        # Qoder's deeplinks only start new chats; there is no way to address an existing session.
+        activate(QODER_APPS[agent][1])
+        return f"已切到 {QODER_APPS[agent][2]}；它的链接打不开旧会话，得在侧栏里点「{s.get('title') or s.get('session_id', '')[:8]}」"
     if agent == "claude-code" and (s.get("source_kind") == "desktop" or s.get("entrypoint") == "desktop"):
         sh(["open", f"claude://code/continue?session={s['session_id']}"], timeout=5)
         return "已让 Claude 桌面端打开这个会话"
@@ -1448,8 +1738,15 @@ def quota_zcode():
     return {"agent": "zcode", "plan": "", "windows": [], "updated_at": None, "source": "", "note": "ZCode 的凭证是加密的，额度只能在 ZCode 里看（或它的日志里还没记录）"}
 
 
+def quota_qoder():
+    """Qoder bills in Credits and only shows them inside the apps (/usage); nothing documented on disk."""
+    note = "Qoder 没有公开的额度接口，Credits 在 Qoder 设置里看；Qoder IDE 用的是同一个账号"
+    return [{"agent": "qoder", "plan": "", "windows": [], "updated_at": None, "source": "", "note": note},
+            {"agent": "qoder-ide", "plan": "", "windows": [], "updated_at": None, "source": "", "note": note}]
+
+
 def cmd_quota(a):
-    rows = [quota_claude(), quota_codex(), quota_zcode()]
+    rows = [quota_claude(), quota_codex(), quota_zcode(), *quota_qoder()]
 
     def until(epoch):
         m = int((epoch - time.time()) / 60)
@@ -1474,6 +1771,9 @@ RULE_TARGETS = {
     "claude": {"path": os.path.join(HOME, ".claude", "CLAUDE.md"), "mode": "import"},
     "codex": {"path": os.path.join(HOME, ".codex", "AGENTS.md"), "mode": "inline"},
     "zcode": {"path": os.path.join(HOME, ".zcode", "AGENTS.md"), "mode": "inline"},
+    # Read by Qoder desktop and Qoder CLI. Qoder IDE keeps its global rules in its own
+    # settings UI, so it only sees these through a project's AGENTS.md.
+    "qoder": {"path": os.path.join(HOME, ".qoder", "AGENTS.md"), "mode": "inline"},
 }
 
 
