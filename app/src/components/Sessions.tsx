@@ -19,6 +19,9 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<"timeline" | "files" | "tasks">("timeline");
   const [busy, setBusy] = useState(false);
+  // Off by default: the conversation is the point; tool calls are the noise you opt into.
+  const [showTools, setShowTools] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-show-tools") === "1"; } catch { return false; } });
+  const toggleTools = () => { const v = !showTools; setShowTools(v); try { localStorage.setItem("dispatch-show-tools", v ? "1" : "0"); } catch { /* ignore */ } };
 
   const load = async () => { try { setRefs(await api.sessionList()); setLoaded(true); } catch (e) { onError(String(e)); } };
   useEffect(() => { load(); const t = window.setInterval(load, 60_000); return () => window.clearInterval(t); }, [api]);
@@ -94,19 +97,28 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                 <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>时间线 {detail.messages.length}</button>
                 <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>改动 {detail.files.length}</button>
                 <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务 {Object.keys(m.tasks).length}</button>
+                {tab === "timeline" && (() => { const n = detail.messages.reduce((s, x) => s + x.tools.length + (x.role === "tool" ? 1 : 0), 0); return (
+                  <label className="switch" title="关掉只看你和 Agent 说了什么；打开才显示每一次工具调用">
+                    <input type="checkbox" checked={showTools} onChange={toggleTools} /><span className="knob" />工具调用<span className="muted mono small">{n}</span>
+                  </label>
+                ); })()}
               </div>
               <div className="sess-body">
-                {tab === "timeline" && detail.messages.map((x, i) => (
-                  <div key={i} className={`tl ${x.role}`}>
-                    {x.role === "gap" ? <div className="muted">{x.text}</div> : (
-                      <>
-                        <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : a?.name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
-                        {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text">{x.text}</div>)}
-                        {x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
-                      </>
-                    )}
-                  </div>
-                ))}
+                {tab === "timeline" && (() => {
+                  // Without tools: user turns, replies that say something, and gaps. Nothing merged, just hidden.
+                  const list = showTools ? detail.messages : detail.messages.filter((x) => x.role === "gap" || x.role === "user" || (x.role === "assistant" && x.text.trim()));
+                  return list.map((x, i) => (
+                    <div key={i} className={`tl ${x.role}`}>
+                      {x.role === "gap" ? <div className="muted">{x.text}</div> : (
+                        <>
+                          <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : a?.name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
+                          {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text">{x.text}</div>)}
+                          {showTools && x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
+                        </>
+                      )}
+                    </div>
+                  ));
+                })()}
                 {tab === "files" && detail.files.length === 0 && <div className="empty">这个会话没有通过 Edit / Write 改文件</div>}
                 {tab === "files" && detail.files.map((f) => (
                   <details key={f.path} className="fdiff" open={detail.files.length <= 3}>

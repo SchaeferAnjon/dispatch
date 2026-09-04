@@ -1015,21 +1015,98 @@ def cmd_graph(a):
 QUOTA_DIR = os.path.join(DISPATCH_DIR, "quota")
 
 
+CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+CLAUDE_USAGE_TTL = 300  # seconds between calls; the app polls every minute, the API sees one call per 5
+
+
+def _claude_oauth_token():
+    """Claude Code's own login token, read from the keychain entry it maintains.
+    Read-only: never refreshed here, never written anywhere, never printed."""
+    try:
+        import getpass
+        raw = subprocess.run(["security", "find-generic-password", "-s", "Claude Code-credentials", "-a", getpass.getuser(), "-w"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+        c = (json.loads(raw) if raw else {}).get("claudeAiOauth") or {}
+    except Exception:
+        return None
+    if not c.get("accessToken") or (c.get("expiresAt") or 0) / 1000 < time.time():
+        return None
+    return c["accessToken"]
+
+
+def _claude_usage():
+    """Official usage numbers (the same ones /usage and the desktop app show), cached for CLAUDE_USAGE_TTL."""
+    import urllib.request
+    cache = os.path.join(QUOTA_DIR, "claude-usage.json")
+    try:
+        st = os.stat(cache)
+        if time.time() - st.st_mtime < CLAUDE_USAGE_TTL:
+            return json.load(open(cache)), st.st_mtime
+    except Exception:
+        pass
+    tok = _claude_oauth_token()
+    if not tok:
+        return None, None
+    req = urllib.request.Request(CLAUDE_USAGE_URL, headers={"Authorization": f"Bearer {tok}", "anthropic-beta": "oauth-2025-04-20", "User-Agent": "dispatch-cli"})
+    try:
+        d = json.loads(urllib.request.urlopen(req, timeout=10).read())
+    except Exception:
+        try:  # offline: a stale answer beats none, the age is shown in the UI
+            st = os.stat(cache)
+            return json.load(open(cache)), st.st_mtime
+        except Exception:
+            return None, None
+    os.makedirs(QUOTA_DIR, exist_ok=True)
+    tmp = cache + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(d, fh)
+    os.replace(tmp, cache)
+    return d, time.time()
+
+
+def _iso_epoch(s):
+    from datetime import datetime as _dt
+    try:
+        return _dt.fromisoformat(s.replace("Z", "+00:00")).timestamp() if s else None
+    except Exception:
+        return None
+
+
 def quota_claude():
-    """Claude Code feeds rate_limits to the statusline; statusline-tee.sh caches that JSON."""
+    """Prefer the official usage API (has the per-model window, e.g. Fable); fall back to the
+    rate_limits Claude Code feeds its statusline, which statusline-tee.sh caches."""
     p = os.path.join(QUOTA_DIR, "claude-code.json")
     try:
+        sl = json.load(open(p))
+    except Exception:
+        sl = {}
+    plan = (sl.get("model") or {}).get("display_name", "")
+    usage, ts = _claude_usage()
+    if usage:
+        wins = []
+        for lim in usage.get("limits") or []:
+            if lim.get("percent") is None:
+                continue
+            kind = lim.get("kind")
+            scope = ((lim.get("scope") or {}).get("model") or {}).get("display_name")
+            label = {"session": "5 小时", "weekly_all": "每周"}.get(kind)
+            if kind == "weekly_scoped":
+                label = f"每周 · {scope or '单模型'}"
+            if not label:
+                continue
+            wins.append({"label": label, "used_percent": lim["percent"], "resets_at": _iso_epoch(lim.get("resets_at"))})
+        if wins:
+            return {"agent": "claude-code", "plan": plan, "windows": wins, "updated_at": ts, "source": "oauth", "note": ""}
+    try:
         st = os.stat(p)
-        d = json.load(open(p))
     except Exception:
         return {"agent": "claude-code", "plan": "", "windows": [], "updated_at": None, "source": "statusline", "note": "还没拿到数据：Claude Code 新会话开一句话后状态栏会写入"}
-    rl = d.get("rate_limits") or {}
+    rl = sl.get("rate_limits") or {}
     wins = []
     for key, label in (("five_hour", "5 小时"), ("seven_day", "每周")):
         w = rl.get(key) or {}
         if w:
             wins.append({"label": label, "used_percent": w.get("used_percentage"), "resets_at": w.get("resets_at")})
-    plan = (d.get("model") or {}).get("display_name", "")
     return {"agent": "claude-code", "plan": plan, "windows": wins, "updated_at": st.st_mtime, "source": "statusline", "note": "" if wins else "状态栏数据里没有 rate_limits（可能是 API key 计费而非订阅）"}
 
 

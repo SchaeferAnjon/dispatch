@@ -119,9 +119,10 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
                     {q.windows.length ? q.windows.map((w) => <QuotaBar key={w.label} w={w} />) : <span className="muted small">{q.note || "没有额度数据"}</span>}
                     {q.windows.length > 0 && (() => {
                       const ageMin = q.updated_at ? (Date.now() / 1000 - q.updated_at) / 60 : null;
-                      const stale = ageMin !== null && ageMin > 120;
-                      const src = q.agent === "codex" ? "Codex 自己上报的" : q.agent === "claude-code" ? "Claude Code 状态栏上报的" : q.source;
-                      return <span className={`prov small ${stale ? "stale" : "muted"}`}>{src}官方数字 · {ageMin === null ? "时间未知" : `${relTime(new Date(q.updated_at! * 1000).toISOString())} 前`}{stale ? `（用一次 ${q.agent === "codex" ? "Codex" : "Claude Code"} 就会刷新）` : ""}</span>;
+                      const stale = ageMin !== null && ageMin > (q.source === "oauth" ? 20 : 120);
+                      const src = q.source === "oauth" ? "Claude 官方接口，和 /usage、桌面端一致 · 每 5 分钟拉一次" : q.agent === "codex" ? "Codex 自己上报的官方数字" : q.agent === "claude-code" ? "Claude Code 状态栏上报的官方数字" : q.source;
+                      const hint = !stale ? "" : q.source === "oauth" ? "（拉不到新数据，可能离线或令牌过期）" : `（用一次 ${q.agent === "codex" ? "Codex" : "Claude Code"} 就会刷新）`;
+                      return <span className={`prov small ${stale ? "stale" : "muted"}`}>{src} · {ageMin === null ? "时间未知" : `${relTime(new Date(q.updated_at! * 1000).toISOString())} 前`}{hint}</span>;
                     })()}
                   </div>
                 );
