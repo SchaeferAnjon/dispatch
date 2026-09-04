@@ -419,6 +419,17 @@ async fn skill_open(name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn folders() -> Result<String, String> {
+    run_dispatch(args(&["folders", "--cached", "--json"])).await
+}
+
+#[tauri::command]
+async fn open_path(path: String) -> Result<(), String> {
+    let out = Command::new("open").arg(&path).output().map_err(|e| e.to_string())?;
+    if out.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&out.stderr).to_string()) }
+}
+
+#[tauri::command]
 async fn graph() -> Result<String, String> {
     run_dispatch(args(&["graph", "--json"])).await
 }
@@ -651,7 +662,7 @@ pub fn run() {
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
             skills_list, skill_toggle, skill_read, skill_write, skill_open, tray_update,
-            rules_read, rules_write, rules_status, rules_sync, quota, graph
+            rules_read, rules_write, rules_status, rules_sync, quota, graph, folders, open_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

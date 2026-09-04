@@ -1,6 +1,7 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "home" | "inbox" | "board" | "table" | "graph" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
+export type View = "home" | "inbox" | "board" | "table" | "graph" | "folders" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
+export interface Folder { cwd: string; name: string; sessions: number; agents: Record<string, number>; last_at: number; first_at: string | null; turns: number; tasks: string[]; exists: boolean }
 export interface GraphEdge { from: string; to: string; type: string }
 export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }
 export interface QuotaWindow { used_percent: number | null; resets_at: number | null; label: string }
@@ -15,6 +16,7 @@ export interface SessionRef {
   cwd: string;
   project: string;
   title: string;
+  first_prompt?: string;
   last_at: number;
   first_ts: string;
   last_ts: string;

@@ -11,12 +11,13 @@ import { RulesView } from "./components/Rules";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { HomeView } from "./components/Home";
 import { GraphView } from "./components/Graph";
+import { FoldersView } from "./components/Folders";
 import { agentsFrom, columnOf, isReviewed, projectOf, rootsOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", agents: "Agents", sessions: "会话", skills: "技能", rules: "规则", pitfalls: "踩坑" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "agents", "sessions", "skills", "rules", "pitfalls"];
+const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", folders: "文件夹", agents: "Agents", sessions: "会话", skills: "技能", rules: "规则", pitfalls: "踩坑" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "folders", "agents", "sessions", "skills", "rules", "pitfalls"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 
 export default function App() {
@@ -31,6 +32,8 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>({ project: null, mine: false, urgent: false, agent: null, blocked: false, review: false });
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  const [sessionFocus, setSessionFocus] = useState<string | null>(null);
+  const openSession = (id: string) => { setSessionFocus(id); setView("sessions"); };
   const [version, setVersion] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [theme, setTheme] = useState<Theme>(() => { try { return (localStorage.getItem("dispatch-theme") as Theme) ?? ""; } catch { return ""; } });
@@ -265,7 +268,8 @@ export default function App() {
             {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refs} />}
-            {view === "sessions" && api && <SessionsView api={api} me={me} live={presence.sessions} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null} />}
+            {view === "sessions" && api && <SessionsView key={sessionFocus ?? "all"} api={api} me={me} live={presence.sessions} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
+            {view === "folders" && api && <FoldersView api={api} me={me} issues={issues} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView api={api} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}

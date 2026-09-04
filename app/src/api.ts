@@ -1,4 +1,4 @@
-import type { Comment, GraphData, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, UpdateFields } from "./types";
+import type { Comment, Folder, GraphData, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, UpdateFields } from "./types";
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
@@ -30,6 +30,8 @@ export interface Api {
   skillOpen(name: string): Promise<void>;
   quota(): Promise<Quota[]>;
   graph(): Promise<GraphData>;
+  folders(): Promise<Folder[]>;
+  openPath(path: string): Promise<void>;
   rulesRead(): Promise<string>;
   rulesWrite(content: string): Promise<void>;
   rulesStatus(): Promise<RulesStatus>;
@@ -94,6 +96,8 @@ async function tauriApi(): Promise<Api> {
     skillOpen: async (name) => void (await call("skill_open", { name })),
     quota: async () => parse<Quota[]>(await call("quota"), []),
     graph: async () => parse<GraphData>(await call("graph"), { nodes: [], edges: [] }),
+    folders: async () => parse<Folder[]>(await call("folders"), []),
+    openPath: async (path) => void (await invoke("open_path", { path })),
     rulesRead: () => call("rules_read"),
     rulesWrite: async (content) => void (await call("rules_write", { content })),
     rulesStatus: async () => parse<RulesStatus>(await call("rules_status"), { hash: "", source: "", targets: [] }),

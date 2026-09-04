@@ -179,6 +179,31 @@ def save_index(idx):
     os.replace(tmp, INDEX_FILE)
 
 
+def first_prompt_of(agent, buf):
+    """The user's opening message — what this conversation was about, in their words."""
+    for line in buf.split("\n", 400)[:400]:
+        if not line.startswith("{"):
+            continue
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        if agent == "claude-code":
+            if d.get("type") != "user" or d.get("isSidechain"):
+                continue
+            c = (d.get("message") or {}).get("content")
+            txt = c if isinstance(c, str) else "\n".join(b.get("text", "") for b in c or [] if isinstance(b, dict) and b.get("type") == "text")
+        else:
+            p = d.get("payload") or {}
+            if d.get("type") != "response_item" or p.get("type") != "message" or p.get("role") != "user":
+                continue
+            txt = "\n".join(b.get("text", "") for b in p.get("content") or [] if isinstance(b, dict) and b.get("type") in ("input_text", "text"))
+        txt = re.sub(r"<[^>]{1,40}>[\s\S]*?</[^>]{1,40}>", "", txt).strip()
+        if txt and not txt.startswith("<") and not txt.startswith("[Image"):
+            return txt[:240]
+    return ""
+
+
 def refresh_index():
     """Incrementally scan Claude Code / Codex transcripts for task ids, titles, cwd."""
     prefix = task_prefix()
@@ -202,8 +227,8 @@ def refresh_index():
             st = os.stat(path)
         except OSError:
             continue
-        e = idx.get(path) or {"agent": agent, "session_id": "", "cwd": "", "title": "", "mtime": 0, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": "/subagents/" in path, "entrypoint": "", "branch": "", "first_ts": "", "last_ts": "", "user_msgs": 0, "assistant_msgs": 0, "tools": {}}
-        for k, v in (("entrypoint", ""), ("branch", ""), ("first_ts", ""), ("last_ts", ""), ("user_msgs", 0), ("assistant_msgs", 0), ("tools", {})):
+        e = idx.get(path) or {"agent": agent, "session_id": "", "cwd": "", "title": "", "mtime": 0, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": "/subagents/" in path, "entrypoint": "", "branch": "", "first_ts": "", "last_ts": "", "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": ""}
+        for k, v in (("entrypoint", ""), ("branch", ""), ("first_ts", ""), ("last_ts", ""), ("user_msgs", 0), ("assistant_msgs", 0), ("tools", {}), ("first_prompt", "")):
             e.setdefault(k, v)
         if e["mtime"] == st.st_mtime and e["size"] == st.st_size:
             idx[path] = e
@@ -241,6 +266,8 @@ def refresh_index():
             m = re_entry.search(buf)
             if m:
                 e["entrypoint"] = m.group(1)
+        if not e["first_prompt"]:
+            e["first_prompt"] = first_prompt_of(agent, buf)
         if not e["branch"]:
             m = re_branch.search(buf)
             if m:
@@ -271,7 +298,13 @@ def refresh_index():
         e = idx.get(key)
         if e and e.get("mtime") == mtime:
             continue
-        e = {"agent": "zcode", "session_id": r["id"], "cwd": r["directory"], "title": r["title"], "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": "desktop", "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(r["time_created"] / 1000)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}}
+        e = {"agent": "zcode", "session_id": r["id"], "cwd": r["directory"], "title": r["title"], "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": "desktop", "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(r["time_created"] / 1000)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": ""}
+        fp = zcode_query("select p.data from part p join message m on m.id=p.message_id where p.session_id=? and json_extract(m.data,'$.role')='user' and json_extract(p.data,'$.type')='text' order by p.time_created limit 1", (r["id"],))
+        if fp:
+            try:
+                e["first_prompt"] = (json.loads(fp[0]["data"]).get("text") or "").strip()[:240]
+            except Exception:
+                pass
         for m in zcode_query("select json_extract(data,'$.role') role, count(*) n from message where session_id=? group by role", (r["id"],)):
             if m["role"] == "user":
                 e["user_msgs"] = m["n"]
@@ -324,7 +357,7 @@ def subagents_of(path):
 
 
 def ref_of(path, e, task_id=None):
-    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode") else []}
+    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode") else []}
 
 
 def session_refs(idx, task_id=None, session_id=None):
@@ -347,11 +380,47 @@ def cmd_index(a):
     out({"files": len(idx), "sessions": n, "index": INDEX_FILE}, a.json, lambda o: print(f"索引 {o['files']} 个文件，{o['sessions']} 个会话 → {o['index']}"))
 
 
+def cmd_folders(a):
+    """Every directory an agent has worked in: who came, how often, when, what tasks."""
+    idx = load_index() if a.cached else refresh_index()
+    refs = session_refs(idx)
+    folders = {}
+    for r in refs:
+        cwd = (r["cwd"] or "").rstrip("/")
+        if not cwd:
+            continue
+        f = folders.setdefault(cwd, {"cwd": cwd, "name": os.path.basename(cwd) or cwd, "sessions": 0, "agents": {}, "last_at": 0, "first_at": None, "turns": 0, "tasks": set()})
+        f["sessions"] += 1
+        f["agents"][r["agent"]] = f["agents"].get(r["agent"], 0) + 1
+        f["last_at"] = max(f["last_at"], r["last_at"])
+        f["turns"] += r.get("user_msgs", 0)
+        f["tasks"].update(r.get("tasks", {}).keys())
+        if r.get("first_ts"):
+            f["first_at"] = min(f["first_at"] or r["first_ts"], r["first_ts"])
+    rows = sorted(folders.values(), key=lambda f: -f["last_at"])
+    for f in rows:
+        f["tasks"] = sorted(f["tasks"])
+        f["exists"] = os.path.isdir(f["cwd"])
+    if a.query:
+        q = a.query.lower()
+        rows = [f for f in rows if q in f["cwd"].lower()]
+
+    def text(rows):
+        for f in rows:
+            ag = " ".join(f"{k}×{v}" for k, v in f["agents"].items())
+            print(f"{ago(f['last_at']):<5} {f['sessions']:>3} 会话  {ag:<40} {f['cwd'].replace(HOME, '~')}")
+        print(f"\n{len(rows)} 个目录")
+    out(rows, a.json, text)
+
+
 def cmd_list(a):
     idx = load_index() if a.cached else refresh_index()
     refs = session_refs(idx)
     if a.agent:
         refs = [r for r in refs if r["agent"] == a.agent]
+    if a.cwd:
+        want = os.path.expanduser(a.cwd).rstrip("/")
+        refs = [r for r in refs if (r["cwd"] or "").rstrip("/") == want]
     if a.project:
         refs = [r for r in refs if r["project"] == a.project]
     if a.query:
@@ -1187,7 +1256,8 @@ def main():
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
-    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--project"); s.set_defaults(include_subagents=None); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
+    s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
+    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)

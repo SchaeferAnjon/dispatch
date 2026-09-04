@@ -96,6 +96,12 @@ export function fixtureApi(): Api {
     skillRead: async (name) => `---\nname: ${name}\ndescription: ${skills.find((x) => x.name === name)?.description ?? ""}\n---\n\n# ${name}\n\n（浏览器预览：示例内容）\n`,
     skillWrite: async (name) => `/pool/${name}/SKILL.md`,
     skillOpen: async () => {},
+    folders: async (): Promise<import("./types").Folder[]> => [
+      { cwd: "/Users/x/Projects/kanban", name: "kanban", sessions: 2, agents: { "claude-code": 2 }, last_at: now / 1000 - 120, first_at: new Date(now - 4 * 3600e3).toISOString(), turns: 300, tasks: ["task-9lo"], exists: true },
+      { cwd: "/Users/x/Projects/poker-trainer", name: "poker-trainer", sessions: 1, agents: { codex: 1 }, last_at: now / 1000 - 5000, first_at: null, turns: 9, tasks: ["task-4mk"], exists: true },
+      { cwd: "/Users/x/Projects/bookmark", name: "bookmark", sessions: 1, agents: { "claude-code": 1 }, last_at: now / 1000 - 7 * 3600, first_at: null, turns: 133, tasks: [], exists: false },
+    ],
+    openPath: async () => {},
     graph: async () => ({ nodes: issues.map((i) => ({ ...i })), edges: [
       { from: "task-9lo", to: "task-4mk", type: "discovered-from" }, { from: "task-9lo", to: "task-e1q", type: "discovered-from" },
       { from: "task-4mk", to: "task-m3r", type: "discovered-from" }, { from: "task-e1q", to: "task-m3r", type: "discovered-from" },

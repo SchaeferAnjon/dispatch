@@ -43,6 +43,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
           <span className="ic">▦</span>全部任务<span className="n">{counts.total}</span>
         </a>
         {item("graph", "⌥", "脉络")}
+        {item("folders", "▤", "文件夹")}
         <div className="sub">
           <div className="h">项目{filters.project !== null && <button className="n" onClick={() => setFilters({ ...filters, project: null })}>清除</button>}</div>
           {projects.length === 0 && <a className="muted" style={{ cursor: "default" }}>用 label <span className="mono">project:名字</span> 归类</a>}
