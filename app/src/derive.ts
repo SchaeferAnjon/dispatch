@@ -150,7 +150,10 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     p.current.sort((a, b) => a.priority - b.priority);
   }
   const order: Record<AgentKind, number> = { claude: 0, codex: 1, zcode: 2, human: 3, cursor: 4 };
-  return [...map.values()].sort((a, b) => Number(b.online) - Number(a.online) || order[a.actor.kind] - order[b.actor.kind]);
+  // The human is not an agent: only list them while they actually hold an in-progress task.
+  return [...map.values()]
+    .filter((p) => p.actor.kind !== "human" || p.current.length > 0)
+    .sort((a, b) => Number(b.online) - Number(a.online) || order[a.actor.kind] - order[b.actor.kind]);
 }
 
 export interface Event { ts: string; actor?: string; kind: "created" | "claimed" | "status" | "closed" | "reviewed" | "comment" | "edited"; text: string; cmd?: string }

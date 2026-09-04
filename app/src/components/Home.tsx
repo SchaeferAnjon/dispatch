@@ -84,7 +84,7 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
       for (const [t, s] of sessTask) if (!claimed.has(t)) items.push({ issue: byId.get(t)!, session: s, last: lastNote[t] });
       const idleSessions = a.sessions.filter((s) => ![...sessTask.values()].includes(s));
       return { agent: a, items, idleSessions };
-    }).filter((l) => l.items.length || l.agent.sessions.length || l.agent.actor.kind === "human" && l.items.length);
+    }).filter((l) => l.agent.actor.kind !== "human" || l.items.length > 0);
   }, [agents, inProgress, refs, lastNote, me, issues]);
 
   const recent = useMemo(() => [...issues].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 12), [issues]);
