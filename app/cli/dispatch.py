@@ -204,6 +204,138 @@ def first_prompt_of(agent, buf):
     return ""
 
 
+STATS_V = 1  # bump to force a full re-parse when the per-session stats shape changes
+
+
+def stats_fields():
+    return {"tokens": {"in": 0, "out": 0, "cr": 0, "cw": 0, "think": 0}, "models": {}, "days": {}, "hours": {}, "skills": {}, "subs": {}, "last_req": "", "codex_prev": 0}
+
+
+def bump_time(e, dt, msgs=0, tok=0, parts=None):
+    """Attribute activity to the local day and to the weekday×hour bucket."""
+    if dt is None:
+        return
+    day = dt.strftime("%Y-%m-%d")
+    d = e["days"].setdefault(day, [0, 0, 0, 0, 0, 0])  # msgs, tokens, in, out, cache_read, cache_write
+    d[0] += msgs
+    d[1] += tok
+    if parts:
+        for i, v in enumerate(parts):
+            d[2 + i] += v
+    if msgs:
+        k = f"{dt.weekday()}-{dt.hour}"
+        e["hours"][k] = e["hours"].get(k, 0) + msgs
+
+
+def local_dt(ts):
+    from datetime import datetime as _dt
+    try:
+        return _dt.fromisoformat(ts.replace("Z", "+00:00")).astimezone()
+    except Exception:
+        return None
+
+
+def local_dt_ms(ms):
+    from datetime import datetime as _dt
+    try:
+        return _dt.fromtimestamp(ms / 1000)
+    except Exception:
+        return None
+
+
+def parse_claude_stats(e, buf, re_ts):
+    """Token usage (deduped by requestId: one API response is logged once per content block),
+    model, skills (Skill tool + slash commands), subagents (Task/Agent tool), activity by time."""
+    for line in buf.split("\n"):
+        if not line.startswith("{"):
+            continue
+        if '"type":"assistant"' in line:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            msg = d.get("message") or {}
+            rid = d.get("requestId") or d.get("uuid") or ""
+            u = msg.get("usage") or {}
+            if u and rid != e["last_req"]:
+                e["last_req"] = rid
+                i, o = u.get("input_tokens", 0) or 0, u.get("output_tokens", 0) or 0
+                cr, cw = u.get("cache_read_input_tokens", 0) or 0, u.get("cache_creation_input_tokens", 0) or 0
+                th = (u.get("output_tokens_details") or {}).get("thinking_tokens", 0) or 0
+                T = e["tokens"]
+                T["in"] += i; T["out"] += o; T["cr"] += cr; T["cw"] += cw; T["think"] += th
+                m = msg.get("model")
+                if m:
+                    e["models"][m] = e["models"].get(m, 0) + 1
+                bump_time(e, local_dt(d.get("timestamp", "")), 1, i + o + cr + cw, (i, o, cr, cw))
+            for b in msg.get("content") or []:
+                if not isinstance(b, dict) or b.get("type") != "tool_use":
+                    continue
+                inp = b.get("input") or {}
+                if b.get("name") == "Skill" and inp.get("skill"):
+                    e["skills"][inp["skill"]] = e["skills"].get(inp["skill"], 0) + 1
+                elif b.get("name") in ("Task", "Agent") and inp.get("subagent_type"):
+                    e["subs"][inp["subagent_type"]] = e["subs"].get(inp["subagent_type"], 0) + 1
+        elif '"type":"user"' in line and '"tool_use_id"' not in line:
+            m = re_ts.search(line)
+            if m:
+                bump_time(e, local_dt(m.group(1)), 1, 0)
+    for m in re.finditer(r"<command-name>/?([^<\s]{1,60})</command-name>", buf):
+        k = "/" + m.group(1)
+        e["skills"][k] = e["skills"].get(k, 0) + 1
+
+
+def parse_codex_stats(e, buf, re_ts):
+    """Codex logs a cumulative total_token_usage per turn; tokens = last total, activity = the deltas."""
+    for line in buf.split("\n"):
+        if not line.startswith("{"):
+            continue
+        if '"token_count"' in line and '"total_token_usage"' in line:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            tu = ((d.get("payload") or {}).get("info") or {}).get("total_token_usage") or {}
+            if not tu:
+                continue
+            total = tu.get("total_tokens", 0) or 0
+            delta = max(0, total - e["codex_prev"])
+            e["codex_prev"] = total
+            cached = tu.get("cached_input_tokens", 0) or 0
+            e["tokens"] = {"in": max(0, (tu.get("input_tokens", 0) or 0) - cached), "out": tu.get("output_tokens", 0) or 0, "cr": cached, "cw": tu.get("cache_write_input_tokens", 0) or 0, "think": tu.get("reasoning_output_tokens", 0) or 0}
+            bump_time(e, local_dt(d.get("timestamp", "")), 0, delta, (0, 0, 0, 0))
+        elif '"turn_context"' in line:
+            m = re.search(r'"model":"([^"]+)"', line)
+            if m:
+                e["models"][m.group(1)] = e["models"].get(m.group(1), 0) + 1
+        elif '"type":"response_item"' in line and '"type":"message"' in line and ('"role":"user"' in line or '"role":"assistant"' in line):
+            m = re_ts.search(line)
+            if m:
+                bump_time(e, local_dt(m.group(1)), 1, 0)
+
+
+def parse_zcode_stats(e, sid):
+    for m in zcode_query("select data, time_created from message where session_id=?", (sid,)):
+        try:
+            d = json.loads(m["data"])
+        except Exception:
+            continue
+        tok = 0
+        if d.get("role") == "assistant":
+            tk = d.get("tokens") or {}
+            c = tk.get("cache") or {}
+            i, o, cr, cw, th = tk.get("input", 0) or 0, tk.get("output", 0) or 0, c.get("read", 0) or 0, c.get("write", 0) or 0, tk.get("reasoning", 0) or 0
+            T = e["tokens"]
+            T["in"] += i; T["out"] += o; T["cr"] += cr; T["cw"] += cw; T["think"] += th
+            tok = i + o + cr + cw
+            mid = d.get("modelID")
+            if mid:
+                e["models"][mid] = e["models"].get(mid, 0) + 1
+            bump_time(e, local_dt_ms(m["time_created"]), 1, tok, (i, o, cr, cw))
+        else:
+            bump_time(e, local_dt_ms(m["time_created"]), 1, 0)
+
+
 def refresh_index():
     """Incrementally scan Claude Code / Codex transcripts for task ids, titles, cwd."""
     prefix = task_prefix()
@@ -230,11 +362,14 @@ def refresh_index():
         e = idx.get(path) or {"agent": agent, "session_id": "", "cwd": "", "title": "", "mtime": 0, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": "/subagents/" in path, "entrypoint": "", "branch": "", "first_ts": "", "last_ts": "", "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": ""}
         for k, v in (("entrypoint", ""), ("branch", ""), ("first_ts", ""), ("last_ts", ""), ("user_msgs", 0), ("assistant_msgs", 0), ("tools", {}), ("first_prompt", "")):
             e.setdefault(k, v)
+        if e.get("stats_v") != STATS_V:
+            # Shape changed: re-read the whole file once so the counters start from zero.
+            e.update(off=0, mtime=0, tasks={}, claims=[], user_msgs=0, assistant_msgs=0, tools={}, stats_v=STATS_V, **stats_fields())
         if e["mtime"] == st.st_mtime and e["size"] == st.st_size:
             idx[path] = e
             continue
         if st.st_size < e["off"]:
-            e["off"], e["tasks"], e["claims"] = 0, {}, []
+            e.update(off=0, tasks={}, claims=[], user_msgs=0, assistant_msgs=0, tools={}, **stats_fields())
         with open(path, "rb") as f:
             f.seek(e["off"])
             buf = f.read().decode("utf-8", "replace")
@@ -288,6 +423,7 @@ def refresh_index():
             e["assistant_msgs"] += buf.count('"type":"assistant"')
         for m in re.finditer(r'"type":"tool_use","id":"[^"]+","name":"([^"]+)"', buf):
             e["tools"][m.group(1)] = e["tools"].get(m.group(1), 0) + 1
+        (parse_codex_stats if agent == "codex" else parse_claude_stats)(e, buf, re_ts)
         e["off"], e["mtime"], e["size"] = st.st_size, st.st_mtime, st.st_size
         idx[path] = e
     # ZCode sessions live in SQLite, not files; key them as zcode:<id>.
@@ -296,9 +432,10 @@ def refresh_index():
         seen.add(key)
         mtime = r["time_updated"] / 1000
         e = idx.get(key)
-        if e and e.get("mtime") == mtime:
+        if e and e.get("mtime") == mtime and e.get("stats_v") == STATS_V:
             continue
-        e = {"agent": "zcode", "session_id": r["id"], "cwd": r["directory"], "title": r["title"], "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": "desktop", "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(r["time_created"] / 1000)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": ""}
+        e = {"agent": "zcode", "session_id": r["id"], "cwd": r["directory"], "title": r["title"], "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": "desktop", "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(r["time_created"] / 1000)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": "", "stats_v": STATS_V, **stats_fields()}
+        parse_zcode_stats(e, r["id"])
         fp = zcode_query("select p.data from part p join message m on m.id=p.message_id where p.session_id=? and json_extract(m.data,'$.role')='user' and json_extract(p.data,'$.type')='text' order by p.time_created limit 1", (r["id"],))
         if fp:
             try:
@@ -429,6 +566,129 @@ def cmd_folders(a):
             print(f"{ago(f['last_at']):<5} {f['sessions']:>3} 会话  {ag:<40} {f['cwd'].replace(HOME, '~')}")
         print(f"\n{len(rows)} 个目录")
     out(rows, a.json, text)
+
+
+def cmd_stats(a):
+    """Everything the agents burned, across all of them: tokens, activity by day and hour,
+    tools / skills / subagents, models, projects. Ranges filter days by activity date and
+    sessions (tools, models, projects) by their last activity."""
+    from datetime import date, timedelta
+    idx = load_index() if a.cached else refresh_index()
+    days_n = a.days or 0
+    cutoff = (date.today() - timedelta(days=days_n - 1)).strftime("%Y-%m-%d") if days_n else ""
+    cutoff_epoch = time.mktime(time.strptime(cutoff, "%Y-%m-%d")) if cutoff else 0
+    agents = {}
+    days = {}
+    hours = [[0] * 24 for _ in range(7)]
+    models, tools, skills, subs, projects = {}, {}, {}, {}, {}
+    tok_sub = 0
+    for path, e in idx.items():
+        ag = e["agent"]
+        if a.agent and ag != a.agent:
+            continue
+        if not e.get("days") and not e.get("tokens"):
+            continue
+        A = agents.setdefault(ag, {"agent": ag, "sessions": 0, "msgs": 0, "tokens": {"in": 0, "out": 0, "cr": 0, "cw": 0, "think": 0}, "total": 0, "days": set()})
+        for day, v in (e.get("days") or {}).items():
+            if cutoff and day < cutoff:
+                continue
+            D = days.setdefault(day, {"date": day, "msgs": 0, "tokens": 0, "in": 0, "out": 0, "cr": 0, "cw": 0, "by": {}})
+            D["msgs"] += v[0]; D["tokens"] += v[1]; D["in"] += v[2]; D["out"] += v[3]; D["cr"] += v[4]; D["cw"] += v[5]
+            D["by"][ag] = D["by"].get(ag, 0) + v[1]
+            A["msgs"] += v[0]; A["total"] += v[1]
+            for k, i in (("in", 2), ("out", 3), ("cr", 4), ("cw", 5)):
+                A["tokens"][k] += v[i]
+            if v[0]:
+                A["days"].add(day)
+            if e.get("subagent"):
+                tok_sub += v[1]
+        in_range = not cutoff or e.get("mtime", 0) >= cutoff_epoch
+        if not in_range:
+            continue
+        A["tokens"]["think"] += (e.get("tokens") or {}).get("think", 0)
+        if not e.get("subagent") and e.get("session_id"):
+            A["sessions"] += 1
+        # Only activity within the range; the weekday×hour grid is filtered the same way.
+        if not cutoff:
+            for k, n in (e.get("hours") or {}).items():
+                w, h = k.split("-")
+                hours[int(w)][int(h)] += n
+        for m, n in (e.get("models") or {}).items():
+            M = models.setdefault(m, {"model": m, "agent": ag, "msgs": 0})
+            M["msgs"] += n
+        for t, n in (e.get("tools") or {}).items():
+            T = tools.setdefault(t, {"name": t, "count": 0, "by": {}})
+            T["count"] += n; T["by"][ag] = T["by"].get(ag, 0) + n
+        for s, n in (e.get("skills") or {}).items():
+            S = skills.setdefault(s, {"name": s, "count": 0, "by": {}})
+            S["count"] += n; S["by"][ag] = S["by"].get(ag, 0) + n
+        for s, n in (e.get("subs") or {}).items():
+            S = subs.setdefault(s, {"name": s, "count": 0, "by": {}})
+            S["count"] += n; S["by"][ag] = S["by"].get(ag, 0) + n
+        cwd = (e.get("cwd") or "").rstrip("/")
+        if cwd and not e.get("subagent"):
+            P = projects.setdefault(cwd, {"name": os.path.basename(cwd) or cwd, "cwd": cwd, "tokens": 0, "msgs": 0, "sessions": 0, "by": {}})
+            tk = e.get("tokens") or {}
+            tt = sum(v for k, v in tk.items() if k != "think")
+            P["tokens"] += tt; P["sessions"] += 1; P["msgs"] += e.get("user_msgs", 0) + e.get("assistant_msgs", 0)
+            P["by"][ag] = P["by"].get(ag, 0) + tt
+    if cutoff:
+        # Hour grid for a range: rebuild from the sessions' day buckets is impossible (no hour per day), so
+        # approximate with sessions active in the range.
+        for e in idx.values():
+            if (a.agent and e["agent"] != a.agent) or e.get("mtime", 0) < cutoff_epoch:
+                continue
+            for k, n in (e.get("hours") or {}).items():
+                w, h = k.split("-")
+                hours[int(w)][int(h)] += n
+    day_list = sorted(days.values(), key=lambda d: d["date"])
+    active = sorted(d["date"] for d in day_list if d["msgs"] > 0)
+    # streaks
+    from datetime import datetime as _dt
+    cur = longest = run = 0
+    prev = None
+    for d in active:
+        dd = _dt.strptime(d, "%Y-%m-%d").date()
+        run = run + 1 if prev and (dd - prev).days == 1 else 1
+        longest = max(longest, run)
+        prev = dd
+    if prev and (date.today() - prev).days <= 1:
+        cur = run
+    tot = {"in": 0, "out": 0, "cr": 0, "cw": 0, "think": 0}
+    for A in agents.values():
+        for k in tot:
+            tot[k] += A["tokens"][k]
+        A["days"] = len(A["days"])
+    total_tokens = tot["in"] + tot["out"] + tot["cr"] + tot["cw"]
+    active_hours = sum(1 for row in hours for n in row if n) if not cutoff else None
+    res = {
+        "range_days": days_n,
+        "agent": a.agent or "",
+        "total": {"tokens": tot, "total": total_tokens, "sub_tokens": tok_sub, "msgs": sum(d["msgs"] for d in day_list), "sessions": sum(A["sessions"] for A in agents.values()),
+                  "active_days": len(active), "streak_cur": cur, "streak_max": longest, "tools_distinct": len(tools), "active_hours": active_hours,
+                  "first_day": active[0] if active else "", "last_day": active[-1] if active else ""},
+        "agents": sorted(agents.values(), key=lambda A: -A["total"]),
+        "days": day_list,
+        "hours": hours,
+        "models": sorted(models.values(), key=lambda m: -m["msgs"]),
+        "tools": sorted(tools.values(), key=lambda t: -t["count"])[:30],
+        "skills": sorted(skills.values(), key=lambda t: -t["count"])[:30],
+        "subagents": sorted(subs.values(), key=lambda t: -t["count"])[:30],
+        "projects": sorted(projects.values(), key=lambda p: -p["tokens"])[:20],
+        "generated_at": time.time(),
+    }
+
+    def text(r):
+        t = r["total"]
+        print(f"token {t['total']:,}（输入 {t['tokens']['in']:,} · 输出 {t['tokens']['out']:,} · 缓存读 {t['tokens']['cr']:,} · 缓存写 {t['tokens']['cw']:,}） · 消息 {t['msgs']:,} · 会话 {t['sessions']} · 活跃 {t['active_days']} 天（当前连续 {t['streak_cur']}，最长 {t['streak_max']}）")
+        for A in r["agents"]:
+            print(f"  {A['agent']:<12} token {A['total']:>13,}  消息 {A['msgs']:>7,}  会话 {A['sessions']:>4}  活跃 {A['days']} 天")
+        print("工具:", " · ".join(f"{x['name']} {x['count']}" for x in r["tools"][:10]))
+        print("技能:", " · ".join(f"{x['name']} {x['count']}" for x in r["skills"][:10]) or "—")
+        print("子 Agent:", " · ".join(f"{x['name']} {x['count']}" for x in r["subagents"][:8]) or "—")
+        print("模型:", " · ".join(f"{x['model']} {x['msgs']}" for x in r["models"][:8]))
+        print("项目:", " · ".join(f"{x['name']} {x['tokens']:,}" for x in r["projects"][:8]))
+    out(res, a.json, text)
 
 
 def cmd_list(a):
@@ -1364,6 +1624,7 @@ def main():
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
+    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)

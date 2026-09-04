@@ -107,6 +107,7 @@ export function fixtureApi(): Api {
       { from: "task-4mk", to: "task-m3r", type: "discovered-from" }, { from: "task-e1q", to: "task-m3r", type: "discovered-from" },
       { from: "task-bzz", to: "task-ss0", type: "blocks" }, { from: "task-a1c", to: "task-9lo", type: "discovered-from" },
     ] }),
+    stats: async () => null,
     quota: async () => [
       { agent: "claude-code", plan: "Max", windows: [{ label: "5 小时", used_percent: 9, resets_at: now / 1000 + 9900 }, { label: "每周", used_percent: 5, resets_at: now / 1000 + 46500 }], updated_at: now / 1000 - 60, source: "statusline", note: "" },
       { agent: "codex", plan: "plus", windows: [{ label: "5 小时", used_percent: 0, resets_at: now / 1000 + 4000 }, { label: "每周", used_percent: 21, resets_at: now / 1000 + 400000 }], updated_at: now / 1000 - 3600, source: "rollout", note: "" },

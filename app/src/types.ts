@@ -1,6 +1,24 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "folders" | "agents" | "sessions" | "skills" | "rules" | "pitfalls";
+export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "folders" | "agents" | "sessions" | "stats" | "skills" | "rules" | "pitfalls";
+
+export interface StatsTokens { in: number; out: number; cr: number; cw: number; think: number }
+export interface StatsDay { date: string; msgs: number; tokens: number; in: number; out: number; cr: number; cw: number; by: Record<string, number> }
+export interface StatsRank { name: string; count: number; by: Record<string, number> }
+export interface Stats {
+  range_days: number;
+  agent: string;
+  total: { tokens: StatsTokens; total: number; sub_tokens: number; msgs: number; sessions: number; active_days: number; streak_cur: number; streak_max: number; tools_distinct: number; active_hours: number | null; first_day: string; last_day: string };
+  agents: { agent: string; sessions: number; msgs: number; tokens: StatsTokens; total: number; days: number }[];
+  days: StatsDay[];
+  hours: number[][];
+  models: { model: string; agent: string; msgs: number }[];
+  tools: StatsRank[];
+  skills: StatsRank[];
+  subagents: StatsRank[];
+  projects: { name: string; cwd: string; tokens: number; msgs: number; sessions: number; by: Record<string, number> }[];
+  generated_at: number;
+}
 export interface Folder { cwd: string; name: string; sessions: number; agents: Record<string, number>; last_at: number; first_at: string | null; turns: number; tasks: string[]; exists: boolean }
 export interface GraphEdge { from: string; to: string; type: string }
 export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }

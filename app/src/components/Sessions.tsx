@@ -19,9 +19,9 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<"timeline" | "files" | "tasks">("timeline");
   const [busy, setBusy] = useState(false);
-  // Off by default: the conversation is the point; tool calls are the noise you opt into.
-  const [showTools, setShowTools] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-show-tools") === "1"; } catch { return false; } });
-  const toggleTools = () => { const v = !showTools; setShowTools(v); try { localStorage.setItem("dispatch-show-tools", v ? "1" : "0"); } catch { /* ignore */ } };
+  // Which kinds of turns to show. Tools off by default: the conversation is the point.
+  const [kinds, setKinds] = useState<Record<"user" | "assistant" | "tool", boolean>>(() => { try { return { user: true, assistant: true, tool: false, ...JSON.parse(localStorage.getItem("dispatch-tl-kinds") || "{}") }; } catch { return { user: true, assistant: true, tool: false }; } });
+  const flip = (k: "user" | "assistant" | "tool") => { const v = { ...kinds, [k]: !kinds[k] }; setKinds(v); try { localStorage.setItem("dispatch-tl-kinds", JSON.stringify(v)); } catch { /* ignore */ } };
 
   const load = async () => { try { setRefs(await api.sessionList()); setLoaded(true); } catch (e) { onError(String(e)); } };
   useEffect(() => { load(); const t = window.setInterval(load, 60_000); return () => window.clearInterval(t); }, [api]);
@@ -97,16 +97,23 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                 <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>时间线 {detail.messages.length}</button>
                 <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>改动 {detail.files.length}</button>
                 <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务 {Object.keys(m.tasks).length}</button>
-                {tab === "timeline" && (() => { const n = detail.messages.reduce((s, x) => s + x.tools.length + (x.role === "tool" ? 1 : 0), 0); return (
-                  <label className="switch" title="关掉只看你和 Agent 说了什么；打开才显示每一次工具调用">
-                    <input type="checkbox" checked={showTools} onChange={toggleTools} /><span className="knob" />工具调用<span className="muted mono small">{n}</span>
-                  </label>
-                ); })()}
+                {tab === "timeline" && (() => {
+                  const nU = detail.messages.filter((x) => x.role === "user").length;
+                  const nA = detail.messages.filter((x) => x.role === "assistant" && x.text.trim()).length;
+                  const nT = detail.messages.reduce((s, x) => s + x.tools.length + (x.role === "tool" ? 1 : 0), 0);
+                  return (
+                    <span className="kinds" title="点一下切换显示哪类内容">
+                      <button className={`chip${kinds.user ? " on" : ""}`} onClick={() => flip("user")}>你 <span className="mono muted">{nU}</span></button>
+                      <button className={`chip${kinds.assistant ? " on" : ""}`} onClick={() => flip("assistant")}>{a?.name ?? "Agent"} <span className="mono muted">{nA}</span></button>
+                      <button className={`chip${kinds.tool ? " on" : ""}`} onClick={() => flip("tool")}>工具调用 <span className="mono muted">{nT}</span></button>
+                    </span>
+                  );
+                })()}
               </div>
               <div className="sess-body">
                 {tab === "timeline" && (() => {
-                  // Without tools: user turns, replies that say something, and gaps. Nothing merged, just hidden.
-                  const list = showTools ? detail.messages : detail.messages.filter((x) => x.role === "gap" || x.role === "user" || (x.role === "assistant" && x.text.trim()));
+                  const showTools = kinds.tool;
+                  const list = detail.messages.filter((x) => x.role === "gap" || (x.role === "user" && kinds.user) || (x.role === "assistant" && (x.text.trim() ? kinds.assistant : kinds.tool)) || (x.role === "tool" && kinds.tool));
                   return list.map((x, i) => (
                     <div key={i} className={`tl ${x.role}`}>
                       {x.role === "gap" ? <div className="muted">{x.text}</div> : (

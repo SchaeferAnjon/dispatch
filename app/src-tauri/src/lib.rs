@@ -439,6 +439,20 @@ async fn quota() -> Result<String, String> {
     run_dispatch(args(&["quota", "--json"])).await
 }
 
+#[tauri::command]
+async fn stats(agent: Option<String>, days: Option<u32>) -> Result<String, String> {
+    let mut a = args(&["stats", "--cached", "--json"]);
+    if let Some(ag) = agent.filter(|s| !s.is_empty()) {
+        a.push("--agent".into());
+        a.push(ag);
+    }
+    if let Some(d) = days.filter(|d| *d > 0) {
+        a.push("--days".into());
+        a.push(d.to_string());
+    }
+    run_dispatch(a).await
+}
+
 // ---------- global rules: one markdown file synced into every agent ----------
 
 fn rules_path() -> Result<PathBuf, String> {
@@ -662,7 +676,7 @@ pub fn run() {
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
             skills_list, skill_toggle, skill_read, skill_write, skill_open, tray_update,
-            rules_read, rules_write, rules_status, rules_sync, quota, graph, folders, open_path
+            rules_read, rules_write, rules_status, rules_sync, quota, stats, graph, folders, open_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -12,6 +12,7 @@ const P: Record<string, string> = {
   skill: "M8 2.5l1.6 3.4 3.7.4-2.8 2.5.8 3.7L8 10.6l-3.3 1.9.8-3.7-2.8-2.5 3.7-.4z",
   rule: "M4 3.5h8M4 6.5h8M4 9.5h5M4 12.5h3",
   pit: "M8 2.5l6 10.5H2zM8 7v3M8 11.5v.5",
+  chart: "M3 13V8M6.5 13V4M10 13V6.5M13.5 13V9.5M2 13h12",
 };
 
 export function Icon({ name, size = 14 }: { name: keyof typeof P | string; size?: number }) {
