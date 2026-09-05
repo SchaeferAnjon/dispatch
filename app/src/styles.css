@@ -604,3 +604,5 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .pit-row .lbl.retro{color:var(--accent-ink);background:var(--accent-soft)}
 .pit-row .lbl.howto,.pit-row .lbl.plain{color:var(--ink-3);background:var(--panel-2)}
 .dialog h3 .chips{display:inline-flex;gap:4px;vertical-align:middle}
+.sk-item .use{font-size:10.5px;color:var(--ink-3);background:var(--panel-2);border-radius:4px;padding:0 5px}
+.views button.primary{color:var(--accent-ink);background:var(--accent-soft)}

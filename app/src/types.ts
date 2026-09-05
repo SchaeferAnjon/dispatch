@@ -55,7 +55,8 @@ export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" |
 export interface FileChange { kind: "edit" | "write" | "patch"; old: string; new: string; ts: string; op?: string; add?: number; del?: number }
 export interface SessionDetail { meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
 export interface Memory { key: string; value: string }
-export interface Skill { name: string; path: string; in_pool: boolean; description: string; agents: Record<string, boolean>; mounts?: Record<string, string | null> }
+export interface Skill { name: string; path: string; in_pool: boolean; description: string; agents: Record<string, boolean>; mounts?: Record<string, string | null>; usage?: Record<string, number>; last_used?: string }
+export interface SkillImprove { prompt: string; command: string; top: { name: string; usage: Record<string, number>; last_used: string }[] }
 
 export interface Issue {
   id: string;

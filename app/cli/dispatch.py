@@ -1384,11 +1384,49 @@ def all_skills():
     for ag in m:
         for n, (_, real) in m[ag].items():
             names.setdefault(n, real)
+    usage, last = skill_usage()
     rows = []
     for n, path in sorted(names.items()):
         fm = read_frontmatter(path)
-        rows.append({"name": n, "path": path, "in_pool": path.startswith(POOL), "description": fm.get("description", ""), "agents": {ag: n in m[ag] for ag in m}, "mounts": {ag: (m[ag][n][0] if n in m[ag] else None) for ag in m}})
+        rows.append({"name": n, "path": path, "in_pool": path.startswith(POOL), "description": fm.get("description", ""), "agents": {ag: n in m[ag] for ag in m}, "mounts": {ag: (m[ag][n][0] if n in m[ag] else None) for ag in m},
+                     "usage": usage.get(n, {}), "last_used": last.get(n, "")})
     return rows
+
+
+def skill_usage():
+    """Per-skill invocation counts by agent, from the transcript index (Claude Code records
+    skill/slash-command calls; Codex and ZCode transcripts carry none, so their counts stay 0)."""
+    usage, last = {}, {}
+    for e in (load_index() or {}).values():
+        for k, v in (e.get("skills") or {}).items():
+            n = k.lstrip("/")
+            usage.setdefault(n, {})
+            usage[n][e["agent"]] = usage[n].get(e["agent"], 0) + int(v or 0)
+            ts = (e.get("last_ts") or "")[:10]
+            if ts > last.get(n, ""):
+                last[n] = ts
+    return usage, last
+
+
+def cmd_skills_improve(a):
+    """A ready-to-run agent task: review the skills actually used recently against the
+    recent sessions and improve them. Printed (and copied) rather than executed, so the
+    user picks which agent runs it."""
+    days = a.days or 14
+    rows = all_skills()
+    used = sorted([r for r in rows if r["usage"]], key=lambda r: -sum(r["usage"].values()))
+    top = ", ".join(f"{r['name']}({sum(r['usage'].values())})" for r in used[:10]) or "（索引里还没有技能调用记录）"
+    prompt = (f"根据我最近 {days} 天的工作流改进技能。步骤：1) `dispatch stats --days {days} --json` 看各 Agent 的工具/技能/项目分布；"
+              f"`dispatch list --limit 40 --json` 找最近会话，用 `dispatch session <id>` 读其中和技能相关的几段（哪里绕过了技能、哪里重复手工做了技能该做的事）。"
+              f"2) 最常用技能：{top}。逐个读 `dispatch skills path <name>` 的 SKILL.md，对照会话找过时的路径/命令、缺失的触发词、写得啰嗦的部分。"
+              f"3) 最近反复手工做、但没有技能覆盖的流程，提议新技能（先问我一次要不要）。"
+              f"4) 直接改 SKILL.md（技能池 ~/.cc-switch/skills），每个技能一个 commit，不带 AI 署名；改完 `dispatch wiki add --kind win` 记一条做对的做法。"
+              f"5) 最后给我一张表：技能、改了什么、为什么。用 dispatch begin 建任务再动手。")
+    cmd = f"cd ~/.cc-switch/skills && claude {json.dumps(prompt, ensure_ascii=False)}"
+    if a.copy:
+        subprocess.run(["pbcopy"], input=cmd.encode("utf-8"))
+    out({"prompt": prompt, "command": cmd, "top": [{"name": r["name"], "usage": r["usage"], "last_used": r["last_used"]} for r in used[:10]]}, a.json,
+        lambda o: print(prompt + "\n\n启动命令" + ("（已复制）" if a.copy else "") + "：\n" + cmd))
 
 
 def cc_switch_flag(name, agent, on):
@@ -1404,6 +1442,8 @@ def cc_switch_flag(name, agent, on):
 
 
 def cmd_skills(a):
+    if a.op == "improve":
+        return cmd_skills_improve(a)
     if a.op == "list":
         rows = all_skills()
         if a.agent:
@@ -2093,7 +2133,7 @@ def main():
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
-    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
+    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
@@ -2105,7 +2145,7 @@ def main():
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=6, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()
-    if a.cmd == "skills" and a.op != "list" and not a.name:
+    if a.cmd == "skills" and a.op not in ("list", "improve") and not a.name:
         p.error("需要技能名")
     if a.cmd in ("pit", "wiki") and a.op == "add" and not a.text:
         p.error("需要写内容")

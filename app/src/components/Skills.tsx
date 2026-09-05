@@ -19,6 +19,18 @@ export function SkillsView({ api, onDone, onError }: Props) {
   const [content, setContent] = useState<string>("");
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [byUse, setByUse] = useState(true);
+
+  const total = (s: Skill) => Object.values(s.usage ?? {}).reduce((a, b) => a + b, 0);
+  const improve = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await api.skillImprove(14);
+      try { await navigator.clipboard.writeText(r.command); onDone("启动命令已复制：在终端粘贴运行，Agent 会按最近 14 天的会话审查并改进常用技能"); }
+      catch { onDone("剪贴板不可用；命令：" + r.command.slice(0, 120) + "…"); }
+    } catch (e) { onError(String(e)); } finally { setBusy(false); }
+  };
 
   const load = async () => { try { setSkills(await api.skills()); setLoaded(true); } catch (e) { onError(String(e)); } };
   useEffect(() => { load(); }, [api]);
@@ -32,8 +44,9 @@ export function SkillsView({ api, onDone, onError }: Props) {
 
   const items = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return skills.filter((s) => (!only || s.agents[only]) && (!qq || s.name.toLowerCase().includes(qq) || s.description.toLowerCase().includes(qq)));
-  }, [skills, q, only]);
+    const rows = skills.filter((s) => (!only || s.agents[only]) && (!qq || s.name.toLowerCase().includes(qq) || s.description.toLowerCase().includes(qq)));
+    return byUse ? [...rows].sort((a, b) => total(b) - total(a) || a.name.localeCompare(b.name)) : rows;
+  }, [skills, q, only, byUse]);
   const cur = skills.find((s) => s.name === sel) ?? null;
   const counts = AGENTS.map((a) => ({ ...a, n: skills.filter((s) => s.agents[a.id]).length }));
 
@@ -57,12 +70,16 @@ export function SkillsView({ api, onDone, onError }: Props) {
             <button className={only === "" ? "on" : ""} onClick={() => setOnly("")}>全部 {skills.length}</button>
             {counts.map((a) => <button key={a.id} className={only === a.id ? "on" : ""} onClick={() => setOnly(a.id)}>{a.label} {a.n}</button>)}
           </div>
+          <div className="views" style={{ marginTop: 6 }}>
+            <button className={byUse ? "on" : ""} onClick={() => setByUse(!byUse)} title="按各 Agent 的调用次数排序（来自会话索引；Codex / ZCode 不记录技能调用）">按使用频次</button>
+            <button className="primary" disabled={busy} onClick={improve} title="生成一条 Agent 任务：回看最近 14 天的会话，审查并改进最常用的技能">✦ 按最近工作流改进技能</button>
+          </div>
         </div>
         <div className="sess-items">
           {!loaded && <div className="empty">读取技能池…</div>}
           {items.map((s) => (
             <button key={s.name} className={`sk-item${sel === s.name ? " sel" : ""}`} onClick={() => setSel(s.name)}>
-              <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={s.path}>池外</span>}</div>
+              <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={s.path}>池外</span>}<span className="spacer" />{total(s) > 0 && <span className="use mono" title={Object.entries(s.usage ?? {}).map(([a, n]) => `${a} ${n} 次`).join("，") + (s.last_used ? `，最近 ${s.last_used}` : "")}>{Object.entries(s.usage ?? {}).map(([a, n]) => `${a === "claude-code" ? "C" : a === "codex" ? "X" : a[0].toUpperCase()}${n}`).join(" ")}</span>}</div>
               <div className="l2">{s.description || <span className="muted">（没有描述）</span>}</div>
               <div className="l3">{AGENTS.map((a) => <span key={a.id} className={`mount ${a.cls}${s.agents[a.id] ? " on" : ""}`}>{a.label}</span>)}</div>
             </button>
