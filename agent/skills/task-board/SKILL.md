@@ -35,6 +35,9 @@ dispatch done <id> --reason "做了什么；跑过哪些验证" [--verified] \
 
 动手前 `dispatch wiki search <词>`；`dispatch wiki list [--kind pit] [-P 项目]`；`dispatch wiki show <key>`。记「下次怎么不掉进去」，不记「做了什么」。带 `-P` 的条目只注入该项目的会话；不带的是通用条目，每个会话都看到——通用的要少而精。Dispatch「知识库」视图可看、改、删。
 
+## 环境变量 / API Key（`dispatch env`）
+密钥统一存 `~/.config/dispatch/env`（0600），不进板、不进 wiki、不进 commit。`dispatch prime` 只列名字和用途；需要时 `dispatch env get NAME`；用户给新 Key 时 `dispatch env set NAME VALUE --note "用途"`（或 `--stdin`）；`dispatch env list`；shell 里 `eval "$(dispatch env export)"`（fish 新终端已自动加载）。
+
 ## 其他常用
 ```bash
 bd list --status in_progress                 # 谁在做什么（多开 Agent 时认领前先看）

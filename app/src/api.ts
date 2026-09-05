@@ -1,4 +1,4 @@
-import type { Comment, Folder, GraphData, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove } from "./types";
+import type { Comment, Folder, GraphData, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar } from "./types";
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
@@ -38,6 +38,10 @@ export interface Api {
   rulesWrite(content: string): Promise<void>;
   rulesStatus(): Promise<RulesStatus>;
   rulesSync(): Promise<void>;
+  envList(): Promise<EnvVar[]>;
+  envGet(name: string): Promise<string>;
+  envSet(name: string, value: string, note: string): Promise<void>;
+  envUnset(name: string): Promise<void>;
   memories(): Promise<Memory[]>;
   remember(key: string, value: string): Promise<void>;
   forget(key: string): Promise<void>;
@@ -106,6 +110,10 @@ async function tauriApi(): Promise<Api> {
     rulesWrite: async (content) => void (await call("rules_write", { content })),
     rulesStatus: async () => parse<RulesStatus>(await call("rules_status"), { hash: "", source: "", targets: [] }),
     rulesSync: async () => void (await call("rules_sync")),
+    envList: async () => parse<EnvVar[]>(await call("env_list"), []),
+    envGet: (name) => call("env_get", { name }),
+    envSet: async (name, value, note) => void (await call("env_set", { name, value, note })),
+    envUnset: async (name) => void (await call("env_unset", { name })),
     memories: () => invoke<Memory[]>("memories_list"),
     remember: async (key, value) => void (await call("memory_set", { key, value })),
     forget: async (key) => void (await call("memory_forget", { key })),

@@ -8,6 +8,7 @@ import { PitfallsView } from "./components/Pitfalls";
 import { SessionsView } from "./components/Sessions";
 import { SkillsView } from "./components/Skills";
 import { RulesView } from "./components/Rules";
+import { EnvView } from "./components/Env";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { HomeView } from "./components/Home";
 import { GraphView } from "./components/Graph";
@@ -19,8 +20,8 @@ import { agentsFrom, columnOf, isReviewed, projectOf, rootsOf } from "./derive";
 import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "聊天记录", stats: "统计", skills: "技能", rules: "规则", pitfalls: "知识库" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "stats", "skills", "rules", "pitfalls"];
+const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "聊天记录", stats: "统计", skills: "技能", rules: "规则", pitfalls: "知识库", env: "环境" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 
 export default function App() {
@@ -282,6 +283,7 @@ export default function App() {
             {view === "folders" && api && <FoldersView api={api} me={me} issues={issues} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView api={api} onDone={say} onError={(m) => say(m, true)} />}
+            {view === "env" && api && <EnvView api={api} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
           </section>
         </main>

@@ -122,3 +122,17 @@ class Frontmatter(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnvStore(unittest.TestCase):
+    def test_roundtrip_mask_and_fish(self):
+        with tempfile.TemporaryDirectory() as d:
+            dispatch.ENV_DIR = d; dispatch.ENV_FILE = os.path.join(d, "env"); dispatch.ENV_FISH = os.path.join(d, "env.fish")
+            dispatch.env_write([{"name": "ZHIPU_API_KEY", "value": "abc123def456", "note": "智谱 GLM"}, {"name": "X", "value": "has space #1", "note": ""}])
+            items = dispatch.env_read()
+            self.assertEqual([i["name"] for i in items], ["ZHIPU_API_KEY", "X"])
+            self.assertEqual(items[0]["note"], "智谱 GLM"); self.assertEqual(items[1]["value"], "has space #1")
+            self.assertEqual(oct(os.stat(dispatch.ENV_FILE).st_mode & 0o777), "0o600")
+            self.assertEqual(dispatch.env_mask("abc123def456"), "abc…456")
+            self.assertIn("set -gx X 'has space #1'", open(dispatch.ENV_FISH).read())
+            self.assertIn("ZHIPU_API_KEY（智谱 GLM）", dispatch.env_summary_line())

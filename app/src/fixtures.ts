@@ -97,6 +97,10 @@ export function fixtureApi(): Api {
     skillWrite: async (name) => `/pool/${name}/SKILL.md`,
     skillOpen: async () => {},
     skillImprove: async () => ({ prompt: "示例提示词", command: "claude \"…\"", top: [] }),
+    envList: async () => [{ name: "ZHIPU_API_KEY", note: "智谱 GLM", masked: "abc…456", length: 12 }],
+    envGet: async () => "abc123def456",
+    envSet: async () => {},
+    envUnset: async () => {},
     folders: async (): Promise<import("./types").Folder[]> => [
       { cwd: "/Users/x/Projects/kanban", name: "kanban", sessions: 2, agents: { "claude-code": 2 }, last_at: now / 1000 - 120, first_at: new Date(now - 4 * 3600e3).toISOString(), turns: 300, tasks: ["task-9lo"], exists: true },
       { cwd: "/Users/x/Projects/poker-trainer", name: "poker-trainer", sessions: 1, agents: { codex: 1 }, last_at: now / 1000 - 5000, first_at: null, turns: 9, tasks: ["task-4mk"], exists: true },

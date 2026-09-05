@@ -419,6 +419,26 @@ async fn skill_open(name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn env_list() -> Result<String, String> {
+    run_dispatch(args(&["env", "list", "--json"])).await
+}
+
+#[tauri::command]
+async fn env_get(name: String) -> Result<String, String> {
+    run_dispatch(args(&["env", "get", &name])).await.map(|s| s.trim_end().to_string())
+}
+
+#[tauri::command]
+async fn env_set(name: String, value: String, note: String) -> Result<String, String> {
+    run_dispatch(args(&["env", "set", &name, &value, "--note", &note])).await
+}
+
+#[tauri::command]
+async fn env_unset(name: String) -> Result<String, String> {
+    run_dispatch(args(&["env", "unset", &name])).await
+}
+
+#[tauri::command]
 async fn skills_improve(days: u32) -> Result<String, String> {
     run_dispatch(args(&["skills", "improve", "--days", &days.to_string(), "--json"])).await
 }
@@ -680,7 +700,7 @@ pub fn run() {
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_interactions, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
-            skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, tray_update,
+            skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, tray_update,
             rules_read, rules_write, rules_status, rules_sync, quota, stats, graph, folders, open_path
         ])
         .run(tauri::generate_context!())

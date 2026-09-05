@@ -1,6 +1,6 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "folders" | "agents" | "sessions" | "stats" | "skills" | "rules" | "pitfalls";
+export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "folders" | "agents" | "sessions" | "stats" | "skills" | "rules" | "pitfalls" | "env";
 
 export interface StatsTokens { in: number; out: number; cr: number; cw: number; think: number }
 export interface StatsDay { date: string; msgs: number; tokens: number; in: number; out: number; cr: number; cw: number; by: Record<string, number> }
@@ -25,6 +25,7 @@ export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }
 export interface QuotaWindow { used_percent: number | null; resets_at: number | null; label: string }
 export interface Quota { agent: string; plan: string; windows: QuotaWindow[]; updated_at: number | null; source: string; note: string }
 export interface RuleTarget { agent: string; path: string; state: "synced" | "stale" | "absent" | "missing"; mode: "import" | "inline" }
+export interface EnvVar { name: string; note: string; masked: string; length: number }
 export interface RulesStatus { hash: string; source: string; targets: RuleTarget[] }
 
 export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string }
