@@ -592,3 +592,15 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .pulse{width:6px;height:6px;border-radius:50%;background:var(--s-done);animation:pulse 1.6s ease-in-out infinite;display:inline-block}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.pulse{animation:none}.card{transition:none}}
+/* wiki kinds */
+.pit.win{border-left-color:var(--s-done)}
+.pit.retro{border-left-color:var(--accent-ink)}
+.pit.howto{border-left-color:var(--ink-3)}
+.pit-top .kind{font-size:10.5px;font-weight:700;padding:0 6px;border-radius:4px;color:var(--s-block);background:var(--s-block-bg)}
+.pit-top .kind.win{color:var(--s-done);background:var(--s-done-bg)}
+.pit-top .kind.retro{color:var(--accent-ink);background:var(--accent-soft)}
+.pit-top .kind.howto,.pit-top .kind.plain{color:var(--ink-3);background:var(--panel-2)}
+.pit-row .lbl.win{color:var(--s-done);background:var(--s-done-bg)}
+.pit-row .lbl.retro{color:var(--accent-ink);background:var(--accent-soft)}
+.pit-row .lbl.howto,.pit-row .lbl.plain{color:var(--ink-3);background:var(--panel-2)}
+.dialog h3 .chips{display:inline-flex;gap:4px;vertical-align:middle}

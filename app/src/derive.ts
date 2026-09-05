@@ -194,23 +194,51 @@ export function eventsFrom(history: HistoryEntry[], comments: Comment[], audit: 
   return ev.sort((a, b) => b.ts.localeCompare(a.ts));
 }
 
-export interface Pitfall { key: string; raw: string; trap: string; fix: string; project: string; task: string; isPit: boolean }
-// Pitfalls are ordinary bd memories following one convention:
-//   key `pit-<slug>`, content `【坑】… 【解法】… #project:<name> #task:<id>`
+export type WikiKind = "pit" | "win" | "retro" | "howto";
+// The wiki is ordinary bd memories following one convention: key `<kind>-<slug>`,
+// content `<head>text <label>field… #project:<name> #task:<id>`. Four kinds.
+export const WIKI_KINDS: Record<WikiKind, { prefix: string; head: string; label: string; fields: { name: string; label: string; hint: string }[] }> = {
+  pit: { prefix: "pit-", head: "【坑】", label: "坑", fields: [{ name: "fix", label: "【解法】", hint: "怎么解的" }] },
+  win: { prefix: "win-", head: "【做对】", label: "做对", fields: [{ name: "why", label: "【为什么】", hint: "为什么这是对的做法" }] },
+  retro: { prefix: "retro-", head: "【复盘】", label: "复盘", fields: [{ name: "tech", label: "【技术】", hint: "用了什么技术 / 工具" }, { name: "good", label: "【做对】", hint: "哪里做对了" }, { name: "bad", label: "【做错】", hint: "哪里做错了、下次怎么避免" }] },
+  howto: { prefix: "howto-", head: "【方法】", label: "方法", fields: [] },
+};
+const ALL_LABELS = [...new Set(Object.values(WIKI_KINDS).flatMap((k) => [k.head, ...k.fields.map((f) => f.label)]))].sort((a, b) => b.length - a.length);
+export interface Pitfall { key: string; raw: string; kind: WikiKind | null; text: string; fields: Record<string, string>; trap: string; fix: string; project: string; task: string; isPit: boolean }
+export function wikiKindOf(key: string, value: string): WikiKind | null {
+  for (const k of Object.keys(WIKI_KINDS) as WikiKind[]) {
+    if (key.startsWith(WIKI_KINDS[k].prefix) || value.trimStart().startsWith(WIKI_KINDS[k].head)) return k;
+  }
+  return null;
+}
 export function parsePitfall(m: { key: string; value: string }): Pitfall {
   const v = m.value;
   const tag = (name: string) => (v.match(new RegExp(`#${name}:(\\S+)`)) ?? [])[1] ?? "";
   const body = v.replace(/#(project|task):\S+/g, "").trim();
-  const trap = (body.match(/【坑】([\s\S]*?)(?=【解法】|$)/) ?? [])[1]?.trim() ?? body;
-  const fix = (body.match(/【解法】([\s\S]*)$/) ?? [])[1]?.trim() ?? "";
-  return { key: m.key, raw: v, trap, fix, project: tag("project"), task: tag("task"), isPit: m.key.startsWith("pit-") || v.includes("【坑】") };
+  const kind = wikiKindOf(m.key, v);
+  const fields: Record<string, string> = {};
+  let text = body;
+  if (kind) {
+    const re = new RegExp("(" + ALL_LABELS.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")");
+    let cur: string | null = null;
+    for (const piece of body.split(re)) {
+      if (ALL_LABELS.includes(piece)) { cur = piece; fields[cur] = fields[cur] ?? ""; }
+      else if (cur !== null) fields[cur] = (fields[cur] + piece).trim();
+    }
+    const head = WIKI_KINDS[kind].head;
+    if (head in fields) { text = fields[head]; delete fields[head]; }
+  }
+  return { key: m.key, raw: v, kind, text, fields, trap: text, fix: fields["【解法】"] ?? "", project: tag("project"), task: tag("task"), isPit: kind === "pit" };
 }
-export function composePitfall(trap: string, fix: string, project: string, task: string): string {
-  let s = `【坑】${trap.trim()}`;
-  if (fix.trim()) s += ` 【解法】${fix.trim()}`;
+export function composeWiki(kind: WikiKind, text: string, fields: Record<string, string>, project: string, task: string): string {
+  let s = `${WIKI_KINDS[kind].head}${text.trim()}`;
+  for (const f of WIKI_KINDS[kind].fields) if (fields[f.name]?.trim()) s += ` ${f.label}${fields[f.name].trim()}`;
   if (project.trim()) s += ` #project:${project.trim()}`;
   if (task.trim()) s += ` #task:${task.trim()}`;
   return s;
+}
+export function composePitfall(trap: string, fix: string, project: string, task: string): string {
+  return composeWiki("pit", trap, { fix }, project, task);
 }
 export function slugify(s: string): string {
   const ascii = s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);

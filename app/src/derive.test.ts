@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actorOf, agentsFrom, columnOf, composePitfall, eventsFrom, parseAcceptance, parsePitfall, projectOf, serializeAcceptance, statusLabel } from "./derive";
+import { actorOf, agentsFrom, columnOf, composePitfall, composeWiki, eventsFrom, parseAcceptance, parsePitfall, projectOf, serializeAcceptance, statusLabel } from "./derive";
 import { lineDiff, withContext } from "./diff";
 import type { HistoryEntry, Issue, Session } from "./types";
 
@@ -56,6 +56,18 @@ describe("pitfalls", () => {
     expect(p.trap).toBe("坑内容"); expect(p.fix).toBe("解法内容"); expect(p.project).toBe("dotfiles"); expect(p.task).toBe("task-1");
   });
   it("plain memories are not pits", () => expect(parsePitfall({ key: "auth-jwt", value: "uses JWT" }).isPit).toBe(false));
+  it("parses wins and retros into kind + fields", () => {
+    const w = parsePitfall({ key: "win-draft", value: "【做对】邮件写好停在发送前 【为什么】对外发送要用户确认 #project:HIWI" });
+    expect(w).toMatchObject({ kind: "win", text: "邮件写好停在发送前", project: "HIWI", isPit: false });
+    expect(w.fields["【为什么】"]).toBe("对外发送要用户确认");
+    const r = parsePitfall({ key: "retro-task-1", value: "【复盘】做了 X 【技术】python 【做对】先验证 【做错】没记板 #task:task-1" });
+    expect(r.kind).toBe("retro"); expect(r.text).toBe("做了 X"); expect(r.fields["【做错】"]).toBe("没记板"); expect(r.task).toBe("task-1");
+  });
+  it("composeWiki round-trips", () => {
+    const v = composeWiki("retro", "做了 X", { tech: "py", good: "a", bad: "b" }, "kanban", "task-2");
+    const p = parsePitfall({ key: "retro-task-2", value: v });
+    expect(p.fields).toEqual({ "【技术】": "py", "【做对】": "a", "【做错】": "b" }); expect(p.project).toBe("kanban");
+  });
 });
 
 describe("activity from history + audit", () => {

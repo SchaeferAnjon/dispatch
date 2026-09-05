@@ -8,7 +8,9 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch resume <session|task>    print (or --copy) the command that resumes a session
   dispatch focus <session|task>     jump to the Herdr tab running that session
   dispatch skills list|show|enable|disable|open|path
-  dispatch pit add|list|show        pitfall log (stored as bd memories, injected by `bd prime`)
+  dispatch prime [--hook-json]      compact session-start digest: identity, this project's tasks, relevant wiki
+  dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
+  dispatch pit add|list|show        = wiki --kind pit
 
 Data lives in ~/tasks/.dispatch (session registry, transcript index) and the
 Beads board at $BEADS_DIR. bd remains the tool for tasks themselves.
@@ -26,7 +28,7 @@ POOL = os.path.join(HOME, ".cc-switch", "skills")
 # cross-agent ~/.agents/skills).
 AGENT_SKILL_DIRS = {
     "claude": [os.path.join(HOME, ".claude", "skills")],
-    "codex": [os.path.join(HOME, ".codex", "skills"), os.path.join(HOME, ".agents", "skills")],
+    "codex": [os.path.join(HOME, ".agents", "skills"), os.path.join(HOME, ".codex", "skills")],
 }
 CC_SWITCH_DB = os.path.join(HOME, ".cc-switch", "cc-switch.db")
 HERDR = os.path.join(HOME, ".local", "bin", "herdr")
@@ -45,8 +47,10 @@ def sh(args, timeout=20, env=None):
     e.setdefault("BEADS_DIR", BEADS_DIR)
     if env:
         e.update(env)
-    r = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=e)
-    return r.returncode, r.stdout, r.stderr
+    # bd truncates long values mid-character; decode leniently or every write with a
+    # long Chinese memory blows up with UnicodeDecodeError (task-8xp).
+    r = subprocess.run(args, capture_output=True, timeout=timeout, env=e)
+    return r.returncode, r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
 
 
 def out(obj, as_json, text_fn):
@@ -1531,10 +1535,16 @@ def cmd_done(a):
         d = bd_json(argv)
         if d.get("id"):
             created.append(d["id"])
+    retro_key = ""
+    if getattr(a, "retro", None):
+        retro_key = "retro-" + a.task
+        wiki_store(retro_key, wiki_compose("retro", a.retro, {}, proj, a.task))
     msg = f"{a.task} 已完成" + ("（已核验）" if a.verified else "，在「已完成 · 待审」等人验收")
     if created:
         msg += f"；后续任务：{', '.join(created)}"
-    out({"closed": a.task, "next": created}, a.json, lambda o: print(msg))
+    if retro_key:
+        msg += f"；复盘已入知识库 {retro_key}"
+    out({"closed": a.task, "next": created, "retro": retro_key}, a.json, lambda o: print(msg))
 
 
 # ---------------------------------------------------------------- lineage graph (tasks as a thread)
@@ -1864,46 +1874,210 @@ def cmd_rules(a):
         return
 
 
-# ---------------------------------------------------------------- pitfalls
+# ---------------------------------------------------------------- wiki: pits, wins, retros, howtos (bd memories)
 
-def cmd_pit(a):
-    if a.op == "add":
-        content = f"【坑】{a.text.strip()}"
-        if a.fix:
-            content += f" 【解法】{a.fix.strip()}"
-        if a.project:
-            content += f" #project:{a.project}"
-        if a.task:
-            content += f" #task:{a.task}"
-        key = a.key or ("pit-" + (re.sub(r"[^a-z0-9]+", "-", a.text.lower()).strip("-")[:40] or str(int(time.time()))))
-        if not key.startswith("pit-"):
-            key = "pit-" + key
-        code, o, err = sh(["bd", "remember", content, "--key", key])
-        print(o.strip() or err.strip())
-        if code == 0:
-            print(f"已记录 {key}。所有 Agent 下次会话启动会看到。")
+# One convention, four kinds. Content starts with the kind's head marker; optional
+# labelled fields follow; `#project:` / `#task:` tags at the end. Keys carry the prefix.
+WIKI_KINDS = {
+    "pit":   {"prefix": "pit-",   "head": "【坑】",   "fields": [("fix", "【解法】")],                                   "label": "坑"},
+    "win":   {"prefix": "win-",   "head": "【做对】", "fields": [("why", "【为什么】")],                                 "label": "做对"},
+    "retro": {"prefix": "retro-", "head": "【复盘】", "fields": [("tech", "【技术】"), ("good", "【做对】"), ("bad", "【做错】")], "label": "复盘"},
+    "howto": {"prefix": "howto-", "head": "【方法】", "fields": [],                                                    "label": "方法"},
+}
+_ALL_LABELS = sorted({lab for k in WIKI_KINDS.values() for _, lab in k["fields"]} | {k["head"] for k in WIKI_KINDS.values()}, key=len, reverse=True)
+
+
+def wiki_compose(kind, text, fields, project=None, task=None):
+    k = WIKI_KINDS[kind]
+    body = text.strip()
+    if not body.startswith(k["head"]):
+        body = k["head"] + body
+    for name, label in k["fields"]:
+        v = (fields or {}).get(name)
+        if v and label not in body:
+            body += f" {label}{v.strip()}"
+    if project:
+        body += f" #project:{project}"
+    if task:
+        body += f" #task:{task}"
+    return body
+
+
+def wiki_kind_of(key, value):
+    for kind, k in WIKI_KINDS.items():
+        if key.startswith(k["prefix"]) or value.lstrip().startswith(k["head"]):
+            return kind
+    return None
+
+
+def wiki_parse(key, value):
+    kind = wiki_kind_of(key, value)
+    tag = lambda n: (re.search(rf"#{n}:(\S+)", value) or [None, ""])[1] if re.search(rf"#{n}:(\S+)", value) else ""
+    body = re.sub(r"#(project|task):\S+", "", value).strip()
+    fields = {}
+    if kind:
+        pat = "(" + "|".join(re.escape(l) for l in _ALL_LABELS) + ")"
+        parts = re.split(pat, body)
+        cur = None
+        for piece in parts:
+            if piece in _ALL_LABELS:
+                cur = piece
+                fields.setdefault(cur, "")
+            elif cur is not None:
+                fields[cur] = (fields[cur] + piece).strip()
+        head = WIKI_KINDS[kind]["head"]
+        text = fields.pop(head, body)
+    else:
+        text = body
+    return {"key": key, "kind": kind, "text": text, "fields": fields, "project": tag("project"), "task": tag("task"), "raw": value}
+
+
+def wiki_store(key, content):
+    code, o, err = sh(["bd", "remember", content, "--key", key])
+    if code != 0:
+        print(err.strip() or o.strip(), file=sys.stderr)
         sys.exit(code)
+    return key
+
+
+def wiki_all():
     code, o, err = sh(["bd", "memories", "--json"])
     if code != 0:
         print(err, file=sys.stderr)
         sys.exit(code)
     d = json.loads(o[o.find("{"):])
-    items = [{"key": k, "value": v} for k, v in d.items() if k != "schema_version" and isinstance(v, str)]
+    return [wiki_parse(k, v) for k, v in d.items() if k != "schema_version" and isinstance(v, str)]
+
+
+def wiki_line(it, width=170):
+    lab = WIKI_KINDS[it["kind"]]["label"] if it["kind"] else "记忆"
+    body = it["text"]
+    for label, v in it["fields"].items():
+        if v:
+            body += f" {label}{v}"
+    body = re.sub(r"\s+", " ", body)
+    return f"[{lab}] {it['key']}：{body[:width]}{'…' if len(body) > width else ''}"
+
+
+def cmd_wiki(a):
+    if a.op == "add":
+        kind = a.kind or "pit"
+        fields = {"fix": a.fix, "why": a.why, "tech": a.tech, "good": a.good, "bad": a.bad}
+        content = wiki_compose(kind, a.text, fields, a.project, a.task)
+        pre = WIKI_KINDS[kind]["prefix"]
+        slug = re.sub(r"[^a-z0-9]+", "-", a.text.lower()).strip("-")[:40] or str(int(time.time()))
+        key = a.key or (pre + slug)
+        if not key.startswith(pre):
+            key = pre + key
+        wiki_store(key, content)
+        print(f"已记录 {key}（{WIKI_KINDS[kind]['label']}）。同项目的 Agent 下次会话启动会看到；任何时候 `dispatch wiki search 关键词` 可查。")
+        return
+    items = wiki_all()
     if a.op == "show":
         for it in items:
-            if it["key"] == a.text or it["key"] == "pit-" + (a.text or ""):
-                print(it["value"])
+            if it["key"] == a.text or any(it["key"] == k["prefix"] + (a.text or "") for k in WIKI_KINDS.values()):
+                print(it["raw"])
                 return
         print("没有这条", file=sys.stderr)
         sys.exit(1)
     q = (a.text or "").lower()
-    items = [it for it in items if (a.all or it["key"].startswith("pit-") or "【坑】" in it["value"]) and (not q or q in it["value"].lower() or q in it["key"].lower())]
+    if not a.all:
+        items = [it for it in items if it["kind"]]
+    if a.kind:
+        items = [it for it in items if it["kind"] == a.kind]
+    if a.project:
+        items = [it for it in items if it["project"] == a.project]
+    if q:
+        items = [it for it in items if q in it["raw"].lower() or q in it["key"].lower()]
 
     def text(items):
         for it in items:
-            print(f"{it['key']}\n    {it['value']}")
+            print(wiki_line(it, 400))
         print(f"\n{len(items)} 条")
     out(items, a.json, text)
+
+
+def cmd_pit(a):
+    """Backwards-compatible alias: dispatch pit add|list|show == dispatch wiki --kind pit."""
+    a.kind = "pit"
+    for f in ("why", "tech", "good", "bad"):
+        setattr(a, f, None)
+    if a.op == "list" and not getattr(a, "all", False):
+        a.all = False
+    cmd_wiki(a)
+
+
+# ---------------------------------------------------------------- prime: compact session-start digest
+
+def project_names():
+    code, o, err = sh(["bd", "list", "--all", "--json"])
+    names = {}
+    if code != 0:
+        return names
+    try:
+        for it in json.loads(o[o.find("["):]):
+            for l in it.get("labels") or []:
+                if l.startswith("project:"):
+                    names[l.split(":", 1)[1].lower()] = l.split(":", 1)[1]
+    except Exception:
+        pass
+    return names
+
+
+def project_of_cwd(cwd, names):
+    parts = [x.lower() for x in os.path.normpath(cwd).split(os.sep) if x]
+    for part in reversed(parts):
+        if part in names:
+            return names[part]
+    return ""
+
+
+def cmd_prime(a):
+    """What an Agent needs at session start, and nothing else: who it is, the board's
+    protocol in four lines, this project's tasks, and the wiki entries for this project
+    (plus the few global ones). Everything else is one `dispatch wiki search` away."""
+    cwd = a.cwd or os.getcwd()
+    actor = os.environ.get("BEADS_ACTOR") or os.environ.get("DISPATCH_ACTOR") or ""
+    names = project_names()
+    proj = project_of_cwd(cwd, names)
+    ptag = proj or "<项目名>"
+    lines = [f"# Dispatch 中央任务板" + (f" · 当前项目 {proj}" if proj else "") + (f" · 你是 {actor}" if actor else "")]
+    lines.append(f"任务：明白要做什么后 `dispatch begin \"标题\" -P {ptag} -d \"背景+要做什么\" -a \"- [ ] 验收项\"`（已有任务则 `bd update <id> --claim`）；进展 `dispatch log <id> \"…\"`；收尾 `dispatch done <id> --reason \"做了什么、怎么验证\" [--verified] [--retro \"【技术】…【做对】…【做错】…\"] [--next \"后续\"]`。")
+    lines.append(f"知识库：`dispatch wiki search <词>` 动手前查一下；踩坑 `dispatch wiki add --kind pit \"现象\" --fix \"解法\" -P {ptag} --task <id>`；做对的做法 `--kind win \"…\" --why \"…\"`。")
+    # board
+    code, o, err = sh(["bd", "list", "--all", "--json"])
+    tasks = []
+    try:
+        tasks = json.loads(o[o.find("["):]) if code == 0 else []
+    except Exception:
+        tasks = []
+    def lab(t):
+        return next((l.split(":", 1)[1] for l in t.get("labels") or [] if l.startswith("project:")), "")
+    mine = [t for t in tasks if t.get("status") in ("in_progress", "open") and (not proj or lab(t) == proj)]
+    mine.sort(key=lambda t: (t.get("status") != "in_progress", t.get("priority", 9)))
+    shown = mine[:8]
+    if shown:
+        lines.append(f"## 板上（{proj or '全部'}）")
+        for t in shown:
+            mark = "◐" if t.get("status") == "in_progress" else "○"
+            who = f" [{t.get('assignee')}]" if t.get("assignee") else ""
+            lines.append(f"{mark} {t['id']}{who} {t.get('title', '')}")
+        if len(mine) > len(shown):
+            lines.append(f"…还有 {len(mine) - len(shown)} 条：`bd ready`")
+    # wiki: this project's entries + global ones (no project tag)
+    items = [it for it in wiki_all() if it["kind"]]
+    local = [it for it in items if proj and it["project"].lower() == proj.lower()]
+    glob_ = [it for it in items if not it["project"]]
+    pick = local[-a.limit:] + glob_[-max(2, a.limit // 2):]
+    if pick:
+        lines.append(f"## 知识库（{proj + ' + ' if proj else ''}通用；全部 {len(items)} 条，`dispatch wiki list`）")
+        for it in pick:
+            lines.append(wiki_line(it))
+    text = "\n".join(lines)
+    if a.hook_json:
+        print(json.dumps({"continue": True, "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, ensure_ascii=False))
+    else:
+        print(text)
 
 
 # ---------------------------------------------------------------- main
@@ -1922,17 +2096,21 @@ def main():
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
-    s = sub.add_parser("done", help="close a task; --next creates follow-ups"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
+    s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
-    s = sub.add_parser("pit", help="pitfall log"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
+    s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
+    s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
+    s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=6, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()
     if a.cmd == "skills" and a.op != "list" and not a.name:
         p.error("需要技能名")
-    if a.cmd == "pit" and a.op == "add" and not a.text:
-        p.error("需要写坑的内容")
+    if a.cmd in ("pit", "wiki") and a.op == "add" and not a.text:
+        p.error("需要写内容")
+    if a.cmd == "wiki" and a.op == "search":
+        a.op = "list"
     a.fn(a)
 
 
