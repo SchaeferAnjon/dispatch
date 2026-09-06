@@ -19,7 +19,13 @@ export interface Stats {
   projects: { name: string; cwd: string; tokens: number; msgs: number; sessions: number; by: Record<string, number> }[];
   generated_at: number;
 }
-export interface Host { id: string; name: string; ip: string; ssh: string; online: boolean; local: boolean; novnc: string; novnc_up: boolean; vnc: string; herdr_session?: string }
+export interface Host {
+  id: string; name: string; ip: string; ssh: string; online: boolean; local: boolean; herdr_session?: string;
+  overlay: { kind: string; ip: string }; lan_ip?: string;
+  screen_sharing: boolean; novnc: string; novnc_up: boolean; vnc: string;
+  rustdesk: boolean; rustdesk_id: string; sunshine: boolean; sunshine_ui: string; uu: boolean;
+  recommend: "novnc" | "vnc" | "rustdesk" | "moonlight" | "uu" | ""; why: string;
+}
 export interface Folder { cwd: string; name: string; sessions: number; agents: Record<string, number>; last_at: number; first_at: string | null; turns: number; tasks: string[]; exists: boolean }
 export interface GraphEdge { from: string; to: string; type: string }
 export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }

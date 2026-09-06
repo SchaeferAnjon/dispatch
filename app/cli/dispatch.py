@@ -285,13 +285,103 @@ def port_open(ip, port, timeout=1.0):
         return False
 
 
-def host_rows():
-    """This Mac plus the others in hosts.json, with what you can reach on each: ssh, the
-    web remote desktop (noVNC on :6080, set up by app/scripts/novnc-setup.sh) and vnc://."""
-    rows = []
+def _app_present(*globs):
+    for g in globs:
+        if glob.glob(g):
+            return True
+    return False
+
+
+def overlay_network():
+    """Which private overlay this Mac is on, and its address there. Tailscale (and Headscale,
+    same client) hand out 100.x; Netbird uses the same range; ZeroTier is a zt* interface."""
     ip = tailscale_ip()
-    rows.append({"id": "local", "name": local_host_name(), "ip": ip, "ssh": "", "online": True, "local": True,
-                 "novnc": f"http://{ip}:6080/vnc.html?autoconnect=1&resize=scale" if ip else "", "novnc_up": bool(ip) and port_open(ip, 6080), "vnc": f"vnc://{ip}" if ip else ""})
+    if ip:
+        return {"kind": "tailscale", "ip": ip}
+    try:
+        o = subprocess.run(["netbird", "status", "--json"], capture_output=True, text=True, timeout=3).stdout
+        m = re.search(r'"netbirdIp":\s*"([0-9.]+)', o)
+        if m:
+            return {"kind": "netbird", "ip": m.group(1)}
+    except Exception:
+        pass
+    try:
+        o = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=3).stdout
+        m = re.search(r"^(zt\w+|feth\d+|utun\d+):.*?\n\s+inet (\d+\.\d+\.\d+\.\d+)", o, re.S | re.M)
+        if m and m.group(1).startswith("zt"):
+            return {"kind": "zerotier", "ip": m.group(2)}
+    except Exception:
+        pass
+    return {"kind": "", "ip": ""}
+
+
+def lan_ip():
+    try:
+        o = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=3).stdout
+        m = re.search(r"inet (192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+)", o)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+
+def rustdesk_id():
+    for p in (os.path.join(HOME, "Library", "Preferences", "com.carriez.RustDesk", "RustDesk.toml"),):
+        try:
+            m = re.search(r"^id\s*=\s*'?\"?([0-9]{6,12})", open(p).read(), re.M)
+            if m:
+                return m.group(1)
+        except OSError:
+            pass
+    return ""
+
+
+def detect_remote_backends():
+    """What this Mac can be reached with. Dispatch never ships a video pipeline of its own;
+    it detects the engines people already use — different ones in China and elsewhere —
+    and recommends the first that works without extra setup."""
+    ov = overlay_network()
+    ip = ov["ip"] or lan_ip()
+    b = {
+        "overlay": ov,
+        "lan_ip": lan_ip(),
+        "screen_sharing": port_open("127.0.0.1", 5900, 0.5),
+        "novnc_up": bool(ip) and port_open(ip, 6080, 0.5),
+        "novnc": f"http://{ip}:6080/vnc.html?autoconnect=1&resize=scale" if ip else "",
+        "vnc": f"vnc://{ip}" if ip else "",
+        "rustdesk": _app_present("/Applications/RustDesk.app"),
+        "rustdesk_id": rustdesk_id(),
+        "sunshine": _app_present("/Applications/Sunshine.app", "/opt/homebrew/bin/sunshine", "/usr/local/bin/sunshine"),
+        "sunshine_ui": f"https://{ip}:47990" if ip else "",
+        "uu": _app_present("/Applications/*UU*远程*.app", "/Applications/UU Remote*.app", "/Applications/网易UU远程.app"),
+    }
+    # Recommendation, in the order that costs the user the least.
+    if ov["kind"] and b["novnc_up"]:
+        rec, why = "novnc", f"已在 {ov['kind']} 网里，浏览器直接开"
+    elif ov["kind"] and b["screen_sharing"]:
+        rec, why = "vnc", f"已在 {ov['kind']} 网里，屏幕共享已开；跑 novnc-setup.sh 就能手机看"
+    elif b["rustdesk"]:
+        rec, why = "rustdesk", "不用虚拟网，ID + 密码直连（国内外都好用，可自建中继）"
+    elif b["sunshine"]:
+        rec, why = "moonlight", "画质最高；手机装 Moonlight，配对后连"
+    elif b["uu"]:
+        rec, why = "uu", "已装网易UU远程，用它连（闭源，只能打开）"
+    elif b["novnc_up"] or b["screen_sharing"]:
+        rec, why = "novnc" if b["novnc_up"] else "vnc", "只能在同一局域网里用；出门要装 Tailscale/Netbird 或 RustDesk"
+    else:
+        rec, why = "", "没有可用的远程方式：装 Tailscale（国外）/ RustDesk（国内）之一，再开系统屏幕共享"
+    b["recommend"], b["why"] = rec, why
+    return b
+
+
+def host_rows(local_only=False):
+    """This Mac plus the others in hosts.json, each with the remote-desktop backends it
+    actually has (detected on that machine) and a recommendation."""
+    rows = []
+    b = detect_remote_backends()
+    ip = b["overlay"]["ip"] or b["lan_ip"]
+    rows.append({"id": "local", "name": local_host_name(), "ip": ip, "ssh": "", "online": True, "local": True, **{k: v for k, v in b.items()}})
+    if local_only:
+        return rows
     for h in hosts():
         hip = h.get("ip") or (h.get("ssh", "").split("@")[-1])
         down = os.path.join(REMOTE_DIR, f"{h['id']}.down")
@@ -300,17 +390,42 @@ def host_rows():
         except OSError:
             recently_down = False
         online = (not recently_down) and port_open(hip, 22)
-        rows.append({"id": h["id"], "name": h["name"], "ip": hip, "ssh": h.get("ssh", ""), "online": online, "local": False,
-                     "novnc": f"http://{hip}:6080/vnc.html?autoconnect=1&resize=scale", "novnc_up": online and port_open(hip, 6080), "vnc": f"vnc://{hip}", "herdr_session": h.get("herdr_session", "")})
+        row = {"id": h["id"], "name": h["name"], "ip": hip, "ssh": h.get("ssh", ""), "online": online, "local": False, "herdr_session": h.get("herdr_session", ""),
+               "novnc": f"http://{hip}:6080/vnc.html?autoconnect=1&resize=scale", "novnc_up": online and port_open(hip, 6080), "vnc": f"vnc://{hip}",
+               "screen_sharing": online and port_open(hip, 5900), "rustdesk": False, "rustdesk_id": "", "sunshine": False, "sunshine_ui": "", "uu": False, "overlay": {"kind": "", "ip": hip}, "recommend": "", "why": ""}
+        if online:
+            det = remote_dispatch(h, ["hosts", "--local"], 120)
+            if isinstance(det, list) and det:
+                d = det[0]
+                for k in ("rustdesk", "rustdesk_id", "sunshine", "uu", "screen_sharing"):
+                    row[k] = d.get(k, row[k])
+                if isinstance(d.get("overlay"), dict) and d["overlay"].get("kind"):
+                    row["overlay"] = d["overlay"]
+                row["sunshine_ui"] = f"https://{hip}:47990" if d.get("sunshine") else ""
+        if row["novnc_up"]:
+            row["recommend"], row["why"] = "novnc", "浏览器直接开"
+        elif row["screen_sharing"]:
+            row["recommend"], row["why"] = "vnc", "屏幕共享已开；在那台上跑 novnc-setup.sh 就能手机看"
+        elif row["rustdesk"]:
+            row["recommend"], row["why"] = "rustdesk", "ID + 密码直连"
+        elif row["sunshine"]:
+            row["recommend"], row["why"] = "moonlight", "手机装 Moonlight 配对"
+        elif not online:
+            row["recommend"], row["why"] = "", "离线"
+        else:
+            row["recommend"], row["why"] = "", "那台机器上没有可用的远程方式"
+        rows.append(row)
     return rows
 
 
 def cmd_hosts(a):
-    rows = host_rows()
+    rows = host_rows(local_only=getattr(a, "local", False))
 
     def text(rows):
         for r in rows:
-            print(f"{r['name']:<12} {r['ip']:<16} {'在线' if r['online'] else '离线'}  屏幕 {'✓' if r['novnc_up'] else '✗'}  {r['novnc']}")
+            have = [k for k in ("novnc_up", "screen_sharing", "rustdesk", "sunshine", "uu") if r.get(k)]
+            ov = (r.get("overlay") or {}).get("kind") or "-"
+            print(f"{r['name']:<12} {r['ip']:<16} {'在线' if r['online'] else '离线'}  网:{ov:<10} 有:{','.join(have) or '无':<36} 推荐:{r.get('recommend') or '无'}  {r.get('why', '')}")
     out(rows, a.json, text)
 
 
@@ -2696,7 +2811,7 @@ def main():
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
-    s = sub.add_parser("hosts", help="this Mac and the others on the tailnet: ssh, web remote desktop, vnc"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
+    s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)

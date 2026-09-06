@@ -105,16 +105,24 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
     <div className="agrid">
       {hosts.length > 0 && (
         <div className="hosts-bar">
-          {hosts.map((h) => (
-            <div key={h.id} className={`host${h.online ? "" : " off"}`}>
-              <span className={`dot ${h.online ? "on" : ""}`} />
-              <b>{h.name}</b><span className="mono muted small">{h.ip}</span>
-              {!h.local && h.online && <button className="btn sm" onClick={() => onOpenUrl(h.vnc)} title="用系统「屏幕共享」打开这台机器的屏幕">看它的屏幕</button>}
-              {h.novnc_up
-                ? <button className="btn ghost sm" onClick={() => onCopyText(h.novnc, "手机看屏幕的链接")} title="手机连上 Tailscale 后在浏览器打开这个链接，就能看到并操作这台 Mac；密码是这台 Mac 的登录密码">手机看屏幕 ⧉</button>
-                : <span className="muted small">{h.online ? "网页远程桌面没开（跑 app/scripts/novnc-setup.sh）" : "离线"}</span>}
-            </div>
-          ))}
+          {hosts.map((h) => {
+            const OVERLAY: Record<string, string> = { tailscale: "Tailscale", netbird: "Netbird", zerotier: "ZeroTier" };
+            const ways: { key: string; label: string; act: () => void; hint: string }[] = [];
+            if (h.novnc_up) ways.push({ key: "novnc", label: "手机看屏幕 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "复制网页远程桌面链接；手机在同一个网里用浏览器打开，密码是这台 Mac 的登录密码" });
+            if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: "看它的屏幕", act: () => onOpenUrl(h.vnc), hint: "用系统「屏幕共享」打开" });
+            if (h.rustdesk) ways.push({ key: "rustdesk", label: h.rustdesk_id ? `RustDesk ${h.rustdesk_id} ⧉` : "RustDesk", act: () => (h.rustdesk_id ? onCopyText(h.rustdesk_id, "RustDesk ID") : onOpenUrl("rustdesk://")), hint: "不用虚拟网：手机 RustDesk 输这个 ID" });
+            if (h.sunshine) ways.push({ key: "moonlight", label: "Moonlight 配对", act: () => onOpenUrl(h.sunshine_ui), hint: "打开 Sunshine 配对页；手机装 Moonlight，画质最高" });
+            if (h.uu) ways.push({ key: "uu", label: "UU远程", act: () => onOpenUrl("/Applications"), hint: "已装网易UU远程；它没有接口，去它里面连" });
+            return (
+              <div key={h.id} className={`host${h.online ? "" : " off"}`} title={h.why}>
+                <span className={`dot ${h.online ? "on" : ""}`} />
+                <b>{h.name}</b><span className="mono muted small">{h.ip}</span>
+                {h.overlay?.kind && <span className="host-chip">{OVERLAY[h.overlay.kind] ?? h.overlay.kind}</span>}
+                {ways.map((w) => <button key={w.key} className={`btn sm${w.key === h.recommend || (h.recommend === "vnc" && w.key === "novnc") ? "" : " ghost"}`} onClick={w.act} title={w.hint}>{w.label}</button>)}
+                {ways.length === 0 && <span className="muted small">{h.why}</span>}
+              </div>
+            );
+          })}
         </div>
       )}
       {apps.length > 0 && <div className="apps-bar">正在运行的应用：{apps.join(" · ")}</div>}
