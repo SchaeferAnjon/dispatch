@@ -2368,16 +2368,59 @@ def facts_for(proj, text=None):
     return [(h, b) for h, b in secs if facts_key(h) in want and b]
 
 
+def facts_docs():
+    """The documents the 常用信息 page edits: the machine-wide FACTS.md plus, for every
+    project label on the board whose directory is known from the session index, that
+    project's own AGENTS.md — every agent reads it natively when working in that directory,
+    so project-specific facts never need to sit in the global file."""
+    docs = [{"key": "通用", "name": "通用（所有项目）", "path": FACTS_FILE, "dir": "", "exists": os.path.exists(FACTS_FILE),
+             "hint": "每个会话都注入（dispatch prime）"}]
+    names = project_names()
+    dirs = {}
+    try:
+        for r in session_refs(load_index()):
+            cwd = (r.get("cwd") or "").rstrip("/")
+            if not cwd or not os.path.isdir(cwd):
+                continue
+            base = os.path.basename(cwd).lower()
+            if base in names and (base not in dirs or r.get("last_at", 0) > dirs[base][1]):
+                dirs[base] = (cwd, r.get("last_at", 0))
+    except Exception:
+        pass
+    for key in sorted(dirs):
+        d = dirs[key][0]
+        path = os.path.join(d, "AGENTS.md")
+        docs.append({"key": key, "name": names[key], "path": path, "dir": d, "exists": os.path.exists(path),
+                     "hint": "只在这个目录的会话里生效（Agent 自己读 AGENTS.md）"})
+    return docs
+
+
+def facts_doc_path(a):
+    """--path must be one of facts_docs(); otherwise the page could write anywhere."""
+    if not getattr(a, "path", ""):
+        return FACTS_FILE
+    want = os.path.realpath(a.path)
+    for d in facts_docs():
+        if os.path.realpath(d["path"]) == want:
+            return d["path"]
+    print(f"{a.path} 不在常用信息的文档列表里（`dispatch facts docs`）", file=sys.stderr)
+    sys.exit(2)
+
+
 def cmd_facts(a):
-    if a.op == "path":
-        print(FACTS_FILE)
+    if a.op == "docs":
+        rows = facts_docs()
+        out(rows, a.json, lambda rs: [print(f"{r['key']:<12} {'有' if r['exists'] else '无':<2} {r['path']}") for r in rs])
+    elif a.op == "path":
+        print(facts_doc_path(a))
     elif a.op == "open":
-        subprocess.run(["open", FACTS_FILE])
+        subprocess.run(["open", facts_doc_path(a)])
     elif a.op == "write":
+        target = facts_doc_path(a)
         text = sys.stdin.read()
-        os.makedirs(os.path.dirname(FACTS_FILE), exist_ok=True)
-        open(FACTS_FILE, "w", encoding="utf-8").write(text if text.endswith("\n") else text + "\n")
-        print(f"已写入 {FACTS_FILE}（{len(text.splitlines())} 行）")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        open(target, "w", encoding="utf-8").write(text if text.endswith("\n") else text + "\n")
+        print(f"已写入 {target}（{len(text.splitlines())} 行）")
     elif a.op == "sections":
         rows = [{"heading": h, "key": facts_key(h), "lines": len(b.splitlines())} for h, b in facts_sections(facts_text())]
         out(rows, a.json, lambda rs: [print(f"{r['key']:<16} {r['lines']:>4} 行  {r['heading']}") for r in rs] or print(f"\n{len(rs)} 节（{FACTS_FILE}）"))
@@ -2390,8 +2433,12 @@ def cmd_facts(a):
             else:
                 print(text or f"FACTS.md 里没有 {a.project} 这一节（`dispatch facts sections` 看有哪些）")
         else:
-            t = facts_text()
-            print(json.dumps({"path": FACTS_FILE, "content": t, "exists": os.path.exists(FACTS_FILE)}, ensure_ascii=False) if a.json else t, end="" if (t.endswith("\n") and not a.json) else "\n")
+            target = facts_doc_path(a)
+            try:
+                t = open(target, encoding="utf-8").read()
+            except FileNotFoundError:
+                t = ""
+            print(json.dumps({"path": target, "content": t, "exists": os.path.exists(target)}, ensure_ascii=False) if a.json else t, end="" if (t.endswith("\n") and not a.json) else "\n")
 
 
 def rules_text():
@@ -3083,7 +3130,7 @@ def cmd_prime(a):
     # 常用信息：服务器/域名/数据库/API 名字、用户常重复说的话——通用节 + 本项目节
     fx = facts_for(proj)
     if fx:
-        lines.append("## 常用信息（全文 `dispatch facts show [-P 项目]`；改：Dispatch → 指令 → 常用信息）")
+        lines.append("## 常用信息（跨项目通用；项目专属的在项目目录 AGENTS.md。改：Dispatch → 指令 → 常用信息）")
         for h, b in fx:
             lines.append(f"### {h}")
             lines.append(b)
@@ -3197,7 +3244,7 @@ def main():
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
-    s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections"]); s.add_argument("--project", "-P", default=""); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
+    s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs"]); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
