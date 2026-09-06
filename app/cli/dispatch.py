@@ -2135,6 +2135,7 @@ def cmd_begin(a):
     for w in begin_warnings(a.title, a.project, os.getcwd()):
         print("⚠ " + w, file=sys.stderr)
     labels = [f"project:{a.project}"] if a.project else []
+    labels.append(f"host:{local_host_name()}")  # which Mac this work runs on — Dispatch filters by it
     argv = ["create", a.title, "-t", a.type, "-p", str(a.priority), "--json"]
     if labels:
         argv += ["-l", ",".join(labels)]
@@ -2415,6 +2416,13 @@ def quota_qoder():
 
 def cmd_quota(a):
     rows = [quota_claude(), quota_codex(), quota_zcode(), *quota_qoder()]
+    for r in rows:
+        r["host"], r["host_name"] = "local", local_host_name()
+    if not getattr(a, "local", False):
+        for h in hosts():
+            for r in _tag_host(_only_theirs(remote_dispatch(h, ["quota", "--local"], 60)), h):
+                r["remote"] = True
+                rows.append(r)
 
     def until(epoch):
         m = int((epoch - time.time()) / 60)
@@ -2423,7 +2431,7 @@ def cmd_quota(a):
     def text(rows):
         for r in rows:
             parts = [f"{w['label']} {round(w['used_percent']) if w['used_percent'] is not None else '?'}%" + (f"（{until(w['resets_at'])}）" if w.get("resets_at") and w["resets_at"] > time.time() else "") for w in r["windows"]]
-            print(f"{r['agent']:<12} {r['plan']:<14} {' · '.join(parts) if parts else r['note']}" + (f"   [数据 {ago(r['updated_at'])} 前]" if r.get("updated_at") else ""))
+            print(f"{r.get('host_name', ''):<10} {r['agent']:<12} {r['plan']:<14} {' · '.join(parts) if parts else r['note']}" + (f"   [数据 {ago(r['updated_at'])} 前]" if r.get("updated_at") else ""))
     out(rows, a.json, text)
 
 
@@ -3227,7 +3235,7 @@ def main():
     s.set_defaults(fn=cmd_agent)
     s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link"); s.add_argument("what", nargs="?", choices=["run", "url"], default="run"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
-    s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
+    s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)

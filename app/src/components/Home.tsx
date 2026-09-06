@@ -28,6 +28,7 @@ function QuotaBar({ w }: { w: { label: string; used_percent: number | null; rese
 
 interface Props {
   api: Api;
+  hostFilter?: string;
   issues: Issue[];
   agents: AgentPresence[];
   refs: Map<string, SessionRef>;
@@ -42,7 +43,7 @@ interface Lane { agent: AgentPresence; items: { issue: Issue; session?: Session;
 
 // The page that answers "what is everyone doing right now, and how far along":
 // one lane per agent, one row per task in progress, with the newest progress note.
-export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onView, onFocus }: Props) {
+export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, onSelect, onView, onFocus }: Props) {
   const [lastNote, setLastNote] = useState<Record<string, Comment | undefined>>({});
   const [quota, setQuota] = useState<Quota[]>([]);
 
@@ -112,10 +113,11 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
                 <span className="muted small">{a.sessions.length ? `${a.sessions.length} 个会话 · ${a.sessions.filter((s) => s.state === "working").length} 在跑` : a.online ? "在线" : "离线"}</span>
               </div>
               {(() => {
-                const q = quota.find((x) => x.agent === a.actor.id);
-                if (!q || a.actor.kind === "human") return null;
-                return (
-                  <div className="quotas" title={q.updated_at ? `额度数据更新于 ${relTime(new Date(q.updated_at * 1000).toISOString())} 前 · 来源 ${q.source}` : q.note}>
+                const qs = quota.filter((x) => x.agent === a.actor.id && (!hostFilter || (x.host_name ?? "") === hostFilter));
+                if (!qs.length || a.actor.kind === "human") return null;
+                return qs.map((q) => (
+                  <div key={q.host ?? "local"} className="quotas" title={q.updated_at ? `额度数据更新于 ${relTime(new Date(q.updated_at * 1000).toISOString())} 前 · 来源 ${q.source}` : q.note}>
+                    {qs.length > 1 && <span className="tag" title="这台机器上登录的账号">{q.host_name}</span>}
                     {q.windows.length ? q.windows.map((w) => <QuotaBar key={w.label} w={w} />) : <span className="muted small">{q.note || "没有额度数据"}</span>}
                     {q.windows.length > 0 && (() => {
                       const ageMin = q.updated_at ? (Date.now() / 1000 - q.updated_at) / 60 : null;
@@ -125,7 +127,7 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
                       return <span className={`prov small ${stale ? "stale" : "muted"}`}>{src} · {ageMin === null ? "时间未知" : `${relTime(new Date(q.updated_at! * 1000).toISOString())} 前`}{hint}</span>;
                     })()}
                   </div>
-                );
+                ));
               })()}
               {items.length === 0 && <div className="lane-empty muted">没有认领任务{idleSessions.length ? "，但有会话开着" : ""}</div>}
               {items.map(({ issue: i, session: s, last }) => {

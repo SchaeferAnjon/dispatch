@@ -6,16 +6,17 @@ import type { Session, SessionDetail, SessionRef } from "../types";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 
-interface Props { api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null }
+interface Props { api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
-export function SessionsView({ api, me, live, onSelectTask, onDone, onError, initialId }: Props) {
+export function SessionsView({ api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
   const [refs, setRefs] = useState<SessionRef[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
   const [host, setHost] = useState<string>("");
+  useEffect(() => { setHost(hostId ?? ""); }, [hostId]);
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<"timeline" | "files" | "tasks">("timeline");

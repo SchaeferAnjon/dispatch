@@ -282,3 +282,15 @@ export function parseAcceptance(s?: string): AcItem[] {
 export function serializeAcceptance(items: AcItem[]): string {
   return items.map((i) => `- [${i.done ? "x" : " "}] ${i.text}`).join("\n");
 }
+
+// Which Mac a task runs on: the explicit host:<name> label (dispatch begin adds it), else the
+// most recent session that mentioned the task, else unknown ("").
+export function hostOfIssue(i: { labels?: string[]; id: string }, refs: Map<string, { host_name?: string; last_at: number; tasks?: Record<string, number> }>): string {
+  const lab = (i.labels ?? []).find((l) => l.startsWith("host:"));
+  if (lab) return lab.slice(5);
+  let best: { host: string; at: number } | null = null;
+  for (const r of refs.values()) {
+    if (r.tasks && r.tasks[i.id] && r.host_name && (!best || r.last_at > best.at)) best = { host: r.host_name, at: r.last_at };
+  }
+  return best?.host ?? "";
+}

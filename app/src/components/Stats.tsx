@@ -4,7 +4,8 @@ import { actorOf } from "../derive";
 import type { Stats, StatsDay, StatsRank } from "../types";
 import { InsightsCard } from "./Insights";
 
-interface Props { api: Api; me: string; onDone?: (m: string) => void; onError: (m: string) => void }
+interface Props { api: Api; me: string; host?: string; hostName?: string; onDone?: (m: string) => void; onError: (m: string) => void }
+const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 
 const AGENTS = ["claude-code", "codex", "pi", "zcode", "qoder", "qoder-ide"];
 const COLOR: Record<string, string> = { "claude-code": "var(--claude)", codex: "var(--codex)", pi: "var(--pi)", zcode: "var(--cursor)", qoder: "var(--qoder)", "qoder-ide": "var(--qoder-2)" };
@@ -126,7 +127,7 @@ function Trend({ days, metric, n }: { days: StatsDay[]; metric: "tokens" | "msgs
   );
 }
 
-export function StatsView({ api, me, onDone, onError }: Props) {
+export function StatsView({ api, me, host, hostName, onDone, onError }: Props) {
   const [agent, setAgent] = useState<string>(() => { try { return localStorage.getItem("dispatch-stats-agent") ?? ""; } catch { return ""; } });
   const [days, setDays] = useState<number>(() => { try { return Number(localStorage.getItem("dispatch-stats-days") ?? 90); } catch { return 90; } });
   const [metric, setMetric] = useState<"tokens" | "msgs">("tokens");
@@ -135,9 +136,10 @@ export function StatsView({ api, me, onDone, onError }: Props) {
   useEffect(() => {
     let alive = true; setBusy(true);
     try { localStorage.setItem("dispatch-stats-agent", agent); localStorage.setItem("dispatch-stats-days", String(days)); } catch { /* ignore */ }
-    api.stats(agent, days).then((r) => { if (alive) setS(r); }).catch((e) => onError(String(e))).finally(() => alive && setBusy(false));
+    const req = host && host !== "local" ? api.on(host, ["stats", ...(agent ? ["--agent", agent] : []), "--days", String(days), "--cached", "--json"]).then((t) => parseJson<Stats | null>(t, null)) : api.stats(agent, days);
+    req.then((r) => { if (alive) setS(r); }).catch((e) => onError(String(e))).finally(() => alive && setBusy(false));
     return () => { alive = false; };
-  }, [api, agent, days]);
+  }, [api, agent, days, host]);
 
   const t = s?.total;
   const weeks = days === 0 ? 52 : Math.min(52, Math.max(4, Math.ceil(days / 7) + 1));
@@ -157,6 +159,7 @@ export function StatsView({ api, me, onDone, onError }: Props) {
           <button className={metric === "msgs" ? "on" : ""} onClick={() => setMetric("msgs")}>按消息</button>
         </div>
         <span className="spacer" />
+        {hostName && <span className="muted small">只看 {hostName}</span>}
         {busy && <span className="muted small">统计中…</span>}
       </div>
 
