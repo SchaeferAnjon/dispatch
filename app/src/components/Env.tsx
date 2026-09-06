@@ -12,6 +12,17 @@ const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(
 export function EnvView({ api, hosts, onDone, onError }: Props) {
   const [host, setHost] = useState("local");
   const blocked = hostReason(hosts, host);
+  return (
+    <div className="pit-wrap">
+      <HostPicker hosts={hosts} value={host} onChange={setHost} />
+      <EnvKeys api={api} host={host} blocked={blocked} onDone={onDone} onError={onError} />
+    </div>
+  );
+}
+
+// The list itself, reusable wherever a host is already chosen (the env page, the
+// 常用信息 tab of the instruction page). `compact` drops the long hint for a side column.
+export function EnvKeys({ api, host, blocked, onDone, onError, compact }: { api: Api; host: string; blocked: string; onDone: (m: string) => void; onError: (m: string) => void; compact?: boolean }) {
   const [items, setItems] = useState<EnvVar[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [shown, setShown] = useState<Record<string, string>>({});
@@ -39,14 +50,13 @@ export function EnvView({ api, hosts, onDone, onError }: Props) {
   };
 
   return (
-    <div className="pit-wrap">
-      <HostPicker hosts={hosts} value={host} onChange={setHost} />
+    <div className={compact ? "env-keys compact" : "env-keys"}>
       <div className="pit-head">
         <span className="muted mono small">{items.length} 个</span>
         <span className="spacer" />
-        <button className="btn primary" disabled={!!blocked} onClick={() => setEditing({ name: "", note: "", isNew: true })}>＋ 添加</button>
+        <button className={compact ? "btn primary sm" : "btn primary"} disabled={!!blocked} onClick={() => setEditing({ name: "", note: "", isNew: true })}>＋ 添加</button>
       </div>
-      <p className="pit-hint">存在 <span className="mono">~/.config/dispatch/env</span>（仅本人可读）。fish 新终端自动加载；Agent 在会话开始只看到变量名和用途，需要时 <span className="mono">dispatch env get 名字</span> 取值——不用你每次会话重贴 Key。不进任务板、不进知识库。</p>
+      {!compact && <p className="pit-hint">存在 <span className="mono">~/.config/dispatch/env</span>（仅本人可读）。fish 新终端自动加载；Agent 在会话开始只看到变量名和用途，需要时 <span className="mono">dispatch env get 名字</span> 取值——不用你每次会话重贴 Key。不进任务板、不进知识库。</p>}
       {!loaded && <div className="empty">载入中…</div>}
       {blocked && <div className="empty">{blocked}</div>}
       {!blocked && loaded && items.length === 0 && <div className="empty">还没有。把智谱、豆包语音等 API Key 加进来，以后任何 Agent 都自己取。</div>}

@@ -3,6 +3,7 @@ import type { Api } from "../api";
 import type { Host } from "../types";
 import { HostPicker, hostReason } from "./HostPicker";
 import { Markdown } from "./Markdown";
+import { EnvKeys } from "./Env";
 
 interface Props { api: Api; hosts: Host[]; onDone: (m: string) => void; onError: (m: string) => void }
 interface Section { heading: string; key: string; lines: number }
@@ -64,7 +65,7 @@ export function FactsView({ api, hosts, onDone, onError }: Props) {
   return <div className="instruction-center">
     <div className="instruction-top"><HostPicker hosts={hosts} value={host} onChange={(h) => { if (!busy) setHost(h); }} /><span className="spacer" /><button className="btn sm" disabled={busy} onClick={() => void load()}>重新读取</button></div>
     {blocked || error ? <div className="err">{blocked || error}</div> : null}
-    <div className="instruction-grid">
+    <div className="instruction-grid facts-grid">
       <aside className="instruction-docs"><h3>节 <span className="muted">{sections.length}</span></h3>
         {sections.map((s) => <button key={s.heading} disabled={busy || draft !== null} onClick={() => jump(s.heading)}><b>{s.heading}</b><span>{s.key === "通用" || s.key === "general" ? "每个会话都注入" : `只注入 ${s.key} 项目的会话`} · {s.lines} 行</span></button>)}
         {sections.length === 0 && <p className="small muted">还没有任何节。点「编辑」，用 <code>## 通用</code> 和 <code>## 项目名</code> 分节。</p>}
@@ -80,6 +81,11 @@ export function FactsView({ api, hosts, onDone, onError }: Props) {
           ? <div className="instruction-content facts-content">{doc?.content ? <Markdown src={withAnchors(doc.content)} /> : <span className="muted">尚未创建，点「编辑」用模板开始。</span>}</div>
           : <textarea aria-label="常用信息草稿" className="instruction-editor" spellCheck={false} value={draft} onChange={(e) => setDraft(e.target.value)} />}
       </div>
+      <aside className="facts-keys">
+        <h3>密钥 <span className="muted">dispatch env</span></h3>
+        <p className="small muted">这台机器的 Key（<code>~/.config/dispatch/env</code>）。左边文档只写名字和用途，值在这里改；Agent 用 <code>dispatch env get 名</code> 取。</p>
+        <EnvKeys api={api} host={host} blocked={blocked} onDone={onDone} onError={onError} compact />
+      </aside>
     </div>
   </div>;
 }
