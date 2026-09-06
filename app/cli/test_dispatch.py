@@ -135,7 +135,7 @@ class EnvStore(unittest.TestCase):
             self.assertEqual(oct(os.stat(dispatch.ENV_FILE).st_mode & 0o777), "0o600")
             self.assertEqual(dispatch.env_mask("abc123def456"), "abc…456")
             self.assertIn("set -gx X 'has space #1'", open(dispatch.ENV_FISH).read())
-            self.assertIn("ZHIPU_API_KEY（智谱 GLM）", dispatch.env_summary_line())
+            self.assertIn("ZHIPU_API_KEY=智谱 GLM", dispatch.env_summary_line())
 
 
 class Guards(unittest.TestCase):

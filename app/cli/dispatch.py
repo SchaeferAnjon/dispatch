@@ -2790,8 +2790,7 @@ def catalog_line():
     sk = [i for i in items if i["kind"] == "skill"]
     pl = [i for i in items if i["kind"] == "plugin"]
     names = "、".join(i["name"].split("@")[0] for i in pl[:4])
-    return (f"可按需启用（默认不注入）：未挂载技能 {len(sk)} 个、已禁用插件 {len(pl)} 个（{names}…）。"
-            f"判断其中某个会明显帮到当前任务时，用一句话建议用户，同意后再启用：`dispatch catalog -q 词` 查，`dispatch skills enable <名> --agent <agent>` / `claude plugin enable <名>`，新会话生效。")
+    return f"可按需启用（默认不注入）：技能 {len(sk)} 个、插件 {len(pl)} 个（{names}…）。明显有用时建议用户一句，同意再启用：`dispatch catalog -q 词`。"
 
 
 def cmd_catalog(a):
@@ -2869,7 +2868,8 @@ def env_summary_line():
     items = env_read()
     if not items:
         return ""
-    return "环境变量（`dispatch env get <名>` 取值，不要让用户重贴）：" + "，".join(f"{it['name']}" + (f"（{it['note']}）" if it["note"] else "") for it in items)
+    short = lambda n: re.split(r"[（(，,；;]", n)[0][:14]
+    return "Key（`dispatch env get 名`，别让用户重贴）：" + "，".join(f"{it['name']}" + (f"={short(it['note'])}" if it["note"] else "") for it in items)
 
 
 def cmd_env(a):
@@ -2969,7 +2969,8 @@ def neighbours(cwd, self_id=""):
         c = os.path.normpath(s.get("cwd") or "")
         if not c or c == "/":
             continue
-        if c == cwd or cwd.startswith(c + os.sep) or c.startswith(cwd + os.sep):
+        nested = cwd not in (HOME, "/") and c not in (HOME, "/") and (cwd.startswith(c + os.sep) or c.startswith(cwd + os.sep))
+        if c == cwd or nested:
             rows.append(s)
     return rows
 
@@ -3052,7 +3053,7 @@ def cmd_prime(a):
     ptag = proj or "<项目名>"
     lines = [f"# Dispatch 中央任务板" + (f" · 当前项目 {proj}" if proj else "") + (f" · 你是 {actor}" if actor else "")]
     lines.append(f"任务：明白要做什么后 `dispatch begin \"标题\" -P {ptag} -d \"背景+要做什么\" -a \"- [ ] 验收项\"`（已有任务则 `bd update <id> --claim`）；进展 `dispatch log <id> \"…\"`；收尾 `dispatch done <id> --reason \"做了什么、怎么验证\" [--verified] [--retro \"【技术】…【做对】…【做错】…\"] [--next \"后续\"]`。")
-    lines.append(f"知识库：`dispatch wiki search <词>` 动手前查一下；踩坑 `dispatch wiki add --kind pit \"现象\" --fix \"解法\" -P {ptag} --task <id>`；做对的做法 `--kind win \"…\" --why \"…\"`。")
+    lines.append(f"知识库：动手前 `dispatch wiki search <词>`；踩坑 `dispatch wiki add --kind pit \"现象\" --fix \"解法\" -P {ptag}`，做对 `--kind win`。")
     # board
     code, o, err = sh(["bd", "list", "--all", "--json"])
     tasks = []
@@ -3064,7 +3065,7 @@ def cmd_prime(a):
         return next((l.split(":", 1)[1] for l in t.get("labels") or [] if l.startswith("project:")), "")
     mine = [t for t in tasks if t.get("status") in ("in_progress", "open") and (not proj or lab(t) == proj)]
     mine.sort(key=lambda t: (t.get("status") != "in_progress", t.get("priority", 9)))
-    shown = mine[:8]
+    shown = mine[:6] if proj else [t for t in mine if t.get("status") == "in_progress"][:5]
     if shown:
         lines.append(f"## 板上（{proj or '全部'}）")
         for t in shown:
@@ -3099,7 +3100,7 @@ def cmd_prime(a):
             mark = "◐" if s_.get("state") == "working" else "○"
             ed = editing_now(s_["session_id"])
             lines.append(f"{mark} {s_['agent']} {s_['session_id'][:8]} · {'在跑' if s_.get('state') == 'working' else '等用户'} · {(lambda t: t + '活动' if t.startswith('刚刚') else t + '前活动')(ago(s_.get('last_at') or 0))} · 目录 …{(s_.get('cwd') or '')[-28:]}" + (f" · {s_['host_name']}" if s_.get("host") not in (None, "local") else "") + (f" · 正在改：{', '.join(ed[:5])}{'…' if len(ed) > 5 else ''}" if ed else ""))
-        lines.append("它们可能正在改这里的文件（改文件前 hook 会拦一次并告诉你是谁）：只改自己任务涉及的文件，commit 按文件 add，不碰别人的半成品；想知道它在干什么 `dispatch session <id>`；认领任务用 `dispatch claim <id>`（别人已认领会拒绝）。")
+        lines.append("只改自己任务的文件，commit 按文件 add；看它在干什么 `dispatch session <id>`；认领用 `dispatch claim`。")
     ql, worst = quota_line(actor)
     if ql:
         mode, advice = quota_mode(worst)
@@ -3159,7 +3160,7 @@ def main():
     s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
     s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
-    s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=6, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
+    s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=4, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()
     if a.cmd == "agent":
         a.kind = a.target = a.target_or_kind
