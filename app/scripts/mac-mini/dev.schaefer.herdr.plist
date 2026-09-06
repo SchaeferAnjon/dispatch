@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Keeps a headless Herdr session ("main") alive on the Mac mini inside tmux, so the
+       MacBook can drive agents there over ssh: herdr -\-session main agent start/prompt/read.
+       Attach from a real terminal with: herdr session attach main -->
+  <key>Label</key><string>dev.schaefer.herdr</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>/opt/homebrew/bin/tmux has-session -t herdr 2>/dev/null || /opt/homebrew/bin/tmux new -d -s herdr -x 220 -y 60 "$HOME/.local/bin/herdr --session main"</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>120</integer>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/apple/.local/bin</string></dict>
+  <key>StandardOutPath</key><string>/tmp/herdr-launchd.log</string>
+  <key>StandardErrorPath</key><string>/tmp/herdr-launchd.log</string>
+</dict>
+</plist>
