@@ -1,6 +1,7 @@
 ---
 name: task-board
-description: Dispatch 中央任务板 + 知识库（Beads/bd，~/tasks/.beads；桌面端 Dispatch.app；CLI dispatch）。所有 Agent（Claude Code、Codex、pi、ZCode）和用户共用。当用户提到"任务板 / Dispatch / 我在干什么 / 认领 / 待办 / bd / 知识库 / 踩坑"，或你开始一段跨会话的工作、发现后续待办、需要交接、想查别人踩过的坑时用它。
+description: Dispatch 任务板与知识库的完整用法（dispatch/bd 命令、状态约定、跨机同步）。要建任务、认领、记坑、查 wiki 细节时读。
+
 ---
 
 # Dispatch：任务板 + 知识库
