@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { AgentPresence } from "../derive";
 import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
 import type { Column, Host, Issue, SessionRef } from "../types";
+import type { AgentStartInput, AgentStartResult } from "../api";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 
 interface Common { issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
@@ -100,9 +101,50 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
 
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
-export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs, hosts, onOpenUrl, onCopyText }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void }) {
+// "派活": start an agent on a machine through Herdr and send it a first prompt.
+const KINDS: [string, string][] = [["claude", "Claude Code"], ["codex", "Codex"], ["qodercli", "Qoder CLI"], ["gemini", "Gemini CLI"], ["opencode", "OpenCode"]];
+function Delegate({ host, onClose, onStart }: { host: Host; onClose: () => void; onStart: (input: AgentStartInput) => Promise<AgentStartResult | null> }) {
+  const [kind, setKind] = useState("claude");
+  const [cwd, setCwd] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<AgentStartResult | null>(null);
+  const [err, setErr] = useState("");
+  const go = async () => {
+    if (!prompt.trim()) return;
+    setBusy(true); setErr("");
+    try { setRes(await onStart({ kind, host: host.local ? "" : host.id, cwd: cwd.trim() || undefined, prompt: prompt.trim(), label: prompt.trim().slice(0, 24) })); }
+    catch (e) { setErr(String(e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog" role="dialog" aria-label="派活">
+        <h3>在 {host.name} 上派活</h3>
+        <div className="views">{KINDS.map(([k, l]) => <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{l}</button>)}</div>
+        <input placeholder={host.local ? "目录（默认当前目录）" : "目录（默认那台机器的家目录）"} value={cwd} onChange={(e) => setCwd(e.target.value)} />
+        <textarea rows={4} placeholder="第一句话：要它做什么" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        {err && <div className="err">{err}</div>}
+        {res && (
+          <div className="sel-text small">
+            <div><b>{res.status}</b> · Herdr {res.pane_id} · {res.actor}{res.warning ? ` · ${res.warning}` : ""}</div>
+            {res.output && <pre className="diff" style={{ maxHeight: 220, overflow: "auto" }}>{res.output.split("\n").filter((l) => l.trim()).slice(-25).join("\n")}</pre>}
+          </div>
+        )}
+        <div className="foot">
+          <button className="btn ghost" onClick={onClose}>{res ? "关闭" : "取消"}</button>
+          <button className="btn primary" disabled={busy || !prompt.trim()} onClick={go}>{busy ? "起中，等它回话…" : res ? "再派一个" : "起 Agent 并发送"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs, hosts, onOpenUrl, onCopyText, onStart }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onStart: (input: AgentStartInput) => Promise<AgentStartResult | null> }) {
+  const [delegate, setDelegate] = useState<Host | null>(null);
   return (
     <div className="agrid">
+      {delegate && <Delegate host={delegate} onClose={() => setDelegate(null)} onStart={onStart} />}
       {hosts.length > 0 && (
         <div className="hosts-bar">
           {hosts.map((h) => {
@@ -118,6 +160,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
                 <span className={`dot ${h.online ? "on" : ""}`} />
                 <b>{h.name}</b><span className="mono muted small">{h.ip}</span>
                 {h.overlay?.kind && <span className="host-chip">{OVERLAY[h.overlay.kind] ?? h.overlay.kind}</span>}
+                {h.online && <button className="btn sm" onClick={() => setDelegate(h)} title="在这台机器的 Herdr 里起一个 Agent 并发第一句话">派活</button>}
                 {ways.map((w) => <button key={w.key} className={`btn sm${w.key === h.recommend || (h.recommend === "vnc" && w.key === "novnc") ? "" : " ghost"}`} onClick={w.act} title={w.hint}>{w.label}</button>)}
                 {ways.length === 0 && <span className="muted small">{h.why}</span>}
               </div>

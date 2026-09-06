@@ -474,6 +474,33 @@ async fn hosts() -> Result<String, String> {
     run_dispatch(args(&["hosts", "--json"])).await
 }
 
+#[derive(Deserialize)]
+struct AgentStart {
+    kind: String,
+    host: Option<String>,
+    cwd: Option<String>,
+    model: Option<String>,
+    task: Option<String>,
+    prompt: Option<String>,
+    label: Option<String>,
+    timeout: Option<u64>,
+}
+
+// Hand work to another agent through Herdr (dispatch agent start), here or on another Mac.
+#[tauri::command]
+async fn agent_start(input: AgentStart) -> Result<String, String> {
+    let mut a = args(&["agent", "start", &input.kind, "--json"]);
+    for (flag, v) in [("--host", input.host), ("--cwd", input.cwd), ("--model", input.model), ("--task", input.task), ("--prompt", input.prompt), ("--label", input.label)] {
+        if let Some(v) = v.filter(|s| !s.trim().is_empty()) {
+            a.push(flag.into());
+            a.push(v);
+        }
+    }
+    a.push("--timeout".into());
+    a.push(input.timeout.unwrap_or(600_000).to_string());
+    run_dispatch(a).await
+}
+
 #[tauri::command]
 async fn stats(agent: Option<String>, days: Option<u32>) -> Result<String, String> {
     let mut a = args(&["stats", "--cached", "--json"]);
@@ -711,7 +738,7 @@ pub fn run() {
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
             skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, tray_update,
-            rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, graph, folders, open_path
+            rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
