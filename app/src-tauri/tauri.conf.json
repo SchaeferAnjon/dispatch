@@ -48,6 +48,7 @@
       "../cli/activity.py": "cli/activity.py",
       "../cli/attachments.py": "cli/attachments.py",
       "../cli/instructions.py": "cli/instructions.py",
+      "../cli/session_reply.py": "cli/session_reply.py",
       "../cli/serve.py": "cli/serve.py",
       "../cli/presence.py": "cli/presence.py",
       "../cli/edit-guard.py": "cli/edit-guard.py",

@@ -84,6 +84,21 @@ class Documents(unittest.TestCase):
         self.assertEqual(instructions.audit(inv,model='claude-sonnet-5')['profile'],'claude')
         self.assertEqual(instructions.audit(inv,model='custom-local')['profile'],'general')
 
+    def test_project_scope_apply_keeps_global_and_other_projects(self):
+        root=self.home/'project';root.mkdir();local=root/'AGENTS.md';local.write_text('Project rules')
+        other=self.home/'other';other.mkdir();(other/'AGENTS.md').write_text('Other rules')
+        original=self.doc.read_text()
+        p=instructions.plan(self.home,str(local),'Updated project rules',project=root)
+        self.assertNotIn(str(other/'AGENTS.md'),p['hashes'])
+        result=instructions.apply(self.home,{'path':str(local),'content':'Updated project rules','hashes':p['hashes']},project=root)
+        self.assertEqual(local.read_text(),'Updated project rules')
+        self.assertEqual(self.doc.read_text(),original)
+        self.assertEqual((other/'AGENTS.md').read_text(),'Other rules')
+        instructions.restore(self.home,result['backup']);self.assertEqual(local.read_text(),'Project rules')
+        (root/'AGENTS.override.md').write_text('Override')
+        by={d['path']:d for d in instructions.inventory(self.home,project=root)['documents']}
+        self.assertFalse(by[str(local)]['active']);self.assertTrue(by[str(self.doc)]['active'])
+
 
 class TaskTrash(unittest.TestCase):
     def test_agent_qualified_session_key(self):

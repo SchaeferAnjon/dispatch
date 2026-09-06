@@ -38,14 +38,17 @@ def references(content, parent):
     return result
 
 
-def inventory(home, overrides=None):
+def inventory(home, overrides=None, project=None):
     home = Path(home); overrides = overrides or {}
     codex = Path(os.environ.get('CODEX_HOME', str(home / '.codex'))) if home == Path.home() else home / '.codex'
     claude = Path(os.environ.get('CLAUDE_CONFIG_DIR', str(home / '.claude'))) if home == Path.home() else home / '.claude'
     candidates = [('shared', home / '.agents/rules/GLOBAL.md'), ('codex', codex / 'AGENTS.override.md'), ('codex', codex / 'AGENTS.md'), ('claude', claude / 'CLAUDE.md'), ('pi', home / '.pi/agent/AGENTS.md'), ('zcode', home / '.zcode/AGENTS.md'), ('gemini', home / '.gemini/GEMINI.md'), ('opencode', home / '.config/opencode/AGENTS.md')]
     candidates += [('claude', p) for p in sorted((claude / 'rules').glob('**/*.md'))][:80]
+    if project:
+        root = Path(project)
+        candidates += [('codex', root / 'AGENTS.md'), ('codex', root / 'AGENTS.override.md'), ('claude', root / 'CLAUDE.md')]
+        candidates += [('claude', p) for p in sorted((root / '.claude/rules').glob('**/*.md'))][:80]
     docs = {}
-    shadow = bool(text(codex / 'AGENTS.override.md').strip())
     def visit(agent, p, via='', active=True, chain=()):
         key = str(p)
         if len(docs) >= 120 or len(chain) > 10: return
@@ -59,7 +62,7 @@ def inventory(home, overrides=None):
         for r in refs: visit(agent, r, key, active, (*chain, key))
     for ag, p in candidates:
         if p.is_file() or (p.parent.exists() and p.name in ('AGENTS.md', 'CLAUDE.md', 'GEMINI.md')):
-            visit(ag, p, active=not (ag == 'codex' and p.name == 'AGENTS.md' and shadow))
+            visit(ag, p, active=not (ag == 'codex' and p.name == 'AGENTS.md' and bool(text(p.parent / 'AGENTS.override.md').strip())))
     models = []
     try:
         import tomllib
@@ -81,7 +84,7 @@ def audit(inv, profile='auto', model=''):
     for d in docs:
         if not d['exists'] and not d['content']: continue
         if not d['active']:
-            add('scope', d, 1, '同层 AGENTS.override.md 非空，本文件不会作为 Codex 全局指令加载', '修改实际生效的 override 文件，或移除覆盖后再使用本文件。'); continue
+            add('scope', d, 1, '同层 AGENTS.override.md 非空，本文件不会作为该范围的 Codex 指令加载', '修改实际生效的 override 文件，或移除覆盖后再使用本文件。'); continue
         content = BLOCK.sub(lambda m: '\n' * m[0].count('\n'), d['content']) if d['managed'] else d['content']
         fence = False; heading = ''; seen = {}
         for n, raw in enumerate(content.splitlines(), 1):
@@ -147,9 +150,9 @@ def tidy(content):
     return '\n'.join(result).rstrip('\n') + '\n'
 
 
-def plan(home, path, content, profile='auto', model=''):
-    inv = inventory(home); docs = {d['path']: d for d in inv['documents']}
-    if path not in docs: raise ValueError('文件未在全局文档或引用链中检测到')
+def plan(home, path, content, profile='auto', model='', project=None):
+    inv = inventory(home, project=project); docs = {d['path']: d for d in inv['documents']}
+    if path not in docs: raise ValueError('文件未在当前作用范围或引用链中检测到')
     d = docs[path]
     if not content.strip(): raise ValueError('不能将指令文件保存为空')
     if BLOCK.findall(content) != BLOCK.findall(d['content']): raise ValueError('托管块由源文档生成，请修改其 source 文件')
@@ -171,7 +174,7 @@ def plan(home, path, content, profile='auto', model=''):
         if real in actual and actual[real][1] != value: raise ValueError('多个逻辑路径指向同一文件，但修改结果不同')
         actual.setdefault(real, (p,value))
     changes = {x['path']: actual[x['real_path']][1] for x in inv['documents'] if x['real_path'] in actual}
-    future = inventory(home, changes)
+    future = inventory(home, changes, project=project)
     entries = [{'path': p, 'real_path': real, 'before': docs[p]['content'], 'after': value, 'hash': docs[p]['hash'], 'existed': docs[p]['exists'], 'diff': ''.join(difflib.unified_diff(docs[p]['content'].splitlines(True), value.splitlines(True), fromfile=p, tofile=p))} for real,(p,value) in actual.items() if value != docs[p]['content']]
     return {'changes': entries, 'hashes': {d['path']: d['hash'] for d in inv['documents']}, **audit(future, profile, model)}
 
@@ -187,12 +190,12 @@ def atomic_write(path, content):
         if os.path.exists(temp): os.unlink(temp)
 
 
-def apply(home, payload):
+def apply(home, payload, project=None):
     import fcntl
     folder = Path(home) / '.local/share/dispatch/rule-history'; folder.mkdir(parents=True, exist_ok=True)
     with open(folder / '.lock', 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        proposal = plan(home, payload['path'], payload['content'], payload.get('profile', 'auto'), payload.get('model', ''))
+        proposal = plan(home, payload['path'], payload['content'], payload.get('profile', 'auto'), payload.get('model', ''), project=project)
         if payload.get('hashes') != proposal['hashes']: raise ValueError('文档已被其他程序修改，请重新检查差异')
         if not proposal['changes']: return {'changed': 0, 'backup': None}
         token = f'{time.time_ns()}'
@@ -226,13 +229,13 @@ def restore(home, token):
         return {'restored': len(changes)}
 
 
-def command(a, home):
+def command(a, home, project=None):
     import sys
-    inv = inventory(home)
+    inv = inventory(home, project=project)
     if a.op == 'inspect': return {**inv, **audit(inv, a.profile, a.model or next((m['model'] for m in inv['models'] if m.get('model')), ''))}
     if a.op == 'restore': return restore(home, a.backup)
-    if a.op == 'apply': return apply(home, json.load(sys.stdin))
+    if a.op == 'apply': return apply(home, json.load(sys.stdin), project=project)
     doc = next((d for d in inv['documents'] if d['path'] == a.path), None)
     if not doc: raise ValueError('请选择检测到的文件')
     new = tidy(doc['content']) if a.op == 'optimize' else sys.stdin.read()
-    return {'content': new, **plan(home, a.path, new, a.profile, a.model)}
+    return {'content': new, **plan(home, a.path, new, a.profile, a.model, project=project)}

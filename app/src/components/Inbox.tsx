@@ -33,7 +33,7 @@ export function InboxView({ onOpen, initialTab, items, me, onSelect, onResume, o
                   <div className="t"><span className="st sm">{sessionStatus(s)}</span> {s.herdr?.title || s.title || s.project || s.cwd || s.session_id}</div>
                   <div className="muted small">{a?.name} · {s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}{s.project ? ` · ${s.project}` : ""} · 最近活动 {durSince(s.last_at)}前{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
                 </div>
-                <button className="btn sm" onClick={() => onFocus(s.session_id)} title={s.herdr ? `Herdr 标签 ${s.herdr.tab_id}` : s.source_app}>打开会话</button>
+                <button className="btn sm" onClick={() => s.session_id.startsWith('pid-') ? onFocus(s.session_id) : onOpen(s.session_id)}>查看并回复</button>
                 {s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && <button className="copy-btn" onClick={() => onResume(s.agent, s.session_id, s.cwd)}>恢复命令</button>}
               </div>
             );
