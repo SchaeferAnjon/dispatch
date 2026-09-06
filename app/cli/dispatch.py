@@ -167,6 +167,118 @@ def qoder_live(table):
     return out
 
 
+# ---------------------------------------------------------------- other Macs over Tailscale
+
+HOSTS_FILE = os.path.join(DISPATCH_DIR, "hosts.json")
+REMOTE_DIR = os.path.join(DISPATCH_DIR, "remote")
+_LOCAL_NAME = None
+
+
+def local_host_name():
+    global _LOCAL_NAME
+    if _LOCAL_NAME is None:
+        try:
+            _LOCAL_NAME = subprocess.run(["scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2).stdout.strip() or os.uname().nodename
+        except Exception:
+            _LOCAL_NAME = os.uname().nodename
+    return _LOCAL_NAME
+
+
+def hosts():
+    """Other Macs that run the same dispatch checkout, reached over Tailscale by ssh.
+    Edit ~/tasks/.dispatch/hosts.json to add one; an empty list turns the feature off."""
+    try:
+        return json.load(open(HOSTS_FILE))
+    except Exception:
+        default = [{"id": "mini", "name": "Mac mini", "ssh": "apple@100.118.80.86", "dispatch": "python3 ~/Projects/kanban/app/cli/dispatch.py"}]
+        try:
+            os.makedirs(DISPATCH_DIR, exist_ok=True)
+            json.dump(default, open(HOSTS_FILE, "w"), ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return default
+
+
+def _tag_host(rows, h):
+    for r in rows or []:
+        if isinstance(r, dict):
+            r["host"], r["host_name"] = h["id"], h["name"]
+    return rows or []
+
+
+def remote_dispatch(h, args, ttl):
+    """Run `dispatch <args> --json` on another host, cached for ttl seconds. Never blocks
+    the caller for more than ~10s, and remembers an unreachable host for a minute so the
+    app's 5-second presence polls stay cheap. Returns the stale cache (or None) on failure."""
+    import shlex
+    os.makedirs(REMOTE_DIR, exist_ok=True)
+    key = re.sub(r"[^a-z0-9]+", "-", " ".join(args).lower()).strip("-")
+    cache = os.path.join(REMOTE_DIR, f"{h['id']}--{key}.json")
+    down = os.path.join(REMOTE_DIR, f"{h['id']}.down")
+    now = time.time()
+
+    def stale():
+        try:
+            return json.load(open(cache))
+        except Exception:
+            return None
+
+    try:
+        if now - os.stat(cache).st_mtime < ttl:
+            return stale()
+    except OSError:
+        pass
+    try:
+        if now - os.stat(down).st_mtime < 60:
+            return stale()
+    except OSError:
+        pass
+    # The remote login shell is fish, so use `env` rather than FOO=bar prefixes.
+    cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in args) + " --json"
+    try:
+        r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd], capture_output=True, text=True, timeout=12)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip()[:200])
+        s = r.stdout
+        start = min(i for i in (s.find("["), s.find("{")) if i >= 0)
+        data = json.loads(s[start:])
+    except Exception:
+        try:
+            open(down, "w").close()
+        except OSError:
+            pass
+        return stale()
+    try:
+        tmp = cache + ".tmp"
+        json.dump(data, open(tmp, "w"), ensure_ascii=False)
+        os.replace(tmp, cache)
+        if os.path.exists(down):
+            os.remove(down)
+    except OSError:
+        pass
+    return data
+
+
+def remote_sessions():
+    out = []
+    for h in hosts():
+        for s in _tag_host(remote_dispatch(h, ["sessions"], 20), h):
+            s["remote"] = True
+            out.append(s)
+    return out
+
+
+def remote_refs():
+    out = []
+    for h in hosts():
+        for r in _tag_host(remote_dispatch(h, ["list", "--cached", "--limit", "200"], 120), h):
+            r["remote"] = True
+            r["resume_cmd"] = f"ssh -t {h['ssh']} {json.dumps(r.get('resume_cmd', ''))}"
+            r["path"] = f"remote:{h['id']}:{r.get('path', '')}"
+            out.append(r)
+    return out
+
+
 def live_sessions():
     table = ps_table()
     sessions = zcode_live(table)
@@ -199,6 +311,10 @@ def live_sessions():
         if cands:
             s = cands[0]
             s["herdr"] = {"pane_id": a.get("pane_id"), "tab_id": a.get("tab_id"), "title": a.get("terminal_title_stripped"), "status": a.get("agent_status"), "focused": a.get("focused")}
+    for s in sessions:
+        s.setdefault("host", "local")
+        s.setdefault("host_name", local_host_name())
+    sessions.extend(remote_sessions())
     sessions.sort(key=lambda s: (s.get("state") != "working", -(s.get("last_at") or 0)))
     return sessions
 
@@ -909,6 +1025,10 @@ def cmd_stats(a):
 def cmd_list(a):
     idx = load_index() if a.cached else refresh_index()
     refs = session_refs(idx)
+    for r in refs:
+        r["host"], r["host_name"] = "local", local_host_name()
+    if not getattr(a, "local", False):
+        refs = sorted(refs + remote_refs(), key=lambda r: -(r.get("last_at") or 0))
     if a.agent:
         refs = [r for r in refs if r["agent"] == a.agent]
     if a.cwd:
@@ -1122,12 +1242,24 @@ def read_session_detail(ref, limit=400):
     return {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in files.items()], "tool_counts": tool_names}
 
 
+def remote_session_detail(key):
+    """A session that is not in the local index may live on another Mac."""
+    for h in hosts():
+        d = remote_dispatch(h, ["session", key], 60)
+        if isinstance(d, dict) and d.get("meta"):
+            _tag_host([d["meta"]], h)
+            d["meta"]["remote"] = True
+            d["meta"]["resume_cmd"] = f"ssh -t {h['ssh']} {json.dumps(d['meta'].get('resume_cmd', ''))}"
+            return d
+    return None
+
+
 def cmd_session(a):
     refs = resolve(load_index() or refresh_index(), a.key)
-    if not refs:
+    d = read_session_detail(refs[0]) if refs else remote_session_detail(a.key)
+    if not d:
         print(f"找不到 {a.key}", file=sys.stderr)
         sys.exit(1)
-    d = read_session_detail(refs[0])
 
     def text(d):
         m = d["meta"]
@@ -1277,6 +1409,8 @@ def focus_session(s):
     """Bring the app that hosts this session to the front and, where the app
     supports it, jump to the session itself. Returns a message."""
     agent = s.get("agent", "")
+    if s.get("remote"):
+        return f"这个会话在 {s.get('host_name')} 上，得在那台机器上打开（或 ssh 过去后 herdr agent focus）"
     table = ps_table()
     h = s.get("herdr")
     if h:
@@ -2254,7 +2388,7 @@ def main():
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
-    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
+    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)

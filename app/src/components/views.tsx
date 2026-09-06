@@ -132,7 +132,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
                 <div key={s.session_id} className={`sess ${s.state}`} title={s.cwd || s.session_id}>
                   <span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span>
                   <span className="proj-name">{s.herdr?.title || r?.title || s.project || <span className="muted">未知目录</span>}{r?.current_task && <button className="link mono small" style={{ marginLeft: 6, color: "var(--s-prog)" }} onClick={() => onSelect(r.current_task!)}>正在做 {r.current_task}</button>}</span>
-                  <span className="muted small">{s.source_app}</span>
+                  <span className="muted small">{s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}</span>
                   <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`} title={s.registered ? "" : "钩子安装前启动的会话：只知道进程在，不知道忙不忙"}>{s.state === "working" ? "在跑" : s.state === "idle" ? "等你" : "未登记"}</span>
                   <span className="mono muted small right">{s.started_at ? `开了 ${durSince(s.started_at)}` : `pid ${s.agent_pid ?? "?"}`}{s.prompts ? ` · ${s.prompts} 轮` : ""}</span>
                   <span style={{ display: "inline-flex", gap: 4 }}>

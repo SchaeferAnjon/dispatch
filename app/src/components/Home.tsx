@@ -160,7 +160,7 @@ export function HomeView({ api, issues, agents, refs, me, counts, onSelect, onVi
                     <div key={s.session_id} className="idle-row">
                       <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{s.state === "working" ? "在跑" : s.state === "idle" ? "等你" : "未登记"}</span>
                       <span className="t">{s.herdr?.title || s.title || s.project || s.cwd || "（未知目录）"}</span>
-                      <span className="muted small">{s.source_app} · 没挂任务</span>
+                      <span className="muted small">{s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>} · 没挂任务</span>
                       <button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button>
                     </div>
                   ))}

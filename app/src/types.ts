@@ -51,6 +51,9 @@ export interface SessionRef {
   path: string;
   size: number;
   subagents: SubagentRef[];
+  host?: string;
+  host_name?: string;
+  remote?: boolean;
 }
 export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; text: string; tools: { name: string; summary: string; id?: string }[] }
 export interface FileChange { kind: "edit" | "write" | "patch"; old: string; new: string; ts: string; op?: string; add?: number; del?: number }
@@ -126,6 +129,9 @@ export interface Session {
   registered: boolean;
   herdr?: { pane_id: string; tab_id: string; title: string; status: string; focused: boolean };
   title?: string;
+  host?: string;
+  host_name?: string;
+  remote?: boolean;
 }
 export interface Presence { sessions: Session[]; apps: string[] }
 

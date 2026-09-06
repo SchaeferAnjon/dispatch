@@ -23,7 +23,7 @@ export function InboxView({ items, me, onSelect, onResume, onFocus, onReview }: 
                 <Avatar actor={a} />
                 <div className="ib-main">
                   <div className="t">{s.herdr?.title || s.title || s.project || s.cwd || s.session_id}</div>
-                  <div className="muted small">{a?.name} · {s.source_app}{s.project ? ` · ${s.project}` : ""} · 等了 {durSince(s.last_at)}{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
+                  <div className="muted small">{a?.name} · {s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}{s.project ? ` · ${s.project}` : ""} · 等了 {durSince(s.last_at)}{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
                 </div>
                 <button className="btn primary sm" onClick={() => onFocus(s.session_id)} title={s.herdr ? `Herdr 标签 ${s.herdr.tab_id}` : s.source_app}>打开会话</button>
                 {s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && <button className="copy-btn" onClick={() => onResume(s.agent, s.session_id, s.cwd)}>恢复命令</button>}

@@ -15,6 +15,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
+  const [host, setHost] = useState<string>("");
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<"timeline" | "files" | "tasks">("timeline");
@@ -35,8 +36,9 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
 
   const items = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return refs.filter((r) => (!agent || r.agent === agent) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
-  }, [refs, q, agent]);
+    return refs.filter((r) => (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
+  }, [refs, q, agent, host]);
+  const hostList = useMemo(() => { const m = new Map<string, string>(); for (const r of refs) if (r.host) m.set(r.host, r.host_name ?? r.host); return [...m.entries()]; }, [refs]);
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
@@ -51,6 +53,12 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
             {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["zcode", "ZCode"], ["qoder", "Qoder"], ["qoder-ide", "Qoder IDE"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
             <span className="spacer" /><span className="muted mono small">{items.length}</span>
           </div>
+          {hostList.length > 1 && (
+            <div className="views" style={{ marginTop: 4 }} title="哪台机器上的聊天记录">
+              <button className={host === "" ? "on" : ""} onClick={() => setHost("")}>两台都看</button>
+              {hostList.map(([id, name]) => <button key={id} className={host === id ? "on" : ""} onClick={() => setHost(id)}>{name}</button>)}
+            </div>
+          )}
         </div>
         <div className="sess-items">
           {!loaded && <div className="empty">索引中…（首次要读完全部历史）</div>}
@@ -61,7 +69,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
             return (
               <button key={r.session_id} className={`sess-item${sel === r.session_id ? " sel" : ""}`} onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
                 <div className="l1"><Avatar actor={a} /><span className="t">{r.title || "（无标题）"}</span>{l && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
-                <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
+                <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {r.current_task && <div className="l3 mono">正在做 {r.current_task}</div>}
               </button>
             );
@@ -88,7 +96,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
               <div className="sess-meta kv">
                 <b>开始</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>
                 <b>最近</b><span className="mono">{m.last_ts ? `${fmtTime(m.last_ts)}（${durSince(m.last_at)}前）` : "?"}</span>
-                <b>来源</b><span>{ENTRY[m.entrypoint] ?? m.entrypoint ?? "?"}{l ? ` · ${l.source_app}` : ""}</span>
+                <b>来源</b><span>{ENTRY[m.entrypoint] ?? m.entrypoint ?? "?"}{l ? ` · ${l.source_app}` : ""}{m.remote && <span className="host-chip">{m.host_name}</span>}</span>
                 <b>对话</b><span>{m.user_msgs} 轮 · {m.assistant_msgs} 次回复 · {(m.size / 1e6).toFixed(1)} MB</span>
                 <b>工具</b><span className="mono small">{Object.entries(detail.tool_counts).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</span>
                 {m.subagents.length > 0 && (<><b>子 Agent</b><span className="subs">{m.subagents.map((s) => <span key={s.agent_id} className="sub-chip" title={s.path}>↳ <b>{s.type}</b> {s.description}<span className="muted mono"> · {(s.size / 1e3).toFixed(0)} KB</span></span>)}</span></>)}
