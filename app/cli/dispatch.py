@@ -422,6 +422,184 @@ def host_rows(local_only=False):
     return rows
 
 
+# ---------------------------------------------------------------- hand work to another agent through Herdr
+
+KIND_ACTOR = {"claude": "claude-code", "codex": "codex", "qodercli": "qoder", "opencode": "zcode", "gemini": "gemini", "cursor": "cursor", "kimi": "kimi", "amp": "amp"}
+PANE_RE = re.compile(r"^w\d+:p\w+$")
+
+
+def herdr_target_host(host):
+    """None for this Mac, else the hosts.json entry (by id or name)."""
+    if not host or host in ("local", "本机"):
+        return None
+    for h in hosts():
+        if host in (h["id"], h["name"]):
+            return h
+    raise SystemExit(f"hosts.json 里没有叫 {host} 的机器")
+
+
+def herdr(host, args, timeout=30, raw=False):
+    """Run one herdr subcommand here or on another Mac (its headless session), returning the
+    parsed JSON — {"result": …} or {"error": …} — or the raw text when raw=True."""
+    import shlex
+    if host is None:
+        r = subprocess.run([HERDR] + args, capture_output=True, text=True, timeout=timeout)
+    else:
+        sess = host.get("herdr_session") or "main"
+        remote = "env PATH=$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin herdr --session " + shlex.quote(sess) + " " + " ".join(shlex.quote(x) for x in args)
+        r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", host["ssh"], remote], capture_output=True, text=True, timeout=timeout + 15)
+    if raw:
+        return r.stdout
+    try:
+        return json.loads(r.stdout)
+    except Exception:
+        return {"error": {"message": (r.stderr or r.stdout).strip()[:400] or f"herdr exit {r.returncode}"}}
+
+
+def herdr_ok(d, what):
+    if not isinstance(d, dict) or d.get("error"):
+        msg = (d or {}).get("error", {}).get("message", str(d)) if isinstance(d, dict) else str(d)
+        raise SystemExit(f"{what} 失败：{msg}")
+    return d.get("result") or {}
+
+
+def herdr_agents(host):
+    return herdr_ok(herdr(host, ["agent", "list"]), "列会话").get("agents", [])
+
+
+def resolve_agent(host, key):
+    """key: pane id (w1:p3), agent name, tab title substring, or a task id (matched by the
+    directory the task's sessions ran in)."""
+    if PANE_RE.match(key):
+        return key
+    agents = herdr_agents(host)
+    for a in agents:
+        if a.get("name") == key or a.get("pane_id") == key or a.get("tab_id") == key:
+            return a["pane_id"]
+    low = key.lower()
+    for a in agents:
+        if low in (a.get("terminal_title_stripped") or a.get("terminal_title") or "").lower():
+            return a["pane_id"]
+    if re.match(r"^[a-z]+-[a-z0-9]{2,8}$", key) and host is None:
+        for s in live_sessions():
+            if s.get("herdr") and (s.get("current_task") == key or key in (s.get("claims") or [])):
+                return s["herdr"]["pane_id"]
+        refs = session_refs(load_index(), task_id=key)
+        cwds = {(r["cwd"] or "").rstrip("/") for r in refs}
+        for a in agents:
+            if (a.get("cwd") or "").rstrip("/") in cwds:
+                return a["pane_id"]
+    raise SystemExit(f"找不到 Agent「{key}」；dispatch agent list 看看有哪些")
+
+
+def agent_row(a):
+    return {"pane_id": a.get("pane_id"), "tab_id": a.get("tab_id"), "agent": a.get("agent"), "name": a.get("name", ""), "status": a.get("agent_status"), "cwd": a.get("cwd"), "title": a.get("terminal_title_stripped") or a.get("terminal_title", ""), "focused": a.get("focused")}
+
+
+def cmd_agent(a):
+    host = herdr_target_host(a.host)
+    where = host["name"] if host else local_host_name()
+    if a.op == "list":
+        rows = [dict(agent_row(x), host=where) for x in herdr_agents(host)]
+
+        def text(rows):
+            for r in rows:
+                print(f"{r['pane_id']:<8} {r['agent']:<10} {r['status']:<8} {(r['cwd'] or '').replace(HOME, '~'):<40} {r['title']}")
+            if not rows:
+                print(f"{where} 的 Herdr 里没有 Agent")
+        return out(rows, a.json, text)
+
+    if a.op == "start":
+        kind = a.kind
+        actor = KIND_ACTOR.get(kind, kind)
+        cwd = a.cwd or (os.getcwd() if host is None else "")
+        if host is not None:
+            remote_home = "/Users/" + host["ssh"].split("@")[0] if "@" in host.get("ssh", "") else ""
+            cwd = (cwd or remote_home).replace("~", remote_home, 1) if remote_home else (cwd or "~")
+        targs = ["tab", "create", "--cwd", cwd, "--focus"]
+        if a.label:
+            targs += ["--label", a.label]
+        tab = herdr_ok(herdr(host, targs), "开标签")
+        pane = tab.get("root_pane", {}).get("pane_id") or tab.get("pane_id")
+        tab_id = tab.get("root_pane", {}).get("tab_id") or tab.get("tab_id")
+        name = a.name or f"{kind}-{int(time.time()) % 100000}"
+        sargs = ["agent", "start", name, "--kind", kind, "--pane", pane, "--timeout", "120000"]
+        import shlex
+        extra = shlex.split(a.extra) if a.extra else []
+        if a.model:
+            extra = ["--model", a.model] + extra
+        if extra:
+            sargs += ["--"] + extra
+        # The new tab's shell needs a moment before it counts as "an available shell".
+        started = None
+        for attempt in range(8):
+            d = herdr(host, sargs, timeout=150)
+            if isinstance(d, dict) and (d.get("error") or {}).get("code") == "agent_pane_busy" and attempt < 7:
+                time.sleep(1.5)
+                continue
+            started = herdr_ok(d, "起 Agent").get("agent", {})
+            break
+        me = os.environ.get("BEADS_ACTOR", "schaefer")
+        if a.task:
+            code, o, e = sh(["bd", "update", a.task, "--claim", "--json"], env={"BEADS_ACTOR": actor})
+            note = f"{me} 通过 dispatch agent 派给 {actor}（Herdr {pane} @ {where}，目录 {cwd}）"
+            sh(["bd", "comments", "add", a.task, note], env={"BEADS_ACTOR": me})
+        res = {"host": where, "pane_id": pane, "tab_id": tab_id, "name": name, "kind": kind, "actor": actor, "cwd": cwd, "status": started.get("agent_status"), "task": a.task or "", "output": ""}
+        if a.prompt:
+            # Ready per Herdr is not yet ready for input; and prompts to an unfocused tab are dropped.
+            time.sleep(2)
+            if tab_id:
+                herdr(host, ["tab", "focus", tab_id])
+            pargs = ["agent", "prompt", pane, a.prompt]
+            if a.wait:
+                pargs += ["--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(a.timeout)]
+            d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
+            if isinstance(d, dict) and d.get("error"):
+                res["status"], res["warning"] = "stalled", (d["error"].get("message") or "")[:200] + "——看输出，可能在等你回答一个对话框（dispatch agent keys <pane> enter）"
+            else:
+                res["status"] = (d.get("result") or {}).get("agent", {}).get("agent_status")
+            res["output"] = herdr(host, ["agent", "read", pane, "--lines", str(a.lines)], raw=True)
+
+        def text(r):
+            print(f"已在 {r['host']} 起了 {r['kind']}（{r['actor']}）· Herdr {r['pane_id']} · {r['cwd']}" + (f" · 认领 {r['task']}" if r["task"] else ""))
+            if r["output"]:
+                print(r["output"].rstrip())
+            elif a.prompt:
+                print(f"提示词已发，状态 {r['status']}；dispatch agent read {r['pane_id']}" + (f" --host {a.host}" if a.host else "") + " 看输出")
+        return out(res, a.json, text)
+
+    pane = resolve_agent(host, a.target)
+    if a.op == "ask":
+        info = herdr_ok(herdr(host, ["agent", "get", pane]), "查 Agent").get("agent", {})
+        if info.get("tab_id"):
+            herdr(host, ["tab", "focus", info["tab_id"]])  # prompts to an unfocused tab are dropped silently
+        pargs = ["agent", "prompt", pane, a.text]
+        if a.wait:
+            pargs += ["--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(a.timeout)]
+        d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
+        err = (d.get("error") or {}).get("message", "") if isinstance(d, dict) else str(d)
+        status = "stalled" if err else (d.get("result") or {}).get("agent", {}).get("agent_status")
+        res = {"host": where, "pane_id": pane, "status": status, "warning": err[:200], "output": herdr(host, ["agent", "read", pane, "--lines", str(a.lines)], raw=True)}
+        return out(res, a.json, lambda x: print((x["output"].rstrip() + ("\n[!] " + x["warning"] if x["warning"] else "")) if x["output"] else f"已发，状态 {x['status']}"))
+    if a.op == "keys":
+        keys = [a.text] + list(a.more or []) if a.text else []
+        if not keys:
+            raise SystemExit("要给按键名，比如 enter、esc、down、y")
+        herdr_ok(herdr(host, ["agent", "send-keys", pane] + keys), "发按键")
+        time.sleep(1.5)
+        return out({"host": where, "pane_id": pane, "keys": keys, "output": herdr(host, ["agent", "read", pane, "--lines", str(a.lines)], raw=True)}, a.json, lambda x: print(x["output"].rstrip()))
+    if a.op == "read":
+        txt = herdr(host, ["agent", "read", pane, "--lines", str(a.lines)], raw=True)
+        return out({"host": where, "pane_id": pane, "output": txt}, a.json, lambda x: print(x["output"].rstrip()))
+    if a.op == "wait":
+        r = herdr_ok(herdr(host, ["agent", "wait", pane, "--timeout", str(a.timeout)], timeout=a.timeout // 1000 + 20), "等待").get("agent", {})
+        return out({"host": where, "pane_id": pane, "status": r.get("agent_status")}, a.json, lambda x: print(f"{x['pane_id']} 现在 {x['status']}"))
+    if a.op == "close":
+        info = herdr_ok(herdr(host, ["agent", "get", pane]), "查 Agent").get("agent", {})
+        herdr_ok(herdr(host, ["tab", "close", info.get("tab_id", "")]), "关标签")
+        return out({"closed": info.get("tab_id")}, a.json, lambda x: print(f"已关 {x['closed']}"))
+
+
 def cmd_hosts(a):
     rows = host_rows(local_only=getattr(a, "local", False))
 
@@ -2832,6 +3010,24 @@ def main():
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
+    s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])
+    s.add_argument("target_or_kind", nargs="?", help="start: kind (claude|codex|qodercli|opencode|gemini…); others: pane id / name / title / task id")
+    s.add_argument("text", nargs="?", help="ask: the prompt; keys: first key name")
+    s.add_argument("more", nargs="*", help="keys: further key names (enter, esc, down, up, tab, y, n …)")
+    s.add_argument("--host", help="another Mac from hosts.json (id or name); default this one")
+    s.add_argument("--cwd", help="start: directory for the new tab")
+    s.add_argument("--label", help="start: tab title")
+    s.add_argument("--name", help="start: agent name in Herdr")
+    s.add_argument("--model", help="start: passed to the agent as --model")
+    s.add_argument("--task", help="start: claim this task for the new agent and note who handed it over")
+    s.add_argument("--prompt", "-p", help="start: first prompt to send once the agent is ready")
+    s.add_argument("--no-wait", dest="wait", action="store_false", help="don't wait for the agent to finish the prompt")
+    s.add_argument("--timeout", type=int, default=600000, help="ms to wait for the agent (default 10 min)")
+    s.add_argument("--lines", type=int, default=80, help="lines of terminal output to read back")
+    s.add_argument("--json", action="store_true")
+    s.add_argument("--extra", default="", help="start: extra args for the agent CLI, as one quoted string (e.g. --extra '--effort high')")
+    s.set_defaults(fn=cmd_agent)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
@@ -2841,6 +3037,12 @@ def main():
     s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
     s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=6, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()
+    if a.cmd == "agent":
+        a.kind = a.target = a.target_or_kind
+        if a.op != "list" and not a.target_or_kind:
+            p.error("start 要给 kind（claude|codex|qodercli…），其它要给目标（pane id / 名字 / 标题 / 任务 ID）")
+        if a.op == "ask" and not a.text:
+            p.error("ask 要给提示词")
     if a.cmd == "skills" and a.op not in ("list", "improve") and not a.name:
         p.error("需要技能名")
     if a.cmd in ("pit", "wiki") and a.op == "add" and not a.text:
