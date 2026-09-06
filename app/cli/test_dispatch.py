@@ -153,3 +153,12 @@ class Guards(unittest.TestCase):
             {"session_id": "me", "cwd": "/a/b", "alive": True}, {"session_id": "x", "cwd": "/a/b", "alive": True},
             {"session_id": "y", "cwd": "/a/b/sub", "alive": True}, {"session_id": "z", "cwd": "/other", "alive": True}, {"session_id": "d", "cwd": "/a/b", "alive": False}]
         self.assertEqual([s["session_id"] for s in dispatch.neighbours("/a/b", "me")], ["x", "y"])
+
+
+class EditGuard(unittest.TestCase):
+    def test_paths_from_tool_inputs(self):
+        spec = importlib.util.spec_from_file_location("edit_guard", os.path.join(HERE, "edit-guard.py"))
+        g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+        self.assertEqual(g.files_of("Edit", {"file_path": "/a/b.ts"}), ["/a/b.ts"])
+        self.assertEqual(g.files_of("apply_patch", {"input": "*** Begin Patch\n*** Update File: x/y.py\n@@\n*** Add File: z.md\n*** End Patch"}), ["x/y.py", "z.md"])
+        self.assertEqual(g.files_of("Bash", {"command": "ls"}), [])

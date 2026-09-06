@@ -2677,6 +2677,22 @@ def neighbours(cwd, self_id=""):
     return rows
 
 
+EDITS_DIR = os.path.join(DISPATCH_DIR, "edits")
+
+
+def editing_now(session_id, window=30 * 60):
+    """Files this session touched recently (edit-guard registry)."""
+    files, now = [], time.time()
+    for n in os.listdir(EDITS_DIR) if os.path.isdir(EDITS_DIR) else []:
+        try:
+            r = json.load(open(os.path.join(EDITS_DIR, n)))
+        except Exception:
+            continue
+        if r.get("session_id") == session_id and now - r.get("ts", 0) < window:
+            files.append(os.path.basename(r.get("file", "")))
+    return sorted(files)
+
+
 def quota_for(actor):
     """Quota windows for this agent from the cached collectors (fresh enough for a session start)."""
     try:
@@ -2781,8 +2797,9 @@ def cmd_prime(a):
         lines.append(f"## 同目录在跑（{len(nb)}）")
         for s_ in nb[:6]:
             mark = "◐" if s_.get("state") == "working" else "○"
-            lines.append(f"{mark} {s_['agent']} {s_['session_id'][:8]} · {'在跑' if s_.get('state') == 'working' else '等用户'} · {(lambda t: t + '活动' if t.startswith('刚刚') else t + '前活动')(ago(s_.get('last_at') or 0))} · 目录 …{(s_.get('cwd') or '')[-28:]}" + (f" · {s_['host_name']}" if s_.get("host") not in (None, "local") else ""))
-        lines.append("它们可能正在改这里的文件：只改自己任务涉及的文件，commit 按文件 add，不碰别人的半成品；想知道它在干什么 `dispatch session <id>`；认领任务用 `dispatch claim <id>`（别人已认领会拒绝）。")
+            ed = editing_now(s_["session_id"])
+            lines.append(f"{mark} {s_['agent']} {s_['session_id'][:8]} · {'在跑' if s_.get('state') == 'working' else '等用户'} · {(lambda t: t + '活动' if t.startswith('刚刚') else t + '前活动')(ago(s_.get('last_at') or 0))} · 目录 …{(s_.get('cwd') or '')[-28:]}" + (f" · {s_['host_name']}" if s_.get("host") not in (None, "local") else "") + (f" · 正在改：{', '.join(ed[:5])}{'…' if len(ed) > 5 else ''}" if ed else ""))
+        lines.append("它们可能正在改这里的文件（改文件前 hook 会拦一次并告诉你是谁）：只改自己任务涉及的文件，commit 按文件 add，不碰别人的半成品；想知道它在干什么 `dispatch session <id>`；认领任务用 `dispatch claim <id>`（别人已认领会拒绝）。")
     ql, worst = quota_line(actor)
     if ql:
         mode, advice = quota_mode(worst)

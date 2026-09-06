@@ -42,6 +42,7 @@ dispatch done <id> --reason "做了什么；跑过哪些验证" [--verified] \
 ```bash
 bd list --status in_progress                 # 谁在做什么；dispatch prime 里的「同目录在跑」是同一目录的活跃会话
 dispatch claim <id> [--force]                # 认领守卫：别人正在做的不给抢
+# 文件级互斥：hook ~/tasks/.dispatch/edit-guard.py（Claude Edit/Write、Codex apply_patch）——别的会话 30 分钟内改过的文件第一次会被拒并说明，重试放行；登记在 ~/tasks/.dispatch/edits/，prime 的「同目录在跑」会列出对方正在改的文件
 dispatch quota                               # 各 Agent 额度；prime 里有你自己的，≥80% 省 token，≥95% 只收尾换 Agent
 bd show <id> --json  /  bd ready --json  /  bd blocked
 bd create "bug" -l project:xxx -t bug -p 1 --deps discovered-from:<当前id> --json
