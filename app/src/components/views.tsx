@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { AgentPresence } from "../derive";
 import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
-import type { Column, Issue, SessionRef } from "../types";
+import type { Column, Host, Issue, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 
 interface Common { issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
@@ -100,9 +100,23 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
 
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
-export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef> }) {
+export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs, hosts, onOpenUrl, onCopyText }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void }) {
   return (
     <div className="agrid">
+      {hosts.length > 0 && (
+        <div className="hosts-bar">
+          {hosts.map((h) => (
+            <div key={h.id} className={`host${h.online ? "" : " off"}`}>
+              <span className={`dot ${h.online ? "on" : ""}`} />
+              <b>{h.name}</b><span className="mono muted small">{h.ip}</span>
+              {!h.local && h.online && <button className="btn sm" onClick={() => onOpenUrl(h.vnc)} title="用系统「屏幕共享」打开这台机器的屏幕">看它的屏幕</button>}
+              {h.novnc_up
+                ? <button className="btn ghost sm" onClick={() => onCopyText(h.novnc, "手机看屏幕的链接")} title="手机连上 Tailscale 后在浏览器打开这个链接，就能看到并操作这台 Mac；密码是这台 Mac 的登录密码">手机看屏幕 ⧉</button>
+                : <span className="muted small">{h.online ? "网页远程桌面没开（跑 app/scripts/novnc-setup.sh）" : "离线"}</span>}
+            </div>
+          ))}
+        </div>
+      )}
       {apps.length > 0 && <div className="apps-bar">正在运行的应用：{apps.join(" · ")}</div>}
       {agents.map((a) => {
         const working = a.sessions.filter((s) => s.state === "working").length;
