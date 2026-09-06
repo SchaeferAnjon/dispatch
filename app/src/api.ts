@@ -1,4 +1,4 @@
-import type { Comment, Folder, GraphData, HistoryEntry, Host, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar, Insights } from "./types";
+import type { ActivitySnapshot, Comment, Folder, GraphData, HistoryEntry, Host, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar, Insights } from "./types";
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
@@ -22,6 +22,8 @@ export interface Api {
   create(input: NewIssue): Promise<Issue>;
   presence(): Promise<Presence>;
   taskSessions(id: string): Promise<SessionRef[]>;
+  sessionActivity(): Promise<ActivitySnapshot>;
+  sessionSeen(host: string, key: string, reply: string): Promise<void>;
   sessionList(): Promise<SessionRef[]>;
   sessionDetail(id: string): Promise<SessionDetail>;
   focusSession(id: string): Promise<string>;
@@ -101,6 +103,8 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "notify" | "tra
     },
     presence: async () => ({ sessions: parse(await call("sessions"), []), apps: [] }),
     taskSessions: async (id) => parse<SessionRef[]>(await call("task_sessions", { id }), []),
+    sessionActivity: async () => { const r = parse<ActivitySnapshot | null>(await call("session_activity"), null); if (!r?.sessions) throw new Error("活动更新不可用"); return r; },
+    sessionSeen: async (host, key, reply) => void (await call("session_seen", { host, key, reply })),
     sessionList: async () => parse<SessionRef[]>(await call("session_list"), []),
     sessionDetail: async (id) => { const d = parse<SessionDetail | null>(await call("session_detail", { id }), null); if (!d) throw new Error("读不到这个会话"); return d; },
     focusSession: (id) => call("focus_session", { id }),

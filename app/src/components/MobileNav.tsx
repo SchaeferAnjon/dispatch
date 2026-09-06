@@ -5,10 +5,10 @@ import { Icon } from "./icons";
 // Bottom tab bar for narrow screens. Five tabs is the most a thumb can aim at; the
 // rest of the views live behind 更多.
 const TABS: { v: View; icon: string; label: string }[] = [
-  { v: "home", icon: "home", label: "总览" },
-  { v: "inbox", icon: "inbox", label: "等你" },
+  { v: "home", icon: "home", label: "工作台" },
+  { v: "inbox", icon: "inbox", label: "等我" },
   { v: "board", icon: "board", label: "任务" },
-  { v: "sessions", icon: "chat", label: "聊天" },
+  { v: "sessions", icon: "chat", label: "会话" },
 ];
 const MORE: { v: View; icon: string; label: string }[] = [
   { v: "agents", icon: "agent", label: "Agent 状态" },

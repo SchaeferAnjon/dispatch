@@ -605,7 +605,7 @@ def cmd_agent(a):
 def cmd_serve(a):
     import runpy
     sys.argv = ["serve"] + (["url"] if a.what == "url" else [])
-    runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "serve.py"), run_name="__main__")
+    runpy.run_path(os.path.join(os.path.dirname(os.path.realpath(__file__)), "serve.py"), run_name="__main__")
 
 
 def cmd_hosts(a):
@@ -1233,6 +1233,9 @@ def subagents_of(path):
 
 
 def ref_of(path, e, task_id=None):
+    if e['agent'] == 'codex':
+        from activity import codex_titles, user_text
+        e = dict(e, title=codex_titles(HOME).get(e['session_id']) or user_text(e.get('title', '')))
     return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode", "qoder-ide") else []}
 
 
@@ -1507,7 +1510,7 @@ def read_qoder_detail(ref, limit):
             continue
         role, ts, txt = d.get("role"), d.get("timestamp") or "", (d.get("text") or "").strip()
         if role == "user" and txt:
-            msgs.append({"ts": ts, "role": "user", "text": txt[:600], "tools": []})
+            msgs.append({"ts": ts, "role": "user", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": []})
         elif role == "assistant":
             tools = []
             for t in d.get("tools") or []:
@@ -1517,7 +1520,7 @@ def read_qoder_detail(ref, limit):
                 tools.append({"name": name, "summary": _tool_summary(inp)})
                 _tool_file_change(name, inp, ts, files)
             if txt or tools:
-                msgs.append({"ts": ts, "role": "assistant", "text": txt[:600], "tools": tools})
+                msgs.append({"ts": ts, "role": "assistant", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": tools})
     import zlib
     for p in sqlite_rows(QODER_APP_DB, "select f.path, f.display_path, f.operation, f.additions, f.deletions, p.content, p.compression, s.created_at from turn_file_change_sets s join turn_file_change_files f on f.change_set_id = s.change_set_id left join turn_file_change_patches p on p.change_set_id = f.change_set_id and p.path = f.path where s.session_id = ? order by s.created_at", (sid,)):
         diff = ""
@@ -1600,7 +1603,7 @@ def read_session_detail(ref, limit=400):
                         if fp and name in ("edit", "write"):
                             files.setdefault(fp, []).append({"kind": name, "old": inp.get("oldText", ""), "new": inp.get("newText", inp.get("content", "")), "ts": ts})
                 if role in ("user", "assistant") and (txt.strip() or tools):
-                    msgs.append({"ts": ts, "role": role, "text": txt[:600], "tools": tools})
+                    msgs.append({"ts": ts, "role": role, "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": tools})
                 continue
             if ref["agent"] == "codex":
                 # Codex rollouts: {"type":"event_msg"/"response_item", payload:{...}}; content blocks are input_text/output_text.
@@ -1609,24 +1612,30 @@ def read_session_detail(ref, limit=400):
                 if t == "response_item" and p.get("type") == "message":
                     role = p.get("role", "")
                     txt = "\n".join(b.get("text", "") for b in p.get("content") or [] if isinstance(b, dict) and b.get("type") in ("input_text", "output_text", "text"))
-                    if txt.strip() and role in ("user", "assistant") and not txt.lstrip().startswith("<"):
-                        msgs.append({"ts": ts, "role": role, "text": txt[:600], "tools": []})
-                elif t == "response_item" and p.get("type") == "function_call":
+                    if role == "user":
+                        from activity import user_text
+                        txt = user_text(txt)
+                    if txt.strip() and role in ("user", "assistant"):
+                        msgs.append({"ts": ts, "role": role, "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": []})
+                elif t == "response_item" and p.get("type") in ("function_call", "custom_tool_call"):
                     name = p.get("name", "")
                     tool_names[name] = tool_names.get(name, 0) + 1
-                    args = p.get("arguments", "")
+                    args = p.get("arguments", p.get("input", ""))
                     try:
                         aj = json.loads(args) if isinstance(args, str) else args
                         summary = aj.get("cmd") or aj.get("command") or aj.get("path") or aj.get("file_path") or args
                         if isinstance(summary, list):
                             summary = " ".join(map(str, summary))
                         fp = aj.get("path") or aj.get("file_path")
-                        if name in ("apply_patch",) or (isinstance(args, str) and "*** Begin Patch" in args):
+                        if name.split(".")[-1] == "apply_patch":
                             files.setdefault("(apply_patch)", []).append({"kind": "edit", "old": "", "new": str(aj.get("input") or args)[:20000], "ts": ts})
                         elif fp and name in ("write_file", "edit_file"):
                             files.setdefault(fp, []).append({"kind": "write", "old": "", "new": str(aj.get("content", ""))[:20000], "ts": ts})
                     except Exception:
                         summary = args
+                    from activity import patch_files
+                    for fp in (patch_files(str(args)) if name.split(".")[-1] == "apply_patch" else []):
+                        files.setdefault(fp, []).append({"kind": "patch", "old": "", "new": str(args)[:20000], "ts": ts})
                     msgs.append({"ts": ts, "role": "tool", "text": "", "tools": [{"name": name, "summary": str(summary)[:200]}]})
                 continue
             if t not in ("user", "assistant"):
@@ -1644,7 +1653,7 @@ def read_session_detail(ref, limit=400):
                 if txt.lstrip().startswith(("<local-command", "<command-name>", "<command-message>", "<system-reminder>")):
                     continue
                 if txt.strip():
-                    msgs.append({"ts": ts, "role": "user", "text": txt[:600], "tools": []})
+                    msgs.append({"ts": ts, "role": "user", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": []})
             else:
                 txt = _block_text(content)
                 tools = []
@@ -1663,7 +1672,7 @@ def read_session_detail(ref, limit=400):
                         elif name in ("NotebookEdit",) and fp:
                             files.setdefault(fp, []).append({"kind": "edit", "old": "", "new": inp.get("new_source", ""), "ts": ts})
                 if txt.strip() or tools:
-                    msgs.append({"ts": ts, "role": "assistant", "text": txt[:600], "tools": tools})
+                    msgs.append({"ts": ts, "role": "assistant", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": tools})
     if len(msgs) > limit:
         msgs = msgs[:40] + [{"ts": "", "role": "gap", "text": f"…省略 {len(msgs) - limit} 条…", "tools": []}] + msgs[-(limit - 40):]
     return {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in files.items()], "tool_counts": tool_names}
@@ -1672,7 +1681,7 @@ def read_session_detail(ref, limit=400):
 def remote_session_detail(key):
     """A session that is not in the local index may live on another Mac."""
     for h in hosts():
-        d = remote_dispatch(h, ["session", key], 60)
+        d = remote_dispatch(h, ["session", key], 3)
         if isinstance(d, dict) and d.get("meta"):
             _tag_host([d["meta"]], h)
             d["meta"]["remote"] = True
@@ -1681,9 +1690,48 @@ def remote_session_detail(key):
     return None
 
 
+def cmd_activity(a):
+    from activity import activity_list
+    rows = activity_list(HOME, DISPATCH_DIR, load_index())
+    _tag_host(rows, {"id": "local", "name": local_host_name()})
+    unavailable = []
+    if not a.local:
+        for h in hosts():
+            remote = remote_dispatch(h, ["activity", "--local"], 5)
+            if not isinstance(remote, dict) or time.time() - remote.get("updated_at", 0) > 25:
+                unavailable.append(h["name"])
+            if isinstance(remote, dict):
+                more = _tag_host(remote.get("sessions", []), h)
+                for r in more:
+                    r["remote"] = True
+                    if h["name"] in unavailable: r["stale"] = True
+                rows.extend(more)
+    out({"sessions": sorted(rows, key=lambda r: -r["last_at"]), "updated_at": time.time(), "unavailable_hosts": unavailable}, a.json, lambda x: print(json.dumps(x, ensure_ascii=False)))
+
+
+def cmd_seen(a):
+    from activity import acknowledge
+    out(acknowledge(DISPATCH_DIR, a.key, a.reply), a.json, lambda _: print("已读"))
+
+
 def cmd_session(a):
-    refs = resolve(load_index() or refresh_index(), a.key)
+    idx = load_index()
+    refs = resolve(idx, a.key)
+    if not refs: refs = resolve(refresh_index(), a.key)
+    # Freeze the reply cursor before parsing the displayed content: a concurrently
+    # appended reply must never be acknowledged before it was actually returned.
+    st = {}
+    if refs and refs[0]['agent'] in ('codex', 'claude-code'):
+        from activity import read_stream, connect
+        from contextlib import closing
+        with closing(connect(DISPATCH_DIR)) as db, db:
+            st = read_stream(db, refs[0]['path'], refs[0]['agent'])
     d = read_session_detail(refs[0]) if refs else remote_session_detail(a.key)
+    if d and refs:
+        from activity import workspace_changes
+        d['workspace'] = workspace_changes(refs[0]['cwd'])
+        d['activity_version'] = st.get('version')
+        d['reply_id'] = st.get('reply_id')
     if not d:
         print(f"找不到 {a.key}", file=sys.stderr)
         sys.exit(1)
@@ -2136,6 +2184,8 @@ def cmd_begin(a):
         print("⚠ " + w, file=sys.stderr)
     labels = [f"project:{a.project}"] if a.project else []
     labels.append(f"host:{local_host_name()}")  # which Mac this work runs on — Dispatch filters by it
+    sid = getattr(a, 'session', None) or os.environ.get('CODEX_THREAD_ID') or os.environ.get('CLAUDE_SESSION_ID') or os.environ.get('CLAUDE_CODE_SESSION_ID')
+    if sid and re.fullmatch(r'[A-Za-z0-9_-]{8,120}', sid): labels.append('session:' + sid)
     argv = ["create", a.title, "-t", a.type, "-p", str(a.priority), "--json"]
     if labels:
         argv += ["-l", ",".join(labels)]
@@ -3231,6 +3281,8 @@ def main():
     p = argparse.ArgumentParser(prog="dispatch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
+    s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
+    s = sub.add_parser("seen", help="acknowledge exactly one observed reply"); s.add_argument("key"); s.add_argument("reply"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
@@ -3239,7 +3291,7 @@ def main():
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
-    s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
+    s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; this is not independent peer review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.add_argument("--review-by", help="request peer review from this Agent, without launching it"); s.set_defaults(fn=cmd_done)

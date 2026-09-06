@@ -17,7 +17,7 @@ SRC="src-tauri/target/release/bundle/macos/Dispatch.app"
 DST="/Applications/Dispatch.app"
 
 if [ "$BUILD" = 1 ]; then
-  npm run tauri build 2>&1 | grep -E "error|TS[0-9]+|Finished|Bundling Dispatch.app" || true
+  npm run tauri build
 fi
 [ -d "$SRC" ] || { echo "构建产物不存在：$SRC"; exit 1; }
 

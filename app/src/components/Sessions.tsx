@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
-import type { Api } from "../api";
-import { actorOf, durSince, fmtTime, NO_RESUME, projectColor, relTime } from "../derive";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { isServed, type Api } from "../api";
+import { actorOf, durSince, fmtTime, projectOf, NO_RESUME, projectColor, relTime } from "../derive";
 import { lineDiff, withContext } from "../diff";
-import type { Session, SessionDetail, SessionRef } from "../types";
+import { canReadReply, activityLabel } from "../activity";
+import type { Activity, Issue, Session, SessionDetail, SessionRef } from "../types";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 
-interface Props { api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
+interface Props { activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
-export function SessionsView({ api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ activities, issues, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
   const [refs, setRefs] = useState<SessionRef[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
@@ -18,7 +19,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
   const host = hostId ?? "";
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [tab, setTab] = useState<"timeline" | "files" | "tasks">("timeline");
+  const [tab, setTab] = useState<"timeline" | "activity" | "files" | "tasks">("timeline");
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Which kinds of turns to show. Tools off by default: the conversation is the point.
@@ -27,27 +28,63 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
 
   const load = async () => { try { setRefs(await api.sessionList()); setLoaded(true); } catch (e) { onError(String(e)); } };
   useEffect(() => { load(); const t = window.setInterval(load, 60_000); return () => window.clearInterval(t); }, [api]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  const timelineScroll = useRef(0);
+  const [atLatest, setAtLatest] = useState(true);
+  const [isVisible, setIsVisible] = useState(document.visibilityState === 'visible');
+  const current = activities.find(a => a.session_id === sel);
+  useEffect(() => {
+    const changed = () => setIsVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', changed);
+    return () => document.removeEventListener('visibilitychange', changed);
+  }, []);
   useEffect(() => {
     if (!sel) { setDetail(null); return; }
-    let alive = true;
-    setBusy(true);
-    setDetail(null);
-    setLoadError(false);
-    api.sessionDetail(sel).then((d) => { if (alive) setDetail(d); }).catch((e) => { if (alive) { setLoadError(true); onError(String(e)); } }).finally(() => alive && setBusy(false));
-    return () => { alive = false; };
+    let alive = true; let timer = 0;
+    setBusy(true); setDetail(null); setLoadError(false); follow.current = true; setAtLatest(true);
+    const refresh = async () => {
+      if (document.visibilityState === 'visible') {
+        try { const d = await api.sessionDetail(sel); if (alive) { setDetail(d); setLoadError(false); } }
+        catch { if (alive) setLoadError(true); }
+        finally { if (alive) setBusy(false); }
+      }
+      if (alive) timer = window.setTimeout(refresh, 3000);
+    };
+    refresh();
+    return () => { alive = false; window.clearTimeout(timer); };
   }, [sel, api]);
+  useLayoutEffect(() => {
+    if (tab === 'timeline' && follow.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+  }, [detail, tab, kinds]);
+  useLayoutEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = tab === 'timeline' ? (follow.current ? scroller.current.scrollHeight : timelineScroll.current) : 0;
+  }, [tab]);
+  useEffect(() => {
+    if (canReadReply(current, detail?.reply_id, atLatest, isVisible, tab === 'timeline' && kinds.assistant)) {
+      // Brief dwell avoids clearing messages passed over during rapid navigation.
+      const t = window.setTimeout(() => { if (current && detail?.reply_id) void onSeen(current, detail.reply_id); }, 800);
+      return () => window.clearTimeout(t);
+    }
+  }, [current, detail?.reply_id, atLatest, isVisible, tab, kinds.assistant, onSeen]);
+  const latest = () => { follow.current = true; setAtLatest(true); if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; };
 
   const items = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return refs.filter((r) => (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
-  }, [refs, q, agent, host]);
+    const all = new Map(refs.map(r => [r.session_id, r]));
+    for (const a of activities) {
+      const old = all.get(a.session_id);
+      all.set(a.session_id, old ? { ...old, last_at: a.last_at } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
+    }
+    return [...all.values()].sort((a,b) => b.last_at - a.last_at).filter((r) => (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
+  }, [refs, activities, q, agent, host]);
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
   const focus = async (id: string) => { try { onDone(await api.focusSession(id)); } catch (e) { onError(String(e)); } };
 
   return (
-    <div className="sess-wrap">
+    <div className={`sess-wrap${sel ? " has-selection" : ""}`}>
       <div className="sess-side">
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
@@ -62,11 +99,13 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
           {items.map((r) => {
             const a = actorOf(r.agent, me);
             const l = liveOf(r.session_id);
+            const active = activities.find(a => a.session_id === r.session_id);
             return (
               <button key={r.session_id} className={`sess-item${sel === r.session_id ? " sel" : ""}`} onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
-                <div className="l1"><Avatar actor={a} /><span className="t">{r.title || "（无标题）"}</span>{l && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
+                <div className="l1"><Avatar actor={a} /><span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
-                {r.current_task && <div className="l3 mono">正在做 {r.current_task}</div>}
+                {active && <div className="l3 activity-text">{activityLabel(active)} · {active.activity}</div>}
+                {r.current_task && issues.some(i => i.id === r.current_task && i.status === "in_progress") && <div className="l3 mono">关联任务 {r.current_task}</div>}
               </button>
             );
           })}
@@ -75,20 +114,29 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
 
       <div className="sess-main">
         {!sel && <div className="empty">选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
-        {sel && !detail && <div className="empty">{busy ? "读取对话记录…" : loadError ? "对话读取失败，请重新选择会话。" : ""}</div>}
+        {sel && !detail && <div className="empty">{busy ? "读取对话记录…" : loadError ? "暂时读不到会话，正在重试。" : ""}<button className="link" onClick={() => setSel(null)}>返回会话列表</button></div>}
         {detail && (() => {
           const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id);
+          const linked = issues.filter(i => i.labels?.includes(`session:${m.session_id}`));
+          const related = linked.length ? linked : issues.filter(i => i.id === m.current_task || (i.assignee === m.agent && i.status === 'in_progress' && projectOf(i) === m.project));
+          const mentioned = Object.entries(m.tasks).filter(([id]) => !related.some(i => i.id === id));
           return (
             <>
               <div className="sess-head">
+                <button className="btn sm session-back" onClick={() => setSel(null)}>‹ 会话</button>
                 <Avatar actor={a} size={28} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="ttl">{m.title || "（无标题）"}</div>
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
-                {(l || NO_RESUME.has(m.agent)) && <button className="btn primary sm" onClick={() => focus(m.session_id)} title={l?.herdr ? `Herdr ${l.herdr.tab_id}` : l?.source_app ?? "ZCode"}>打开会话</button>}
-                {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
+                {(l || NO_RESUME.has(m.agent)) && <button className="btn primary sm desktop-session-action" onClick={() => focus(m.session_id)} title={l?.herdr ? `Herdr ${l.herdr.tab_id}` : l?.source_app ?? "ZCode"}>{isServed ? "在电脑打开" : "打开原会话"}</button>}
+                {!NO_RESUME.has(m.agent) && <button className="btn sm desktop-session-action" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
+                <details className="session-actions-menu"><summary aria-label="会话操作">⋯</summary><div>
+                  {(l || NO_RESUME.has(m.agent)) && <button className="btn sm" onClick={() => focus(m.session_id)}>{isServed ? '在电脑打开' : '打开原会话'}</button>}
+                  {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)}>复制恢复命令</button>}
+                </div></details>
               </div>
+              {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? '更新中断，保留上次记录' : current ? activityLabel(current) : '历史记录'}</strong><span>{current?.activity}</span></div><span className="muted small">{current ? (durSince(current.last_at) === "刚刚" ? "刚刚" : `${durSince(current.last_at)}前`) : ''}</span></div>}
               <details className="session-context" key={m.session_id}>
                 <summary>{m.user_msgs} 轮对话 · {m.subagents.length} 个子 Agent<span>会话信息</span></summary>
                 <div className="sess-meta kv">
@@ -101,23 +149,25 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                 </div>
               </details>
               <div className="views session-tabs">
-                <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>时间线 {detail.messages.length}</button>
-                <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>改动 {detail.files.length}</button>
-                <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务 {Object.keys(m.tasks).length}</button>
+                <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>对话</button>
+                {current && <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")}>实时活动</button>}
+                <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>文件 {detail.workspace?.files.length ?? detail.files.length}</button>
+                <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务与交付 {related.length}</button>
                 {tab === "timeline" && (() => {
                   const nU = detail.messages.filter((x) => x.role === "user").length;
                   const nA = detail.messages.filter((x) => x.role === "assistant" && x.text.trim()).length;
-                  const nT = detail.messages.reduce((s, x) => s + x.tools.length + (x.role === "tool" ? 1 : 0), 0);
+                  const nT = detail.messages.reduce((s, x) => s + x.tools.length, 0);
                   return (
-                    <span className="kinds" title="点一下切换显示哪类内容">
+                    <details className="kind-options"><summary>显示内容</summary><span className="kinds" title="点一下切换显示哪类内容">
                       <button className={`chip${kinds.user ? " on" : ""}`} onClick={() => flip("user")}>你 <span className="mono muted">{nU}</span></button>
                       <button className={`chip${kinds.assistant ? " on" : ""}`} onClick={() => flip("assistant")}>{a?.name ?? "Agent"} <span className="mono muted">{nA}</span></button>
                       <button className={`chip${kinds.tool ? " on" : ""}`} onClick={() => flip("tool")}>工具调用 <span className="mono muted">{nT}</span></button>
-                    </span>
+                    </span></details>
                   );
                 })()}
               </div>
-              <div className="sess-body">
+              {tab === 'timeline' && !atLatest && <button className="follow-latest" onClick={latest}>回到最新 ↓{current?.unread ? ' · 有未读回复' : ''}</button>}
+              <div className="sess-body" tabIndex={0} aria-label="会话内容" ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>
                 {tab === "timeline" && (() => {
                   const showTools = kinds.tool;
                   const list = detail.messages.filter((x) => x.role === "gap" || (x.role === "user" && kinds.user) || (x.role === "assistant" && (x.text.trim() ? kinds.assistant : kinds.tool)) || (x.role === "tool" && kinds.tool));
@@ -133,7 +183,10 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                     </div>
                   ));
                 })()}
-                {tab === "files" && detail.files.length === 0 && <div className="empty">这个会话没有通过 Edit / Write 改文件</div>}
+                {tab === "activity" && <div className="activity-log">{[...(current?.events ?? [])].filter(e => e.kind !== 'result').reverse().slice(0,40).map(e => <div key={e.id} className={`activity-event ${e.kind}`}><span className="muted mono small">{new Date(e.ts*1000).toLocaleTimeString('zh-CN',{hour12:false})}</span><div><b>{e.kind === 'tool' ? e.tool : e.kind === 'result' ? '工具返回' : e.kind === 'error' ? '执行失败' : e.kind === 'user' ? '你的消息' : e.kind === 'reply' ? 'Agent 回复' : '进展'}</b><p>{e.text}</p></div></div>)}</div>}
+                {tab === "files" && detail.workspace && <section className="workspace-diff"><h3>工作区当前改动 <span className="muted">{detail.workspace.files.length}</span></h3><p className="muted small">{detail.workspace.root} · 包含暂存和未暂存内容；同目录其他会话的修改也会显示。</p>{detail.workspace.unavailable ? <p className="muted">当前目录无法读取 Git 改动</p> : detail.workspace.files.length === 0 ? <p className="muted">工作区没有未提交改动</p> : <><div className="changed-paths">{detail.workspace.files.map(f => <div key={f.path}><span>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code></div>)}</div><details className="fdiff"><summary>展开当前差异</summary><pre className="diff">{detail.workspace.patch.split('\n').map((ln,k) => <div key={k} className={`ln ${ln.startsWith('+') ? 'add' : ln.startsWith('-') ? 'del' : 'same'}`}>{ln}</div>)}</pre>{detail.workspace.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</details></>}</section>}
+                {tab === "files" && <h3 className="recorded-files-title">会话中的文件操作 <span className="muted">{detail.files.length}</span></h3>}
+                {tab === "files" && detail.files.length === 0 && <p className="muted">未记录到直接编辑工具调用；通过终端修改的文件可在上方工作区查看。</p>}
                 {tab === "files" && detail.files.map((f) => (
                   <details key={f.path} className="fdiff" open={detail.files.length <= 3}>
                     <summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {f.changes.length} 处</span></summary>
@@ -147,9 +200,12 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                     ))}
                   </details>
                 ))}
-                {tab === "tasks" && (Object.keys(m.tasks).length === 0 ? <div className="empty">对话里没提到任务 ID</div> : (
-                  <div className="task-links">{Object.entries(m.tasks).sort((x, y) => y[1] - x[1]).map(([id, n]) => <button key={id} className="chip" onClick={() => onSelectTask(id)}><span className="mono">{id}</span><span className="muted">{n} 次</span>{m.current_task === id && <span className="st sm prog">最后认领</span>}</button>)}</div>
-                ))}
+                {tab === "tasks" && <>
+                  <h3 className="recorded-files-title">{linked.length ? "这个会话的任务与交付" : "这个 Agent 在项目中的任务"}</h3>
+                  {related.length === 0 && <p className="muted">没有关联的进行中任务</p>}
+                  <div className="task-links">{related.map(i => <button key={i.id} className="chip" onClick={() => onSelectTask(i.id)}><span>{i.title}</span><span className="st sm">{i.status === 'closed' ? '已完成' : '进行中'}</span></button>)}</div>
+                  {mentioned.length > 0 && <details className="mentioned-tasks"><summary>对话中还提及过 {mentioned.length} 个任务</summary><p className="muted small">提及过的任务不代表由这个会话负责。</p><div className="task-links">{mentioned.sort((x,y) => y[1]-x[1]).map(([id,n]) => <button key={id} className="chip" onClick={() => onSelectTask(id)}><span>{issues.find(i => i.id === id)?.title ?? id}</span><span className="muted">{n} 次提及</span></button>)}</div></details>}
+                </>}
               </div>
             </>
           );

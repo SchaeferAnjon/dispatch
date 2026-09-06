@@ -172,7 +172,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
         </div>
       )}
       {apps.length > 0 && <div className="apps-bar">正在运行的应用：{apps.join(" · ")}</div>}
-      {agents.map((a) => {
+      {agents.filter(a => a.online || a.current.length > 0).map((a) => {
         const working = a.sessions.filter((s) => s.state === "working").length;
         const isHuman = a.actor.kind === "human";
         return (
@@ -199,33 +199,22 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
                 return (
                 <div key={s.session_id} className={`sess ${s.state}`} title={`${s.cwd || s.session_id} · ${sessionEvidence(s)}`}>
                   <span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span>
-                  <span className="proj-name">{s.herdr?.title || r?.title || s.project || <span className="muted">未知目录</span>}{r?.current_task && <button className="link mono small" style={{ marginLeft: 6, color: "var(--s-prog)" }} onClick={() => onSelect(r.current_task!)}>正在做 {r.current_task}</button>}</span>
-                  <span className="muted small">{s.source_kind === "unknown" ? "来源未知" : s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}</span>
-                  <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`} title={s.registered ? "" : "钩子安装前启动的会话：只知道进程在，不知道忙不忙"}>{sessionStatus(s)}</span>
-                  <span className="mono muted small right" title={sessionEvidence(s)}>{s.last_at ? `最近活动 ${durSince(s.last_at)}前 · ` : "无活动上报 · "}{s.started_at ? `开了 ${durSince(s.started_at)}` : `pid ${s.agent_pid ?? "?"}`}{s.prompts ? ` · ${s.prompts} 轮` : ""}</span>
-                  <span style={{ display: "inline-flex", gap: 4 }}>
-                    <button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到这个会话所在的软件/标签">打开</button>
-                    {s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && (
-                      <button className="copy-btn" onClick={() => onCopyResume(s.agent, s.session_id, s.cwd)} title="复制恢复命令到剪贴板">恢复</button>
-                    )}
-                  </span>
+                  <div className="agent-session-main">
+                    <div className="agent-session-title"><span className="proj-name">{s.herdr?.title || r?.title || s.project || "未关联会话记录"}</span><span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{sessionStatus(s)}</span></div>
+                    <div className="agent-session-meta"><span>{s.state_source === "transcript" ? "实际会话记录" : s.source_kind === "unknown" ? "来源未识别" : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : "尚无活动上报"}</span></div>
+                    {r?.current_task && a.current.some(i => i.id === r.current_task) && <button className="link mono small" onClick={() => onSelect(r.current_task!)}>{r.current_task}</button>}
+                  </div>
+                  <div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button>{s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && <button className="copy-btn" onClick={() => onCopyResume(s.agent, s.session_id, s.cwd)}>恢复</button>}</div>
                 </div>
                 );
               })}
             </div>
           )}
-          {a.current.length ? a.current.map((i) => (
-            <button key={i.id} className="cur" onClick={() => onSelect(i.id)}>
-              <div className="lbl">正在做</div>
-              <div className="t">{i.title}</div>
-              <div className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{i.id} · 认领于 {relTime(i.started_at ?? i.updated_at)} 前</div>
-            </button>
-          )) : (
-            <div className="cur" style={{ cursor: "default" }}><div className="lbl">正在做</div><div className="t muted">—</div></div>
-          )}
-          {!isHuman && <div className="kv"><b>身份</b><span className="mono">BEADS_ACTOR={a.actor.id}</span></div>}
+          {a.current.length > 0 && <details className="agent-task-context"><summary>关联进行中任务 · {a.current.length}</summary>{a.current.map(i => <button key={i.id} className="cur" onClick={() => onSelect(i.id)}><div className="t">{i.title}</div><div className="mono muted small">{i.id}</div></button>)}</details>}
+
         </div>
       );})}
+      <details className="offline-agents"><summary>未检测到活动的 Agent · {agents.filter(a => !a.online && !a.current.length).length}</summary><div>{agents.filter(a => !a.online && !a.current.length).map(a => <span key={a.actor.id}>{a.actor.name}</span>)}</div></details>
     </div>
   );
 }

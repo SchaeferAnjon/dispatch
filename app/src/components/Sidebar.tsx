@@ -49,8 +49,9 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       )}
 
       <nav className="nav">
-        {item("home", "home", "总览")}
-        {item("inbox", "inbox", "等你", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
+        {item("home", "home", "工作台")}
+        {item("sessions", "chat", "会话")}
+        {item("inbox", "inbox", "等我", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
       </nav>
 
       <nav className="nav">
@@ -68,7 +69,6 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
 
       <nav className="nav">
         <div className="h">Agent<span className="n">{agents.filter((a) => a.online).length}/{agents.length} 在线</span></div>
-        {item("sessions", "chat", "聊天记录")}
         {item("agents", "agent", "Agent 状态")}
         {item("stats", "chart", "统计")}
         <div className="agents sub">
@@ -76,7 +76,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
             <button key={a.actor.id} className="agent" onClick={() => { onAllTasks(); setView("table"); setFilters({ project: null, mine: false, urgent: false, blocked: false, review: false, agent: a.actor.id }); }} title={`只看 ${a.actor.name} 的任务`}>
               <Avatar actor={a.actor} online={a.online} />
               <div style={{ minWidth: 0 }}>
-                <div className="nm">{a.actor.name}{a.sessions.length > 0 && <small>{a.sessions.length} 窗口{a.sessions.some((s) => s.state === "working") ? ` · ${a.sessions.filter((s) => s.state === "working").length} 在跑` : ""}</small>}</div>
+                <div className="nm">{a.actor.name}{a.sessions.length > 0 && <small>{a.sessions.some((s) => s.state === "working") ? `${a.sessions.filter((s) => s.state === "working").length} 进行中` : "暂无执行"}</small>}</div>
                 <div className="cur">
                   {a.current[0] ? <><span className="id">{a.current[0].id}</span> {a.current[0].title}</> : a.sessions.length ? a.bySource.map((b) => `${b.label} ${b.count}`).join(" · ") : a.online ? "空闲" : a.lastActive ? "离线" : "还没来过"}
                 </div>

@@ -175,6 +175,8 @@ def commands():
         "sessions": lambda a, _: run_dispatch(["sessions", "--json"]),
         "task_sessions": lambda a, _: run_dispatch(["find", a["id"], "--json"]),
         "session_list": lambda a, _: run_dispatch(["list", "--cached", "--limit", "500", "--json"]),
+        "session_activity": lambda a, _: run_dispatch(["activity", "--json"]),
+        "session_seen": lambda a, _: run_dispatch(["--host", a.get("host") or "local", "seen", a["key"], a["reply"], "--json"]),
         "session_detail": lambda a, _: run_dispatch(["session", a["id"], "--json"]),
         "focus_session": lambda a, _: run_dispatch(["focus", a["id"]]),
         "resume_cmd": resume_cmd,

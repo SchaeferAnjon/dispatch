@@ -68,7 +68,7 @@ export interface SessionRef {
 }
 export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; text: string; tools: { name: string; summary: string; id?: string }[] }
 export interface FileChange { kind: "edit" | "write" | "patch"; old: string; new: string; ts: string; op?: string; add?: number; del?: number }
-export interface SessionDetail { meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
+export interface SessionDetail { activity_version?: string; reply_id?: string; workspace?: { root: string; files: { path: string; untracked: boolean }[]; patch: string; truncated?: boolean; unavailable?: string }; meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
 export interface Memory { key: string; value: string }
 export interface Skill { name: string; path: string; in_pool: boolean; description: string; agents: Record<string, boolean>; mounts?: Record<string, string | null>; usage?: Record<string, number>; last_used?: string }
 export interface SkillImprove { prompt: string; command: string; top: { name: string; usage: Record<string, number>; last_used: string }[] }
@@ -139,7 +139,7 @@ export interface Session {
   alive: boolean;
   registered: boolean;
   attention?: "input" | "failure" | null;
-  state_source?: "hook";
+  state_source?: "hook" | "transcript";
   last_event?: string;
   herdr?: { pane_id: string; tab_id: string; title: string; status: string; focused: boolean };
   title?: string;
@@ -167,3 +167,13 @@ export interface UpdateFields {
   acceptance?: string;
   notes?: string;
 }
+
+export interface ActivityEvent { id: string; ts: number; kind: string; text: string; tool?: string; paths?: string[] }
+export interface Activity {
+  key: string; agent: string; session_id: string; cwd: string; project: string; title: string;
+  last_at: number; state: string; activity: string; version: string; events: ActivityEvent[];
+  files?: Record<string, number>; tasks: string[]; reply_id?: string; reply_at?: number; reply_preview?: string;
+  unread: boolean; stale: boolean; tracking_since: number; source: string;
+  host?: string; host_name?: string; remote?: boolean;
+}
+export interface ActivitySnapshot { sessions: Activity[]; updated_at: number; unavailable_hosts: string[] }

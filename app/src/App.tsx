@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getApi, isTauri, type Api } from "./api";
+import { getApi, isTauri, isServed, type Api } from "./api";
 import { Detail } from "./components/Detail";
 import { NewTask } from "./components/NewTask";
 import { Sidebar, type Filters } from "./components/Sidebar";
@@ -10,7 +10,8 @@ import { SkillsView } from "./components/Skills";
 import { RulesView } from "./components/Rules";
 import { EnvView } from "./components/Env";
 import { InboxView, type InboxItems } from "./components/Inbox";
-import { HomeView } from "./components/Home";
+import { Workspace } from "./components/Workspace";
+import { activityKey, mergeActivity } from "./activity";
 import { GraphView } from "./components/Graph";
 import { FoldersView } from "./components/Folders";
 import { ProjectsView } from "./components/Projects";
@@ -18,10 +19,10 @@ import { Tour } from "./components/Guide";
 import { StatsView } from "./components/Stats";
 import { MobileNav } from "./components/MobileNav";
 import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
-import type { Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
+import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "聊天记录", stats: "统计", skills: "技能", rules: "规则", pitfalls: "知识库", env: "环境" };
+const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "会话", stats: "统计", skills: "技能", rules: "规则", pitfalls: "知识库", env: "环境" };
 const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
@@ -32,6 +33,32 @@ export default function App() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [progress, setProgress] = useState<Record<string, string>>({});
   const [issuesLoaded, setIssuesLoaded] = useState(false);
+  const [activity, setActivity] = useState<ActivitySnapshot>({ sessions: [], updated_at: 0, unavailable_hosts: [] });
+  const [activityError, setActivityError] = useState(false);
+  const acknowledged = useRef(new Map<string, string>());
+  const markRead = useCallback(async (a: Activity, reply: string) => {
+    if (!api || acknowledged.current.get(activityKey(a)) === reply) return;
+    try {
+      await api.sessionSeen(a.host ?? 'local', a.key, reply);
+      acknowledged.current.set(activityKey(a), reply);
+      setActivity(old => ({ ...old, sessions: old.sessions.map(x => activityKey(x) === activityKey(a) && x.reply_id === reply ? { ...x, unread: false } : x) }));
+    } catch { /* Keep unread on failed acknowledgement; next visible poll retries. */ }
+  }, [api]);
+  useEffect(() => {
+    if (!api) return;
+    let stopped = false; let timer = 0;
+    const tick = async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const snapshot = await api.sessionActivity();
+          if (!stopped) { setActivity({ ...snapshot, sessions: snapshot.sessions.map(a => acknowledged.current.get(activityKey(a)) === a.reply_id ? { ...a, unread: false } : a) }); setActivityError(false); }
+        } catch { if (!stopped) setActivityError(true); }
+      }
+      if (!stopped) timer = window.setTimeout(tick, 3000);
+    };
+    tick();
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, [api]);
   const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
@@ -171,11 +198,13 @@ export default function App() {
   }, [api]);
   const hostId = useMemo(() => { if (!hostFilter) return ""; const h = hosts.find((x) => x.name === hostFilter); return h ? (h.local ? "local" : h.id) : ""; }, [hostFilter, hosts]);
   const localName = hosts.find((h) => h.local)?.name ?? "";
-  const presenceF = useMemo(() => hostFilter ? { ...presence, sessions: presence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : presence, [presence, hostFilter, localName]);
+  const observedPresence = useMemo(() => mergeActivity(presence, activity.sessions), [presence, activity]);
+  const presenceF = useMemo(() => hostFilter ? { ...observedPresence, sessions: observedPresence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : observedPresence, [observedPresence, hostFilter, localName]);
   const refsF = useMemo(() => hostFilter ? new Map([...refs].filter(([, r]) => (r.host_name ?? localName) === hostFilter)) : refs, [refs, hostFilter, localName]);
+  const activityF = useMemo(() => hostFilter ? activity.sessions.filter(a => (a.host_name ?? localName) === hostFilter) : activity.sessions, [activity, hostFilter, localName]);
   const issuesF = useMemo(() => hostFilter ? issues.filter((i) => hostOfIssue(i, refs) === hostFilter) : issues, [issues, refs, hostFilter]);
   const agents = useMemo(() => agentsFrom(issuesF, me, presenceF.sessions), [issuesF, me, presenceF]);
-  const liveSessions = presenceF.sessions.filter((s) => s.alive).length;
+  const runningSessions = presenceF.sessions.filter((s) => s.alive && s.state === "working").length;
   const projects = useMemo(() => {
     const m = new Map<string, number>();
     issuesF.forEach((i) => m.set(projectOf(i), (m.get(projectOf(i)) ?? 0) + 1));
@@ -209,18 +238,19 @@ export default function App() {
   }, [api, view, visible]);
 
   const inbox = useMemo<InboxItems>(() => ({
+    unread: activityF.filter(a => a.unread),
     waiting: presenceF.sessions.filter((s) => needsAttention(s)).sort((a, b) => b.last_at - a.last_at),
     idle: presenceF.sessions.filter((s) => s.alive && s.state === "idle" && !needsAttention(s)),
     review: issuesF.filter((i) => needsReview(i)).sort((a, b) => (b.closed_at ?? b.updated_at).localeCompare(a.closed_at ?? a.updated_at)),
     blocked: issuesF.filter((i) => i.status === "blocked"),
-  }), [issuesF, presenceF]);
+  }), [issuesF, presenceF, activityF]);
 
   const counts = useMemo(() => ({
     total: issuesF.length,
     blocked: inbox.blocked.length,
     review: inbox.review.length,
     agents: agents.filter((a) => a.online).length,
-    inbox: inbox.waiting.length + inbox.blocked.length,
+    inbox: inbox.unread.length + inbox.waiting.filter(s => !inbox.unread.some(a => a.session_id === s.session_id)).length + inbox.blocked.length,
   }), [issuesF, agents, inbox]);
 
   // Use unfiltered data: switching machines is not a new event.
@@ -245,11 +275,12 @@ export default function App() {
 
   useEffect(() => {
     if (!api) return;
-    const working = presence.sessions.filter((s) => s.alive && s.state === "working").length;
+    const working = observedPresence.sessions.filter((s) => s.alive && s.state === "working").length;
     // Menu bars fill up fast; keep the status text to a few characters.
-    const parts = [working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
-    api.tray(parts.join(" "), `Dispatch · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
-  }, [api, presence, notificationInbox, issues]);
+    const unread = activity.sessions.filter(a => a.unread).length;
+    const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
+    api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
+  }, [api, observedPresence, notificationInbox, issues, activity]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try { await fn(); say(label); await reload(); } catch (e) { say(String(e), true); }
@@ -290,13 +321,13 @@ export default function App() {
         <div className="crumb" data-tauri-drag-region>
           {backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}<b className="link" onClick={() => setView("home")}>全局板</b>{hostFilter && <><span className="sep">›</span><span>{hostFilter}</span></>}<span className="sep">›</span><span>{VIEW_LABEL[view]}</span>
           {BOARD_VIEWS.includes(view) && filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
-          <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && " · 浏览器预览"}</span>
+          <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && (isServed ? " · 网页连接" : " · 示例数据")}</span>
         </div>
         <div className="tb-right">
           {BOARD_VIEWS.includes(view) ? <label className="search">🔍<input ref={searchRef} placeholder="搜任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="清除任务搜索" onClick={() => setQuery("")}>✕</button>}<kbd>⌘K</kbd></label> : <button className="btn ghost" onClick={searchTasks}>搜索任务 <kbd>⌘K</kbd></button>}
           <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
           <button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
-          <button className="btn ghost status" onClick={() => setView("agents")} title="查看 Agent 状态"><span className="pulse" />{counts.agents} 在线 · {liveSessions} 窗口 ›</button>
+          <button className="btn ghost status" onClick={() => setView("agents")} title="查看 Agent 状态"><span className="pulse" />{counts.agents} 在线 · {runningSessions} 进行中 ›</button>
           <button className="btn ghost" onClick={() => setCreating(true)} title="任务通常由 Agent 自己建；这里手动建一条">＋</button>
         </div>
       </div>
@@ -305,7 +336,9 @@ export default function App() {
         <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} hosts={hosts} hostFilter={hostFilter} setHostFilter={(h) => { setHostFilter(h); setSelected(null); }} onAllTasks={allTasks} />
         <main className="main">
           <div className="toolbar">
+            {backStack.length > 0 && <button className="btn sm mobile-context-back" onClick={goBack}>‹ 返回</button>}
             <h2>{VIEW_LABEL[view]}{BOARD_VIEWS.includes(view) && filters.project !== null && <span className="muted"> · {filters.project || "未分项目"}</span>}</h2>
+            {hosts.length > 1 && <select className="mobile-host-filter" aria-label="选择机器" value={hostFilter} onChange={e => { setHostFilter(e.target.value); setSelected(null); }}><option value="">全部机器</option>{hosts.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}</select>}
             {BOARD_VIEWS.includes(view) && (
               <div className="views">
                 <button className={view === "board" ? "on" : ""} onClick={() => setView("board")}>看板</button>
@@ -324,13 +357,13 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} issues={issuesF} agents={agents} refs={refsF} me={me} counts={{ working: presenceF.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={(v) => { if (v === "board") allTasks(); else setView(v); }} onInbox={(tab) => { setView("inbox"); setInboxTab(tab); }} onFocus={focusSession} />}
+            {view === "home" && <Workspace onPhone={isTauri ? async () => { if (!api) return; try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say("手机访问链接已复制，在同一 Tailscale 网络的手机浏览器打开"); } catch(e) { say(String(e), true); } } : undefined} rows={activityF} loaded={activity.updated_at > 0} error={activityError} unavailable={activity.unavailable_hosts} issues={issuesF} me={me} onOpen={openSession} onTask={setSelected} onInbox={() => { setView("inbox"); setInboxTab("unread"); }} onSessions={() => setView("sessions")} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
-            {view === "inbox" && <InboxView initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
+            {view === "inbox" && <InboxView onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView agents={agents} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
-            {view === "sessions" && api && <SessionsView key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
+            {view === "sessions" && api && <SessionsView activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "projects" && api && <ProjectsView selectedProject={projectSelection} onProjectChange={setProjectSelection} api={api} me={me} issues={issuesF} onSelect={setSelected} onBoard={(p) => { setFilters({ ...filters, project: p, blocked: false, review: false, agent: null }); navigateContext("board"); }} onFolder={(cwd) => { setFolderSelection(cwd); navigateContext("folders"); }} />}
             {view === "stats" && api && <StatsView onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "folders" && api && <FoldersView selectedFolder={folderSelection} onFolderChange={setFolderSelection} api={api} me={me} issues={issuesF} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}

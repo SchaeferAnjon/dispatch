@@ -71,6 +71,8 @@ export function fixtureApi(): Api {
       ],
     }),
     taskSessions: async (id) => sessionRefs.filter((r) => r.tasks[id]),
+    sessionActivity: async () => ({ sessions: [], updated_at: Date.now()/1000, unavailable_hosts: [] }),
+    sessionSeen: async () => {},
     sessionList: async () => sessionRefs,
     sessionDetail: async (id) => {
       const meta = sessionRefs.find((r) => r.session_id.startsWith(id)) ?? sessionRefs[0];

@@ -394,6 +394,16 @@ async fn session_list() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn session_activity() -> Result<String, String> {
+    run_dispatch(args(&["activity", "--json"])).await
+}
+
+#[tauri::command]
+async fn session_seen(host: String, key: String, reply: String) -> Result<String, String> {
+    run_dispatch(args(&["--host", &host, "seen", &key, &reply, "--json"])).await
+}
+
+#[tauri::command]
 async fn session_detail(id: String) -> Result<String, String> {
     run_dispatch(args(&["session", &id, "--json"])).await
 }
@@ -783,7 +793,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_interactions, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
-            task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
+            task_sessions, resume_cmd, session_list, session_activity, session_seen, session_detail, focus_session, memories_list, memory_set, memory_forget,
             skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, dispatch_on, tray_update,
             rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path
         ])

@@ -10,6 +10,7 @@ interface Props { onOpenSession: (id: string) => void; id: string; api: Api; me:
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
 export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
+  const [editProperties, setEditProperties] = useState(false);
   const [issue, setIssue] = useState<Issue | null>(initial);
   const [comments, setComments] = useState<Comment[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -91,11 +92,12 @@ export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live,
     <aside className="detail">
       <div className="dh">
         <span className="id">{issue.id}</span><span>·</span><span>{projectOf(issue) || "未分项目"}</span>
+        <button className="btn ghost sm" onClick={() => { setEditProperties(v => !v); setClosing(false); }}>{editProperties ? "收起编辑" : "编辑属性"}</button>
         <button className="x" onClick={onClose} aria-label="关闭">✕</button>
       </div>
       <div className="dbody">
         {editTitle === null ? (
-          <h3 onClick={() => setEditTitle(issue.title)} title="点击编辑">{issue.title}</h3>
+          <h3 onClick={() => { if (editProperties) setEditTitle(issue.title); }} title={editProperties ? "点击编辑标题" : undefined}>{issue.title}</h3>
         ) : (
           <textarea className="title" value={editTitle} autoFocus rows={2} onChange={(e) => setEditTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") setEditTitle(null); if (e.key === "Enter") { e.preventDefault(); const t = editTitle.trim(); setEditTitle(null); if (t && t !== issue.title) act("标题已改", () => api.update(id, { title: t })); } }}
@@ -105,8 +107,7 @@ export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live,
         <div className="props">
           <span className="k">状态</span>
           <span className="v">
-            <span className={`st sm ${st.cls}`}>{st.text}</span>
-            <select value={issue.status} disabled={busy} onChange={(e) => {
+            {!editProperties ? <span className={`st sm ${st.cls}`}>{st.text}</span> : <select value={issue.status} disabled={busy} onChange={(e) => {
               const v = e.target.value;
               if (v === "closed") { setClosing(true); return; }
               if (issue.status === "closed") return act("已重新打开", async () => { await api.reopen(id); if (v !== "open") await api.setStatus(id, v); });
@@ -117,28 +118,27 @@ export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live,
               <option value="blocked">阻塞</option>
               <option value="deferred">搁置</option>
               <option value="closed">已完成</option>
-            </select>
+            </select>}
           </span>
           <span className="k">负责</span>
           <span className="v">{who ? <><Avatar actor={who} />{who.name}</> : <span className="muted">未认领</span>}</span>
           <span className="k">优先级</span>
           <span className="v">
-            <Pri p={issue.priority} />
-            <select value={issue.priority} disabled={busy} onChange={(e) => act("优先级已改", () => api.update(id, { priority: Number(e.target.value) }))}>
+            {!editProperties ? <Pri p={issue.priority} /> : <select value={issue.priority} disabled={busy} onChange={(e) => act("优先级已改", () => api.update(id, { priority: Number(e.target.value) }))}>
               {[0, 1, 2, 3, 4].map((p) => <option key={p} value={p}>P{p}{p === 0 ? " 最急" : p === 4 ? " 最低" : ""}</option>)}
-            </select>
+            </select>}
           </span>
           <span className="k">类型</span><span className="v">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>
           <span className="k">项目</span><span className="v"><ProjectTag name={projectOf(issue)} /></span>
           {root && (<><span className="k">源自</span><span className="v"><span className="link" onClick={() => onSelect(root.id)} title={root.title}>{root.id}</span><span className="muted" style={{ fontSize: 12 }}>{root.title}</span></span></>)}
-          {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && l !== "reviewed").length > 0 && (<><span className="k">标签</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && l !== "reviewed").join(" · ")}</span></>)}
+          {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && l !== "reviewed").length > 0 && (<><span className="k">标签</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && l !== "reviewed").join(" · ")}</span></>)}
           {(issue.dependencies ?? []).length > 0 && (<><span className="k">依赖</span><span className="v">{issue.dependencies!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}{d.status === "closed" ? " ✓" : ""}</span>)}</span></>)}
           {(issue.dependents ?? []).length > 0 && (<><span className="k">被依赖</span><span className="v">{issue.dependents!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}</span>)}</span></>)}
           <span className="k">创建</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.created_at)}{issue.created_by ? ` · ${actorOf(issue.created_by, me)?.name}` : ""}</span>
           {issue.closed_at && (<><span className="k">完成</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.closed_at)}</span></>)}
         </div>
 
-        <div className="actions">
+        {editProperties && <div className="actions">
           {issue.status !== "closed" && !closing && <button className="btn sm" disabled={busy} onClick={() => setClosing(true)}>标记完成</button>}
           {issue.status === "closed" && <button className="btn sm" disabled={busy} onClick={() => act("已重新打开", () => api.reopen(id))}>重新打开</button>}
           {closing && (
@@ -148,7 +148,7 @@ export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live,
               <button className="btn ghost sm" onClick={() => setClosing(false)}>取消</button>
             </div>
           )}
-        </div>
+        </div>}
 
         {issue.status === "closed" && <section className="sec review-evidence">
           <h4>交付与验证 <span className="muted">{isReviewed(issue) ? "已记录复核通过" : needsReview(issue) ? "等待 Agent 复核" : "已完成 · 无需你点击审核"}</span></h4>

@@ -218,3 +218,33 @@ class CompletionReviewRequest(unittest.TestCase):
             dispatch.cmd_done(SimpleNamespace(task="task-test", reason="done", verified=True, review_by="pi", next=[], retro=None, json=False))
             self.assertEqual(bd.call_args_list[0].args[0][0], "close")
             self.assertIn("reviewer:pi", bd.call_args_list[1].args[0])
+
+class BeginSessionLink(unittest.TestCase):
+    def test_records_explicit_session_for_delivery(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        a = SimpleNamespace(title='test', project='kanban', type='task', priority=2, desc=None, acceptance=None, deps=None, json=True, session='session-123456')
+        with patch.object(dispatch, 'begin_warnings', return_value=[]), patch.object(dispatch, 'local_host_name', return_value='test'), patch.object(dispatch, 'out'), patch.object(dispatch, 'bd_json', side_effect=[{'id':'task-test'},{}]) as bd:
+            dispatch.cmd_begin(a)
+        self.assertIn('session:session-123456', bd.call_args_list[0].args[0][bd.call_args_list[0].args[0].index('-l')+1])
+
+    def test_invalid_session_cannot_inject_labels(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        a = SimpleNamespace(title='test', project='kanban', type='task', priority=2, desc=None, acceptance=None, deps=None, json=True, session='bad,reviewed')
+        with patch.object(dispatch, 'begin_warnings', return_value=[]), patch.object(dispatch, 'local_host_name', return_value='test'), patch.object(dispatch, 'out'), patch.object(dispatch, 'bd_json', side_effect=[{'id':'task-test'},{}]) as bd:
+            dispatch.cmd_begin(a)
+        self.assertEqual(bd.call_args_list[0].args[0][bd.call_args_list[0].args[0].index('-l')+1], 'project:kanban,host:test')
+
+class ServeSymlink(unittest.TestCase):
+    def test_resolves_sibling_server_from_real_cli_path(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root,'cli')); os.makedirs(os.path.join(root,'bin'))
+            real=os.path.join(root,'cli','dispatch.py'); link=os.path.join(root,'bin','dispatch')
+            with open(real,'w') as f: f.write('')
+            os.symlink(real,link)
+            with patch.object(dispatch,'__file__',link), patch.object(sys,'argv',['dispatch']), patch('runpy.run_path') as run:
+                dispatch.cmd_serve(SimpleNamespace(what='url'))
+            run.assert_called_once_with(os.path.realpath(os.path.join(root,'cli','serve.py')),run_name='__main__')

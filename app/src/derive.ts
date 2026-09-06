@@ -308,6 +308,6 @@ export function sessionStatus(s: Session): string {
   return s.state === "working" ? "在跑" : "空闲";
 }
 export function sessionEvidence(s: Session): string {
-  const source = s.state_source === "hook" || s.last_event ? `事件上报${s.last_event ? ` · ${s.last_event}` : ""}` : s.registered ? "会话检测" : "仅检测到进程，未接入执行状态";
+  const source = s.state_source === "transcript" ? "实际会话记录" : s.state_source === "hook" || s.last_event ? `事件上报${s.last_event ? ` · ${s.last_event}` : ""}` : s.registered ? "会话检测" : "仅检测到进程，未接入执行状态";
   return `${source} · ${s.last_at ? `最后活动 ${durSince(s.last_at)}前` : "无活动时间"}`;
 }
