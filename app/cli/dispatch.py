@@ -2387,6 +2387,15 @@ def facts_docs():
                 dirs[base] = (cwd, r.get("last_at", 0))
     except Exception:
         pass
+    # Projects nobody has opened a session in on this Mac yet: look under ~/Projects too,
+    # so a fresh clone shows up before its first session.
+    try:
+        for entry in os.listdir(os.path.join(HOME, "Projects")):
+            full = os.path.join(HOME, "Projects", entry)
+            if entry.lower() in names and entry.lower() not in dirs and os.path.isdir(full):
+                dirs[entry.lower()] = (full, 0)
+    except OSError:
+        pass
     for key in sorted(dirs):
         d = dirs[key][0]
         path = os.path.join(d, "AGENTS.md")
