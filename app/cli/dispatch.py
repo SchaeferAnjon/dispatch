@@ -2178,12 +2178,40 @@ def cmd_log(a):
     print(f"{a.task} 已记录")
 
 
+def cmd_review(a):
+    """Record an independent review with its author and evidence."""
+    actor = os.environ.get("BEADS_ACTOR") or os.environ.get("DISPATCH_ACTOR") or ""
+    issue = bd_json(["show", a.task, "--json"])
+    if not actor or actor == issue.get("assignee"):
+        raise SystemExit("复核需由执行者以外的 Agent 记录；请设置真实的 BEADS_ACTOR。")
+    if issue.get("status") != "closed":
+        raise SystemExit("任务尚未完成，不能记录交付复核。")
+    reviewers = [x[9:] for x in issue.get("labels", []) if x.startswith("reviewer:")]
+    if reviewers and actor not in reviewers:
+        raise SystemExit("本任务已指定其他复核 Agent。")
+    if not a.reason.strip():
+        raise SystemExit("请填写检查内容、结果和依据。")
+    text = f"【Agent 复核 · {'通过' if a.verdict == 'pass' else '需修改'}】{actor}\n{a.reason.strip()}"
+    code, _, err = sh(["bd", "comments", "add", a.task, text], env={"BEADS_ACTOR": actor})
+    if code:
+        raise SystemExit(err or "复核记录写入失败")
+    args = ["update", a.task, "--remove-label", "review-requested"]
+    if a.verdict == "pass":
+        args += ["--add-label", "reviewed", "--remove-label", "review-changes"]
+    else:
+        args += ["--status", "open", "--remove-label", "reviewed", "--add-label", "review-changes"]
+    bd_json(args + ["--json"])
+    print(f"{a.task} 复核已记录：{a.verdict}")
+
+
 def cmd_done(a):
-    """Close a task with a reason; unverified work lands in 已完成·待审. Follow-ups become new tasks."""
+    """Close a task; verification and optional peer review are separate from completion."""
     reason = a.reason
     if not a.verified:
         reason = reason + "（未核验）" if "核验" not in reason else reason
     bd_json(["close", a.task, "--reason", reason, "--json"])
+    if getattr(a, "review_by", None):
+        bd_json(["update", a.task, "--add-label", "review-requested", "--add-label", "reviewer:" + a.review_by, "--remove-label", "reviewed", "--json"])
     created = []
     issue = bd_json(["show", a.task, "--json"])
     proj = next((l.split(":", 1)[1] for l in issue.get("labels", []) if l.startswith("project:")), "")
@@ -2198,7 +2226,9 @@ def cmd_done(a):
     if getattr(a, "retro", None):
         retro_key = "retro-" + a.task
         wiki_store(retro_key, wiki_compose("retro", a.retro, {}, proj, a.task))
-    msg = f"{a.task} 已完成" + ("（已核验）" if a.verified else "，在「已完成 · 待审」等人验收")
+    msg = f"{a.task} 已完成" + ("（已核验）" if a.verified else "（未核验，详见完成说明）")
+    if getattr(a, "review_by", None):
+        msg += f"；等待 {a.review_by} 复核（不会自动启动 Agent）"
     if created:
         msg += f"；后续任务：{', '.join(created)}"
     if retro_key:
@@ -3212,7 +3242,8 @@ def main():
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
-    s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
+    s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; this is not independent peer review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.add_argument("--review-by", help="request peer review from this Agent, without launching it"); s.set_defaults(fn=cmd_done)
+    s = sub.add_parser("review", help="record independent Agent review and its evidence"); s.add_argument("task"); s.add_argument("--verdict", choices=["pass", "changes"], required=True); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")

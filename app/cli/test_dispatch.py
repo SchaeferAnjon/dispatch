@@ -171,3 +171,50 @@ class FrontmatterMultiline(unittest.TestCase):
             self.assertEqual(dispatch.read_frontmatter(d)["description"], "first line second line")
             open(os.path.join(d, "SKILL.md"), "w").write("---\nname: y\ndescription:\n  只有缩进的一行\n---\n")
             self.assertEqual(dispatch.read_frontmatter(d)["description"], "只有缩进的一行")
+
+
+class PeerReview(unittest.TestCase):
+    def run_review(self, verdict="pass", actor="codex", assignee="claude-code", status="closed", labels=None):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        issue = {"status": status, "assignee": assignee, "labels": labels or []}
+        with patch.dict(os.environ, {"BEADS_ACTOR": actor}), patch.object(dispatch, "bd_json", return_value=issue) as bd, patch.object(dispatch, "sh", return_value=(0, "", "")) as shell:
+            dispatch.cmd_review(SimpleNamespace(task="task-test", verdict=verdict, reason="tests passed"))
+            return bd.call_args_list, shell.call_args_list
+    def test_independent_review_records_author_and_evidence(self):
+        bd, shell = self.run_review()
+        self.assertIn("reviewed", bd[-1].args[0])
+        self.assertIn("codex", shell[0].args[0][-1])
+        self.assertIn("tests passed", shell[0].args[0][-1])
+    def test_self_review_is_rejected(self):
+        with self.assertRaises(SystemExit): self.run_review(actor="claude-code")
+    def test_incomplete_task_cannot_pass(self):
+        with self.assertRaises(SystemExit): self.run_review(status="open")
+    def test_designated_reviewer_is_respected(self):
+        with self.assertRaises(SystemExit): self.run_review(labels=["reviewer:pi"])
+    def test_changes_reopen_task(self):
+        bd, _ = self.run_review(verdict="changes")
+        self.assertIn("open", bd[-1].args[0])
+        self.assertIn("review-changes", bd[-1].args[0])
+    def test_comment_failure_does_not_mark_reviewed(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"BEADS_ACTOR": "codex"}), patch.object(dispatch, "bd_json", return_value={"status": "closed", "assignee": "claude-code"}) as bd, patch.object(dispatch, "sh", return_value=(1, "", "write failed")):
+            with self.assertRaises(SystemExit): dispatch.cmd_review(SimpleNamespace(task="task-test", verdict="pass", reason="checks"))
+            self.assertEqual(bd.call_count, 1)
+
+
+class CompletionReviewRequest(unittest.TestCase):
+    def test_completion_does_not_require_review(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with patch.object(dispatch, "bd_json", return_value={"labels": []}) as bd, patch.object(dispatch, "out"):
+            dispatch.cmd_done(SimpleNamespace(task="task-test", reason="done", verified=True, review_by=None, next=[], retro=None, json=False))
+            self.assertFalse(any("review-requested" in c.args[0] for c in bd.call_args_list))
+    def test_explicit_request_keeps_completion_and_names_reviewer(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with patch.object(dispatch, "bd_json", return_value={"labels": []}) as bd, patch.object(dispatch, "out"):
+            dispatch.cmd_done(SimpleNamespace(task="task-test", reason="done", verified=True, review_by="pi", next=[], retro=None, json=False))
+            self.assertEqual(bd.call_args_list[0].args[0][0], "close")
+            self.assertIn("reviewer:pi", bd.call_args_list[1].args[0])

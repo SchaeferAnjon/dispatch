@@ -15,6 +15,7 @@ SHELLS = {"sh", "bash", "zsh", "fish", "-fish", "-zsh", "-bash", "login", "pytho
 APPS = [
     ("Qoder CN IDE.app/", ("editor", "Qoder IDE")),
     ("Qoder CN.app/", ("desktop", "Qoder")),
+    ("Codex.app/", ("desktop", "Codex 桌面端")),
     ("Claude.app/", ("desktop", "Claude 桌面端")),
     ("ChatGPT.app/", ("desktop", "ChatGPT 桌面端")),
     ("Cursor.app/", ("editor", "Cursor")),
@@ -56,14 +57,51 @@ def classify(chain):
     return ("terminal", "终端")
 
 
+def event_status(event, data, prev):
+    """Only explicit lifecycle events change attention; a stopped turn is idle."""
+    state = prev.get("state", "unknown")
+    attention = prev.get("attention")
+    if event in ("SessionStart", "Stop"):
+        state, attention = "idle", None
+    elif event in ("UserPromptSubmit", "PreToolUse", "PostToolUse"):
+        state, attention = "working", None
+    elif event == "PermissionRequest" or (event == "Notification" and data.get("notification_type") in ("permission_prompt", "elicitation_dialog")):
+        state, attention = "idle", "input"
+    elif event == "PostToolUseFailure" and not data.get("is_interrupt"):
+        state, attention = "idle", "failure"
+    return state, attention
+
+
+def install_claude_hooks(path=None):
+    """Add attention signals without replacing other extensions' hooks."""
+    path = path or os.path.expanduser("~/.claude/settings.json")
+    with open(path) as f:
+        settings = json.load(f)
+    hooks = settings.setdefault("hooks", {})
+    for event in ("PermissionRequest", "Notification", "PreToolUse", "PostToolUse", "PostToolUseFailure"):
+        command = f'python3 "$HOME/tasks/.dispatch/presence.py" claude-code {event} # dispatch-presence'
+        groups = hooks.setdefault(event, [])
+        if not any("dispatch-presence" in h.get("command", "") for g in groups for h in g.get("hooks", [])):
+            groups.append({"hooks": [{"type": "command", "command": command}]})
+    tmp = path + ".dispatch-tmp"
+    with open(tmp, "w") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.chmod(tmp, os.stat(path).st_mode & 0o777)
+    os.replace(tmp, path)
+
+
 def main():
+    if sys.argv[1:] == ["--install-claude-hooks"]:
+        install_claude_hooks()
+        return
     agent = sys.argv[1] if len(sys.argv) > 1 else "unknown"
     event = sys.argv[2] if len(sys.argv) > 2 else "unknown"
     try:
         data = json.load(sys.stdin)
     except Exception:
         data = {}
-    sid = data.get("session_id") or os.environ.get("CLAUDE_SESSION_ID") or os.environ.get("QODER_SESSION_ID") or ""
+    sid = data.get("session_id") or data.get("thread_id") or data.get("thread-id") or os.environ.get("CLAUDE_SESSION_ID") or os.environ.get("QODER_SESSION_ID") or ""
     cwd = data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("QODER_CWD") or os.getcwd()
 
     table = ps_table()
@@ -104,7 +142,7 @@ def main():
             prev = json.load(f)
     except Exception:
         pass
-    state = {"SessionStart": "idle", "UserPromptSubmit": "working", "Stop": "idle"}.get(event, prev.get("state", "idle"))
+    state, attention = event_status(event, data, prev)
     rec = {
         "agent": agent,
         "session_id": sid,
@@ -118,6 +156,8 @@ def main():
         "last_event": event,
         "last_at": now,
         "state": state,
+        "attention": attention,
+        "state_source": "hook",
         "prompts": prev.get("prompts", 0) + (1 if event == "UserPromptSubmit" else 0),
     }
     tmp = path + ".tmp"

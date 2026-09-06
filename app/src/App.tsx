@@ -17,7 +17,7 @@ import { ProjectsView } from "./components/Projects";
 import { Tour } from "./components/Guide";
 import { StatsView } from "./components/Stats";
 import { MobileNav } from "./components/MobileNav";
-import { agentsFrom, columnOf, isReviewed, projectOf, rootsOf, hostOfIssue } from "./derive";
+import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
 import type { Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
@@ -30,6 +30,7 @@ export default function App() {
   const [api, setApi] = useState<Api | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [progress, setProgress] = useState<Record<string, string>>({});
   const [issuesLoaded, setIssuesLoaded] = useState(false);
   const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
@@ -38,7 +39,12 @@ export default function App() {
   const [view, changeView] = useState<View>("home");
   const [inboxTab, setInboxTab] = useState<keyof InboxItems | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const setView = useCallback((next: View) => { changeView(next); setSelected(null); setInboxTab(null); }, []);
+  const [projectSelection, setProjectSelection] = useState<string | null>(null);
+  const [folderSelection, setFolderSelection] = useState<string | null>(null);
+  const [backStack, setBackStack] = useState<{ view: View; selected: string | null }[]>([]);
+  const navigateContext = (next: View) => { setBackStack((stack) => [...stack, { view, selected }]); changeView(next); setSelected(null); };
+  const goBack = () => { const previous = backStack[backStack.length - 1]; if (previous) { changeView(previous.view); setSelected(previous.selected); setBackStack((stack) => stack.slice(0, -1)); } };
+  const setView = useCallback((next: View) => { changeView(next); setSelected(null); setInboxTab(null); setBackStack([]); }, []);
   const [filters, setFilters] = useState<Filters>({ project: null, mine: false, urgent: false, agent: null, blocked: false, review: false });
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -46,7 +52,7 @@ export default function App() {
   // The tour never opens on its own; the design should carry itself. `?` still has it.
   const [tour, setTour] = useState(false);
   const closeTour = () => setTour(false);
-  const openSession = (id: string) => { setSessionFocus(id); setView("sessions"); };
+  const openSession = (id: string) => { setSessionFocus(id); navigateContext("sessions"); };
   const [version, setVersion] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   // Which Mac to look at: "" = all, else a host *name* (matches session.host_name and the host:<name> task label).
@@ -184,15 +190,28 @@ export default function App() {
       if (filters.urgent && i.priority > 1) return false;
       if (filters.agent && i.assignee !== filters.agent) return false;
       if (filters.blocked && i.status !== "blocked") return false;
-      if (filters.review && !(i.status === "closed" && !isReviewed(i))) return false;
+      if (filters.review && !(needsReview(i))) return false;
       if (q && !(i.title.toLowerCase().includes(q) || i.id.toLowerCase().includes(q) || (i.description ?? "").toLowerCase().includes(q) || (i.assignee ?? "").toLowerCase().includes(q))) return false;
       return true;
     }).sort((a, b) => a.priority - b.priority || b.updated_at.localeCompare(a.updated_at));
   }, [issuesF, filters, query, me]);
 
+  useEffect(() => {
+    if (!api || view !== "board") return;
+    let alive = true;
+    // Only the visible active tasks need recent progress; avoid fetching the whole archive.
+    const active = visible.filter((i) => i.status === "in_progress");
+    Promise.all(active.map(async (i) => {
+      try { const notes = await api.comments(i.id); const latest = notes.sort((a, b) => b.created_at.localeCompare(a.created_at))[0]; return [i.id, latest?.text ?? ""] as const; }
+      catch { return [i.id, ""] as const; }
+    })).then((entries) => { if (alive) setProgress(Object.fromEntries(entries)); });
+    return () => { alive = false; };
+  }, [api, view, visible]);
+
   const inbox = useMemo<InboxItems>(() => ({
-    waiting: presenceF.sessions.filter((s) => s.alive && s.state === "idle" && s.registered).sort((a, b) => b.last_at - a.last_at),
-    review: issuesF.filter((i) => i.status === "closed" && !isReviewed(i)).sort((a, b) => (b.closed_at ?? b.updated_at).localeCompare(a.closed_at ?? a.updated_at)),
+    waiting: presenceF.sessions.filter((s) => needsAttention(s)).sort((a, b) => b.last_at - a.last_at),
+    idle: presenceF.sessions.filter((s) => s.alive && s.state === "idle" && !needsAttention(s)),
+    review: issuesF.filter((i) => needsReview(i)).sort((a, b) => (b.closed_at ?? b.updated_at).localeCompare(a.closed_at ?? a.updated_at)),
     blocked: issuesF.filter((i) => i.status === "blocked"),
   }), [issuesF, presenceF]);
 
@@ -201,13 +220,13 @@ export default function App() {
     blocked: inbox.blocked.length,
     review: inbox.review.length,
     agents: agents.filter((a) => a.online).length,
-    inbox: inbox.waiting.length + inbox.review.length + inbox.blocked.length,
+    inbox: inbox.waiting.length + inbox.blocked.length,
   }), [issuesF, agents, inbox]);
 
   // Use unfiltered data: switching machines is not a new event.
   const notificationInbox = useMemo(() => ({
-    waiting: presence.sessions.filter((s) => s.alive && s.state === "idle" && s.registered),
-    review: issues.filter((i) => i.status === "closed" && !isReviewed(i)),
+    waiting: presence.sessions.filter((s) => needsAttention(s)),
+    review: issues.filter((i) => needsReview(i)),
   }), [presence, issues]);
 
   // Notifications: only for things that newly entered the inbox after the first load.
@@ -218,8 +237,7 @@ export default function App() {
     const w = new Set(notificationInbox.waiting.map((x) => x.session_id));
     const r = new Set(notificationInbox.review.map((x) => x.id));
     if (s.ready) {
-      for (const x of notificationInbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : x.agent === "qoder" ? "Qoder" : x.agent === "qoder-ide" ? "Qoder IDE" : "Claude Code"} 在等你`, `${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`).catch(() => {});
-      for (const x of notificationInbox.review) if (!s.review.has(x.id)) api.notify("有任务待你审核", `${x.id} ${x.title}`).catch(() => {});
+      for (const x of notificationInbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : x.agent === "qoder" ? "Qoder" : x.agent === "qoder-ide" ? "Qoder IDE" : "Claude Code"} 需要处理`, `${x.attention === "failure" ? "工具执行失败" : "等待确认"} · ${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`).catch(() => {});
     }
     s.waiting = w; s.review = r;
     if (!s.ready && (presence.sessions.length > 0 || issues.length > 0)) s.ready = true;
@@ -230,7 +248,7 @@ export default function App() {
     const working = presence.sessions.filter((s) => s.alive && s.state === "working").length;
     // Menu bars fill up fast; keep the status text to a few characters.
     const parts = [working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
-    api.tray(parts.join(" "), `Dispatch · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待审 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
+    api.tray(parts.join(" "), `Dispatch · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
   }, [api, presence, notificationInbox, issues]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
@@ -245,8 +263,7 @@ export default function App() {
     if (to === "todo") return run("移到待办", async () => { if (closed) await api.reopen(id); else await api.setStatus(id, "open"); });
     // Moving to 进行中 only changes status; the person viewing never becomes the assignee.
     if (to === "prog") return run("移到进行中", async () => { if (closed) await api.reopen(id); await api.setStatus(id, "in_progress"); });
-    if (to === "done") return run("标记完成", async () => { if (closed) await api.labels(id, [], ["reviewed"]); else await api.close(id, "在 Dispatch 里拖到已完成"); });
-    if (to === "reviewed") return run("审核通过", async () => { if (!closed) await api.close(id, "在 Dispatch 里拖到已审核"); await api.labels(id, ["reviewed"], []); });
+    if (to === "done") return run("标记完成", async () => { if (!closed) await api.close(id, "在 Dispatch 里拖到已完成"); });
   };
 
   const create = async (input: NewIssue) => {
@@ -271,7 +288,7 @@ export default function App() {
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
-          <b className="link" onClick={() => setView("home")}>全局板</b>{hostFilter && <><span className="sep">›</span><span>{hostFilter}</span></>}<span className="sep">›</span><span>{VIEW_LABEL[view]}</span>
+          {backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}<b className="link" onClick={() => setView("home")}>全局板</b>{hostFilter && <><span className="sep">›</span><span>{hostFilter}</span></>}<span className="sep">›</span><span>{VIEW_LABEL[view]}</span>
           {BOARD_VIEWS.includes(view) && filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
           <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && " · 浏览器预览"}</span>
         </div>
@@ -298,7 +315,7 @@ export default function App() {
             <span className="spacer" />
             {BOARD_VIEWS.includes(view) && (<>
               <button className="chip" disabled={!Object.values(filters).some(Boolean) && filters.project === null && !query} onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>清除筛选</button>
-              <button className={`chip${filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>待审核 {counts.review}</button>
+              <button className={`chip${filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>Agent 复核 {counts.review}</button>
               <button className={`chip${filters.blocked ? " on" : ""}`} onClick={() => setFilters({ ...filters, blocked: !filters.blocked, review: false })}>阻塞 {counts.blocked}</button>
               <button className={`chip${filters.urgent ? " on" : ""}`} onClick={() => setFilters({ ...filters, urgent: !filters.urgent })}>P0–P1</button>
               {filters.agent && <button className="chip on" onClick={() => setFilters({ ...filters, agent: null })}>{filters.agent} ✕</button>}
@@ -310,13 +327,13 @@ export default function App() {
             {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} issues={issuesF} agents={agents} refs={refsF} me={me} counts={{ working: presenceF.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={(v) => { if (v === "board") allTasks(); else setView(v); }} onInbox={(tab) => { setView("inbox"); setInboxTab(tab); }} onFocus={focusSession} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
-            {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
+            {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView agents={agents} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
             {view === "sessions" && api && <SessionsView key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
-            {view === "projects" && api && <ProjectsView api={api} me={me} issues={issuesF} onSelect={setSelected} onBoard={(p) => { setFilters({ ...filters, project: p, blocked: false, review: false, agent: null }); setView("board"); }} onFolder={() => setView("folders")} />}
+            {view === "projects" && api && <ProjectsView selectedProject={projectSelection} onProjectChange={setProjectSelection} api={api} me={me} issues={issuesF} onSelect={setSelected} onBoard={(p) => { setFilters({ ...filters, project: p, blocked: false, review: false, agent: null }); navigateContext("board"); }} onFolder={(cwd) => { setFolderSelection(cwd); navigateContext("folders"); }} />}
             {view === "stats" && api && <StatsView onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
-            {view === "folders" && api && <FoldersView api={api} me={me} issues={issuesF} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
+            {view === "folders" && api && <FoldersView selectedFolder={folderSelection} onFolderChange={setFolderSelection} api={api} me={me} issues={issuesF} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "env" && api && <EnvView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
@@ -324,7 +341,7 @@ export default function App() {
           </section>
         </main>
         {selected && api && (
-          <Detail key={selected} id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
+          <Detail onOpenSession={openSession} key={selected} id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
         )}
       </div>
 

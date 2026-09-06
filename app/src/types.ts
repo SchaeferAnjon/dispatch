@@ -138,6 +138,9 @@ export interface Session {
   prompts: number;
   alive: boolean;
   registered: boolean;
+  attention?: "input" | "failure" | null;
+  state_source?: "hook";
+  last_event?: string;
   herdr?: { pane_id: string; tab_id: string; title: string; status: string; focused: boolean };
   title?: string;
   host?: string;

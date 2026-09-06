@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actorOf, agentsFrom, columnOf, composePitfall, composeWiki, eventsFrom, parseAcceptance, parsePitfall, projectOf, serializeAcceptance, statusLabel } from "./derive";
+import { needsReview, needsAttention, sessionStatus, actorOf, agentsFrom, columnOf, composePitfall, composeWiki, eventsFrom, parseAcceptance, parsePitfall, projectOf, serializeAcceptance, statusLabel } from "./derive";
 import { lineDiff, withContext } from "./diff";
 import type { HistoryEntry, Issue, Session } from "./types";
 
@@ -12,8 +12,8 @@ describe("status mapping (the user's four states)", () => {
   it("closed without label → 已完成·待审", () => expect(columnOf({ ...base, status: "closed" })).toBe("done"));
   it("closed + reviewed label → 已审核", () => {
     const i = { ...base, status: "closed" as const, labels: ["project:kanban", "reviewed"] };
-    expect(columnOf(i)).toBe("reviewed");
-    expect(statusLabel(i).text).toBe("已审核");
+    expect(columnOf(i)).toBe("done");
+    expect(statusLabel(i).text).toBe("已复核");
   });
 });
 
@@ -117,5 +117,31 @@ describe("line diff", () => {
     const out = withContext(d, 1);
     expect(out[0].kind).toBe("skip");
     expect(out.filter((l) => l.kind === "add")).toHaveLength(1);
+  });
+});
+
+describe("attention signals", () => {
+  const s = { alive: true, registered: true, state: "idle" } as Session;
+  it("idle never triggers attention", () => expect(needsAttention(s)).toBe(false));
+  it("explicit input and failure require attention", () => {
+    expect(needsAttention({ ...s, attention: "input" })).toBe(true);
+    expect(sessionStatus({ ...s, attention: "failure" })).toBe("工具执行失败");
+  });
+  it("dead or unregistered sessions cannot raise attention", () => {
+    expect(needsAttention({ ...s, alive: false, attention: "input" })).toBe(false);
+    expect(needsAttention({ ...s, registered: false, attention: "input" })).toBe(false);
+  });
+  it("process presence is not proof of idle", () => {
+    expect(sessionStatus({ ...s, registered: false })).toBe("状态未知");
+    expect(sessionStatus({ ...s, state: "unknown" })).toBe("状态未知");
+  });
+});
+
+describe("completion is independent of peer review", () => {
+  it("completed tasks do not automatically need review", () => expect(needsReview({ ...base, status: "closed" })).toBe(false));
+  it("only explicit requests enter the peer-review queue", () => {
+    expect(needsReview({ ...base, status: "closed", labels: ["review-requested"] })).toBe(true);
+    expect(needsReview({ ...base, status: "closed", labels: ["review-requested", "reviewed"] })).toBe(false);
+    expect(needsReview({ ...base, status: "open", labels: ["review-requested"] })).toBe(false);
   });
 });

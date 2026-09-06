@@ -51,21 +51,23 @@ export function projectOf(i: Issue): string {
 export function isReviewed(i: Issue): boolean {
   return i.status === "closed" && (i.labels ?? []).includes("reviewed");
 }
+export function needsReview(i: Issue): boolean {
+  return i.status === "closed" && !isReviewed(i) && (i.labels ?? []).includes("review-requested");
+}
 export function columnOf(i: Issue): Column {
-  if (i.status === "closed") return isReviewed(i) ? "reviewed" : "done";
+  if (i.status === "closed") return "done";
   if (i.status === "in_progress") return "prog";
   return "todo";
 }
 export const COLUMNS: { key: Column; label: string; cls: string }[] = [
   { key: "todo", label: "待办", cls: "open" },
   { key: "prog", label: "进行中", cls: "prog" },
-  { key: "done", label: "已完成 · 待审", cls: "done" },
-  { key: "reviewed", label: "已审核", cls: "rev" },
+  { key: "done", label: "已完成", cls: "done" },
 ];
 export function statusLabel(i: Issue): { text: string; cls: string } {
-  if (isReviewed(i)) return { text: "已审核", cls: "rev" };
+  if (isReviewed(i)) return { text: "已复核", cls: "rev" };
   switch (i.status) {
-    case "closed": return { text: "待审", cls: "done" };
+    case "closed": return { text: needsReview(i) ? "待 Agent 复核" : "已完成", cls: "done" };
     case "in_progress": return { text: "进行中", cls: "prog" };
     case "blocked": return { text: "阻塞", cls: "block" };
     case "deferred": return { text: "搁置", cls: "open" };
@@ -106,7 +108,7 @@ export interface AgentPresence {
   sessions: Session[];
   bySource: { kind: SourceKind; label: string; count: number; working: number }[];
 }
-export const SOURCE_LABEL: Record<SourceKind, string> = { terminal: "终端", desktop: "桌面端", editor: "编辑器", unknown: "未登记" };
+export const SOURCE_LABEL: Record<SourceKind, string> = { terminal: "终端", desktop: "桌面端", editor: "编辑器", unknown: "来源未知" };
 const ONLINE_WINDOW_MIN = 30;
 export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []): AgentPresence[] {
   const map = new Map<string, AgentPresence>();
@@ -142,7 +144,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     const bs = new Map<string, { kind: SourceKind; label: string; count: number; working: number }>();
     for (const s of p.sessions) {
       const key = `${s.source_kind}:${s.source_app}`;
-      const b = bs.get(key) ?? { kind: s.source_kind, label: s.source_app || SOURCE_LABEL[s.source_kind], count: 0, working: 0 };
+      const b = bs.get(key) ?? { kind: s.source_kind, label: s.source_kind === "unknown" ? SOURCE_LABEL.unknown : s.source_app || SOURCE_LABEL[s.source_kind], count: 0, working: 0 };
       b.count++;
       if (s.state === "working") b.working++;
       bs.set(key, b);
@@ -293,4 +295,19 @@ export function hostOfIssue(i: { labels?: string[]; id: string }, refs: Map<stri
     if (r.tasks && r.tasks[i.id] && r.host_name && (!best || r.last_at > best.at)) best = { host: r.host_name, at: r.last_at };
   }
   return best?.host ?? "";
+}
+
+// Process presence and execution state are different signals. Never infer a request from idle.
+export function needsAttention(s: Session): boolean {
+  return s.alive && s.registered && (s.attention === "input" || s.attention === "failure");
+}
+export function sessionStatus(s: Session): string {
+  if (!s.alive) return "已结束";
+  if (needsAttention(s)) return s.attention === "failure" ? "工具执行失败" : "等待确认";
+  if (s.state === "unknown" || !s.registered) return "状态未知";
+  return s.state === "working" ? "在跑" : "空闲";
+}
+export function sessionEvidence(s: Session): string {
+  const source = s.state_source === "hook" || s.last_event ? `事件上报${s.last_event ? ` · ${s.last_event}` : ""}` : s.registered ? "会话检测" : "仅检测到进程，未接入执行状态";
+  return `${source} · ${s.last_at ? `最后活动 ${durSince(s.last_at)}前` : "无活动时间"}`;
 }

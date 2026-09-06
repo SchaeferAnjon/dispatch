@@ -18,13 +18,13 @@ dispatch begin "标题" -P <项目> -d "背景+要做什么" -a "- [ ] 验收项
 - [ ] 验收项二"
 # 2. 关键进展、决定（= 过程记录，取代 process.md）；--tick "验收项一" 勾掉
 dispatch log <id> "做到哪了 / 决定了什么"
-# 3. 收尾。没亲手核验不加 --verified（停在「已完成·待审」）；--retro 自动写一条复盘进知识库
+# 3. 收尾。没亲手核验不加 --verified（完成与核验分别记录，不自动等用户审核）；--retro 自动写一条复盘进知识库
 dispatch done <id> --reason "做了什么；跑过哪些验证" [--verified] \
   --retro "做了X【技术】用了什么【做对】哪里对【做错】哪里错" [--next "没做完的一件" "另一件"]
 ```
 项目名 = 仓库目录名（kanban、bookmark、HIWI…），标签 `project:<名>`；Dispatch 左栏按它分组，`dispatch prime` 按它筛。
 
-状态：`open` 待做 → `in_progress`（`--claim`）进行中 → `closed` 已完成·待审 → `closed` + 标签 `reviewed` 已审。`blocked` 有未完成依赖（`bd ready` 自动隐藏）。
+状态：`open` 待做 → `in_progress`（`--claim`）进行中 → `closed` 已完成。复核独立：`review-requested` + `reviewer:<agent>` 表示明确请求互审；`reviewed` 表示已有复核通过记录。`blocked` 有未完成依赖（`bd ready` 自动隐藏）。
 
 ## 知识库（`dispatch wiki`，存 bd memory）
 | 类型 | 何时记 | 命令 |
@@ -64,8 +64,12 @@ dispatch catalog [-q 词] [--kind skill|plugin]  # 默认不注入的能力：�
 dispatch rules show|status|sync              # 全局规则唯一来源 ~/.agents/rules/GLOBAL.md
 dispatch insights [--days 14] [--copy]       # 跨 Agent 复盘：确认/纠错/溢出信号 + 样本 + 一条改进任务的启动命令（Dispatch 统计页顶部同款）
 ```
-规则：跨会话的任务 / 待办 / 阻塞一律进板，TodoWrite 只做当前回合清单；不要 `bd edit`（会开编辑器）；`bd update --json` 返回数组；没真正完成不 close，`--reason` 写给审核的人看。
+规则：跨会话的任务 / 待办 / 阻塞一律进板，TodoWrite 只做当前回合清单；不要 `bd edit`（会开编辑器）；`bd update --json` 返回数组；没真正完成不 close，`--reason` 写清交付内容、验证结果和限制。
 
 ## Dispatch 应用
 源码 `~/Projects/kanban/app`（Tauri 2 + React；Rust 只包 `bd --json` 和 `dispatch` CLI，逻辑都在 `app/cli/dispatch.py`）。改完跑 `dispatch-update`（构建 → 同步到 /Applications → 重开）。会话检测靠 hook `~/tasks/.dispatch/presence.py`，不要删那个目录。`Dolt server unreachable` → `bd dolt start`（LaunchAgent 每 2 分钟自动拉起）。旧嵌入式数据在 `~/tasks/.beads.embedded`。
 - 跨机器同步：mini 是枢纽，它的 Dolt 由 `~/Library/LaunchAgents/dev.schaefer.dolt-server.plist` 直接跑（config.yaml 开了 remotesapi :3309；`bd dolt start` 不读 config.yaml，别用它起）。MacBook 每 2 分钟跑 `app/cli/board-sync.sh`（`CALL DOLT_PULL/DOLT_PUSH('--user','sync',…)`；密码在 `dispatch env` 和 beads-dolt LaunchAgent 环境里；`bd dolt push` 不带 --user，别用）。两边 `dolt.auto-commit: on`，`metadata.json` 的 project_id 必须一致。
+
+### Agent 互审（与用户确认分开）
+完成后需要独立检查时：`dispatch done <id> --reason "交付与验证" --verified --review-by claude-code`。这只登记复核请求，不自动启动 Agent，也不计入用户的「等你」红点。
+另一位 Agent 检查后：`dispatch review <id> --verdict pass --reason "检查范围、结果、测试或文件依据"`；有问题用 `--verdict changes`，原任务重新打开。使用自己的真实 `BEADS_ACTOR`，执行者不能登记自己的互审通过；结论先写入任务活动记录，再更新复核标签。

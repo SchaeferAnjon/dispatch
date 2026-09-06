@@ -4,17 +4,18 @@ import { actorOf, durSince, fmtTime, relTime } from "../derive";
 import type { Folder, Issue, SessionRef } from "../types";
 import { Avatar } from "./ui";
 
-interface Props { api: Api; me: string; issues: Issue[]; onOpenSession: (id: string) => void; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
+interface Props { selectedFolder: string | null; onFolderChange: (value: string) => void; api: Api; me: string; issues: Issue[]; onOpenSession: (id: string) => void; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
 
 const AGENT_ORDER = ["claude-code", "codex", "pi", "zcode", "qoder", "qoder-ide"];
 const short = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace("/Library/Mobile Documents/com~apple~CloudDocs", "/iCloud").replace("/Library/Mobile Documents/iCloud~md~obsidian/Documents", "/Obsidian");
 
 // Projects are folders. For a folder: which agents came, and what each conversation was about.
-export function FoldersView({ api, me, issues, onOpenSession, onSelectTask, onDone, onError }: Props) {
+export function FoldersView({ selectedFolder, onFolderChange, api, me, issues, onOpenSession, onSelectTask, onDone, onError }: Props) {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState<string | null>(null);
+  const sel = selectedFolder;
+  const setSel = onFolderChange;
   const [sessions, setSessions] = useState<SessionRef[]>([]);
   const [all, setAll] = useState<SessionRef[]>([]);
 

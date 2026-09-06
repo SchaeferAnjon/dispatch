@@ -1,20 +1,21 @@
 import { useState } from "react";
+import { sessionStatus, sessionEvidence } from "../derive";
 import type { AgentPresence } from "../derive";
 import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
 import type { Column, Host, Issue, SessionRef } from "../types";
 import type { AgentStartInput, AgentStartResult } from "../api";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 
-interface Common { issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
+interface Common { progress?: Record<string, string>; issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
 
-export function Card({ issue, selected, onSelect, me, root, draggable, onDragStart, onDragEnd }: { issue: Issue; selected: boolean; onSelect: (id: string) => void; me: string; root?: Issue } & Pick<React.HTMLAttributes<HTMLElement>, "draggable" | "onDragStart" | "onDragEnd">) {
+export function Card({ issue, progress, selected, onSelect, me, root, draggable, onDragStart, onDragEnd }: { issue: Issue; progress?: string; selected: boolean; onSelect: (id: string) => void; me: string; root?: Issue } & Pick<React.HTMLAttributes<HTMLElement>, "draggable" | "onDragStart" | "onDragEnd">) {
   const who = actorOf(issue.assignee, me);
   const ac = parseAcceptance(issue.acceptance_criteria);
   const done = ac.filter((a) => a.done).length;
   const blocked = issue.status === "blocked";
   return (
     <div className={`card opens${selected ? " sel" : ""}${blocked ? " blocked" : ""}`} onClick={() => onSelect(issue.id)} draggable={draggable} onDragStart={onDragStart} onDragEnd={onDragEnd} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(issue.id)}>
-      <div className="t">{issue.title}</div>
+      <div className="t" title={issue.title}>{issue.title}</div>
       {root && <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={`这条线的根任务：${root.title}`}><span className="rl-id">↑ 源自 <span className="mono">{root.id}</span></span><span className="rl-t">{root.title}</span></button>}
       <div className="meta">
         <Pri p={issue.priority} />
@@ -27,8 +28,10 @@ export function Card({ issue, selected, onSelect, me, root, draggable, onDragSta
       {ac.length > 0 && issue.status !== "closed" && (
         <div className="chk"><span className="bar"><i style={{ width: `${(done / ac.length) * 100}%` }} /></span>{done}/{ac.length} 验收项</div>
       )}
+      {(issue.status === "closed" ? issue.close_reason : progress || issue.notes) && <div className="card-progress"><b>{issue.status === "closed" ? "完成说明" : progress ? "最近进展" : "进展备注"}</b> {issue.status === "closed" ? issue.close_reason : progress || issue.notes}</div>}
+      {ac.some((a) => !a.done) && <div className="card-next"><b>{issue.status === "closed" ? "待核对" : "下一验收项"}</b> {ac.find((a) => !a.done)?.text}</div>}
       {isReviewed(issue) ? (
-        <div className="rev-by">✓ 已审核 · {relTime(issue.updated_at)}</div>
+        <div className="rev-by">✓ 已复核 · {relTime(issue.updated_at)}</div>
       ) : who ? (
         <div className="who"><Avatar actor={who} />{who.name}{issue.status === "closed" ? " 完成" : ""}<span className="ago">{relTime(issue.status === "closed" ? issue.closed_at ?? issue.updated_at : issue.updated_at)}</span></div>
       ) : (
@@ -38,7 +41,7 @@ export function Card({ issue, selected, onSelect, me, root, draggable, onDragSta
   );
 }
 
-export function Board({ issues, selected, onSelect, me, rootOf, onMove, onAdd }: Common & { onMove: (id: string, to: Column) => void; onAdd: (col: Column) => void }) {
+export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove, onAdd }: Common & { onMove: (id: string, to: Column) => void; onAdd: (col: Column) => void }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<Column | null>(null);
   return (
@@ -57,7 +60,7 @@ export function Board({ issues, selected, onSelect, me, rootOf, onMove, onAdd }:
             </div>
             <div className="cards">
               {list.map((i) => (
-                <Card key={i.id} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable
+                <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable
                   onDragStart={(e) => { setDragId(i.id); e.dataTransfer.effectAllowed = "move"; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
                   onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); setDragId(null); setOver(null); }} />
               ))}
@@ -178,7 +181,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
             <Avatar actor={a.actor} online={a.online} size={30} />
             <div><div className="nm">{a.actor.name}</div><div className="sub">{a.actor.id}{a.lastActive ? ` · 最近写入 ${relTime(a.lastActive)}` : ""}</div></div>
             <span className={`st sm state ${a.sessions.length ? (working ? "prog" : "done") : a.online ? "done" : "open"}`}>
-              {a.sessions.length ? (working ? `${working} 个在跑` : `${a.sessions.length} 个会话 · 空闲`) : isHuman ? "你" : a.online ? "在线" : "离线"}
+              {a.sessions.length ? (working ? `${working} 个在跑` : `${a.sessions.filter((s) => s.state === "idle" && s.registered).length} 空闲 · ${a.sessions.filter((s) => s.state === "unknown" || !s.registered).length} 状态未知`) : isHuman ? "你" : a.online ? "在线" : "离线"}
             </span>
           </div>
           {!isHuman && (
@@ -194,12 +197,12 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
               {a.sessions.map((s) => {
                 const r = refs.get(s.session_id);
                 return (
-                <div key={s.session_id} className={`sess ${s.state}`} title={s.cwd || s.session_id}>
+                <div key={s.session_id} className={`sess ${s.state}`} title={`${s.cwd || s.session_id} · ${sessionEvidence(s)}`}>
                   <span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span>
                   <span className="proj-name">{s.herdr?.title || r?.title || s.project || <span className="muted">未知目录</span>}{r?.current_task && <button className="link mono small" style={{ marginLeft: 6, color: "var(--s-prog)" }} onClick={() => onSelect(r.current_task!)}>正在做 {r.current_task}</button>}</span>
-                  <span className="muted small">{s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}</span>
-                  <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`} title={s.registered ? "" : "钩子安装前启动的会话：只知道进程在，不知道忙不忙"}>{s.state === "working" ? "在跑" : s.state === "idle" ? "等你" : "未登记"}</span>
-                  <span className="mono muted small right">{s.started_at ? `开了 ${durSince(s.started_at)}` : `pid ${s.agent_pid ?? "?"}`}{s.prompts ? ` · ${s.prompts} 轮` : ""}</span>
+                  <span className="muted small">{s.source_kind === "unknown" ? "来源未知" : s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}</span>
+                  <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`} title={s.registered ? "" : "钩子安装前启动的会话：只知道进程在，不知道忙不忙"}>{sessionStatus(s)}</span>
+                  <span className="mono muted small right" title={sessionEvidence(s)}>{s.last_at ? `最近活动 ${durSince(s.last_at)}前 · ` : "无活动上报 · "}{s.started_at ? `开了 ${durSince(s.started_at)}` : `pid ${s.agent_pid ?? "?"}`}{s.prompts ? ` · ${s.prompts} 轮` : ""}</span>
                   <span style={{ display: "inline-flex", gap: 4 }}>
                     <button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到这个会话所在的软件/标签">打开</button>
                     {s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && (

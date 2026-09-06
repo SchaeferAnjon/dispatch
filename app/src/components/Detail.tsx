@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import type { Api } from "../api";
-import { actorOf, durSince, eventsFrom, fmtTime, isReviewed, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
+import { actorOf, durSince, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
 import type { Comment, HistoryEntry, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
 
-interface Props { id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
+interface Props { onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
 
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
-export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
+export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
   const [issue, setIssue] = useState<Issue | null>(initial);
   const [comments, setComments] = useState<Comment[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -78,7 +78,7 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
   const st = statusLabel(issue);
   const ac = parseAcceptance(issue.acceptance_criteria);
   const events = eventsFrom(history, comments, audit);
-  const reviewed = isReviewed(issue);
+
   const proj = projectOf(issue);
   const related = pits.filter((p) => p.task === id || (proj && p.project === proj));
 
@@ -106,10 +106,9 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
           <span className="k">状态</span>
           <span className="v">
             <span className={`st sm ${st.cls}`}>{st.text}</span>
-            <select value={reviewed ? "reviewed" : issue.status} disabled={busy} onChange={(e) => {
+            <select value={issue.status} disabled={busy} onChange={(e) => {
               const v = e.target.value;
               if (v === "closed") { setClosing(true); return; }
-              if (v === "reviewed") return act("已标记审核通过", async () => { if (issue.status !== "closed") await api.close(id, reason || "审核通过"); await api.labels(id, ["reviewed"], []); });
               if (issue.status === "closed") return act("已重新打开", async () => { await api.reopen(id); if (v !== "open") await api.setStatus(id, v); });
               return act("状态已改", () => api.setStatus(id, v));
             }}>
@@ -118,7 +117,6 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
               <option value="blocked">阻塞</option>
               <option value="deferred">搁置</option>
               <option value="closed">已完成</option>
-              <option value="reviewed">已审核</option>
             </select>
           </span>
           <span className="k">负责</span>
@@ -142,17 +140,27 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
 
         <div className="actions">
           {issue.status !== "closed" && !closing && <button className="btn sm" disabled={busy} onClick={() => setClosing(true)}>标记完成</button>}
-          {issue.status === "closed" && !reviewed && <button className="btn primary ok sm" disabled={busy} onClick={() => act("审核通过", () => api.labels(id, ["reviewed"], []))}>✓ 审核通过</button>}
           {issue.status === "closed" && <button className="btn sm" disabled={busy} onClick={() => act("已重新打开", () => api.reopen(id))}>重新打开</button>}
-          {reviewed && <button className="btn ghost sm" disabled={busy} onClick={() => act("已撤销审核", () => api.labels(id, [], ["reviewed"]))}>撤销审核</button>}
           {closing && (
             <div className="reason">
-              <input autoFocus placeholder="完成说明（写给审核的人）" value={reason} onChange={(e) => setReason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && reason.trim()) { setClosing(false); act("已完成", () => api.close(id, reason.trim())); } if (e.key === "Escape") setClosing(false); }} />
+              <input autoFocus placeholder="完成说明（交付内容与验证结果）" value={reason} onChange={(e) => setReason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && reason.trim()) { setClosing(false); act("已完成", () => api.close(id, reason.trim())); } if (e.key === "Escape") setClosing(false); }} />
               <button className="btn primary sm" disabled={!reason.trim() || busy} onClick={() => { setClosing(false); act("已完成", () => api.close(id, reason.trim())); }}>完成</button>
               <button className="btn ghost sm" onClick={() => setClosing(false)}>取消</button>
             </div>
           )}
         </div>
+
+        {issue.status === "closed" && <section className="sec review-evidence">
+          <h4>交付与验证 <span className="muted">{isReviewed(issue) ? "已记录复核通过" : needsReview(issue) ? "等待 Agent 复核" : "已完成 · 无需你点击审核"}</span></h4>
+          <p className="review-gap">{ac.length ? `${ac.filter((a) => a.done).length}/${ac.length} 项已勾选 · ${ac.filter((a) => !a.done).length} 项仍待核对` : "尚未填写验收标准"}</p>
+          {ac.some((a) => !a.done) && <details open><summary>待核对的验收项</summary><ul>{ac.filter((a) => !a.done).map((a, n) => <li key={n}>{a.text}</li>)}</ul></details>}
+          <details><summary>查看记录依据 · {comments.length} 条进展 / 留言 · {refs.length} 个关联会话</summary>
+            <p className="muted small">以下是原始记录，测试结果需要结合完成说明和会话核对。</p>
+            {comments.length ? [...comments].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 3).map((c) => <div key={c.id} className="evidence-note"><b>{c.author} · {fmtTime(c.created_at)}</b><Markdown src={c.text} className="compact" /></div>) : <p>没有进展记录</p>}
+            {refs.map((r) => <button key={r.session_id} className="btn sm" onClick={() => onOpenSession(r.session_id)}>查看会话 · {r.project || r.session_id.slice(0, 8)}</button>)}
+          </details>
+          {!issue.close_reason && <p className="review-gap">缺少完成说明，尚无法判断交付内容与验证结果。</p>}
+        </section>}
 
         {issue.status === "closed" && issue.close_reason && <div className="sec">
           <h4>完成说明</h4>
@@ -213,7 +221,8 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
                       <div>{r.project || r.cwd || "（未知目录）"} <span className="muted">· {r.mentions} 次提到</span>{l ? <span className="muted"> · {l.source_app}{l.state === "working" ? " · 在跑" : " · 开着"}</span> : null}</div>
                       <div className="l2">{r.session_id} · {r.last_at ? `最近 ${durSince(r.last_at)}前` : ""}</div>
                     </div>
-                    <button className="copy-btn" onClick={() => copyResume(r.resume_cmd)} title={r.resume_cmd}>{l ? "已在跑 · 复制" : "复制恢复命令"}</button>
+                    <button className="btn sm" onClick={() => onOpenSession(r.session_id)}>查看记录</button>
+                    <button className="copy-btn" onClick={() => copyResume(r.resume_cmd)} title={r.resume_cmd}>{"复制恢复命令"}</button>
                   </div>
                 );
               })}

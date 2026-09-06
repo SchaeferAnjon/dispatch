@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
-import { actorOf, projectColor, projectOf, relTime, statusLabel } from "../derive";
+import { needsReview, actorOf, projectColor, projectOf, relTime, statusLabel } from "../derive";
 import type { Folder, Issue } from "../types";
 import { Avatar, Pri } from "./ui";
 
-interface Props { api: Api; me: string; issues: Issue[]; onSelect: (id: string) => void; onBoard: (project: string) => void; onFolder: () => void }
+interface Props { selectedProject: string | null; onProjectChange: (value: string) => void; api: Api; me: string; issues: Issue[]; onSelect: (id: string) => void; onBoard: (project: string) => void; onFolder: (cwd: string) => void }
 
 const AGENT_ORDER = ["claude-code", "codex", "pi", "zcode", "qoder", "qoder-ide"];
 
 // A project is a label on the board; a folder is where the work happened.
 // This view is the label side: tasks by status, who worked on them, and the
 // folders whose name matches.
-export function ProjectsView({ api, me, issues, onSelect, onBoard, onFolder }: Props) {
+export function ProjectsView({ selectedProject, onProjectChange, api, me, issues, onSelect, onBoard, onFolder }: Props) {
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [sel, setSel] = useState<string | null>(null);
+  const sel = selectedProject;
+  const setSel = onProjectChange;
   useEffect(() => { let alive = true; api.folders().then((f) => { if (alive) setFolders(f); }).catch(() => {}); return () => { alive = false; }; }, [api]);
 
   const projects = useMemo(() => {
@@ -22,7 +23,7 @@ export function ProjectsView({ api, me, issues, onSelect, onBoard, onFolder }: P
     return [...m.entries()].map(([name, list]) => {
       const open = list.filter((i) => i.status !== "closed").length;
       const prog = list.filter((i) => i.status === "in_progress").length;
-      const review = list.filter((i) => i.status === "closed" && !(i.labels ?? []).includes("reviewed")).length;
+      const review = list.filter(needsReview).length;
       const done = list.filter((i) => i.status === "closed").length;
       const last = list.reduce((a, i) => (i.updated_at > a ? i.updated_at : a), "");
       const agents = new Map<string, number>();
@@ -30,14 +31,14 @@ export function ProjectsView({ api, me, issues, onSelect, onBoard, onFolder }: P
       return { name, list, open, prog, review, done, last, agents };
     }).sort((a, b) => (a.name === "" ? 1 : b.name === "" ? -1 : b.last.localeCompare(a.last)));
   }, [issues, me]);
-  useEffect(() => { if (!sel && projects[0]) setSel(projects[0].name); }, [projects, sel]);
+  useEffect(() => { if (sel === null && projects[0]) setSel(projects[0].name); }, [projects, sel]);
   const cur = projects.find((p) => p.name === sel) ?? null;
   const curFolders = useMemo(() => (cur ? folders.filter((f) => f.name.toLowerCase() === cur.name.toLowerCase() || f.tasks.some((t) => cur.list.some((i) => i.id === t))) : []), [cur, folders]);
   const groups: { key: string; label: string; cls: string; items: Issue[] }[] = cur ? [
     { key: "prog", label: "进行中", cls: "prog", items: cur.list.filter((i) => i.status === "in_progress") },
     { key: "todo", label: "待办", cls: "open", items: cur.list.filter((i) => i.status === "open" || i.status === "blocked" || i.status === "deferred") },
-    { key: "review", label: "已完成 · 待审", cls: "done", items: cur.list.filter((i) => i.status === "closed" && !(i.labels ?? []).includes("reviewed")) },
-    { key: "rev", label: "已审核", cls: "rev", items: cur.list.filter((i) => i.status === "closed" && (i.labels ?? []).includes("reviewed")) },
+    { key: "review", label: "已完成", cls: "done", items: cur.list.filter((i) => i.status === "closed" && !(i.labels ?? []).includes("reviewed")) },
+    { key: "rev", label: "已复核", cls: "rev", items: cur.list.filter((i) => i.status === "closed" && (i.labels ?? []).includes("reviewed")) },
   ] : [];
 
   return (
@@ -50,7 +51,7 @@ export function ProjectsView({ api, me, issues, onSelect, onBoard, onFolder }: P
               <div className="l1"><span className="proj" style={{ background: projectColor(p.name) }} /><span className="t">{p.name || "未分项目"}</span><span className="ago mono">{p.last ? relTime(p.last) : ""}</span></div>
               <div className="l2">
                 {p.prog > 0 && <span className="st sm prog">{p.prog} 在做</span>}
-                {p.review > 0 && <span className="st sm done">{p.review} 待审</span>}
+                {p.review > 0 && <span className="st sm done">{p.review} 待 Agent 复核</span>}
                 <span className="muted">{p.open} 未完成 · {p.done} 已完成</span>
               </div>
               {p.agents.size > 0 && <div className="l3">{AGENT_ORDER.filter((a) => p.agents.has(a)).map((a) => { const ac = actorOf(a, me)!; return <span key={a} className="ag"><span className={`av ${ac.kind}`} style={{ width: 14, height: 14, fontSize: 7 }}>{ac.glyph}</span>{p.agents.get(a)}</span>; })}</div>}
@@ -72,7 +73,7 @@ export function ProjectsView({ api, me, issues, onSelect, onBoard, onFolder }: P
             </div>
             <div className="sess-meta kv">
               <b>参与的 Agent</b><span>{cur.agents.size ? AGENT_ORDER.filter((a) => cur.agents.has(a)).map((a) => `${actorOf(a, me)!.name} ${cur.agents.get(a)} 项`).join(" · ") : "—"}</span>
-              <b>对应文件夹</b><span className="task-links">{curFolders.length ? curFolders.map((f) => <button key={f.cwd} className="chip" onClick={onFolder} title={f.cwd}><span className="mono">{f.cwd.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted">{f.sessions} 会话</span></button>) : <span className="muted">没有同名目录的会话记录</span>}</span>
+              <b>对应文件夹</b><span className="task-links">{curFolders.length ? curFolders.map((f) => <button key={f.cwd} className="chip" onClick={() => onFolder(f.cwd)} title={f.cwd}><span className="mono">{f.cwd.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted">{f.sessions} 会话</span></button>) : <span className="muted">没有同名目录的会话记录</span>}</span>
             </div>
             <div className="sess-body">
               {groups.filter((g) => g.items.length).map((g) => (
@@ -81,7 +82,7 @@ export function ProjectsView({ api, me, issues, onSelect, onBoard, onFolder }: P
                   {g.items.map((i) => {
                     const a = actorOf(i.assignee, me); const st = statusLabel(i);
                     return (
-                      <div key={i.id} className="proj-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
+                      <div key={i.id} className="proj-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i.id); } }}>
                         <Pri p={i.priority} />
                         <span className="t">{i.title}</span>
                         <span className="mono muted small">{i.id}</span>

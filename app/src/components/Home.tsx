@@ -1,3 +1,4 @@
+import { sessionStatus, sessionEvidence } from "../derive";
 import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import type { AgentPresence } from "../derive";
@@ -95,8 +96,8 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
     <div className="home">
       <div className="stats">
         <button className="stat" onClick={() => onView("agents")}><b>{counts.working}</b><span>在跑</span></button>
-        <button className="stat warn" onClick={() => onInbox("waiting")}><b>{counts.waiting}</b><span>会话已空闲</span></button>
-        <button className="stat" onClick={() => onInbox("review")}><b>{counts.review}</b><span>待你审核</span></button>
+        <button className="stat warn" onClick={() => onInbox("waiting")}><b>{counts.waiting}</b><span>需确认 / 失败</span></button>
+        <button className="stat" onClick={() => onInbox("review")}><b>{counts.review}</b><span>Agent 复核</span></button>
         <button className="stat" onClick={() => onInbox("blocked")}><b>{counts.blocked}</b><span>被卡住</span></button>
         <span className="spacer" />
         <button className="btn sm" onClick={() => onView("board")}>看板 →</button>
@@ -133,7 +134,7 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
               {items.map(({ issue: i, session: s, last }) => {
                 const ac = parseAcceptance(i.acceptance_criteria);
                 const done = ac.filter((x) => x.done).length;
-                const st = s ? (s.state === "working" ? { text: "在跑", cls: "prog" } : s.state === "idle" ? { text: "空闲", cls: "done" } : { text: "开着", cls: "open" }) : { text: "没有会话在跑", cls: "open" };
+                const st = s ? (s.state === "working" ? { text: sessionStatus(s), cls: "prog" } : s.state === "idle" ? { text: sessionStatus(s), cls: "done" } : { text: "状态未知", cls: "open" }) : { text: "未关联运行状态", cls: "open" };
                 return (
                   <div key={i.id} className="now-card opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
                     <div className="l1">
@@ -149,7 +150,7 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
                     </div>
                     {s && (
                       <div className="sess-line">
-                        <span className="muted small">{s.source_app}{s.herdr?.title ? ` · ${s.herdr.title}` : ""}{s.last_at ? ` · 最近活动 ${durSince(s.last_at)}前` : ""}</span>
+                        <span className="muted small" title={sessionEvidence(s)}>{s.source_kind === "unknown" ? "来源未知" : s.source_app}{s.herdr?.title ? ` · ${s.herdr.title}` : ""}{s.last_at ? ` · 最近活动 ${durSince(s.last_at)}前` : ""}</span>
                         <button className="copy-btn" onClick={(e) => { e.stopPropagation(); onFocus(s.session_id); }}>打开会话</button>
                       </div>
                     )}
@@ -160,9 +161,9 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
                 <div className="idle-sess">
                   {idleSessions.map((s) => (
                     <div key={s.session_id} className="idle-row">
-                      <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{s.state === "working" ? "在跑" : s.state === "idle" ? "空闲" : "未登记"}</span>
+                      <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{sessionStatus(s)}</span>
                       <span className="t">{s.herdr?.title || s.title || s.project || s.cwd || "（未知目录）"}</span>
-                      <span className="muted small">{s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>} · 没挂任务</span>
+                      <span className="muted small" title={sessionEvidence(s)}>{s.source_kind === "unknown" ? "来源未知" : s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>} · 没挂任务</span>
                       <button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button>
                     </div>
                   ))}
