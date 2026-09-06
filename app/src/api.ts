@@ -61,7 +61,23 @@ export interface Api {
 }
 
 export async function copyFallback(text: string) {
-  await navigator.clipboard.writeText(text);
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
+  } catch { /* HTTP mobile pages and embedded browsers may deny this API. */ }
+  const focused = document.activeElement as HTMLElement | null;
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.readOnly = true;
+  field.style.cssText = "position:fixed;left:0;top:0;opacity:0;font-size:16px";
+  document.body.appendChild(field);
+  try {
+    field.select();
+    field.setSelectionRange(0, text.length);
+    if (!document.execCommand("copy")) throw new Error("浏览器未允许复制，请显示内容后长按复制");
+  } finally {
+    field.remove();
+    focused?.focus({ preventScroll: true });
+  }
 }
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

@@ -58,6 +58,7 @@ export function FactsView({ api, hosts, onDone, onError }: Props) {
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [mobilePanel, setMobilePanel] = useState<"docs" | "keys">("docs");
   const blocked = hostReason(hosts, host);
 
   const meta = docs.find((d) => d.key === selected);
@@ -87,13 +88,14 @@ export function FactsView({ api, hosts, onDone, onError }: Props) {
   return <div className="instruction-center">
     <div className="instruction-top"><HostPicker hosts={hosts} value={host} onChange={(h) => { if (!busy) setHost(h); }} /><span className="spacer" /><button className="btn sm" disabled={busy} onClick={() => { void loadDocs(); void load(); }}>重新读取</button></div>
     {blocked || error ? <div className="err">{blocked || error}</div> : null}
-    <div className="instruction-grid facts-grid">
-      <aside className="instruction-docs"><h3>文档 <span className="muted">{docs.length}</span></h3>
-        {docs.map((d) => <button key={d.key} className={selected === d.key ? "on" : ""} disabled={busy || draft !== null} onClick={() => setSelected(d.key)}><b>{d.name}</b><span>{d.exists ? d.hint : "尚未创建"}</span></button>)}
-        <p className="small muted">项目按板上的 project 标签列出，文档＝该项目目录的 <code>AGENTS.md</code>；新项目开过会话后会自动出现。</p>
+    <div className="facts-mobile-tabs views" role="tablist" aria-label="常用信息内容"><button role="tab" aria-selected={mobilePanel === "docs"} onClick={() => setMobilePanel("docs")}>文档</button><button role="tab" aria-selected={mobilePanel === "keys"} onClick={() => setMobilePanel("keys")}>密钥</button></div>
+    <div className={`instruction-grid facts-grid mobile-${mobilePanel}`}>
+      <aside className="instruction-docs facts-sidebar"><h3 className="facts-doc-label">文档 <span className="muted">{docs.length}</span></h3>
+        {docs.map((d) => <button key={d.key} className={`facts-doc-link${selected === d.key ? " on" : ""}`} disabled={busy || draft !== null} onClick={() => setSelected(d.key)}><b>{d.name}</b><span>{d.exists ? d.hint : "尚未创建"}</span></button>)}
+        <p className="small muted facts-doc-hint">选择项目，查看它的 <code>AGENTS.md</code>。</p>
         <div className="facts-keys">
-          <h3>密钥 <span className="muted">dispatch env</span></h3>
-          <p className="small muted">这台机器的 Key（<code>~/.config/dispatch/env</code>）。文档里只写名字和用途，值在这里改；Agent 用 <code>dispatch env get 名</code> 取。</p>
+          <h3>密钥</h3>
+          <p className="small muted">保存在当前机器。可按名称或用途查找。</p>
           <EnvKeys api={api} host={host} blocked={blocked} onDone={onDone} onError={onError} compact />
         </div>
       </aside>
