@@ -30,9 +30,13 @@ npm run tauri build
 ```sh
 dispatch rules inspect --json
 dispatch rules optimize --path ~/.codex/AGENTS.md --model gpt-6-astra --json
+dispatch facts show -P relecture      # 常用信息：服务器/域名/数据库/API 名字，按项目分节，prime 自动注入
+dispatch facts sections --json
 dispatch task trash TASK_ID --json
 dispatch task restore TASK_ID --json
 ```
+
+「常用信息」页签编辑 `~/.agents/rules/FACTS.md`：`## 通用` 每个会话注入，`## 项目名` 只注入该项目的会话；密钥值仍只进 `dispatch env`。
 
 `optimize` 只返回建议和差异；不会立即修改文档。界面提供编辑、检查、应用和恢复步骤。模型名只影响本地检查配置，**不会调用该模型**；“复制深度审查指令”可将所选上下文交给用户自己的 Agent。
 
