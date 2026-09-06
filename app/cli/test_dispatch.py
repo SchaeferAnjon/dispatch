@@ -162,3 +162,12 @@ class EditGuard(unittest.TestCase):
         self.assertEqual(g.files_of("Edit", {"file_path": "/a/b.ts"}), ["/a/b.ts"])
         self.assertEqual(g.files_of("apply_patch", {"input": "*** Begin Patch\n*** Update File: x/y.py\n@@\n*** Add File: z.md\n*** End Patch"}), ["x/y.py", "z.md"])
         self.assertEqual(g.files_of("Bash", {"command": "ls"}), [])
+
+
+class FrontmatterMultiline(unittest.TestCase):
+    def test_folded_and_indented_descriptions(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "SKILL.md"), "w").write("---\nname: x\ndescription: >\n  first line\n  second line\nlicense: MIT\n---\nbody")
+            self.assertEqual(dispatch.read_frontmatter(d)["description"], "first line second line")
+            open(os.path.join(d, "SKILL.md"), "w").write("---\nname: y\ndescription:\n  只有缩进的一行\n---\n")
+            self.assertEqual(dispatch.read_frontmatter(d)["description"], "只有缩进的一行")

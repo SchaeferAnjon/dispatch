@@ -44,9 +44,8 @@ export function RulesView({ api, hosts, onDone, onError }: Props) {
   const stale = status?.targets.filter((t) => t.state !== "synced").length ?? 0;
 
   return (
-    <div className="rules-wrap" style={{ flexDirection: "column" }}>
+    <div className="rules-wrap">
       <HostPicker hosts={hosts} value={host} onChange={setHost} />
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
       <div className="rules-side">
         <h4>改一处，同步到</h4>
         {status?.targets.map((t) => {
@@ -83,7 +82,6 @@ export function RulesView({ api, hosts, onDone, onError }: Props) {
               onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); } if (e.key === "Escape") setDraft(null); }} />
           )}
         </div>
-      </div>
       </div>
     </div>
   );

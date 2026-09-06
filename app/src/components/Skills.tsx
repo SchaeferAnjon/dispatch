@@ -66,10 +66,9 @@ export function SkillsView({ api, hosts, onDone, onError }: Props) {
   };
 
   return (
-    <div className="sk-wrap" style={{ flexDirection: "column" }}>
+    <div className="sk-wrap">
       <HostPicker hosts={hosts} value={host} onChange={setHost} />
-      {blocked && <div className="empty">{blocked}</div>}
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      {blocked && <div className="empty" style={{ gridColumn: "1 / -1" }}>{blocked}</div>}
       <div className="sk-side">
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="搜技能名、描述…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
@@ -138,7 +137,6 @@ export function SkillsView({ api, hosts, onDone, onError }: Props) {
             </div>
           </>
         )}
-      </div>
       </div>
     </div>
   );

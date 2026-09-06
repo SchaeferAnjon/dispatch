@@ -619,10 +619,16 @@ def cmd_hosts(a):
     out(rows, a.json, text)
 
 
+def _only_theirs(rows):
+    """A host answers with its own sessions only; anything it merged from *other* hosts
+    (including ours, mirrored back) is dropped, otherwise two Macs amplify each other."""
+    return [r for r in rows or [] if isinstance(r, dict) and not r.get("remote") and r.get("host") in (None, "local")]
+
+
 def remote_sessions():
     out = []
     for h in hosts():
-        for s in _tag_host(remote_dispatch(h, ["sessions"], 20), h):
+        for s in _tag_host(_only_theirs(remote_dispatch(h, ["sessions", "--local"], 20)), h):
             s["remote"] = True
             out.append(s)
     return out
@@ -631,7 +637,7 @@ def remote_sessions():
 def remote_refs():
     out = []
     for h in hosts():
-        for r in _tag_host(remote_dispatch(h, ["list", "--cached", "--limit", "200"], 120), h):
+        for r in _tag_host(_only_theirs(remote_dispatch(h, ["list", "--cached", "--limit", "200", "--local"], 120)), h):
             r["remote"] = True
             r["resume_cmd"] = f"ssh -t {h['ssh']} {json.dumps(r.get('resume_cmd', ''))}"
             r["path"] = f"remote:{h['id']}:{r.get('path', '')}"
@@ -639,7 +645,7 @@ def remote_refs():
     return out
 
 
-def live_sessions():
+def live_sessions(local_only=False):
     table = ps_table()
     sessions = zcode_live(table)
     seen = set()
@@ -674,13 +680,14 @@ def live_sessions():
     for s in sessions:
         s.setdefault("host", "local")
         s.setdefault("host_name", local_host_name())
-    sessions.extend(remote_sessions())
+    if not local_only:
+        sessions.extend(remote_sessions())
     sessions.sort(key=lambda s: (s.get("state") != "working", -(s.get("last_at") or 0)))
     return sessions
 
 
 def cmd_sessions(a):
-    s = live_sessions()
+    s = live_sessions(local_only=getattr(a, "local", False))
 
     def text(s):
         if not s:
@@ -1907,10 +1914,19 @@ def read_frontmatter(skill_dir):
             txt = f.read(4000)
         if txt.startswith("---"):
             body = txt.split("---", 2)[1]
+            key = None
             for line in body.splitlines():
-                if ":" in line:
+                if line[:1] not in (" ", "\t") and ":" in line:
                     k, v = line.split(":", 1)
-                    fm[k.strip()] = v.strip().strip('"').strip("'")
+                    key = k.strip()
+                    v = v.strip()
+                    fm[key] = "" if v in (">", "|", ">-", "|-") else v.strip('"').strip("'")
+                elif key and line.strip():
+                    # continuation of a folded / literal / indented multi-line value
+                    fm[key] = (fm[key] + " " + line.strip()).strip()
+            for k in fm:
+                if isinstance(fm[k], str):
+                    fm[k] = re.sub(r"\s+", " ", fm[k]).strip('"').strip("'")
     except Exception:
         pass
     return fm
@@ -3176,7 +3192,7 @@ def main():
         sys.argv = [sys.argv[0]] + rest
     p = argparse.ArgumentParser(prog="dispatch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
+    s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
