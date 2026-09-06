@@ -463,7 +463,7 @@ def herdr_ok(d, what):
     return d.get("result") or {}
 
 
-def herdr_agents(host):
+def herdr_list_agents(host):
     return herdr_ok(herdr(host, ["agent", "list"]), "列会话").get("agents", [])
 
 
@@ -472,7 +472,7 @@ def resolve_agent(host, key):
     directory the task's sessions ran in)."""
     if PANE_RE.match(key):
         return key
-    agents = herdr_agents(host)
+    agents = herdr_list_agents(host)
     for a in agents:
         if a.get("name") == key or a.get("pane_id") == key or a.get("tab_id") == key:
             return a["pane_id"]
@@ -500,7 +500,7 @@ def cmd_agent(a):
     host = herdr_target_host(a.host)
     where = host["name"] if host else local_host_name()
     if a.op == "list":
-        rows = [dict(agent_row(x), host=where) for x in herdr_agents(host)]
+        rows = [dict(agent_row(x), host=where) for x in herdr_list_agents(host)]
 
         def text(rows):
             for r in rows:
@@ -598,6 +598,12 @@ def cmd_agent(a):
         info = herdr_ok(herdr(host, ["agent", "get", pane]), "查 Agent").get("agent", {})
         herdr_ok(herdr(host, ["tab", "close", info.get("tab_id", "")]), "关标签")
         return out({"closed": info.get("tab_id")}, a.json, lambda x: print(f"已关 {x['closed']}"))
+
+
+def cmd_serve(a):
+    import runpy
+    sys.argv = ["serve"] + (["url"] if a.what == "url" else [])
+    runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "serve.py"), run_name="__main__")
 
 
 def cmd_hosts(a):
@@ -3028,6 +3034,7 @@ def main():
     s.add_argument("--json", action="store_true")
     s.add_argument("--extra", default="", help="start: extra args for the agent CLI, as one quoted string (e.g. --extra '--effort high')")
     s.set_defaults(fn=cmd_agent)
+    s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link"); s.add_argument("what", nargs="?", choices=["run", "url"], default="run"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
