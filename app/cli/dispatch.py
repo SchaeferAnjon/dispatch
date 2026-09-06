@@ -2324,6 +2324,76 @@ RULE_TARGETS = {
 }
 
 
+# ---------------------------------------------------------------- facts: 常用信息（服务器/域名/数据库/API 名字、常说的话）
+# One markdown file next to GLOBAL.md. `## 通用` is for everyone; `## <项目名>` sections are
+# injected by `dispatch prime` only when the session runs inside that project. Secrets never go
+# here — they live in `dispatch env`; this file names them and says what they are for.
+FACTS_FILE = os.path.join(HOME, ".agents", "rules", "FACTS.md")
+FACTS_GENERAL = ("通用", "general", "common")
+
+
+def facts_text():
+    try:
+        return open(FACTS_FILE, encoding="utf-8").read()
+    except FileNotFoundError:
+        return ""
+
+
+def facts_sections(text):
+    """Split on `## ` headings → [(heading, body)]; text before the first heading is dropped."""
+    out, head, buf = [], None, []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if head is not None:
+                out.append((head, "\n".join(buf).strip()))
+            head, buf = line[3:].strip(), []
+        elif head is not None:
+            buf.append(line)
+    if head is not None:
+        out.append((head, "\n".join(buf).strip()))
+    return out
+
+
+def facts_key(heading):
+    """`relecture（ReLecture · 重讲）` → `relecture`: the first word, lowercased."""
+    return re.split(r"[\s（(·:：,，/]", heading.strip(), maxsplit=1)[0].lower()
+
+
+def facts_for(proj, text=None):
+    """Sections for a session: the general one(s) plus the one whose first word is the project."""
+    secs = facts_sections(facts_text() if text is None else text)
+    want = {k for k in FACTS_GENERAL}
+    if proj:
+        want.add(proj.lower())
+    return [(h, b) for h, b in secs if facts_key(h) in want and b]
+
+
+def cmd_facts(a):
+    if a.op == "path":
+        print(FACTS_FILE)
+    elif a.op == "open":
+        subprocess.run(["open", FACTS_FILE])
+    elif a.op == "write":
+        text = sys.stdin.read()
+        os.makedirs(os.path.dirname(FACTS_FILE), exist_ok=True)
+        open(FACTS_FILE, "w", encoding="utf-8").write(text if text.endswith("\n") else text + "\n")
+        print(f"已写入 {FACTS_FILE}（{len(text.splitlines())} 行）")
+    elif a.op == "sections":
+        rows = [{"heading": h, "key": facts_key(h), "lines": len(b.splitlines())} for h, b in facts_sections(facts_text())]
+        out(rows, a.json, lambda rs: [print(f"{r['key']:<16} {r['lines']:>4} 行  {r['heading']}") for r in rs] or print(f"\n{len(rs)} 节（{FACTS_FILE}）"))
+    else:  # show
+        if a.project:
+            picked = facts_for(a.project)
+            text = "\n\n".join(f"## {h}\n{b}" for h, b in picked)
+            if a.json:
+                print(json.dumps([{"heading": h, "body": b} for h, b in picked], ensure_ascii=False))
+            else:
+                print(text or f"FACTS.md 里没有 {a.project} 这一节（`dispatch facts sections` 看有哪些）")
+        else:
+            t = facts_text()
+            print(json.dumps({"path": FACTS_FILE, "content": t, "exists": os.path.exists(FACTS_FILE)}, ensure_ascii=False) if a.json else t, end="" if (t.endswith("\n") and not a.json) else "\n")
+
+
 def rules_text():
     try:
         return open(RULES_FILE, encoding="utf-8").read()
@@ -3010,6 +3080,13 @@ def cmd_prime(a):
         lines.append(f"## 知识库（{proj + ' + ' if proj else ''}通用；全部 {len(items)} 条，`dispatch wiki list`）")
         for it in pick:
             lines.append(wiki_line(it, 140))
+    # 常用信息：服务器/域名/数据库/API 名字、用户常重复说的话——通用节 + 本项目节
+    fx = facts_for(proj)
+    if fx:
+        lines.append("## 常用信息（全文 `dispatch facts show [-P 项目]`；改：Dispatch → 指令 → 常用信息）")
+        for h, b in fx:
+            lines.append(f"### {h}")
+            lines.append(b)
     env_line = env_summary_line()
     if env_line:
         lines.append(env_line)
@@ -3120,6 +3197,7 @@ def main():
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
+    s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections"]); s.add_argument("--project", "-P", default=""); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)

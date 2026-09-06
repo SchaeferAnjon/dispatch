@@ -4,6 +4,7 @@ import type { Host } from '../types';
 import { HostPicker, hostReason } from './HostPicker';
 import { Markdown } from './Markdown';
 import { LegacyRulesView } from './Rules';
+import { FactsView } from './Facts';
 
 interface Doc { path: string; real_path: string; name: string; agents: string[]; active: boolean; exists: boolean; content: string; hash: string; lines: number; bytes: number; references: string[]; referenced_by: string[]; managed: boolean; writable: boolean }
 interface Finding { kind: string; path: string; line: number; message: string; suggestion: string; other?: { path: string; line: number } }
@@ -16,7 +17,7 @@ type Props = { api: Api; hosts: Host[]; onDone: (m:string)=>void; onError:(m:str
 
 export function RulesView(props: Props) {
   const [mode, setMode] = useState('audit');
-  return <div className="instruction-page"><div className="views instruction-modes"><button className={mode === 'audit' ? 'on' : ''} onClick={() => setMode('audit')}>文档检查与优化</button><button className={mode === 'sync' ? 'on' : ''} onClick={() => setMode('sync')}>共同规则同步</button></div>{mode === 'sync' ? <LegacyRulesView {...props} /> : <Center {...props} />}</div>;
+  return <div className="instruction-page"><div className="views instruction-modes"><button className={mode === 'audit' ? 'on' : ''} onClick={() => setMode('audit')}>文档检查与优化</button><button className={mode === 'sync' ? 'on' : ''} onClick={() => setMode('sync')}>共同规则同步</button><button className={mode === 'facts' ? 'on' : ''} onClick={() => setMode('facts')}>常用信息</button></div>{mode === 'sync' ? <LegacyRulesView {...props} /> : mode === 'facts' ? <FactsView {...props} /> : <Center {...props} />}</div>;
 }
 
 function Center({api, hosts, onDone, onError}: Props) {

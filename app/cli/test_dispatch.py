@@ -262,3 +262,21 @@ class ServeSymlink(unittest.TestCase):
             with patch.object(dispatch,'__file__',link), patch.object(sys,'argv',['dispatch']), patch('runpy.run_path') as run:
                 dispatch.cmd_serve(SimpleNamespace(what='url'))
             run.assert_called_once_with(os.path.realpath(os.path.join(root,'cli','serve.py')),run_name='__main__')
+
+
+class FactsSections(unittest.TestCase):
+    DOC = "# 常用信息\n\n> 说明\n\n## 通用\n\n- 机器 A\n\n## relecture（ReLecture · 重讲）\n\n- 域名 relecture.app\n\n## ReadOut\n\n- 手机阅读\n\n## 空节\n"
+
+    def test_key_is_first_word_lowercased(self):
+        self.assertEqual(dispatch.facts_key("relecture（ReLecture · 重讲）"), "relecture")
+        self.assertEqual(dispatch.facts_key("ReadOut"), "readout")
+        self.assertEqual(dispatch.facts_key("通用"), "通用")
+
+    def test_project_gets_general_plus_its_own_section_only(self):
+        picked = dispatch.facts_for("Relecture", self.DOC)
+        self.assertEqual([h for h, _ in picked], ["通用", "relecture（ReLecture · 重讲）"])
+        self.assertIn("relecture.app", picked[1][1])
+
+    def test_no_project_gets_general_only_and_empty_sections_are_dropped(self):
+        self.assertEqual([h for h, _ in dispatch.facts_for("", self.DOC)], ["通用"])
+        self.assertEqual([h for h, _ in dispatch.facts_for("空节", self.DOC)], ["通用"])
