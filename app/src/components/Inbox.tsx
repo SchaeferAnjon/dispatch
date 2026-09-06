@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { parseAcceptance, sessionStatus, actorOf, durSince, NO_RESUME, projectOf, relTime } from "../derive";
+import { OpenSessionButton } from "./SessionActions";
 import { ConversationRows } from "./Workspace";
 import type { Activity, Issue, Session } from "../types";
 import { Avatar, Pri, ProjectTag } from "./ui";
@@ -34,6 +35,7 @@ export function InboxView({ onOpen, initialTab, items, me, onSelect, onResume, o
                   <div className="muted small">{a?.name} · {s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}{s.project ? ` · ${s.project}` : ""} · 最近活动 {durSince(s.last_at)}前{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
                 </div>
                 <button className="btn sm" onClick={() => s.session_id.startsWith('pid-') ? onFocus(s.session_id) : onOpen(s.session_id)}>查看并回复</button>
+                <OpenSessionButton session={s} />
                 {s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && <button className="copy-btn" onClick={() => onResume(s.agent, s.session_id, s.cwd)}>恢复命令</button>}
               </div>
             );

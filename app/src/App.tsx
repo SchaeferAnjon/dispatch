@@ -3,6 +3,7 @@ import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getApi, isTauri, isServed, type Api } from "./api";
 import { Detail } from "./components/Detail";
+import { NewSession, SessionActions } from "./components/SessionActions";
 import { NewTask } from "./components/NewTask";
 import { Sidebar, type Filters } from "./components/Sidebar";
 import { AgentsView, Board, TableView } from "./components/views";
@@ -29,6 +30,7 @@ const BOARD_VIEWS: View[] = ["board", "table"];
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
 
 export default function App() {
+  const [newSession, setNewSession] = useState(false);
   const [api, setApi] = useState<Api | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -318,7 +320,7 @@ export default function App() {
   };
 
   return (
-    <TaskActions api={api} onOpen={setSelected} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
+    <SessionActions api={api} notify={say}><TaskActions api={api} onOpen={setSelected} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
@@ -361,7 +363,7 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && <Workspace onPhone={isTauri ? async () => { if (!api) return; try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say("手机访问链接已复制，在同一 Tailscale 网络的手机浏览器打开"); } catch(e) { say(String(e), true); } } : undefined} rows={activityF} loaded={activity.updated_at > 0} error={activityError} unavailable={activity.unavailable_hosts} issues={issuesF} me={me} onOpen={openSession} onTask={setSelected} onInbox={() => { setView("inbox"); setInboxTab("unread"); }} onSessions={() => setView("sessions")} />}
+            {view === "home" && <Workspace onNew={() => setNewSession(true)} onPhone={isTauri ? async () => { if (!api) return; try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say("手机访问链接已复制，在同一 Tailscale 网络的手机浏览器打开"); } catch(e) { say(String(e), true); } } : undefined} rows={activityF} loaded={activity.updated_at > 0} error={activityError} unavailable={activity.unavailable_hosts} issues={issuesF} me={me} onOpen={openSession} onTask={setSelected} onInbox={() => { setView("inbox"); setInboxTab("unread"); }} onSessions={() => setView("sessions")} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
@@ -385,8 +387,9 @@ export default function App() {
 
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
+      {newSession && api && <NewSession api={api} hosts={hosts} initialHost={hostId} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => setNewSession(false)} onCreated={(sid, host) => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
-    </div></TaskActions>
+    </div></TaskActions></SessionActions>
   );
 }

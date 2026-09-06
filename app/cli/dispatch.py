@@ -1469,6 +1469,11 @@ def cmd_seen(a):
     out(acknowledge(DISPATCH_DIR, a.key, a.reply), a.json, lambda _: print("已读"))
 
 
+def cmd_session_control(a):
+    from session_control import command
+    command(sys.modules[__name__], a)
+
+
 def cmd_reply(a):
     from session_reply import command
     command(sys.modules[__name__], a)
@@ -3238,6 +3243,7 @@ def main():
     s = sub.add_parser("attachment", help="read a file linked in a conversation"); s.add_argument("key"); s.add_argument("ref"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply"); s.add_argument("key"); s.add_argument("reply"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
+    s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status"]); s.set_defaults(fn=cmd_session_control)
     s = sub.add_parser("reply", help="reply to an exact Agent session"); s.add_argument("op", choices=["status", "send"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)

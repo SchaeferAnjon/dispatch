@@ -1,12 +1,13 @@
 import { MediaProvider, AttachmentList } from "./Media";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { isServed, type Api } from "../api";
+import type { Api } from "../api";
 import { actorOf, durSince, fmtTime, projectOf, NO_RESUME, projectColor, relTime } from "../derive";
 import { lineDiff, withContext } from "../diff";
 import { canReadReply, activityLabel } from "../activity";
 import type { Activity, Issue, Session, SessionDetail, SessionRef } from "../types";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
+import { OpenSessionButton } from "./SessionActions";
 import { SessionReply } from "./SessionReply";
 
 interface Props { activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
@@ -83,7 +84,6 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
-  const focus = async (id: string) => { try { onDone(await api.focusSession(id)); } catch (e) { onError(String(e)); } };
 
   return (
     <MediaProvider api={api} session={detail?.meta}><div className={`sess-wrap${sel ? " has-selection" : ""}`}>
@@ -103,12 +103,12 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
             const l = liveOf(r.session_id);
             const active = activities.find(a => a.session_id === r.session_id);
             return (
-              <button key={r.session_id} className={`sess-item${sel === r.session_id ? " sel" : ""}`} onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
+              <div key={r.session_id} className={`sess-item${sel === r.session_id ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
                 <div className="l1"><Avatar actor={a} /><span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && <div className="l3 activity-text">{activityLabel(active)} · {active.activity}</div>}
                 {r.current_task && issues.some(i => i.id === r.current_task && i.status === "in_progress") && <div className="l3 mono">关联任务 {r.current_task}</div>}
-              </button>
+              </button><OpenSessionButton session={r} compact /></div>
             );
           })}
         </div>
@@ -131,10 +131,9 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
                   <div className="ttl">{m.title || "（无标题）"}</div>
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
-                {(l || NO_RESUME.has(m.agent)) && <button className="btn primary sm desktop-session-action" onClick={() => focus(m.session_id)} title={l?.herdr ? `Herdr ${l.herdr.tab_id}` : l?.source_app ?? "ZCode"}>{isServed ? "在电脑打开" : "打开原会话"}</button>}
+                <OpenSessionButton session={m} />
                 {!NO_RESUME.has(m.agent) && <button className="btn sm desktop-session-action" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
                 <details className="session-actions-menu"><summary aria-label="会话操作">⋯</summary><div>
-                  {(l || NO_RESUME.has(m.agent)) && <button className="btn sm" onClick={() => focus(m.session_id)}>{isServed ? '在电脑打开' : '打开原会话'}</button>}
                   {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)}>复制恢复命令</button>}
                 </div></details>
               </div>

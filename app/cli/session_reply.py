@@ -100,7 +100,7 @@ def exact_ref(d, sid, agent):
     return dict(entry, path=path)
 
 
-def herdr_target(d, ref):
+def herdr_target(d, ref, require_idle=True):
     # Old presence records may point at a PID now running a newer conversation.
     records = []
     for name in os.listdir(d.SESS_DIR) if os.path.isdir(d.SESS_DIR) else []:
@@ -123,7 +123,7 @@ def herdr_target(d, ref):
         processes = r.get('result', {}).get('process_info', {}).get('foreground_processes', [])
         if not any(p.get('pid') == pid for p in processes):
             continue
-        if pane.get('agent_status') not in ('idle', 'done'):
+        if require_idle and pane.get('agent_status') not in ('idle', 'done'):
             reason = '原会话正在等待权限确认，请打开电脑屏幕处理。' if pane.get('agent_status') == 'blocked' else 'Agent 正在执行，请等本轮结束后发送。'
             raise Rejected(reason)
         return pane
@@ -132,6 +132,12 @@ def herdr_target(d, ref):
 
 def target(d, ref):
     if ref['agent'] == 'codex' and os.path.exists(os.path.join(d.HOME, '.codex', 'ipc', 'ipc.sock')):
+        try:
+            herdr_target(d, ref, require_idle=False)
+        except Rejected:
+            pass
+        else:
+            return {'kind': 'herdr', 'pane': herdr_target(d, ref), 'label': '回复到电脑上的原 Codex 会话'}
         with closing(DesktopIPC(d.HOME)) as ipc:
             ipc.owner(ref['session_id'])
         return {'kind': 'codex-desktop', 'label': '回复到原 Codex 会话'}
