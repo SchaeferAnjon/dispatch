@@ -16,6 +16,7 @@ import { FoldersView } from "./components/Folders";
 import { ProjectsView } from "./components/Projects";
 import { Tour } from "./components/Guide";
 import { StatsView } from "./components/Stats";
+import { MobileNav } from "./components/MobileNav";
 import { agentsFrom, columnOf, isReviewed, projectOf, rootsOf } from "./derive";
 import type { Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
@@ -303,6 +304,7 @@ export default function App() {
         )}
       </div>
 
+      <MobileNav view={view} setView={(v) => { setView(v); setSelected(null); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}

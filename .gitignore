@@ -1,10 +1,12 @@
-# node / vite
-app/node_modules/
-app/dist/
-# rust / tauri
-app/src-tauri/target/
-app/src-tauri/gen/schemas/
-# tooling noise
-.playwright-mcp/
 .DS_Store
+.playwright-mcp/
+.playwright-mcp/
+phone-home.png
 *.log
+# node / vite
+# rust / tauri
+# tooling noise
+app/dist/
+app/node_modules/
+app/src-tauri/gen/schemas/
+app/src-tauri/target/

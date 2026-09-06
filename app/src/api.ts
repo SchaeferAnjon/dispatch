@@ -2,6 +2,9 @@ import type { Comment, Folder, GraphData, HistoryEntry, Host, Info, Issue, Memor
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
+export interface AgentStartInput { kind: string; host?: string; cwd?: string; model?: string; task?: string; prompt?: string; label?: string; timeout?: number }
+export interface AgentStartResult { host: string; pane_id: string; tab_id: string; name: string; kind: string; actor: string; cwd: string; status: string; task: string; output: string; warning?: string }
+
 export interface Api {
   info(): Promise<Info>;
   list(): Promise<Issue[]>;
@@ -47,6 +50,7 @@ export interface Api {
   memories(): Promise<Memory[]>;
   remember(key: string, value: string): Promise<void>;
   forget(key: string): Promise<void>;
+  agentStart(input: AgentStartInput): Promise<AgentStartResult | null>;
   copy(text: string): Promise<void>;
   notify(title: string, body: string): Promise<void>;
   tray(title: string, tooltip: string): Promise<void>;
@@ -58,6 +62,8 @@ export async function copyFallback(text: string) {
 }
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+// Set by cli/serve.py when the built page is served over HTTP (phone / browser).
+export const isServed = typeof window !== "undefined" && Boolean((window as unknown as { __DISPATCH_SERVE__?: number }).__DISPATCH_SERVE__);
 
 function parse<T>(s: string, fallback: T): T {
   const t = s.trim();
@@ -69,10 +75,11 @@ function parse<T>(s: string, fallback: T): T {
   }
 }
 
-async function tauriApi(): Promise<Api> {
-  const { invoke } = await import("@tauri-apps/api/core");
-  const { listen } = await import("@tauri-apps/api/event");
-  const call = (cmd: string, args?: Record<string, unknown>) => invoke<string>(cmd, args);
+type Call = (cmd: string, args?: Record<string, unknown>) => Promise<string>;
+type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+
+// Everything that is "run a command, parse its JSON" is the same on every transport.
+function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "notify" | "tray" | "onChange"> {
   return {
     info: () => invoke<Info>("bd_info"),
     list: async () => parse<Issue[]>(await call("bd_list"), []),
@@ -121,6 +128,16 @@ async function tauriApi(): Promise<Api> {
     memories: () => invoke<Memory[]>("memories_list"),
     remember: async (key, value) => void (await call("memory_set", { key, value })),
     forget: async (key) => void (await call("memory_forget", { key })),
+    agentStart: async (input) => parse<AgentStartResult | null>(await call("agent_start", { ...input }), null),
+  };
+}
+
+async function tauriApi(): Promise<Api> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const { listen } = await import("@tauri-apps/api/event");
+  const call: Call = (cmd, args) => invoke<string>(cmd, args);
+  return {
+    ...coreApi(call, invoke),
     copy: async (text) => {
       try {
         const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
@@ -140,8 +157,31 @@ async function tauriApi(): Promise<Api> {
   };
 }
 
+// Served by cli/serve.py: one POST per command, the cookie set by /?token=… carries auth.
+function httpApi(): Api {
+  const post = async (cmd: string, args?: Record<string, unknown>) => {
+    const r = await fetch("/api/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd, args: args ?? {} }), credentials: "same-origin" });
+    const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    if (!r.ok || body.error) throw new Error(body.error ?? `HTTP ${r.status}`);
+    return body as { result?: string; value?: unknown };
+  };
+  const call: Call = async (cmd, args) => { const b = await post(cmd, args); return typeof b.result === "string" ? b.result : JSON.stringify(b.value ?? ""); };
+  const invoke: Invoke = async <T,>(cmd: string, args?: Record<string, unknown>) => { const b = await post(cmd, args); return (b.value !== undefined ? b.value : b.result) as T; };
+  return {
+    ...coreApi(call, invoke),
+    copy: copyFallback,
+    notify: async (title, body) => {
+      if (!("Notification" in window)) return;
+      if (Notification.permission === "default") await Notification.requestPermission().catch(() => {});
+      if (Notification.permission === "granted") new Notification(title, { body });
+    },
+    tray: async () => {},
+    onChange: async () => () => {},
+  };
+}
+
 let apiPromise: Promise<Api> | null = null;
 export function getApi(): Promise<Api> {
-  if (!apiPromise) apiPromise = isTauri ? tauriApi() : Promise.resolve(fixtureApi());
+  if (!apiPromise) apiPromise = isTauri ? tauriApi() : Promise.resolve(isServed ? httpApi() : fixtureApi());
   return apiPromise;
 }
