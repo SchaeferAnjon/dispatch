@@ -52,3 +52,4 @@ dispatch quota                               # 各 Agent 额度，快到顶换 A
 
 ## Dispatch 应用
 源码 `~/Projects/kanban/app`（Tauri 2 + React；Rust 只包 `bd --json` 和 `dispatch` CLI，逻辑都在 `app/cli/dispatch.py`）。改完跑 `dispatch-update`（构建 → 同步到 /Applications → 重开）。会话检测靠 hook `~/tasks/.dispatch/presence.py`，不要删那个目录。`Dolt server unreachable` → `bd dolt start`（LaunchAgent 每 2 分钟自动拉起）。旧嵌入式数据在 `~/tasks/.beads.embedded`。
+- 跨机器同步：mini 是枢纽，它的 Dolt 由 `~/Library/LaunchAgents/dev.schaefer.dolt-server.plist` 直接跑（config.yaml 开了 remotesapi :3309；`bd dolt start` 不读 config.yaml，别用它起）。MacBook 每 2 分钟跑 `app/cli/board-sync.sh`（`CALL DOLT_PULL/DOLT_PUSH('--user','sync',…)`；密码在 `dispatch env` 和 beads-dolt LaunchAgent 环境里；`bd dolt push` 不带 --user，别用）。两边 `dolt.auto-commit: on`，`metadata.json` 的 project_id 必须一致。
