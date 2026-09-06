@@ -78,7 +78,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
       </div>
 
       <div className="sess-main">
-        {!sel && <div className="empty">左边选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
+        {!sel && <div className="empty">选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
         {sel && !detail && <div className="empty">{busy ? "读取对话记录…" : ""}</div>}
         {detail && (() => {
           const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id);

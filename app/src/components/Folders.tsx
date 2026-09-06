@@ -64,7 +64,7 @@ export function FoldersView({ api, me, issues, onOpenSession, onSelectTask, onDo
       </div>
 
       <div className="sess-main">
-        {!cur && <div className="empty">左边选一个目录。</div>}
+        {!cur && <div className="empty">选一个目录。</div>}
         {cur && (
           <>
             <div className="sess-head">

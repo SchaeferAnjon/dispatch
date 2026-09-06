@@ -665,3 +665,19 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
   .stats .tile,.stats>div{flex:1 1 40%;min-width:0}
   .quotas .qr{white-space:nowrap}
 }
+@media (max-width:760px){
+  .view{overflow-x:hidden}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stats>*{min-width:0}
+  .lanes{grid-template-columns:1fr}
+  .home{max-width:100%}
+  .recent-row{grid-template-columns:18px minmax(0,1fr) auto;gap:6px}
+  .recent-row .who,.recent-row .proj-tag{display:none}
+}
+@media (max-width:760px){
+  .lane,.now-card,.quotas{min-width:0;max-width:100%;overflow:hidden}
+  .quota{grid-template-columns:40px minmax(0,1fr) 36px;gap:6px}
+  .quota .bar{width:auto;min-width:0}
+  .quota .qr{display:none}
+  .now-card .last{overflow-wrap:anywhere}
+}
