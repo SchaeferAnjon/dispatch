@@ -906,14 +906,21 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .env-dialog input,.env-dialog textarea{width:100%;min-width:0}
 .env-dialog .foot{display:flex;justify-content:flex-end;gap:8px}
 .facts-sidebar{min-width:0}
+.facts-sidebar>.facts-keys-link{margin-bottom:18px}
+.facts-key-content{max-width:960px}
+.facts-key-content>header{margin-bottom:18px}
+.facts-key-content .env-search{max-width:560px}
+.facts-key-content .env-item{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:18px}
+.facts-key-content .env-item h4,.facts-key-content .env-note,.facts-key-content .env-value{grid-column:1}
+.facts-key-content .env-actions{grid-column:2;grid-row:1/4;align-self:center;margin:0}
+.facts-key-content .env-more[open]{flex-basis:100%}
 .facts-mobile-tabs{display:none}
 @media(max-width:760px){
   .facts-mobile-tabs{display:flex;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line);flex:none}
   .facts-mobile-tabs [aria-selected=true]{background:var(--panel-2);color:var(--ink);font-weight:600}
-  .facts-grid.mobile-docs .facts-keys{display:none}
-  .facts-grid.mobile-keys .facts-doc-label,.facts-grid.mobile-keys .facts-doc-link,.facts-grid.mobile-keys .facts-doc-hint,.facts-grid.mobile-keys>.instruction-detail{display:none}
-  .facts-grid.mobile-keys>.instruction-docs{max-height:none;flex:1;min-height:0;overflow:auto}
-  .facts-grid.mobile-keys .facts-keys{margin:0;padding:0;border-top:0}
+  .facts-sidebar>.facts-keys-link,.facts-grid.mobile-keys>.instruction-docs{display:none}
+  .facts-key-content .env-item{display:block}
+  .facts-key-content .env-actions{margin-top:6px}
   .env-actions>.btn,.env-more>summary{min-height:36px;padding:7px 10px}
   .env-dialog .row{grid-template-columns:1fr}
 }

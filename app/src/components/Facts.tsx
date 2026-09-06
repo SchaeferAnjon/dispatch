@@ -58,7 +58,8 @@ export function FactsView({ api, hosts, onDone, onError }: Props) {
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [mobilePanel, setMobilePanel] = useState<"docs" | "keys">("docs");
+  const [panel, setPanel] = useState<"docs" | "keys">("docs");
+  const [keysRevision, setKeysRevision] = useState(0);
   const blocked = hostReason(hosts, host);
 
   const meta = docs.find((d) => d.key === selected);
@@ -86,20 +87,21 @@ export function FactsView({ api, hosts, onDone, onError }: Props) {
   };
 
   return <div className="instruction-center">
-    <div className="instruction-top"><HostPicker hosts={hosts} value={host} onChange={(h) => { if (!busy) setHost(h); }} /><span className="spacer" /><button className="btn sm" disabled={busy} onClick={() => { void loadDocs(); void load(); }}>重新读取</button></div>
+    <div className="instruction-top"><HostPicker hosts={hosts} value={host} onChange={(h) => { if (!busy) setHost(h); }} /><span className="spacer" /><button className="btn sm" disabled={busy} onClick={() => { if (panel === "keys") setKeysRevision(n => n + 1); else { void loadDocs(); void load(); } }}>重新读取</button></div>
     {blocked || error ? <div className="err">{blocked || error}</div> : null}
-    <div className="facts-mobile-tabs views" role="tablist" aria-label="常用信息内容"><button role="tab" aria-selected={mobilePanel === "docs"} onClick={() => setMobilePanel("docs")}>文档</button><button role="tab" aria-selected={mobilePanel === "keys"} onClick={() => setMobilePanel("keys")}>密钥</button></div>
-    <div className={`instruction-grid facts-grid mobile-${mobilePanel}`}>
-      <aside className="instruction-docs facts-sidebar"><h3 className="facts-doc-label">文档 <span className="muted">{docs.length}</span></h3>
-        {docs.map((d) => <button key={d.key} className={`facts-doc-link${selected === d.key ? " on" : ""}`} disabled={busy || draft !== null} onClick={() => setSelected(d.key)}><b>{d.name}</b><span>{d.exists ? d.hint : "尚未创建"}</span></button>)}
+    <div className="facts-mobile-tabs views" role="tablist" aria-label="常用信息内容"><button role="tab" aria-selected={panel === "docs"} onClick={() => setPanel("docs")}>文档</button><button role="tab" aria-selected={panel === "keys"} onClick={() => setPanel("keys")}>密钥</button></div>
+    <div className={`instruction-grid facts-grid mobile-${panel}`}>
+      <aside className="instruction-docs facts-sidebar">
+        <button className={`facts-keys-link${panel === "keys" ? " on" : ""}`} onClick={() => setPanel("keys")}><b>密钥</b><span>查看、搜索与管理</span></button>
+        <h3 className="facts-doc-label">文档 <span className="muted">{docs.length}</span></h3>
+        {docs.map((d) => <button key={d.key} className={`facts-doc-link${panel === "docs" && selected === d.key ? " on" : ""}`} disabled={busy || draft !== null} onClick={() => { setSelected(d.key); setPanel("docs"); }}><b>{d.name}</b><span>{d.exists ? d.hint : "尚未创建"}</span></button>)}
         <p className="small muted facts-doc-hint">选择项目，查看它的 <code>AGENTS.md</code>。</p>
-        <div className="facts-keys">
-          <h3>密钥</h3>
-          <p className="small muted">保存在当前机器。可按名称或用途查找。</p>
-          <EnvKeys api={api} host={host} blocked={blocked} onDone={onDone} onError={onError} compact />
-        </div>
       </aside>
       <div className="instruction-detail">
+        {panel === "keys" ? <section className="facts-key-content" aria-label="密钥管理">
+          <header><h3>密钥</h3><p className="small muted">{hosts.find(h => h.id === host)?.name || "当前机器"} · 按名称或用途搜索，查看和修改都在这里。</p></header>
+          <EnvKeys key={keysRevision} api={api} host={host} blocked={blocked} onDone={onDone} onError={onError} compact />
+        </section> : <>
         <header><div><h3>{meta?.name || "常用信息"}</h3><div className="muted mono small">{doc ? short(doc.path) : "…"}{doc && !doc.exists ? " · 尚未创建" : ""}</div></div><span className="spacer" />
           {draft === null
             ? <button className="btn primary sm" disabled={busy || !doc || !meta} onClick={() => setDraft(doc?.content || (meta?.key === "通用" ? GENERAL_TEMPLATE : PROJECT_TEMPLATE(meta?.name || "")))}>编辑</button>
@@ -108,10 +110,11 @@ export function FactsView({ api, hosts, onDone, onError }: Props) {
         <p className="small muted">{meta?.key === "通用"
           ? <>跨项目通用的：机器、共用的云服务账号、各家 API 的用途、常说的话。每个会话开始由 <code>dispatch prime</code> 注入。</>
           : <>只写这个项目的事实：服务器、发版、数据库、本地开发。Agent 在该目录工作时自己会读 <code>AGENTS.md</code>，不占其他项目的上下文。文件在 git 里，改完记得 commit。</>}
-          密钥值不放文档里，用左栏的密钥列。</p>
+          密钥值不放文档里，点击左侧「密钥」管理。</p>
         {draft === null
           ? <div className="instruction-content facts-content">{doc?.content ? <Markdown src={doc.content} /> : <span className="muted">尚未创建，点「编辑」用模板开始。</span>}</div>
           : <textarea aria-label="常用信息草稿" className="instruction-editor" spellCheck={false} value={draft} onChange={(e) => setDraft(e.target.value)} />}
+        </>}
       </div>
     </div>
   </div>;
