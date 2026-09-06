@@ -10,7 +10,7 @@ export function durSince(epochSec: number): string {
   return `${Math.floor(h / 24)} 天`;
 }
 
-export type AgentKind = "claude" | "codex" | "zcode" | "qoder" | "cursor" | "human";
+export type AgentKind = "claude" | "codex" | "zcode" | "qoder" | "cursor" | "human" | "pi";
 export interface Actor { id: string; name: string; kind: AgentKind; glyph: string }
 
 const KNOWN: Record<string, Omit<Actor, "id">> = {
@@ -20,9 +20,10 @@ const KNOWN: Record<string, Omit<Actor, "id">> = {
   zcode: { name: "ZCode", kind: "zcode", glyph: "Z" },
   qoder: { name: "Qoder", kind: "qoder", glyph: "Q" },
   "qoder-ide": { name: "Qoder IDE", kind: "qoder", glyph: "Qi" },
+  pi: { name: "pi", kind: "pi", glyph: "π" },
   cursor: { name: "Cursor", kind: "cursor", glyph: "U" },
 };
-export const DEFAULT_AGENTS = ["claude-code", "codex", "zcode", "qoder", "qoder-ide"];
+export const DEFAULT_AGENTS = ["claude-code", "codex", "pi", "zcode", "qoder", "qoder-ide"];
 // Desktop-only agents: no CLI to resume from, the app has to be brought up instead.
 export const NO_RESUME = new Set(["zcode", "qoder", "qoder-ide"]);
 
@@ -153,7 +154,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     p.online = p.sessions.length > 0 || (p.actor.kind !== "human" && p.sessions.length === 0 && recentWrite && p.actor.kind === "cursor");
     p.current.sort((a, b) => a.priority - b.priority);
   }
-  const order: Record<AgentKind, number> = { claude: 0, codex: 1, zcode: 2, qoder: 3, human: 4, cursor: 5 };
+  const order: Record<AgentKind, number> = { claude: 0, codex: 1, pi: 2, zcode: 3, qoder: 4, human: 5, cursor: 6 };
   // The human is not an agent: only list them while they actually hold an in-progress task.
   return [...map.values()]
     .filter((p) => p.actor.kind !== "human" || p.current.length > 0)

@@ -1,6 +1,6 @@
 ---
 name: task-board
-description: Dispatch 中央任务板 + 知识库（Beads/bd，~/tasks/.beads；桌面端 Dispatch.app；CLI dispatch）。所有 Agent（Claude Code、Codex、ZCode、Qoder）和用户共用。当用户提到"任务板 / Dispatch / 我在干什么 / 认领 / 待办 / bd / 知识库 / 踩坑"，或你开始一段跨会话的工作、发现后续待办、需要交接、想查别人踩过的坑时用它。
+description: Dispatch 中央任务板 + 知识库（Beads/bd，~/tasks/.beads；桌面端 Dispatch.app；CLI dispatch）。所有 Agent（Claude Code、Codex、pi、ZCode）和用户共用。当用户提到"任务板 / Dispatch / 我在干什么 / 认领 / 待办 / bd / 知识库 / 踩坑"，或你开始一段跨会话的工作、发现后续待办、需要交接、想查别人踩过的坑时用它。
 ---
 
 # Dispatch：任务板 + 知识库
@@ -8,7 +8,7 @@ description: Dispatch 中央任务板 + 知识库（Beads/bd，~/tasks/.beads；
 一块板管所有项目，数据库 `~/tasks/.beads`（Dolt shared-server，127.0.0.1:3308）。`BEADS_DIR` 已在 fish / Claude / Codex 配置里指向它。用户看桌面端 Dispatch（`/Applications/Dispatch.app`，源码 `~/Projects/kanban`），Agent 用 CLI `dispatch`（`--json` 给机器读）。会话启动 hook 已注入 `dispatch prime`（身份 + 当前项目的任务 + 相关知识库），**不要再手动 `bd prime` / `bd list --all` 拉全板进上下文**。
 
 ## 身份
-`BEADS_ACTOR`：Claude Code=`claude-code`，Codex=`codex`，人=`schaefer`。ZCode 没有环境变量入口，每条写命令带 `--actor zcode`；Qoder 桌面版/CLI `--actor qoder`，IDE `--actor qoder-ide`，且要带 `BEADS_DIR=$HOME/tasks/.beads` 前缀。身份决定看板上"谁在干什么"，别用别人的。`bd where` 应显示 `~/tasks/.beads`，前缀 `task`。
+`BEADS_ACTOR`：Claude Code=`claude-code`，Codex=`codex`，pi=`pi`（扩展 `~/.pi/agent/extensions/dispatch.ts` 设置），人=`schaefer`。ZCode 没有环境变量入口，每条写命令带 `--actor zcode` 和 `BEADS_DIR=$HOME/tasks/.beads` 前缀。Qoder 已卸载。身份决定看板上"谁在干什么"，别用别人的。`bd where` 应显示 `~/tasks/.beads`，前缀 `task`。
 
 ## 流程（用户先随口描述，任务由你建）
 ```bash
@@ -58,7 +58,8 @@ dispatch quota                               # 各 Agent 额度；prime 里有�
 bd show <id> --json  /  bd ready --json  /  bd blocked
 bd create "bug" -l project:xxx -t bug -p 1 --deps discovered-from:<当前id> --json
 dispatch sessions | find <task> | resume <task> --copy | focus <task>   # 会话：谁在跑、哪个会话提过这个任务、恢复命令、跳过去
-dispatch skills list|enable|disable <名> --agent claude|codex           # 技能池 ~/.cc-switch/skills；Claude 读 ~/.claude/skills，Codex 读 ~/.agents/skills（都是软链）
+dispatch skills list|enable|disable <名> --agent claude|codex           # 技能池 ~/.cc-switch/skills；Claude 读 ~/.claude/skills，Codex 和 pi 读 ~/.agents/skills（都是软链）
+dispatch catalog [-q 词] [--kind skill|plugin]  # 默认不注入的能力：未挂载技能、已禁用插件；有用时建议用户，同意再启用
 dispatch rules show|status|sync              # 全局规则唯一来源 ~/.agents/rules/GLOBAL.md
 dispatch insights [--days 14] [--copy]       # 跨 Agent 复盘：确认/纠错/溢出信号 + 样本 + 一条改进任务的启动命令（Dispatch 统计页顶部同款）
 ```

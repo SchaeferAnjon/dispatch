@@ -6,7 +6,7 @@ import { Avatar } from "./ui";
 
 interface Props { api: Api; me: string; issues: Issue[]; onOpenSession: (id: string) => void; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
 
-const AGENT_ORDER = ["claude-code", "codex", "zcode", "qoder", "qoder-ide"];
+const AGENT_ORDER = ["claude-code", "codex", "pi", "zcode", "qoder", "qoder-ide"];
 const short = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace("/Library/Mobile Documents/com~apple~CloudDocs", "/iCloud").replace("/Library/Mobile Documents/iCloud~md~obsidian/Documents", "/Obsidian");
 
 // Projects are folders. For a folder: which agents came, and what each conversation was about.

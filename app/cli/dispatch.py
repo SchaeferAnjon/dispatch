@@ -13,6 +13,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
   dispatch pit add|list|show        = wiki --kind pit
   dispatch insights [--days N]      cross-agent /insights: signals, samples, an improvement task to hand to an agent
+  dispatch catalog [-q kw]          skills/plugins kept off by default; agents suggest one when it would help
   dispatch env list|get|set|unset|export|import   API keys & secrets (~/.config/dispatch/env, 0600; prime lists names only)
 
 Data lives in ~/tasks/.dispatch (session registry, transcript index) and the
@@ -727,6 +728,12 @@ def first_prompt_of(agent, buf):
                 continue
             c = (d.get("message") or {}).get("content")
             txt = c if isinstance(c, str) else "\n".join(b.get("text", "") for b in c or [] if isinstance(b, dict) and b.get("type") == "text")
+        elif agent == "pi":
+            m = d.get("message") or {}
+            if d.get("type") != "message" or m.get("role") != "user":
+                continue
+            c = m.get("content")
+            txt = c if isinstance(c, str) else "\n".join(b.get("text", "") for b in c or [] if isinstance(b, dict) and b.get("type") == "text")
         else:
             p = d.get("payload") or {}
             if d.get("type") != "response_item" or p.get("type") != "message" or p.get("role") != "user":
@@ -819,6 +826,28 @@ def parse_claude_stats(e, buf, re_ts):
         e["skills"][k] = e["skills"].get(k, 0) + 1
 
 
+def parse_pi_stats(e, buf, re_ts):
+    """pi session files: {"type":"message","message":{role, content, provider, model, usage{input,output,cacheRead,cacheWrite}}}."""
+    for line in buf.split("\n"):
+        if not line.startswith("{") or '"type":"message"' not in line:
+            continue
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        m = d.get("message") or {}
+        ts = d.get("timestamp", "")
+        if m.get("role") == "assistant":
+            u = m.get("usage") or {}
+            i, o, cr, cw = (u.get("input", 0) or 0), (u.get("output", 0) or 0), (u.get("cacheRead", 0) or 0), (u.get("cacheWrite", 0) or 0)
+            T = e["tokens"]; T["in"] += i; T["out"] += o; T["cr"] += cr; T["cw"] += cw
+            if m.get("model"):
+                e["models"][m["model"]] = e["models"].get(m["model"], 0) + 1
+            bump_time(e, local_dt(ts), 1, i + o + cr + cw, (i, o, cr, cw))
+        elif m.get("role") == "user":
+            bump_time(e, local_dt(ts), 1, 0)
+
+
 def parse_codex_stats(e, buf, re_ts):
     """Codex logs a cumulative total_token_usage per turn; tokens = last total, activity = the deltas."""
     for line in buf.split("\n"):
@@ -885,6 +914,8 @@ def refresh_index():
         files.append((p, "claude-code"))
     for p in glob.glob(os.path.join(HOME, ".codex", "sessions", "**", "*.jsonl"), recursive=True):
         files.append((p, "codex"))
+    for p in glob.glob(os.path.join(HOME, ".pi", "agent", "sessions", "*", "*.jsonl")):
+        files.append((p, "pi"))
     idx = load_index()
     seen = set()
     for path, agent in files:
@@ -912,6 +943,12 @@ def refresh_index():
                 e["session_id"] = os.path.splitext(os.path.basename(path))[0]
                 if e["subagent"]:
                     e["parent"] = path.split("/subagents/")[0].rsplit("/", 1)[-1]
+            elif agent == "pi":
+                # <timestamp>_<id>.jsonl; scripted runs (poker bots etc.) use custom ids, not UUIDs — hide them like subagents
+                b = os.path.splitext(os.path.basename(path))[0]
+                e["session_id"] = b.split("_", 1)[1] if "_" in b else b
+                e["subagent"] = not re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-", e["session_id"])
+                e["entrypoint"] = "cli"
             else:
                 first = buf.split("\n", 1)[0]
                 try:
@@ -946,7 +983,12 @@ def refresh_index():
             if not e["first_ts"]:
                 e["first_ts"] = tss[0]
             e["last_ts"] = tss[-1]
-        if agent == "codex":
+        if agent == "pi":
+            e["user_msgs"] += len(re.findall(r'"type":"message"[^\n]{0,200}?"role":"user"', buf))
+            e["assistant_msgs"] += len(re.findall(r'"type":"message"[^\n]{0,200}?"role":"assistant"', buf))
+            for m in re.finditer(r'"type":"toolCall"[^}]*?"name":"([^"]+)"', buf):
+                e["tools"][m.group(1)] = e["tools"].get(m.group(1), 0) + 1
+        elif agent == "codex":
             # CLI rollouts carry event_msg user_message; the desktop app only has response_item messages.
             e["user_msgs"] += len(re.findall(r'"role":"user","content":\[\{"type":"input_text","text":"(?!<)', buf))
             e["assistant_msgs"] += buf.count('"role":"assistant"')
@@ -957,7 +999,7 @@ def refresh_index():
             e["assistant_msgs"] += buf.count('"type":"assistant"')
         for m in re.finditer(r'"type":"tool_use","id":"[^"]+","name":"([^"]+)"', buf):
             e["tools"][m.group(1)] = e["tools"].get(m.group(1), 0) + 1
-        (parse_codex_stats if agent == "codex" else parse_claude_stats)(e, buf, re_ts)
+        (parse_codex_stats if agent == "codex" else parse_pi_stats if agent == "pi" else parse_claude_stats)(e, buf, re_ts)
         e["off"], e["mtime"], e["size"] = st.st_size, st.st_mtime, st.st_size
         idx[path] = e
     # ZCode sessions live in SQLite, not files; key them as zcode:<id>.
@@ -1145,7 +1187,7 @@ def resume_command(agent, sid, cwd):
     if agent in QODER_APPS:
         return f"open -a '{QODER_APPS[agent][1]}'  # 会话 {sid}"
     cd = f"cd '{cwd.replace(chr(39), chr(39) + chr(92) + chr(39) + chr(39))}' && " if cwd else ""
-    return f"{cd}{'codex resume' if agent == 'codex' else 'claude --resume'} {sid}"
+    return f"{cd}{'codex resume' if agent == 'codex' else 'pi --session' if agent == 'pi' else 'claude --resume'} {sid}"
 
 
 def subagents_of(path):
@@ -1533,6 +1575,25 @@ def read_session_detail(ref, limit=400):
             except Exception:
                 continue
             t = d.get("type")
+            if ref["agent"] == "pi":
+                if t != "message":
+                    continue
+                m = d.get("message") or {}
+                role, ts, c = m.get("role", ""), d.get("timestamp", ""), m.get("content")
+                blocks = c if isinstance(c, list) else [{"type": "text", "text": c or ""}]
+                txt = "\n".join(b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text")
+                tools = []
+                for b in blocks:
+                    if isinstance(b, dict) and b.get("type") == "toolCall":
+                        name = b.get("name", ""); inp = b.get("arguments") or b.get("input") or {}
+                        tool_names[name] = tool_names.get(name, 0) + 1
+                        tools.append({"name": name, "summary": str(inp.get("command") or inp.get("path") or inp.get("file_path") or "")[:200]})
+                        fp = inp.get("path") or inp.get("file_path")
+                        if fp and name in ("edit", "write"):
+                            files.setdefault(fp, []).append({"kind": name, "old": inp.get("oldText", ""), "new": inp.get("newText", inp.get("content", "")), "ts": ts})
+                if role in ("user", "assistant") and (txt.strip() or tools):
+                    msgs.append({"ts": ts, "role": role, "text": txt[:600], "tools": tools})
+                continue
             if ref["agent"] == "codex":
                 # Codex rollouts: {"type":"event_msg"/"response_item", payload:{...}}; content blocks are input_text/output_text.
                 p = d.get("payload", {})
@@ -2351,9 +2412,8 @@ RULE_TARGETS = {
     "claude": {"path": os.path.join(HOME, ".claude", "CLAUDE.md"), "mode": "import"},
     "codex": {"path": os.path.join(HOME, ".codex", "AGENTS.md"), "mode": "inline"},
     "zcode": {"path": os.path.join(HOME, ".zcode", "AGENTS.md"), "mode": "inline"},
-    # Read by Qoder desktop and Qoder CLI. Qoder IDE keeps its global rules in its own
-    # settings UI, so it only sees these through a project's AGENTS.md.
-    "qoder": {"path": os.path.join(HOME, ".qoder", "AGENTS.md"), "mode": "inline"},
+    # pi loads ~/.pi/agent/AGENTS.md as its global context file (plus AGENTS.md up from cwd).
+    "pi": {"path": os.path.join(HOME, ".pi", "agent", "AGENTS.md"), "mode": "inline"},
 }
 
 
@@ -2696,6 +2756,59 @@ def cmd_insights(a):
     out(rep, a.json, text)
 
 
+# ---------------------------------------------------------------- catalog: capabilities kept OFF by default, enabled on request
+
+def catalog_items():
+    """Skills in the pool that nobody has mounted, and Claude Code plugins that are disabled.
+    prime shows only counts + a few names; agents suggest one when it would clearly help."""
+    items = []
+    for r in all_skills():
+        if r["in_pool"] and not any(r["agents"].values()):
+            items.append({"kind": "skill", "name": r["name"], "desc": (r["description"] or "")[:70], "enable": f"dispatch skills enable {r['name']} --agent claude|codex"})
+    try:
+        st = json.load(open(os.path.join(HOME, ".claude", "settings.json")))
+        for name, on in sorted((st.get("enabledPlugins") or {}).items()):
+            if on:
+                continue
+            pl, mk = name.split("@", 1)
+            desc = ""
+            for d in sorted(glob.glob(os.path.join(HOME, ".claude", "plugins", "cache", mk, pl, "*", ".claude-plugin", "plugin.json")))[-1:]:
+                try:
+                    desc = (json.load(open(d)).get("description") or "")[:70]
+                except Exception:
+                    pass
+            items.append({"kind": "plugin", "name": name, "desc": desc, "enable": f"claude plugin enable {name}"})
+    except Exception:
+        pass
+    return items
+
+
+def catalog_line():
+    items = catalog_items()
+    if not items:
+        return ""
+    sk = [i for i in items if i["kind"] == "skill"]
+    pl = [i for i in items if i["kind"] == "plugin"]
+    names = "、".join(i["name"].split("@")[0] for i in pl[:4])
+    return (f"可按需启用（默认不注入）：未挂载技能 {len(sk)} 个、已禁用插件 {len(pl)} 个（{names}…）。"
+            f"判断其中某个会明显帮到当前任务时，用一句话建议用户，同意后再启用：`dispatch catalog -q 词` 查，`dispatch skills enable <名> --agent <agent>` / `claude plugin enable <名>`，新会话生效。")
+
+
+def cmd_catalog(a):
+    items = catalog_items()
+    if a.kind:
+        items = [i for i in items if i["kind"] == a.kind]
+    if a.query:
+        q = a.query.lower()
+        items = [i for i in items if q in i["name"].lower() or q in i["desc"].lower()]
+
+    def text(items):
+        for i in items:
+            print(f"{i['kind']:<7}{i['name']:<40}{i['desc']:<72} → {i['enable']}")
+        print(f"\n{len(items)} 项（未挂载技能 + 已禁用插件；启用后新会话生效）")
+    out(items, a.json, text)
+
+
 # ---------------------------------------------------------------- env: API keys and other secrets, one file, 0600
 
 ENV_DIR = os.path.join(HOME, ".config", "dispatch")
@@ -2975,6 +3088,9 @@ def cmd_prime(a):
     env_line = env_summary_line()
     if env_line:
         lines.append(env_line)
+    cat = catalog_line()
+    if cat:
+        lines.append(cat)
     # who else is in this directory right now — the thing that prevents two agents from fighting
     nb = neighbours(cwd, self_id)
     if nb:
@@ -3005,7 +3121,7 @@ def main():
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
-    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
+    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
@@ -3015,7 +3131,7 @@ def main():
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
-    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
     s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])
     s.add_argument("target_or_kind", nargs="?", help="start: kind (claude|codex|qodercli|opencode|gemini…); others: pane id / name / title / task id")
@@ -3041,6 +3157,7 @@ def main():
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
+    s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
     s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
     s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=6, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()
