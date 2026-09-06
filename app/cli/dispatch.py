@@ -3155,12 +3155,18 @@ def proxy_to_host(argv):
     cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in rest)
     try:
         r = subprocess.run(["ssh", "-o", "ConnectTimeout=4", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd],
-                           stdin=(subprocess.DEVNULL if sys.stdin.isatty() else sys.stdin), timeout=60)
+                           stdin=(subprocess.DEVNULL if sys.stdin.isatty() else sys.stdin), stderr=subprocess.PIPE, text=True, timeout=60)
     except subprocess.TimeoutExpired:
         print(f"{h['name']} 没在 60 秒内响应", file=sys.stderr)
         sys.exit(124)
+    err = (r.stderr or "").strip()
     if r.returncode == 255:
-        print(f"连不上 {h['name']}（{h['ssh']}）：Tailscale 没开，或那台机器离线", file=sys.stderr)
+        if "Permission denied" in err:
+            print(f"{h['name']} 拒绝了 ssh 登录（{h['ssh']}）：那台机器没有本机的公钥。把 ~/.ssh/id_*.pub 加进它的 ~/.ssh/authorized_keys，或在 hosts.json 里改成 ~/.ssh/config 里的别名。", file=sys.stderr)
+        else:
+            print(f"连不上 {h['name']}（{h['ssh']}）：Tailscale 没开，或那台机器离线。{err[:120]}", file=sys.stderr)
+    elif err:
+        print(err, file=sys.stderr)
     sys.exit(r.returncode)
 
 
