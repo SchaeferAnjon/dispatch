@@ -267,6 +267,11 @@ td .t{font-weight:500}
 .trend .col i{display:block;width:100%;border-radius:2px 2px 0 0;min-height:1px}
 .trend .lb{font-size:9px;height:12px;white-space:nowrap}
 .st-foot{line-height:1.6;max-width:90ch}
+.hosts-bar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.hosts-bar .host{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--win)}
+.hosts-bar .host.off{opacity:.6}
+.hosts-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--line-2)}
+.hosts-bar .dot.on{background:var(--s-done)}
 .host-chip{display:inline-block;margin-left:6px;padding:0 6px;border-radius:9px;font-size:10.5px;line-height:16px;background:var(--accent-soft);color:var(--accent-ink);vertical-align:1px;white-space:nowrap}
 .kinds{margin-left:auto;display:inline-flex;gap:4px;align-items:center}
 .kinds .chip{opacity:.55}
@@ -607,3 +612,17 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .dialog h3 .chips{display:inline-flex;gap:4px;vertical-align:middle}
 .sk-item .use{font-size:10.5px;color:var(--ink-3);background:var(--panel-2);border-radius:4px;padding:0 5px}
 .views button.primary{color:var(--accent-ink);background:var(--accent-soft)}
+/* insights */
+.st-card.ins h4{display:flex;align-items:center;gap:8px}
+.ins-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:6px 0}
+.ins-tiles .tile{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:1px;text-align:left;min-width:0}
+.ins-tiles .tile b{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.ins-tiles .tile span{font-size:12px;color:var(--ink-2)}
+.ins-tiles .tile small{font-size:10.5px;color:var(--ink-3)}
+.ins-tiles button.tile{cursor:pointer}
+.ins-tiles button.tile.on{border-color:var(--accent-ink);background:var(--accent-soft)}
+.ins-findings{margin:4px 0 6px;padding-left:18px;font-size:12.5px;line-height:1.5}
+.ins-samples{display:flex;flex-direction:column;gap:6px;margin:4px 0 8px}
+.ins-samples .smp{border-left:2px solid var(--line-2);padding:2px 8px;font-size:12px;line-height:1.45}
+.ins-samples .smp .a{color:var(--ink-2)}
+.ins-samples .smp .u{color:var(--ink)}

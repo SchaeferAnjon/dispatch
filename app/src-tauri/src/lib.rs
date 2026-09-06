@@ -419,6 +419,11 @@ async fn skill_open(name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn insights(days: u32) -> Result<String, String> {
+    run_dispatch(args(&["insights", "--days", &days.to_string(), "--json"])).await
+}
+
+#[tauri::command]
 async fn env_list() -> Result<String, String> {
     run_dispatch(args(&["env", "list", "--json"])).await
 }
@@ -462,6 +467,11 @@ async fn graph() -> Result<String, String> {
 #[tauri::command]
 async fn quota() -> Result<String, String> {
     run_dispatch(args(&["quota", "--json"])).await
+}
+
+#[tauri::command]
+async fn hosts() -> Result<String, String> {
+    run_dispatch(args(&["hosts", "--json"])).await
 }
 
 #[tauri::command]
@@ -700,8 +710,8 @@ pub fn run() {
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_interactions, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
-            skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, tray_update,
-            rules_read, rules_write, rules_status, rules_sync, quota, stats, graph, folders, open_path
+            skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, tray_update,
+            rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, graph, folders, open_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

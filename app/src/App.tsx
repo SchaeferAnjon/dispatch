@@ -17,7 +17,7 @@ import { ProjectsView } from "./components/Projects";
 import { Tour } from "./components/Guide";
 import { StatsView } from "./components/Stats";
 import { agentsFrom, columnOf, isReviewed, projectOf, rootsOf } from "./derive";
-import type { Column, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
+import type { Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
 const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "聊天记录", stats: "统计", skills: "技能", rules: "规则", pitfalls: "知识库", env: "环境" };
@@ -129,6 +129,17 @@ export default function App() {
 
   const agents = useMemo(() => agentsFrom(issues, me, presence.sessions), [issues, me, presence]);
   const liveSessions = presence.sessions.filter((s) => s.alive).length;
+
+  // The Macs on the tailnet (this one + hosts.json), for the 机器 strip on the Agents view.
+  const [hosts, setHosts] = useState<Host[]>([]);
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    const tick = async () => { try { const h = await api.hosts(); if (alive) setHosts(h); } catch { /* keep last */ } };
+    tick();
+    const t = window.setInterval(tick, 60_000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [api]);
 
   // Transcript index (titles, last claimed task) keyed by session id, for the Agents view.
   const [refs, setRefs] = useState<Map<string, SessionRef>>(new Map());
@@ -276,10 +287,10 @@ export default function App() {
             {view === "inbox" && <InboxView items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} onReview={(id) => run("审核通过", () => api!.labels(id, ["reviewed"], []))} />}
             {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
-            {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refs} />}
+            {view === "agents" && <AgentsView agents={agents} apps={presence.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refs} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} />}
             {view === "sessions" && api && <SessionsView key={sessionFocus ?? "all"} api={api} me={me} live={presence.sessions} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "projects" && api && <ProjectsView api={api} me={me} issues={issues} onSelect={setSelected} onBoard={(p) => { setFilters({ ...filters, project: p, blocked: false, review: false, agent: null }); setView("board"); }} onFolder={() => setView("folders")} />}
-            {view === "stats" && api && <StatsView api={api} me={me} onError={(m) => say(m, true)} />}
+            {view === "stats" && api && <StatsView onDone={say} api={api} me={me} onError={(m) => say(m, true)} />}
             {view === "folders" && api && <FoldersView api={api} me={me} issues={issues} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView api={api} onDone={say} onError={(m) => say(m, true)} />}

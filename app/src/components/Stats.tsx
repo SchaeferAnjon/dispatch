@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import { actorOf } from "../derive";
 import type { Stats, StatsDay, StatsRank } from "../types";
+import { InsightsCard } from "./Insights";
 
-interface Props { api: Api; me: string; onError: (m: string) => void }
+interface Props { api: Api; me: string; onDone?: (m: string) => void; onError: (m: string) => void }
 
 const AGENTS = ["claude-code", "codex", "zcode", "qoder", "qoder-ide"];
 const COLOR: Record<string, string> = { "claude-code": "var(--claude)", codex: "var(--codex)", zcode: "var(--cursor)", qoder: "var(--qoder)", "qoder-ide": "var(--qoder-2)" };
@@ -125,7 +126,7 @@ function Trend({ days, metric, n }: { days: StatsDay[]; metric: "tokens" | "msgs
   );
 }
 
-export function StatsView({ api, me, onError }: Props) {
+export function StatsView({ api, me, onDone, onError }: Props) {
   const [agent, setAgent] = useState<string>(() => { try { return localStorage.getItem("dispatch-stats-agent") ?? ""; } catch { return ""; } });
   const [days, setDays] = useState<number>(() => { try { return Number(localStorage.getItem("dispatch-stats-days") ?? 90); } catch { return 90; } });
   const [metric, setMetric] = useState<"tokens" | "msgs">("tokens");
@@ -159,6 +160,7 @@ export function StatsView({ api, me, onError }: Props) {
         {busy && <span className="muted small">统计中…</span>}
       </div>
 
+      <InsightsCard api={api} onDone={onDone ?? (() => {})} onError={onError} />
       {!s && !busy && <div className="empty">还没有统计数据。索引第一次要把全部聊天记录读一遍，稍等一分钟再来。</div>}
       {s && t && (
         <>

@@ -98,6 +98,7 @@ export function fixtureApi(): Api {
     skillOpen: async () => {},
     skillImprove: async () => ({ prompt: "示例提示词", command: "claude \"…\"", top: [] }),
     envList: async () => [{ name: "ZHIPU_API_KEY", note: "智谱 GLM", masked: "abc…456", length: 12 }],
+    insights: async () => ({ days: 14, total_sessions: 3, per_agent: { "claude-code": { sessions: 3, user_turns: 40, approve: 0, continue: 2, correction: 1, asktail: 5, ends_on_question: 1, long: 0, overflow: 0 } }, sessions: [], samples: { asktail: [], correction: [], overflow: [] }, findings: ["示例：助手以问句收尾 5 次"], prompt: "示例", command: "claude \"示例\"" }),
     envGet: async () => "abc123def456",
     envSet: async () => {},
     envUnset: async () => {},
@@ -107,6 +108,7 @@ export function fixtureApi(): Api {
       { cwd: "/Users/x/Projects/bookmark", name: "bookmark", sessions: 1, agents: { "claude-code": 1 }, last_at: now / 1000 - 7 * 3600, first_at: null, turns: 133, tasks: [], exists: false },
     ],
     openPath: async () => {},
+    hosts: async () => [],
     graph: async () => ({ nodes: issues.map((i) => ({ ...i })), edges: [
       { from: "task-9lo", to: "task-4mk", type: "discovered-from" }, { from: "task-9lo", to: "task-e1q", type: "discovered-from" },
       { from: "task-4mk", to: "task-m3r", type: "discovered-from" }, { from: "task-e1q", to: "task-m3r", type: "discovered-from" },

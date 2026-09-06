@@ -19,12 +19,17 @@ export interface Stats {
   projects: { name: string; cwd: string; tokens: number; msgs: number; sessions: number; by: Record<string, number> }[];
   generated_at: number;
 }
+export interface Host { id: string; name: string; ip: string; ssh: string; online: boolean; local: boolean; novnc: string; novnc_up: boolean; vnc: string; herdr_session?: string }
 export interface Folder { cwd: string; name: string; sessions: number; agents: Record<string, number>; last_at: number; first_at: string | null; turns: number; tasks: string[]; exists: boolean }
 export interface GraphEdge { from: string; to: string; type: string }
 export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }
 export interface QuotaWindow { used_percent: number | null; resets_at: number | null; label: string }
 export interface Quota { agent: string; plan: string; windows: QuotaWindow[]; updated_at: number | null; source: string; note: string }
 export interface RuleTarget { agent: string; path: string; state: "synced" | "stale" | "absent" | "missing"; mode: "import" | "inline" }
+export interface InsightAgent { sessions: number; user_turns: number; approve: number; continue: number; correction: number; asktail: number; ends_on_question: number; long: number; overflow: number }
+export interface InsightSession { agent: string; session_id: string; cwd: string; last_ts: string; user_turns: number; approve: number; continue: number; correction: number; asktail: number; overflow: number; ends_on_question: boolean }
+export interface InsightSample { agent: string; session_id: string; ts: string; assistant: string; user: string }
+export interface Insights { days: number; total_sessions: number; per_agent: Record<string, InsightAgent>; sessions: InsightSession[]; samples: { asktail: InsightSample[]; correction: InsightSample[]; overflow: InsightSample[] }; findings: string[]; prompt: string; command: string }
 export interface EnvVar { name: string; note: string; masked: string; length: number }
 export interface RulesStatus { hash: string; source: string; targets: RuleTarget[] }
 

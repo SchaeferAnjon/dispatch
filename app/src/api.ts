@@ -1,4 +1,4 @@
-import type { Comment, Folder, GraphData, HistoryEntry, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar } from "./types";
+import type { Comment, Folder, GraphData, HistoryEntry, Host, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar, Insights } from "./types";
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
@@ -31,6 +31,7 @@ export interface Api {
   skillImprove(days: number): Promise<SkillImprove>;
   quota(): Promise<Quota[]>;
   stats(agent: string, days: number): Promise<Stats | null>;
+  hosts(): Promise<Host[]>;
   graph(): Promise<GraphData>;
   folders(): Promise<Folder[]>;
   openPath(path: string): Promise<void>;
@@ -38,6 +39,7 @@ export interface Api {
   rulesWrite(content: string): Promise<void>;
   rulesStatus(): Promise<RulesStatus>;
   rulesSync(): Promise<void>;
+  insights(days: number): Promise<Insights | null>;
   envList(): Promise<EnvVar[]>;
   envGet(name: string): Promise<string>;
   envSet(name: string, value: string, note: string): Promise<void>;
@@ -103,6 +105,7 @@ async function tauriApi(): Promise<Api> {
     skillImprove: async (days) => parse<SkillImprove>(await call("skills_improve", { days }), { prompt: "", command: "", top: [] }),
     quota: async () => parse<Quota[]>(await call("quota"), []),
     stats: async (agent, days) => parse<Stats | null>(await call("stats", { agent, days }), null),
+    hosts: async () => parse<Host[]>(await call("hosts"), []),
     graph: async () => parse<GraphData>(await call("graph"), { nodes: [], edges: [] }),
     folders: async () => parse<Folder[]>(await call("folders"), []),
     openPath: async (path) => void (await invoke("open_path", { path })),
@@ -110,6 +113,7 @@ async function tauriApi(): Promise<Api> {
     rulesWrite: async (content) => void (await call("rules_write", { content })),
     rulesStatus: async () => parse<RulesStatus>(await call("rules_status"), { hash: "", source: "", targets: [] }),
     rulesSync: async () => void (await call("rules_sync")),
+    insights: async (days) => parse<Insights | null>(await call("insights", { days }), null),
     envList: async () => parse<EnvVar[]>(await call("env_list"), []),
     envGet: (name) => call("env_get", { name }),
     envSet: async (name, value, note) => void (await call("env_set", { name, value, note })),

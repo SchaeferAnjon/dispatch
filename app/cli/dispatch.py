@@ -11,6 +11,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch prime [--hook-json]      compact session-start digest: identity, this project's tasks, relevant wiki
   dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
   dispatch pit add|list|show        = wiki --kind pit
+  dispatch insights [--days N]      cross-agent /insights: signals, samples, an improvement task to hand to an agent
   dispatch env list|get|set|unset|export|import   API keys & secrets (~/.config/dispatch/env, 0600; prime lists names only)
 
 Data lives in ~/tasks/.dispatch (session registry, transcript index) and the
@@ -257,6 +258,59 @@ def remote_dispatch(h, args, ttl):
     except OSError:
         pass
     return data
+
+
+def tailscale_ip():
+    for cmd in (["tailscale", "ip", "-4"], ["/Applications/Tailscale.app/Contents/MacOS/Tailscale", "ip", "-4"]):
+        try:
+            ip = subprocess.run(cmd, capture_output=True, text=True, timeout=3).stdout.strip().split("\n")[0]
+            if ip.startswith("100."):
+                return ip
+        except Exception:
+            pass
+    try:
+        m = re.search(r"inet (100\.\d+\.\d+\.\d+)", subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=3).stdout)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+
+def port_open(ip, port, timeout=1.0):
+    import socket
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def host_rows():
+    """This Mac plus the others in hosts.json, with what you can reach on each: ssh, the
+    web remote desktop (noVNC on :6080, set up by app/scripts/novnc-setup.sh) and vnc://."""
+    rows = []
+    ip = tailscale_ip()
+    rows.append({"id": "local", "name": local_host_name(), "ip": ip, "ssh": "", "online": True, "local": True,
+                 "novnc": f"http://{ip}:6080/vnc.html?autoconnect=1&resize=scale" if ip else "", "novnc_up": bool(ip) and port_open(ip, 6080), "vnc": f"vnc://{ip}" if ip else ""})
+    for h in hosts():
+        hip = h.get("ip") or (h.get("ssh", "").split("@")[-1])
+        down = os.path.join(REMOTE_DIR, f"{h['id']}.down")
+        try:
+            recently_down = time.time() - os.stat(down).st_mtime < 60
+        except OSError:
+            recently_down = False
+        online = (not recently_down) and port_open(hip, 22)
+        rows.append({"id": h["id"], "name": h["name"], "ip": hip, "ssh": h.get("ssh", ""), "online": online, "local": False,
+                     "novnc": f"http://{hip}:6080/vnc.html?autoconnect=1&resize=scale", "novnc_up": online and port_open(hip, 6080), "vnc": f"vnc://{hip}", "herdr_session": h.get("herdr_session", "")})
+    return rows
+
+
+def cmd_hosts(a):
+    rows = host_rows()
+
+    def text(rows):
+        for r in rows:
+            print(f"{r['name']:<12} {r['ip']:<16} {'在线' if r['online'] else '离线'}  屏幕 {'✓' if r['novnc_up'] else '✗'}  {r['novnc']}")
+    out(rows, a.json, text)
 
 
 def remote_sessions():
@@ -2182,6 +2236,125 @@ def cmd_pit(a):
     cmd_wiki(a)
 
 
+# ---------------------------------------------------------------- insights: how the agents behaved lately (the cross-agent /insights)
+
+# Signals read straight off the transcripts. Every pattern is a *cue*, not a verdict — the
+# report shows samples so a person (or an agent) can judge.
+_I_APPROVE = re.compile(r"^\s*(y|yes|ok|okay|好|好的|可以|行|是|是的|对|嗯|go|do it|proceed|开始|做吧|同意|确认|没问题|就这样|按你说的|你决定|你来定|随便|都行)[。.!！\s]*$", re.I)
+_I_CONTINUE = re.compile(r"^\s*(继续|接着|go on|continue|然后呢|接下来|下一步|继续做|接着做|继续吧)", re.I)
+_I_CORRECT = re.compile(r"(别问|不要问|不用问|直接做|直接改|不要再|别再|怎么还|怎么又|为什么没|为什么不|你没|没做|没改|不对|错了|不是这个|不是我要|我说的是|我说了|算了|废话|啰嗦|太长|简短|说重点|别停|不要停|为什么停|做完|全部做|一次做完|又一遍|已经说过|前面说了|你忘|不记得|你不会用|为什么不用)")
+_I_ASKTAIL = re.compile(r"(要不要|需不需要|需要我|要我|可以吗|好吗|行吗|哪种|哪个|请确认|请告诉我|请选择|你希望|你想|你定|你确认|等你|说一声|点头|shall i|should i|would you like|do you want|which (one|option)|let me know|继续吗|开始吗|\?\s*$|？\s*$)", re.I)
+_I_OVERFLOW = re.compile(r"(Prompt is too long|compaction failed|context window)", re.I)
+_I_LONG = 60
+
+
+def insights_scan(days):
+    from datetime import datetime, timedelta
+    idx = load_index() or refresh_index()
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT") if days else ""
+    per_agent, sessions, samples = {}, [], {"asktail": [], "correction": [], "overflow": []}
+    def bump(ag, k, n=1):
+        per_agent.setdefault(ag, {"sessions": 0, "user_turns": 0, "approve": 0, "continue": 0, "correction": 0, "asktail": 0, "ends_on_question": 0, "long": 0, "overflow": 0})[k] += n
+    for key, e in idx.items():
+        if e.get("subagent") or not e.get("user_msgs"):
+            continue
+        if cutoff and (e.get("last_ts") or "") < cutoff:
+            continue
+        ref = dict(e); ref["path"] = key; ref.setdefault("subagents", [])
+        try:
+            d = read_session_detail(ref, limit=100000)
+        except Exception:
+            continue
+        msgs = [m for m in d["messages"] if m["role"] in ("user", "assistant") and not m["text"].startswith(("The TodoWrite", "<ide_", "<system", "<task-notification", "# In app browser", "# Files mentioned", "# Applications mentioned"))]
+        U = [m for m in msgs if m["role"] == "user"]
+        if not U:
+            continue
+        ag = e["agent"]
+        bump(ag, "sessions"); bump(ag, "user_turns", len(U))
+        row = {"agent": ag, "session_id": e["session_id"], "cwd": e.get("cwd", ""), "last_ts": (e.get("last_ts") or "")[:10], "user_turns": len(U), "approve": 0, "continue": 0, "correction": 0, "asktail": 0, "overflow": 0, "ends_on_question": False}
+        for i, m in enumerate(msgs):
+            t = m["text"].strip()
+            if m["role"] == "user":
+                if _I_APPROVE.match(t): row["approve"] += 1; bump(ag, "approve")
+                if _I_CONTINUE.match(t): row["continue"] += 1; bump(ag, "continue")
+                if _I_CORRECT.search(t) and len(t) < 600:
+                    row["correction"] += 1; bump(ag, "correction")
+                    prev = next((x["text"].strip()[-220:] for x in reversed(msgs[:i]) if x["role"] == "assistant" and x["text"].strip()), "")
+                    samples["correction"].append({"agent": ag, "session_id": e["session_id"], "ts": row["last_ts"], "assistant": prev, "user": t[:220]})
+            else:
+                if not t:
+                    continue
+                if _I_OVERFLOW.search(t): row["overflow"] += 1; bump(ag, "overflow")
+                if _I_ASKTAIL.search(t[-260:]) and i + 1 < len(msgs) and msgs[i + 1]["role"] == "user":
+                    nxt = msgs[i + 1]["text"].strip()
+                    answered = bool(_I_APPROVE.match(nxt)) or len(nxt) < 40
+                    row["asktail"] += 1; bump(ag, "asktail")
+                    if not answered:
+                        samples["asktail"].append({"agent": ag, "session_id": e["session_id"], "ts": row["last_ts"], "assistant": t[-220:], "user": nxt[:160]})
+        last = next((x for x in reversed(msgs) if x["text"].strip()), None)
+        if last and last["role"] == "assistant" and _I_ASKTAIL.search(last["text"].strip()[-260:]):
+            row["ends_on_question"] = True; bump(ag, "ends_on_question")
+        if len(U) >= _I_LONG:
+            bump(ag, "long")
+        sessions.append(row)
+    sessions.sort(key=lambda r: -(r["correction"] * 3 + r["asktail"] + r["overflow"] * 3 + r["continue"]))
+    return {"days": days, "per_agent": per_agent, "sessions": sessions[:12], "samples": {k: v[-8:] for k, v in samples.items()}, "total_sessions": len(sessions)}
+
+
+def insights_findings(rep):
+    """Turn counts into plain sentences; the ranking is what a reviewer should look at first."""
+    out = []
+    tot = lambda k: sum(a[k] for a in rep["per_agent"].values())
+    n = rep["total_sessions"] or 1
+    if tot("asktail"):
+        out.append(f"助手以问句/选项收尾 {tot('asktail')} 次，其中 {len(rep['samples']['asktail'])}+ 次用户没有回答而是直接说下一件事——这些问句可以不问，直接做或不提。")
+    if tot("correction"):
+        out.append(f"用户纠错/催促 {tot('correction')} 次（见样本）：优先看是哪类——没用工具、做过头、停太早、忘了记录。")
+    if tot("overflow"):
+        out.append(f"{tot('overflow')} 次撞到 Prompt is too long / 压缩失败：这些会话应该更早拆成新会话。")
+    if tot("long"):
+        out.append(f"{tot('long')} 个会话超过 {_I_LONG} 轮：一个任务一个会话，进度写板上。")
+    if tot("ends_on_question"):
+        out.append(f"{tot('ends_on_question')} 个会话停在助手的问句上（用户没再回）：可能是没必要的确认，也可能是真卡住了。")
+    if not out:
+        out.append("这段时间没有明显的行为信号。")
+    return out
+
+
+def cmd_insights(a):
+    rep = insights_scan(a.days)
+    rep["findings"] = insights_findings(rep)
+    top = ", ".join(f"{r['agent']} {r['session_id'][:8]}（纠错 {r['correction']}·问句 {r['asktail']}·{r['user_turns']} 轮）" for r in rep["sessions"][:5])
+    prompt = (f"按最近 {a.days} 天的会话做一次跨 Agent 复盘并落地改进。1) `dispatch insights --days {a.days} --json` 拿信号统计和样本；最值得看的会话：{top}。"
+              f"用 `dispatch session <id>` 读这些会话里纠错和问句附近的几段，判断每条是哪类问题（没用工具 / 做过头 / 停太早 / 无效确认 / 忘记录）。"
+              f"2) 每类给一条可执行的规则或习惯，能落到 ~/.agents/rules/GLOBAL.md 的直接改并 `dispatch rules sync`；跟某个技能有关的改那个 SKILL.md。"
+              f"3) 结论写进知识库：坑 `dispatch wiki add --kind pit …`、做对 `--kind win …`，最后 `dispatch done --retro` 写一条复盘。"
+              f"4) 给我一张表：现象、证据（会话 id）、改了什么。先 `dispatch begin` 建任务再动手。")
+    rep["prompt"] = prompt
+    rep["command"] = f"cd ~ && claude {json.dumps(prompt, ensure_ascii=False)}"
+    if a.copy:
+        subprocess.run(["pbcopy"], input=rep["command"].encode("utf-8"))
+
+    def text(rep):
+        print(f"# 洞察 · 最近 {a.days} 天 · {rep['total_sessions']} 个会话")
+        for f in rep["findings"]:
+            print("- " + f)
+        print("\n## 按 Agent")
+        print(f"{'agent':<11}{'会话':>5}{'轮':>6}{'确认':>5}{'继续':>5}{'纠错':>5}{'问句':>5}{'停问':>5}{'长':>4}{'溢出':>5}")
+        for ag, c in rep["per_agent"].items():
+            print(f"{ag:<11}{c['sessions']:>5}{c['user_turns']:>6}{c['approve']:>5}{c['continue']:>5}{c['correction']:>5}{c['asktail']:>5}{c['ends_on_question']:>5}{c['long']:>4}{c['overflow']:>5}")
+        print("\n## 最值得回看的会话")
+        for r in rep["sessions"][:8]:
+            print(f"- {r['agent']} {r['session_id'][:12]} {r['last_ts']} · {r['user_turns']} 轮 · 纠错 {r['correction']} · 问句 {r['asktail']} · 溢出 {r['overflow']} · …{(r['cwd'] or '')[-30:]}")
+        for kind, title in (("correction", "用户纠错样本"), ("asktail", "问句没被回答的样本")):
+            if rep["samples"][kind]:
+                print(f"\n## {title}")
+                for smp in rep["samples"][kind][-5:]:
+                    print(f"- [{smp['agent']} {smp['session_id'][:8]}] 助手…「{smp['assistant'][-120:].replace(chr(10), ' ')}」 → 用户「{smp['user'][:100].replace(chr(10), ' ')}」")
+        print("\n启动改进任务" + ("（命令已复制）" if a.copy else "") + f"：\n{rep['command'][:200]}…")
+    out(rep, a.json, text)
+
+
 # ---------------------------------------------------------------- env: API keys and other secrets, one file, 0600
 
 ENV_DIR = os.path.join(HOME, ".config", "dispatch")
@@ -2398,10 +2571,12 @@ def main():
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("hosts", help="this Mac and the others on the tailnet: ssh, web remote desktop, vnc"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
+    s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
     s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=6, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()
