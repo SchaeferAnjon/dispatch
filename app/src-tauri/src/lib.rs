@@ -318,6 +318,53 @@ fn run_dispatch_blocking(args: &[String]) -> Result<String, String> {
     }
 }
 
+fn run_dispatch_stdin_blocking(args: &[String], stdin: Option<String>) -> Result<String, String> {
+    use std::io::Write;
+    use std::process::Stdio;
+    let bin = dispatch_bin();
+    let path = format!(
+        "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:{}:{}",
+        home().join(".local/bin").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let mut child = Command::new("python3")
+        .arg(&bin)
+        .args(args)
+        .env("BEADS_DIR", beads_dir())
+        .env("PATH", path)
+        .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("无法启动 dispatch（{}）：{}", bin.display(), e))?;
+    if let Some(text) = stdin {
+        if let Some(mut si) = child.stdin.take() {
+            let _ = si.write_all(text.as_bytes());
+        }
+    }
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Run any dispatch subcommand, on this Mac or (via `dispatch --host`) on another one.
+/// The UI uses it for the per-machine editors: rules, env, skills.
+#[tauri::command]
+async fn dispatch_on(host: Option<String>, args: Vec<String>, stdin: Option<String>) -> Result<String, String> {
+    let mut full: Vec<String> = Vec::new();
+    if let Some(h) = host.filter(|h| !h.is_empty() && h != "local") {
+        full.push("--host".into());
+        full.push(h);
+    }
+    full.extend(args);
+    tauri::async_runtime::spawn_blocking(move || run_dispatch_stdin_blocking(&full, stdin))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 async fn run_dispatch(args: Vec<String>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || run_dispatch_blocking(&args))
         .await
@@ -737,7 +784,7 @@ pub fn run() {
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_interactions, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, session_detail, focus_session, memories_list, memory_set, memory_forget,
-            skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, tray_update,
+            skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, dispatch_on, tray_update,
             rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path
         ])
         .run(tauri::generate_context!())

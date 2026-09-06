@@ -35,6 +35,7 @@ export interface Api {
   quota(): Promise<Quota[]>;
   stats(agent: string, days: number): Promise<Stats | null>;
   hosts(): Promise<Host[]>;
+  on(host: string, args: string[], stdin?: string): Promise<string>;
   graph(): Promise<GraphData>;
   folders(): Promise<Folder[]>;
   openPath(path: string): Promise<void>;
@@ -113,6 +114,7 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "notify" | "tra
     quota: async () => parse<Quota[]>(await call("quota"), []),
     stats: async (agent, days) => parse<Stats | null>(await call("stats", { agent, days }), null),
     hosts: async () => parse<Host[]>(await call("hosts"), []),
+    on: (host, args, stdin) => call("dispatch_on", { host: host === "local" ? null : host, args, stdin: stdin ?? null }),
     graph: async () => parse<GraphData>(await call("graph"), { nodes: [], edges: [] }),
     folders: async () => parse<Folder[]>(await call("folders"), []),
     openPath: async (path) => void (await invoke("open_path", { path })),

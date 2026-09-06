@@ -14,6 +14,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch pit add|list|show        = wiki --kind pit
   dispatch insights [--days N]      cross-agent /insights: signals, samples, an improvement task to hand to an agent
   dispatch catalog [-q kw]          skills/plugins kept off by default; agents suggest one when it would help
+  dispatch --host <id> <any subcommand>   run it on another Mac from hosts.json (ssh; stdin/stdout pass through)
   dispatch env list|get|set|unset|export|import   API keys & secrets (~/.config/dispatch/env, 0600; prime lists names only)
 
 Data lives in ~/tasks/.dispatch (session registry, transcript index) and the
@@ -2027,6 +2028,16 @@ def cmd_skills(a):
             print(open(os.path.join(r["path"], "SKILL.md"), encoding="utf-8").read())
     elif a.op == "open":
         subprocess.run(["open", os.path.join(r["path"], "SKILL.md")])
+    elif a.op == "write":
+        new = sys.stdin.read()
+        if not new.strip():
+            print("stdin 为空，不写", file=sys.stderr)
+            sys.exit(2)
+        f = os.path.join(r["path"], "SKILL.md")
+        import shutil
+        shutil.copy2(f, f + ".bak")
+        open(f, "w", encoding="utf-8").write(new)
+        print(f"{a.name} 已保存（旧版 SKILL.md.bak）")
     elif a.op in ("enable", "disable"):
         agents = list(AGENT_SKILL_DIRS) if a.agent in (None, "all") else [a.agent]
         for ag in agents:
@@ -2457,6 +2468,18 @@ def cmd_rules(a):
     if a.op == "show":
         print(rules_text() or f"（还没有规则文件：{RULES_FILE}）")
         return
+    if a.op == "write":
+        new = sys.stdin.read()
+        if not new.strip():
+            print("stdin 为空，不写", file=sys.stderr)
+            sys.exit(2)
+        os.makedirs(os.path.dirname(RULES_FILE), exist_ok=True)
+        if os.path.exists(RULES_FILE):
+            import shutil
+            shutil.copy2(RULES_FILE, RULES_FILE + ".bak")
+        open(RULES_FILE, "w", encoding="utf-8").write(new)
+        a.op, a.force = "sync", True
+        return cmd_rules(a)
     if a.op == "open":
         subprocess.run(["open", RULES_FILE])
         return
@@ -3115,7 +3138,36 @@ def cmd_prime(a):
 
 # ---------------------------------------------------------------- main
 
+def proxy_to_host(argv):
+    """`dispatch --host mini <subcommand …>`: run the same command on another Mac from hosts.json
+    over ssh. stdin, stdout and the exit code pass straight through, so every subcommand
+    (rules write, env set, skills enable…) works remotely without knowing about hosts."""
+    import shlex
+    if len(argv) < 2 or argv[0] != "--host":
+        return None
+    hid, rest = argv[1], argv[2:]
+    if hid in ("local", "", local_host_name()):
+        return rest  # caller continues locally
+    h = next((x for x in hosts() if x["id"] == hid or x["name"] == hid), None)
+    if not h:
+        print(f"hosts.json 里没有叫 {hid} 的机器（本机用 local）", file=sys.stderr)
+        sys.exit(2)
+    cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in rest)
+    try:
+        r = subprocess.run(["ssh", "-o", "ConnectTimeout=4", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd],
+                           stdin=(subprocess.DEVNULL if sys.stdin.isatty() else sys.stdin), timeout=60)
+    except subprocess.TimeoutExpired:
+        print(f"{h['name']} 没在 60 秒内响应", file=sys.stderr)
+        sys.exit(124)
+    if r.returncode == 255:
+        print(f"连不上 {h['name']}（{h['ssh']}）：Tailscale 没开，或那台机器离线", file=sys.stderr)
+    sys.exit(r.returncode)
+
+
 def main():
+    rest = proxy_to_host(sys.argv[1:])
+    if rest is not None:
+        sys.argv = [sys.argv[0]] + rest
     p = argparse.ArgumentParser(prog="dispatch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
@@ -3126,7 +3178,7 @@ def main():
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
-    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
+    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
@@ -3154,7 +3206,7 @@ def main():
     s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link"); s.add_argument("what", nargs="?", choices=["run", "url"], default="run"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
-    s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
+    s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)

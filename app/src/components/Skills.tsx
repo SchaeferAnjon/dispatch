@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
-import type { Skill } from "../types";
+import type { Host, Skill } from "../types";
+import { HostPicker, hostReason } from "./HostPicker";
 import { Markdown, splitFrontmatter } from "./Markdown";
 
-interface Props { api: Api; onDone: (m: string) => void; onError: (m: string) => void }
+interface Props { api: Api; hosts: Host[]; onDone: (m: string) => void; onError: (m: string) => void }
+const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 
 const AGENTS: { id: string; label: string; cls: string }[] = [
   { id: "claude", label: "Claude Code", cls: "claude" },
   { id: "codex", label: "Codex", cls: "codex" },
 ];
 
-export function SkillsView({ api, onDone, onError }: Props) {
+export function SkillsView({ api, hosts, onDone, onError }: Props) {
+  const [host, setHost] = useState("local");
+  const blocked = hostReason(hosts, host);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
@@ -32,13 +36,13 @@ export function SkillsView({ api, onDone, onError }: Props) {
     } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
 
-  const load = async () => { try { setSkills(await api.skills()); setLoaded(true); } catch (e) { onError(String(e)); } };
-  useEffect(() => { load(); }, [api]);
+  const load = async () => { if (blocked) { setSkills([]); setLoaded(true); return; } try { setSkills(parseJson<Skill[]>(await api.on(host, ["skills", "list", "--json"]), [])); setLoaded(true); } catch (e) { onError(String(e)); } };
+  useEffect(() => { setSel(null); load(); }, [api, host, blocked]);
   useEffect(() => {
     if (!sel) return;
     let alive = true;
     setDraft(null);
-    api.skillRead(sel).then((c) => { if (alive) setContent(c); }).catch((e) => onError(String(e)));
+    api.on(host, ["skills", "show", sel]).then((c) => { if (alive) setContent(c); }).catch((e) => onError(String(e)));
     return () => { alive = false; };
   }, [sel, api]);
 
@@ -53,16 +57,19 @@ export function SkillsView({ api, onDone, onError }: Props) {
   const toggle = async (s: Skill, agent: string) => {
     if (busy) return;
     setBusy(true);
-    try { const msg = await api.skillToggle(s.name, agent, !s.agents[agent]); onDone(msg.split("\n")[0] || "已更新"); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
+    try { const msg = await api.on(host, ["skills", s.agents[agent] ? "disable" : "enable", s.name, "--agent", agent]); onDone(msg.split("\n")[0] || "已更新"); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
   const save = async () => {
     if (!sel || draft === null) return;
     setBusy(true);
-    try { await api.skillWrite(sel, draft); setContent(draft); setDraft(null); onDone("SKILL.md 已保存（旧版本留在 .md.bak）"); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
+    try { await api.on(host, ["skills", "write", sel], draft); setContent(draft); setDraft(null); onDone("SKILL.md 已保存（旧版本留在 .md.bak）"); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
 
   return (
-    <div className="sk-wrap">
+    <div className="sk-wrap" style={{ flexDirection: "column" }}>
+      <HostPicker hosts={hosts} value={host} onChange={setHost} />
+      {blocked && <div className="empty">{blocked}</div>}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
       <div className="sk-side">
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="搜技能名、描述…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
@@ -95,7 +102,7 @@ export function SkillsView({ api, onDone, onError }: Props) {
                 <div className="ttl mono">{cur.name}</div>
                 <div className="sub mono">{cur.path.replace(/^\/Users\/[^/]+/, "~")}/SKILL.md</div>
               </div>
-              <button className="btn sm" onClick={() => api.skillOpen(cur.name)}>用编辑器打开</button>
+              {host === "local" && <button className="btn sm" onClick={() => api.skillOpen(cur.name)}>用编辑器打开</button>}
               {draft === null ? <button className="btn primary sm" onClick={() => setDraft(content)}>在这里改</button> : (
                 <>
                   <button className="btn ghost sm" onClick={() => setDraft(null)}>放弃</button>
@@ -131,6 +138,7 @@ export function SkillsView({ api, onDone, onError }: Props) {
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );

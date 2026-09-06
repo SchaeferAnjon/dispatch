@@ -109,6 +109,7 @@ export function fixtureApi(): Api {
     ],
     openPath: async () => {},
     hosts: async () => [],
+    on: async (_h, args) => (args[args.length - 1] === "--json" ? "[]" : "示例输出"),
     agentStart: async () => null,
     graph: async () => ({ nodes: issues.map((i) => ({ ...i })), edges: [
       { from: "task-9lo", to: "task-4mk", type: "discovered-from" }, { from: "task-9lo", to: "task-e1q", type: "discovered-from" },

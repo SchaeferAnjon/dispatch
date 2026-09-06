@@ -1,49 +1,55 @@
 import { useEffect, useState } from "react";
 import type { Api } from "../api";
-import type { EnvVar } from "../types";
+import type { EnvVar, Host } from "../types";
+import { HostPicker, hostReason } from "./HostPicker";
 
-interface Props { api: Api; onDone: (m: string) => void; onError: (m: string) => void }
+interface Props { api: Api; hosts: Host[]; onDone: (m: string) => void; onError: (m: string) => void }
+const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 
 // API keys and other secrets live in one 0600 file (~/.config/dispatch/env), never in
 // the board or the wiki. Agents learn the *names* from `dispatch prime` and fetch a
 // value with `dispatch env get NAME` only when they need it.
-export function EnvView({ api, onDone, onError }: Props) {
+export function EnvView({ api, hosts, onDone, onError }: Props) {
+  const [host, setHost] = useState("local");
+  const blocked = hostReason(hosts, host);
   const [items, setItems] = useState<EnvVar[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [shown, setShown] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<{ name: string; note: string; isNew: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = async () => { try { setItems(await api.envList()); setLoaded(true); } catch (e) { onError(String(e)); } };
-  useEffect(() => { load(); }, [api]);
+  const load = async () => { if (blocked) { setItems([]); setLoaded(true); return; } try { setItems(parseJson<EnvVar[]>(await api.on(host, ["env", "list", "--json"]), [])); setLoaded(true); } catch (e) { onError(String(e)); } };
+  useEffect(() => { setShown({}); load(); }, [api, host, blocked]);
 
   const reveal = async (name: string) => {
     if (shown[name] !== undefined) { const c = { ...shown }; delete c[name]; setShown(c); return; }
-    try { setShown({ ...shown, [name]: await api.envGet(name) }); } catch (e) { onError(String(e)); }
+    try { setShown({ ...shown, [name]: (await api.on(host, ["env", "get", name])).trimEnd() }); } catch (e) { onError(String(e)); }
   };
   const copy = async (name: string) => {
-    try { await navigator.clipboard.writeText(await api.envGet(name)); onDone(`${name} 已复制`); } catch (e) { onError(String(e)); }
+    try { await navigator.clipboard.writeText((await api.on(host, ["env", "get", name])).trimEnd()); onDone(`${name} 已复制`); } catch (e) { onError(String(e)); }
   };
   const remove = async (name: string) => {
     if (busy) return;
     setBusy(true);
-    try { await api.envUnset(name); onDone(`${name} 已删除`); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
+    try { await api.on(host, ["env", "unset", name]); onDone(`${name} 已删除`); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
   const save = async (name: string, value: string, note: string) => {
     setBusy(true);
-    try { await api.envSet(name, value, note); onDone(`${name} 已保存；新开的终端自动带上，Agent 用 dispatch env get 取`); setEditing(null); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
+    try { await api.on(host, ["env", "set", name, "--stdin", "--note", note], value); onDone(`${name} 已保存；新开的终端自动带上，Agent 用 dispatch env get 取`); setEditing(null); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
 
   return (
     <div className="pit-wrap">
+      <HostPicker hosts={hosts} value={host} onChange={setHost} />
       <div className="pit-head">
         <span className="muted mono small">{items.length} 个</span>
         <span className="spacer" />
-        <button className="btn primary" onClick={() => setEditing({ name: "", note: "", isNew: true })}>＋ 添加</button>
+        <button className="btn primary" disabled={!!blocked} onClick={() => setEditing({ name: "", note: "", isNew: true })}>＋ 添加</button>
       </div>
       <p className="pit-hint">存在 <span className="mono">~/.config/dispatch/env</span>（仅本人可读）。fish 新终端自动加载；Agent 在会话开始只看到变量名和用途，需要时 <span className="mono">dispatch env get 名字</span> 取值——不用你每次会话重贴 Key。不进任务板、不进知识库。</p>
       {!loaded && <div className="empty">载入中…</div>}
-      {loaded && items.length === 0 && <div className="empty">还没有。把智谱、豆包语音等 API Key 加进来，以后任何 Agent 都自己取。</div>}
+      {blocked && <div className="empty">{blocked}</div>}
+      {!blocked && loaded && items.length === 0 && <div className="empty">还没有。把智谱、豆包语音等 API Key 加进来，以后任何 Agent 都自己取。</div>}
       <div className="pit-list">
         {items.map((v) => (
           <div key={v.name} className="pit howto">

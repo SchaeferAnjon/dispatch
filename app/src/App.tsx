@@ -293,9 +293,9 @@ export default function App() {
             {view === "projects" && api && <ProjectsView api={api} me={me} issues={issues} onSelect={setSelected} onBoard={(p) => { setFilters({ ...filters, project: p, blocked: false, review: false, agent: null }); setView("board"); }} onFolder={() => setView("folders")} />}
             {view === "stats" && api && <StatsView onDone={say} api={api} me={me} onError={(m) => say(m, true)} />}
             {view === "folders" && api && <FoldersView api={api} me={me} issues={issues} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "skills" && api && <SkillsView api={api} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "rules" && api && <RulesView api={api} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "env" && api && <EnvView api={api} onDone={say} onError={(m) => say(m, true)} />}
+            {view === "skills" && api && <SkillsView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
+            {view === "rules" && api && <RulesView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
+            {view === "env" && api && <EnvView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
           </section>
         </main>
