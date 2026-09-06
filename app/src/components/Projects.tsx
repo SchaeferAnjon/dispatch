@@ -6,7 +6,7 @@ import { Avatar, Pri } from "./ui";
 
 interface Props { selectedProject: string | null; onProjectChange: (value: string) => void; api: Api; me: string; issues: Issue[]; onSelect: (id: string) => void; onBoard: (project: string) => void; onFolder: (cwd: string) => void }
 
-const AGENT_ORDER = ["claude-code", "codex", "pi", "zcode", "qoder", "qoder-ide"];
+const AGENT_ORDER = ["claude-code", "codex", "pi", "zcode"];
 
 // A project is a label on the board; a folder is where the work happened.
 // This view is the label side: tasks by status, who worked on them, and the

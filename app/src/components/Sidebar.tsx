@@ -70,8 +70,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       <nav className="nav">
         <div className="h">Agent<span className="n">{agents.filter((a) => a.online).length}/{agents.length} 在线</span></div>
         {item("agents", "agent", "Agent 状态")}
-        {item("quota", "chart", "额度")}
-        {item("stats", "chart", "统计")}
+        {item("stats", "chart", "统计与额度", undefined, view === "stats" || view === "quota")}
         <div className="agents sub">
           {agents.filter((a) => a.online).map((a) => (
             <button key={a.actor.id} className="agent" onClick={() => { onAllTasks(); setView("table"); setFilters({ project: null, mine: false, urgent: false, blocked: false, review: false, agent: a.actor.id }); }} title={`只看 ${a.actor.name} 的任务`}>

@@ -12,9 +12,8 @@ const TABS: { v: View; icon: string; label: string }[] = [
 ];
 const MORE: { v: View; icon: string; label: string }[] = [
   { v: "agents", icon: "agent", label: "Agent 状态" },
-  { v: "quota", icon: "chart", label: "额度" },
   { v: "trash", icon: "inbox", label: "回收站" },
-  { v: "stats", icon: "chart", label: "统计" },
+  { v: "stats", icon: "chart", label: "统计与额度" },
   { v: "graph", icon: "graph", label: "脉络" },
   { v: "projects", icon: "project", label: "项目" },
   { v: "folders", icon: "folder", label: "文件夹" },
@@ -26,14 +25,14 @@ const MORE: { v: View; icon: string; label: string }[] = [
 
 export function MobileNav({ view, setView, badge }: { view: View; setView: (v: View) => void; badge: number }) {
   const [more, setMore] = useState(false);
-  const inMore = MORE.some((m) => m.v === view);
+  const inMore = view === "quota" || MORE.some((m) => m.v === view);
   return (
     <>
       {more && (
         <div className="m-sheet-bg" onClick={() => setMore(false)}>
           <div className="m-sheet" onClick={(e) => e.stopPropagation()}>
             {MORE.map((m) => (
-              <button key={m.v} className={view === m.v ? "on" : ""} onClick={() => { setView(m.v); setMore(false); }}><Icon name={m.icon} size={18} />{m.label}</button>
+              <button key={m.v} className={(view === m.v || (view === "quota" && m.v === "stats")) ? "on" : ""} onClick={() => { setView(m.v); setMore(false); }}><Icon name={m.icon} size={18} />{m.label}</button>
             ))}
           </div>
         </div>

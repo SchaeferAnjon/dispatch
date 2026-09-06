@@ -108,7 +108,7 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
 // "派活": start an agent on a machine through Herdr and send it a first prompt.
-const KINDS: [string, string][] = [["claude", "Claude Code"], ["codex", "Codex"], ["qodercli", "Qoder CLI"], ["gemini", "Gemini CLI"], ["opencode", "OpenCode"]];
+const KINDS: [string, string][] = [["claude", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini CLI"], ["opencode", "OpenCode"]];
 function Delegate({ host, onClose, onStart }: { host: Host; onClose: () => void; onStart: (input: AgentStartInput) => Promise<AgentStartResult | null> }) {
   const [kind, setKind] = useState("claude");
   const [cwd, setCwd] = useState("");
@@ -156,7 +156,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
           {hosts.map((h) => {
             const OVERLAY: Record<string, string> = { tailscale: "Tailscale", netbird: "Netbird", zerotier: "ZeroTier" };
             const ways: { key: string; label: string; act: () => void; hint: string }[] = [];
-            if (h.novnc_up) ways.push({ key: "novnc", label: "手机看屏幕 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "复制网页远程桌面链接；手机在同一个网里用浏览器打开，密码是这台 Mac 的登录密码" });
+            if (h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: "手机看屏幕 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "复制 HTTPS 屏幕链接；手机连接 Tailscale 后用浏览器打开，使用这台 Mac 的用户名和登录密码" });
             if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: "看它的屏幕", act: () => onOpenUrl(h.vnc), hint: "用系统「屏幕共享」打开" });
             if (h.rustdesk) ways.push({ key: "rustdesk", label: h.rustdesk_id ? `RustDesk ${h.rustdesk_id} ⧉` : "RustDesk", act: () => (h.rustdesk_id ? onCopyText(h.rustdesk_id, "RustDesk ID") : onOpenUrl("rustdesk://")), hint: "不用虚拟网：手机 RustDesk 输这个 ID" });
             if (h.sunshine) ways.push({ key: "moonlight", label: "Moonlight 配对", act: () => onOpenUrl(h.sunshine_ui), hint: "打开 Sunshine 配对页；手机装 Moonlight，画质最高" });
@@ -168,6 +168,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
                 {h.overlay?.kind && <span className="host-chip">{OVERLAY[h.overlay.kind] ?? h.overlay.kind}</span>}
                 {h.online && <button className="btn sm" onClick={() => setDelegate(h)} title="在这台机器的 Herdr 里起一个 Agent 并发第一句话">派活</button>}
                 {ways.map((w) => <button key={w.key} className={`btn sm${w.key === h.recommend || (h.recommend === "vnc" && w.key === "novnc") ? "" : " ghost"}`} onClick={w.act} title={w.hint}>{w.label}</button>)}
+                {h.novnc_issue && <span className="host-connection-note">{h.novnc_issue}</span>}
                 {ways.length === 0 && <span className="muted small">{h.why}</span>}
               </div>
             );

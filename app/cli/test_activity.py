@@ -37,7 +37,7 @@ class ActivityTests(unittest.TestCase):
         with open(os.path.join(os.path.dirname(self.path),'resumed.jsonl'),'w') as f:
             f.write(json.dumps(meta)+'\n'+json.dumps(record('assistant','new reply',self.t+1))+'\n')
         rows=activity_list(self.home,self.store,{})
-        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['last_at'],self.t+1)
+        self.assertEqual(len(rows),1);self.assertAlmostEqual(rows[0]['last_at'],self.t+1,delta=0.00001)  # Filesystem timestamp rounding.
 
     def test_read_new_reply_and_stale_ack(self):
         self.append(record('assistant', 'one', self.t))

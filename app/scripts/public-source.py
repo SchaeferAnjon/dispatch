@@ -14,6 +14,8 @@ destination=pathlib.Path(sys.argv[1]).resolve()
 tracked=subprocess.check_output(['git','ls-files','-z'],cwd=root).decode().split('\0')
 single={'README.md','LICENSE','.gitignore','app/README.md','app/package.json','app/package-lock.json','app/index.html','app/tsconfig.json','app/tsconfig.node.json','app/vite.config.ts','app/.gitignore','app/scripts/install.sh','app/scripts/public-source.py'}
 paths=[p for p in tracked if p and (p in single or p.startswith(('app/src/','app/src-tauri/')) or (p.startswith('app/cli/') and p.endswith('.py')))]
+if 'app/scripts/novnc-setup.sh' in tracked:
+    paths.append('app/scripts/novnc-setup.sh')
 assert paths and 'app/cli/dispatch.py' in paths and 'README.md' in paths
 destination.parent.mkdir(parents=True,exist_ok=True)
 with tarfile.open(destination,'w:gz') as archive:

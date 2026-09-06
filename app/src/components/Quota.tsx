@@ -4,6 +4,28 @@ import type { Quota } from '../types';
 import { actorOf, relTime } from '../derive';
 import { QuotaBar } from './Home';
 import { Avatar } from './ui';
+import { StatsView } from './Stats';
+import type { ComponentProps } from 'react';
+
+export function UsageView({initialTab, ...props}: ComponentProps<typeof StatsView> & {initialTab?: 'quota'}) {
+  const [tab, setTab] = useState<'quota' | 'stats'>(() => {
+    if (initialTab) return initialTab;
+    try { return localStorage.getItem('dispatch-usage-tab') === 'stats' ? 'stats' : 'quota'; } catch { return 'quota'; }
+  });
+  const select = (next: 'quota' | 'stats') => {
+    setTab(next);
+    try { localStorage.setItem('dispatch-usage-tab', next); } catch { /* Optional preference. */ }
+  };
+  return <div className="usage-page">
+    <div className="usage-tabs" role="tablist" aria-label="统计与额度">
+      <button id="usage-quota-tab" role="tab" aria-selected={tab === 'quota'} aria-controls="usage-panel" onClick={() => select('quota')}>额度概览</button>
+      <button id="usage-stats-tab" role="tab" aria-selected={tab === 'stats'} aria-controls="usage-panel" onClick={() => select('stats')}>使用统计</button>
+    </div>
+    <div id="usage-panel" role="tabpanel" aria-labelledby={`usage-${tab}-tab`}>
+      {tab === 'quota' ? <QuotaView api={props.api} hostName={props.hostName ?? ''}/> : <StatsView {...props}/>}
+    </div>
+  </div>;
+}
 
 export function QuotaView({api,hostName}:{api:Api;hostName:string}) {
   const [rows,setRows]=useState<Quota[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [showUnavailable,setShowUnavailable]=useState(false);

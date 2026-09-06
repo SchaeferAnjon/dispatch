@@ -6,7 +6,7 @@ import { Markdown } from "./Markdown";
 
 interface Props { api: Api; hosts: Host[]; onDone: (m: string) => void; onError: (m: string) => void }
 
-const AGENT_LABEL: Record<string, string> = { claude: "Claude Code", codex: "Codex", pi: "pi", zcode: "ZCode", qoder: "Qoder" };
+const AGENT_LABEL: Record<string, string> = { claude: "Claude Code", codex: "Codex", pi: "pi", zcode: "ZCode" };
 const STATE_LABEL: Record<string, { text: string; cls: string }> = {
   synced: { text: "已同步", cls: "done" }, stale: { text: "过期", cls: "prog" }, absent: { text: "未写入", cls: "block" }, missing: { text: "文件不存在", cls: "block" },
 };

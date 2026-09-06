@@ -1,5 +1,5 @@
 import { TaskActions, isTrashed } from "./components/TaskActions";
-import { QuotaView } from "./components/Quota";
+import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getApi, isTauri, isServed, type Api } from "./api";
 import { Detail } from "./components/Detail";
@@ -18,13 +18,12 @@ import { GraphView } from "./components/Graph";
 import { FoldersView } from "./components/Folders";
 import { ProjectsView } from "./components/Projects";
 import { Tour } from "./components/Guide";
-import { StatsView } from "./components/Stats";
 import { MobileNav } from "./components/MobileNav";
 import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "会话", stats: "统计", skills: "技能", rules: "指令文档", pitfalls: "知识库", env: "环境", quota: "额度", trash: "回收站" };
+const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "指令文档", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站" };
 const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
@@ -124,7 +123,8 @@ export default function App() {
       try {
         const inf = await a.info();
         setInfo(inf);
-        if ((VIEWS as string[]).includes(inf.initial_view ?? "")) setView(inf.initial_view as View);
+        const requestedView = new URLSearchParams(window.location.search).get("page") ?? inf.initial_view;
+        if ((VIEWS as string[]).includes(requestedView ?? "")) setView(requestedView as View);
         if (inf.initial_task && !inf.initial_task.startsWith("session:")) setSelected(inf.initial_task);
       } catch (e) { setErr(String(e)); }
       await reload(a);
@@ -270,7 +270,7 @@ export default function App() {
     const w = new Set(notificationInbox.waiting.map((x) => x.session_id));
     const r = new Set(notificationInbox.review.map((x) => x.id));
     if (s.ready) {
-      for (const x of notificationInbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : x.agent === "qoder" ? "Qoder" : x.agent === "qoder-ide" ? "Qoder IDE" : "Claude Code"} 需要处理`, `${x.attention === "failure" ? "工具执行失败" : "等待确认"} · ${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`).catch(() => {});
+      for (const x of notificationInbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : "Claude Code"} 需要处理`, `${x.attention === "failure" ? "工具执行失败" : "等待确认"} · ${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`).catch(() => {});
     }
     s.waiting = w; s.review = r;
     if (!s.ready && (presence.sessions.length > 0 || issues.length > 0)) s.ready = true;
@@ -369,9 +369,8 @@ export default function App() {
             {view === "agents" && <AgentsView agents={agents} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
             {view === "sessions" && api && <SessionsView activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "projects" && api && <ProjectsView selectedProject={projectSelection} onProjectChange={setProjectSelection} api={api} me={me} issues={issuesF} onSelect={setSelected} onBoard={(p) => { setFilters({ ...filters, project: p, blocked: false, review: false, agent: null }); navigateContext("board"); }} onFolder={(cwd) => { setFolderSelection(cwd); navigateContext("folders"); }} />}
-            {view === "quota" && api && <QuotaView api={api} hostName={hostFilter}/>}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
-            {view === "stats" && api && <StatsView onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
+            {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "folders" && api && <FoldersView selectedFolder={folderSelection} onFolderChange={setFolderSelection} api={api} me={me} issues={issuesF} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

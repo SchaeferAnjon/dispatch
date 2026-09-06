@@ -90,7 +90,7 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
           <div className="views" style={{ marginTop: 6 }}>
-            {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"], ["qoder", "Qoder"], ["qoder-ide", "Qoder IDE"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
+            {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
             <span className="spacer" /><span className="muted mono small">{items.length}</span>
           </div>
         </div>

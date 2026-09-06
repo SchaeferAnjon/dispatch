@@ -22,7 +22,7 @@ export interface Stats {
 export interface Host {
   id: string; name: string; ip: string; ssh: string; online: boolean; local: boolean; herdr_session?: string;
   overlay: { kind: string; ip: string }; lan_ip?: string;
-  screen_sharing: boolean; novnc: string; novnc_up: boolean; vnc: string;
+  screen_sharing: boolean; novnc: string; novnc_up: boolean; novnc_issue?: string; vnc: string;
   rustdesk: boolean; rustdesk_id: string; sunshine: boolean; sunshine_ui: string; uu: boolean;
   recommend: "novnc" | "vnc" | "rustdesk" | "moonlight" | "uu" | ""; why: string;
 }

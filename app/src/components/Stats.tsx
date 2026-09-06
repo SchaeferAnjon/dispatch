@@ -7,8 +7,8 @@ import { InsightsCard } from "./Insights";
 interface Props { api: Api; me: string; host?: string; hostName?: string; onDone?: (m: string) => void; onError: (m: string) => void }
 const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 
-const AGENTS = ["claude-code", "codex", "pi", "zcode", "qoder", "qoder-ide"];
-const COLOR: Record<string, string> = { "claude-code": "var(--claude)", codex: "var(--codex)", pi: "var(--pi)", zcode: "var(--cursor)", qoder: "var(--qoder)", "qoder-ide": "var(--qoder-2)" };
+const AGENTS = ["claude-code", "codex", "pi", "zcode"];
+const COLOR: Record<string, string> = { "claude-code": "var(--claude)", codex: "var(--codex)", pi: "var(--pi)", zcode: "var(--cursor)" };
 const RANGES: [number, string][] = [[7, "7 天"], [30, "30 天"], [90, "90 天"], [365, "一年"], [0, "全部"]];
 const WD = ["一", "二", "三", "四", "五", "六", "日"];
 
@@ -128,7 +128,7 @@ function Trend({ days, metric, n }: { days: StatsDay[]; metric: "tokens" | "msgs
 }
 
 export function StatsView({ api, me, host, hostName, onDone, onError }: Props) {
-  const [agent, setAgent] = useState<string>(() => { try { return localStorage.getItem("dispatch-stats-agent") ?? ""; } catch { return ""; } });
+  const [agent, setAgent] = useState<string>(() => { try { const saved = localStorage.getItem("dispatch-stats-agent") ?? ""; return AGENTS.includes(saved) ? saved : ""; } catch { return ""; } });
   const [days, setDays] = useState<number>(() => { try { return Number(localStorage.getItem("dispatch-stats-days") ?? 90); } catch { return 90; } });
   const [metric, setMetric] = useState<"tokens" | "msgs">("tokens");
   const [s, setS] = useState<Stats | null>(null);

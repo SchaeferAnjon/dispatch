@@ -10,7 +10,7 @@ export function durSince(epochSec: number): string {
   return `${Math.floor(h / 24)} 天`;
 }
 
-export type AgentKind = "claude" | "codex" | "zcode" | "qoder" | "cursor" | "human" | "pi";
+export type AgentKind = "claude" | "codex" | "zcode" | "cursor" | "human" | "pi";
 export interface Actor { id: string; name: string; kind: AgentKind; glyph: string }
 
 const KNOWN: Record<string, Omit<Actor, "id">> = {
@@ -18,14 +18,14 @@ const KNOWN: Record<string, Omit<Actor, "id">> = {
   claude: { name: "Claude Code", kind: "claude", glyph: "C" },
   codex: { name: "Codex", kind: "codex", glyph: "X" },
   zcode: { name: "ZCode", kind: "zcode", glyph: "Z" },
-  qoder: { name: "Qoder", kind: "qoder", glyph: "Q" },
-  "qoder-ide": { name: "Qoder IDE", kind: "qoder", glyph: "Qi" },
   pi: { name: "pi", kind: "pi", glyph: "π" },
   cursor: { name: "Cursor", kind: "cursor", glyph: "U" },
 };
-export const DEFAULT_AGENTS = ["claude-code", "codex", "pi", "zcode", "qoder", "qoder-ide"];
+export const DEFAULT_AGENTS = ["claude-code", "codex", "pi", "zcode"];
+// Ignore retired integrations in old task and presence records.
+const RETIRED_AGENTS = new Set(["qoder", "qoder-ide", "qodercli"]);
 // Desktop-only agents: no CLI to resume from, the app has to be brought up instead.
-export const NO_RESUME = new Set(["zcode", "qoder", "qoder-ide"]);
+export const NO_RESUME = new Set(["zcode"]);
 
 // Old records carry the git user.name; treat every human alias as "me" so the
 // board shows one person, not one per spelling.
@@ -123,7 +123,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
   for (const i of issues) {
     const seen = new Set<string>();
     for (const raw of [i.assignee, i.created_by]) {
-      if (!raw || seen.has(raw)) continue;
+      if (!raw || RETIRED_AGENTS.has(raw) || seen.has(raw)) continue;
       seen.add(raw);
       // Creating a task from Dispatch shouldn't turn the user into an "agent" lane.
       if (isMe(raw, me) && raw !== i.assignee) continue;
@@ -131,13 +131,13 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
       const ts = raw === i.assignee ? i.updated_at : i.created_at;
       if (!p.lastActive || ts > p.lastActive) p.lastActive = ts;
     }
-    if (i.assignee) {
+    if (i.assignee && !RETIRED_AGENTS.has(i.assignee)) {
       const p = ensure(i.assignee);
       if (i.status === "in_progress") p.current.push(i);
     }
   }
   for (const s of sessions) {
-    if (!s.alive) continue;
+    if (!s.alive || RETIRED_AGENTS.has(s.agent)) continue;
     const p = ensure(s.agent);
     p.sessions.push(s);
   }
@@ -157,7 +157,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     p.online = p.sessions.length > 0 || (p.actor.kind !== "human" && p.sessions.length === 0 && recentWrite && p.actor.kind === "cursor");
     p.current.sort((a, b) => a.priority - b.priority);
   }
-  const order: Record<AgentKind, number> = { claude: 0, codex: 1, pi: 2, zcode: 3, qoder: 4, human: 5, cursor: 6 };
+  const order: Record<AgentKind, number> = { claude: 0, codex: 1, pi: 2, zcode: 3, human: 5, cursor: 6 };
   // The human is not an agent: only list them while they actually hold an in-progress task.
   return [...map.values()]
     .filter((p) => p.actor.kind !== "human" || p.current.length > 0)

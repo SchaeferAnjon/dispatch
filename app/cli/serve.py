@@ -260,7 +260,8 @@ class H(BaseHTTPRequestHandler):
         if "token" in q:
             ok = q["token"][0] == self.conf["token"]
             self.send_response(302)
-            self.send_header("Location", "/" if ok else "/?bad=1")
+            destination = "/?" + urllib.parse.urlencode({"page": q["page"][0]}) if q.get("page") else "/"
+            self.send_header("Location", destination if ok else "/?bad=1")
             if ok:
                 self.send_header("Set-Cookie", f"dispatch_token={self.conf['token']}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly")
             self.send_header("Content-Length", "0")

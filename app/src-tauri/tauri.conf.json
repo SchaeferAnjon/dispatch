@@ -44,6 +44,7 @@
     ],
     "resources": {
       "../cli/dispatch.py": "cli/dispatch.py",
+      "../cli/remote_screen.py": "cli/remote_screen.py",
       "../cli/activity.py": "cli/activity.py",
       "../cli/attachments.py": "cli/attachments.py",
       "../cli/instructions.py": "cli/instructions.py",

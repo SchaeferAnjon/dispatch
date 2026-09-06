@@ -4,11 +4,25 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("dispatch", os.path.join(HERE, "dispatch.py"))
 dispatch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dispatch)
+
+
+class RetiredAgentCache(unittest.TestCase):
+    def test_old_local_and_remote_entries_do_not_reappear(self):
+        rows = {"old": {"agent": "qoder"}, "ide": {"agent": "qoder-ide"}, "keep": {"agent": "codex"}}
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
+            json.dump(rows, f); f.flush()
+            with patch.object(dispatch, "INDEX_FILE", f.name):
+                self.assertEqual(dispatch.load_index(), {"keep": rows["keep"]})
+            # Migration changes Dispatch's view, not another application's source data.
+            with open(f.name) as saved:
+                self.assertEqual(json.load(saved), rows)
+        self.assertEqual(dispatch._only_theirs(list(rows.values())), [rows["keep"]])
 
 
 class ResumeCommand(unittest.TestCase):

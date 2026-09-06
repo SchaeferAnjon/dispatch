@@ -9,7 +9,7 @@ description: Dispatch 任务板与知识库的完整用法（dispatch/bd 命令�
 一块板管所有项目，数据库 `~/tasks/.beads`（Dolt shared-server，127.0.0.1:3308）。`BEADS_DIR` 已在 fish / Claude / Codex 配置里指向它。用户看桌面端 Dispatch（`/Applications/Dispatch.app`，源码 `~/Projects/kanban`），Agent 用 CLI `dispatch`（`--json` 给机器读）。会话启动 hook 已注入 `dispatch prime`（身份 + 当前项目的任务 + 相关知识库），**不要再手动 `bd prime` / `bd list --all` 拉全板进上下文**。
 
 ## 身份
-`BEADS_ACTOR`：Claude Code=`claude-code`，Codex=`codex`，pi=`pi`（扩展 `~/.pi/agent/extensions/dispatch.ts` 设置），人=`schaefer`。ZCode 没有环境变量入口，每条写命令带 `--actor zcode` 和 `BEADS_DIR=$HOME/tasks/.beads` 前缀。Qoder 已卸载。身份决定看板上"谁在干什么"，别用别人的。`bd where` 应显示 `~/tasks/.beads`，前缀 `task`。
+`BEADS_ACTOR`：Claude Code=`claude-code`，Codex=`codex`，pi=`pi`（扩展 `~/.pi/agent/extensions/dispatch.ts` 设置），人=`schaefer`。ZCode 没有环境变量入口，每条写命令带 `--actor zcode` 和 `BEADS_DIR=$HOME/tasks/.beads` 前缀。身份决定看板上"谁在干什么"，别用别人的。`bd where` 应显示 `~/tasks/.beads`，前缀 `task`。
 
 ## 流程（用户先随口描述，任务由你建）
 ```bash
@@ -48,7 +48,7 @@ dispatch agent start claude --host mini --model claude-sonnet-5 -p "…"        
 dispatch agent ask <pane|名字|标题|任务ID> "接着把文档补上"          # 给已有 Agent 发一句，默认等它做完并读回输出
 dispatch agent read <目标> --lines 80 / wait <目标> / keys <目标> enter / close <目标>
 ```
-kind 可选 claude、codex、qodercli、opencode、gemini 等（Herdr 支持的都行）；`--extra "--effort high"` 透传给 Agent 命令行。`start --task` 会以对应身份（claude→claude-code、codex、qodercli→qoder）认领任务并留一条"谁派给谁"的评论。输出里若出现"stalled"，多半是对方在等一个对话框（信任目录、审查 hooks），用 `keys <目标> enter` 或 `t` 回应。对方做完后照常 `dispatch done`；你负责汇总验证。
+kind 可选 claude、codex、opencode、gemini 等（Herdr 支持的都行）；`--extra "--effort high"` 透传给 Agent 命令行。`start --task` 会以对应身份（claude→claude-code、codex）认领任务并留一条"谁派给谁"的评论。输出里若出现"stalled"，多半是对方在等一个对话框（信任目录、审查 hooks），用 `keys <目标> enter` 或 `t` 回应。对方做完后照常 `dispatch done`；你负责汇总验证。
 
 ## 其他常用
 ```bash
