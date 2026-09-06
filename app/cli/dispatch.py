@@ -8,7 +8,8 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch resume <session|task>    print (or --copy) the command that resumes a session
   dispatch focus <session|task>     jump to the Herdr tab running that session
   dispatch skills list|show|enable|disable|open|path
-  dispatch prime [--hook-json]      compact session-start digest: identity, this project's tasks, relevant wiki
+  dispatch prime [--hook-json]      compact session-start digest: identity, this project's tasks, relevant wiki, who else is in this dir, your quota
+  dispatch claim <task> [--force]   claim without stealing: refuses a task another agent is working on
   dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
   dispatch pit add|list|show        = wiki --kind pit
   dispatch insights [--days N]      cross-agent /insights: signals, samples, an improvement task to hand to an agent
@@ -1703,8 +1704,45 @@ def bd_json(argv):
         return {}
 
 
+def similar(a_, b_):
+    import difflib
+    return difflib.SequenceMatcher(None, a_.lower(), b_.lower()).ratio()
+
+
+def begin_warnings(title, project, cwd):
+    """Things worth knowing before creating a task: someone already on something alike, or in this directory."""
+    warns = []
+    code, o, err = sh(["bd", "list", "--status", "in_progress", "--json"])
+    try:
+        for t in (json.loads(o[o.find("["):]) if code == 0 else []):
+            proj = next((l.split(":", 1)[1] for l in t.get("labels") or [] if l.startswith("project:")), "")
+            if project and proj and proj != project:
+                continue
+            if similar(title, t.get("title", "")) >= 0.5:
+                warns.append(f"进行中的 {t['id']}「{t.get('title', '')}」（{t.get('assignee') or '?'}）和这个很像——先 `bd show {t['id']}`，是同一件事就 `dispatch claim {t['id']}` 或和对方分工。")
+    except Exception:
+        pass
+    for s_ in neighbours(cwd)[:4]:
+        warns.append(f"同目录有 {s_['agent']} {s_['session_id'][:8]} 在跑（{ago(s_.get('last_at') or 0)}前活动）——别改它正在改的文件；`dispatch session {s_['session_id'][:8]}` 看它在干什么。")
+    return warns
+
+
+def cmd_claim(a):
+    """Claim a task, refusing to steal one that another actor is already working on (unless --force)."""
+    issue = bd_json(["show", a.task, "--json"])
+    actor = os.environ.get("BEADS_ACTOR") or ""
+    owner = issue.get("assignee") or ""
+    if owner and owner != actor and issue.get("status") == "in_progress" and not a.force:
+        print(f"{a.task} 已由 {owner} 认领并在进行中。要接手先和它分工（`dispatch find {a.task}` 看是哪个会话），确实要抢用 --force。", file=sys.stderr)
+        sys.exit(3)
+    bd_json(["update", a.task, "--claim", "--json"])
+    print(f"{a.task} 已认领" + (f"（从 {owner} 手里接过来）" if owner and owner != actor else ""))
+
+
 def cmd_begin(a):
     """Create + claim a task in one go: the first thing an Agent does once it knows what it is doing."""
+    for w in begin_warnings(a.title, a.project, os.getcwd()):
+        print("⚠ " + w, file=sys.stderr)
     labels = [f"project:{a.project}"] if a.project else []
     argv = ["create", a.title, "-t", a.type, "-p", str(a.priority), "--json"]
     if labels:
@@ -2501,12 +2539,82 @@ def project_of_cwd(cwd, names):
     return ""
 
 
+def neighbours(cwd, self_id=""):
+    """Other live sessions working in this directory (or a parent/child of it)."""
+    cwd = os.path.normpath(cwd)
+    rows = []
+    try:
+        live = live_sessions()
+    except Exception:
+        return rows
+    for s in live:
+        if not s.get("alive") or s.get("session_id") == self_id:
+            continue
+        c = os.path.normpath(s.get("cwd") or "")
+        if not c or c == "/":
+            continue
+        if c == cwd or cwd.startswith(c + os.sep) or c.startswith(cwd + os.sep):
+            rows.append(s)
+    return rows
+
+
+def quota_for(actor):
+    """Quota windows for this agent from the cached collectors (fresh enough for a session start)."""
+    try:
+        if actor == "claude-code":
+            return quota_claude()
+        if actor == "codex":
+            return quota_codex()
+    except Exception:
+        return None
+    return None
+
+
+def quota_mode(percent):
+    """What the agent should do at this usage level; text goes straight into prime."""
+    if percent is None:
+        return None, ""
+    if percent >= 95:
+        return "critical", "额度告急（≥95%）：只做收尾——把进度 `dispatch log` 写到板上，未完成的 `dispatch done --next` 变成任务，然后告诉用户换一个额度充足的 Agent 继续（`dispatch quota` 看谁还有余量）。不要开新工作。"
+    if percent >= 80:
+        return "saving", "省 token 模式（≥80%）：回复只给结论和必要证据；不重读已读过的大文件，用 grep/sed -n 取片段；不派子 Agent、不跑 Explore；工具输出用 --json / tail 截短；不把整板拉进上下文；能合并的工具调用合并；非紧急的事写成任务留给额度多的 Agent。"
+    return "normal", ""
+
+
+def quota_line(actor):
+    q = quota_for(actor)
+    if not q or not q.get("windows"):
+        return "", None
+    parts, worst = [], 0
+    for w in q["windows"]:
+        pct = w.get("used_percent")
+        if pct is None:
+            continue
+        worst = max(worst, pct)
+        left = ""
+        if w.get("resets_at") and w["resets_at"] > time.time():
+            m = int((w["resets_at"] - time.time()) / 60)
+            left = f"，{m // 60}h{m % 60:02d} 后重置" if m < 2880 else f"，{m // 1440}d 后重置"
+        parts.append(f"{w['label']} {round(pct)}%{left}")
+    if not parts:
+        return "", None
+    return f"额度（{actor}）：" + " · ".join(parts) + "。", worst
+
+
 def cmd_prime(a):
     """What an Agent needs at session start, and nothing else: who it is, the board's
     protocol in four lines, this project's tasks, and the wiki entries for this project
     (plus the few global ones). Everything else is one `dispatch wiki search` away."""
     cwd = a.cwd or os.getcwd()
     actor = os.environ.get("BEADS_ACTOR") or os.environ.get("DISPATCH_ACTOR") or ""
+    self_id = ""
+    if a.hook_json and not sys.stdin.isatty():
+        try:
+            hook = json.loads(sys.stdin.read() or "{}")
+            self_id = hook.get("session_id") or hook.get("sessionId") or ""
+            cwd = a.cwd or hook.get("cwd") or cwd
+        except Exception:
+            pass
     names = project_names()
     proj = project_of_cwd(cwd, names)
     ptag = proj or "<项目名>"
@@ -2537,14 +2645,30 @@ def cmd_prime(a):
     items = [it for it in wiki_all() if it["kind"]]
     local = [it for it in items if proj and it["project"].lower() == proj.lower()]
     glob_ = [it for it in items if not it["project"]]
-    pick = local[-a.limit:] + glob_[-max(2, a.limit // 2):]
+    # pits and wins are what prevent repeat mistakes; retros are long and mostly history — newest one only
+    short = lambda xs: [it for it in xs if it["kind"] != "retro"]
+    retro = [it for it in local if it["kind"] == "retro"][-1:]
+    pick = short(local)[-a.limit:] + retro + short(glob_)[-max(2, a.limit // 2):]
     if pick:
         lines.append(f"## 知识库（{proj + ' + ' if proj else ''}通用；全部 {len(items)} 条，`dispatch wiki list`）")
         for it in pick:
-            lines.append(wiki_line(it))
+            lines.append(wiki_line(it, 140))
     env_line = env_summary_line()
     if env_line:
         lines.append(env_line)
+    # who else is in this directory right now — the thing that prevents two agents from fighting
+    nb = neighbours(cwd, self_id)
+    if nb:
+        lines.append(f"## 同目录在跑（{len(nb)}）")
+        for s_ in nb[:6]:
+            mark = "◐" if s_.get("state") == "working" else "○"
+            lines.append(f"{mark} {s_['agent']} {s_['session_id'][:8]} · {'在跑' if s_.get('state') == 'working' else '等用户'} · {(lambda t: t + '活动' if t.startswith('刚刚') else t + '前活动')(ago(s_.get('last_at') or 0))} · 目录 …{(s_.get('cwd') or '')[-28:]}" + (f" · {s_['host_name']}" if s_.get("host") not in (None, "local") else ""))
+        lines.append("它们可能正在改这里的文件：只改自己任务涉及的文件，commit 按文件 add，不碰别人的半成品；想知道它在干什么 `dispatch session <id>`；认领任务用 `dispatch claim <id>`（别人已认领会拒绝）。")
+    ql, worst = quota_line(actor)
+    if ql:
+        mode, advice = quota_mode(worst)
+        lines.append("## 额度")
+        lines.append(ql + (" " + advice if advice else ""))
     text = "\n".join(lines)
     if a.hook_json:
         print(json.dumps({"continue": True, "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, ensure_ascii=False))
@@ -2567,6 +2691,7 @@ def main():
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_begin)
+    s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; otherwise it waits for review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)

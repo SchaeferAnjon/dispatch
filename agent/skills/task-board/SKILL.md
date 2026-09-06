@@ -40,13 +40,14 @@ dispatch done <id> --reason "做了什么；跑过哪些验证" [--verified] \
 
 ## 其他常用
 ```bash
-bd list --status in_progress                 # 谁在做什么（多开 Agent 时认领前先看）
+bd list --status in_progress                 # 谁在做什么；dispatch prime 里的「同目录在跑」是同一目录的活跃会话
+dispatch claim <id> [--force]                # 认领守卫：别人正在做的不给抢
+dispatch quota                               # 各 Agent 额度；prime 里有你自己的，≥80% 省 token，≥95% 只收尾换 Agent
 bd show <id> --json  /  bd ready --json  /  bd blocked
 bd create "bug" -l project:xxx -t bug -p 1 --deps discovered-from:<当前id> --json
 dispatch sessions | find <task> | resume <task> --copy | focus <task>   # 会话：谁在跑、哪个会话提过这个任务、恢复命令、跳过去
 dispatch skills list|enable|disable <名> --agent claude|codex           # 技能池 ~/.cc-switch/skills；Claude 读 ~/.claude/skills，Codex 读 ~/.agents/skills（都是软链）
 dispatch rules show|status|sync              # 全局规则唯一来源 ~/.agents/rules/GLOBAL.md
-dispatch quota                               # 各 Agent 额度，快到顶换 Agent
 dispatch insights [--days 14] [--copy]       # 跨 Agent 复盘：确认/纠错/溢出信号 + 样本 + 一条改进任务的启动命令（Dispatch 统计页顶部同款）
 ```
 规则：跨会话的任务 / 待办 / 阻塞一律进板，TodoWrite 只做当前回合清单；不要 `bd edit`（会开编辑器）；`bd update --json` 返回数组；没真正完成不 close，`--reason` 写给审核的人看。

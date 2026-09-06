@@ -136,3 +136,20 @@ class EnvStore(unittest.TestCase):
             self.assertEqual(dispatch.env_mask("abc123def456"), "abc…456")
             self.assertIn("set -gx X 'has space #1'", open(dispatch.ENV_FISH).read())
             self.assertIn("ZHIPU_API_KEY（智谱 GLM）", dispatch.env_summary_line())
+
+
+class Guards(unittest.TestCase):
+    def test_quota_modes(self):
+        self.assertEqual(dispatch.quota_mode(None)[0], None)
+        self.assertEqual(dispatch.quota_mode(30)[0], "normal")
+        self.assertEqual(dispatch.quota_mode(80)[0], "saving")
+        self.assertIn("省 token", dispatch.quota_mode(85)[1])
+        self.assertEqual(dispatch.quota_mode(97)[0], "critical")
+    def test_similar_titles(self):
+        self.assertGreaterEqual(dispatch.similar("Dispatch 技能视图：使用频次", "Dispatch 技能视图 使用频次 + 按钮"), 0.5)
+        self.assertLess(dispatch.similar("Mac mini 安装 Dolt", "雅思刷题网站"), 0.5)
+    def test_neighbours_matches_same_or_nested_dir(self):
+        dispatch.live_sessions = lambda: [
+            {"session_id": "me", "cwd": "/a/b", "alive": True}, {"session_id": "x", "cwd": "/a/b", "alive": True},
+            {"session_id": "y", "cwd": "/a/b/sub", "alive": True}, {"session_id": "z", "cwd": "/other", "alive": True}, {"session_id": "d", "cwd": "/a/b", "alive": False}]
+        self.assertEqual([s["session_id"] for s in dispatch.neighbours("/a/b", "me")], ["x", "y"])
