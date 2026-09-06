@@ -1,3 +1,5 @@
+import { TaskActions, isTrashed } from "./components/TaskActions";
+import { QuotaView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getApi, isTauri, isServed, type Api } from "./api";
 import { Detail } from "./components/Detail";
@@ -7,7 +9,7 @@ import { AgentsView, Board, TableView } from "./components/views";
 import { PitfallsView } from "./components/Pitfalls";
 import { SessionsView } from "./components/Sessions";
 import { SkillsView } from "./components/Skills";
-import { RulesView } from "./components/Rules";
+import { RulesView } from "./components/InstructionCenter";
 import { EnvView } from "./components/Env";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { Workspace } from "./components/Workspace";
@@ -22,8 +24,8 @@ import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, 
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "会话", stats: "统计", skills: "技能", rules: "规则", pitfalls: "知识库", env: "环境" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env"];
+const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "会话", stats: "统计", skills: "技能", rules: "指令文档", pitfalls: "知识库", env: "环境", quota: "额度", trash: "回收站" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
 
@@ -93,7 +95,7 @@ export default function App() {
   useEffect(() => { if (focusSearch) { searchRef.current?.focus(); searchRef.current?.select(); setFocusSearch(false); } }, [focusSearch]);
   const toastTimer = useRef<number | undefined>(undefined);
 
-  const me = info?.actor ?? "schaefer";
+  const me = info?.actor ?? "user";
 
   const say = useCallback((text: string, isErr = false) => {
     setToast({ text, err: isErr });
@@ -202,7 +204,8 @@ export default function App() {
   const presenceF = useMemo(() => hostFilter ? { ...observedPresence, sessions: observedPresence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : observedPresence, [observedPresence, hostFilter, localName]);
   const refsF = useMemo(() => hostFilter ? new Map([...refs].filter(([, r]) => (r.host_name ?? localName) === hostFilter)) : refs, [refs, hostFilter, localName]);
   const activityF = useMemo(() => hostFilter ? activity.sessions.filter(a => (a.host_name ?? localName) === hostFilter) : activity.sessions, [activity, hostFilter, localName]);
-  const issuesF = useMemo(() => hostFilter ? issues.filter((i) => hostOfIssue(i, refs) === hostFilter) : issues, [issues, refs, hostFilter]);
+  const hostIssues = useMemo(() => hostFilter ? issues.filter((i) => hostOfIssue(i, refs) === hostFilter) : issues, [issues, refs, hostFilter]);
+  const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)), [hostIssues]);
   const agents = useMemo(() => agentsFrom(issuesF, me, presenceF.sessions), [issuesF, me, presenceF]);
   const runningSessions = presenceF.sessions.filter((s) => s.alive && s.state === "working").length;
   const projects = useMemo(() => {
@@ -315,7 +318,7 @@ export default function App() {
   };
 
   return (
-    <div className="app">
+    <TaskActions api={api} onOpen={setSelected} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
@@ -347,6 +350,7 @@ export default function App() {
             )}
             <span className="spacer" />
             {BOARD_VIEWS.includes(view) && (<>
+              <button className="chip" onClick={()=>setView("trash")}>回收站 {hostIssues.filter(isTrashed).length}</button>
               <button className="chip" disabled={!Object.values(filters).some(Boolean) && filters.project === null && !query} onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>清除筛选</button>
               <button className={`chip${filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>Agent 复核 {counts.review}</button>
               <button className={`chip${filters.blocked ? " on" : ""}`} onClick={() => setFilters({ ...filters, blocked: !filters.blocked, review: false })}>阻塞 {counts.blocked}</button>
@@ -365,6 +369,8 @@ export default function App() {
             {view === "agents" && <AgentsView agents={agents} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
             {view === "sessions" && api && <SessionsView activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "projects" && api && <ProjectsView selectedProject={projectSelection} onProjectChange={setProjectSelection} api={api} me={me} issues={issuesF} onSelect={setSelected} onBoard={(p) => { setFilters({ ...filters, project: p, blocked: false, review: false, agent: null }); navigateContext("board"); }} onFolder={(cwd) => { setFolderSelection(cwd); navigateContext("folders"); }} />}
+            {view === "quota" && api && <QuotaView api={api} hostName={hostFilter}/>}
+            {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "stats" && api && <StatsView onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "folders" && api && <FoldersView selectedFolder={folderSelection} onFolderChange={setFolderSelection} api={api} me={me} issues={issuesF} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
@@ -382,6 +388,6 @@ export default function App() {
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
-    </div>
+    </div></TaskActions>
   );
 }

@@ -1,3 +1,4 @@
+import { TaskMenuButton, useTaskMenu } from "./TaskActions";
 import { useState } from "react";
 import { sessionStatus, sessionEvidence } from "../derive";
 import type { AgentPresence } from "../derive";
@@ -9,13 +10,14 @@ import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 interface Common { progress?: Record<string, string>; issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
 
 export function Card({ issue, progress, selected, onSelect, me, root, draggable, onDragStart, onDragEnd }: { issue: Issue; progress?: string; selected: boolean; onSelect: (id: string) => void; me: string; root?: Issue } & Pick<React.HTMLAttributes<HTMLElement>, "draggable" | "onDragStart" | "onDragEnd">) {
+  const openMenu = useTaskMenu();
   const who = actorOf(issue.assignee, me);
   const ac = parseAcceptance(issue.acceptance_criteria);
   const done = ac.filter((a) => a.done).length;
   const blocked = issue.status === "blocked";
   return (
-    <div className={`card opens${selected ? " sel" : ""}${blocked ? " blocked" : ""}`} onClick={() => onSelect(issue.id)} draggable={draggable} onDragStart={onDragStart} onDragEnd={onDragEnd} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(issue.id)}>
-      <div className="t" title={issue.title}>{issue.title}</div>
+    <div onContextMenu={e=>openMenu(issue,e)} className={`card opens${selected ? " sel" : ""}${blocked ? " blocked" : ""}`} onClick={() => onSelect(issue.id)} draggable={draggable} onDragStart={onDragStart} onDragEnd={onDragEnd} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(issue.id)}>
+      <div className="card-heading"><div className="t" title={issue.title}>{issue.title}</div><TaskMenuButton issue={issue}/></div>
       {root && <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={`这条线的根任务：${root.title}`}><span className="rl-id">↑ 源自 <span className="mono">{root.id}</span></span><span className="rl-t">{root.title}</span></button>}
       <div className="meta">
         <Pri p={issue.priority} />
@@ -73,17 +75,18 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
 }
 
 export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
+  const openMenu=useTaskMenu();
   if (issues.length === 0) return <div className="empty">没有符合条件的任务</div>;
   return (
     <div className="tw">
       <table>
-        <thead><tr><th>ID</th><th>任务</th><th>源自</th><th>状态</th><th>负责</th><th>优先</th><th>项目</th><th>依赖</th><th>更新</th></tr></thead>
+        <thead><tr><th>ID</th><th>任务</th><th>源自</th><th>状态</th><th>负责</th><th>优先</th><th>项目</th><th>依赖</th><th>更新</th><th>操作</th></tr></thead>
         <tbody>
           {issues.map((i) => {
             const who = actorOf(i.assignee, me);
             const root = rootOf?.(i.id);
             return (
-              <tr key={i.id} className={selected === i.id ? "sel" : ""} onClick={() => onSelect(i.id)}>
+              <tr onContextMenu={e=>openMenu(i,e)} key={i.id} className={selected === i.id ? "sel" : ""} onClick={() => onSelect(i.id)}>
                 <td className="mono">{i.id}</td>
                 <td className="t">{i.title}</td>
                 <td>{root ? <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={root.title}><span className="mono">{root.id}</span></button> : <span className="muted">—</span>}</td>
@@ -92,7 +95,7 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
                 <td className="mono">P{i.priority}</td>
                 <td><ProjectTag name={projectOf(i)} /></td>
                 <td className="mono muted">{(i.dependency_count ?? 0) > 0 ? `← ${i.dependency_count}` : ""}{(i.dependent_count ?? 0) > 0 ? ` → ${i.dependent_count}` : ""}</td>
-                <td className="mono muted">{relTime(i.updated_at)}</td>
+                <td className="mono muted">{relTime(i.updated_at)}</td><td><TaskMenuButton issue={i}/></td>
               </tr>
             );
           })}

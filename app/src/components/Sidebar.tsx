@@ -70,6 +70,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       <nav className="nav">
         <div className="h">Agent<span className="n">{agents.filter((a) => a.online).length}/{agents.length} 在线</span></div>
         {item("agents", "agent", "Agent 状态")}
+        {item("quota", "chart", "额度")}
         {item("stats", "chart", "统计")}
         <div className="agents sub">
           {agents.filter((a) => a.online).map((a) => (
@@ -89,7 +90,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       <nav className="nav">
         <div className="h">知识</div>
         {item("skills", "skill", "技能")}
-        {item("rules", "rule", "规则")}
+        {item("rules", "rule", "指令文档")}
         {item("pitfalls", "pit", "踩坑")}
       </nav>
     </aside>

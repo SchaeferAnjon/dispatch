@@ -6,7 +6,7 @@ import type { View } from "../types";
 export const VIEW_INTRO: Partial<Record<View, string>> = {
   home: "从最近会话接着工作：查看正在执行的操作、未读回复，再进入对话、文件和任务。",
   inbox: "未读回复在读到最新后自动移出；明确的确认请求和被卡住的任务单独保留。Agent 复核不计入你的待处理数量。",
-  board: "所有任务，三列对应工作进度：待办 → 进行中 → 已完成；Agent 复核单独记录。卡片上的「源自」是它属于哪条线。你只需要看，认领和推进都由 Agent 做。",
+  board: "所有任务，三列对应工作进度：待办 → 进行中 → 已完成；Agent 复核单独记录。卡片上的「源自」是它属于哪条线。右键卡片或点击 ⋯ 可操作，移除的任务可在回收站恢复。",
   table: "和看板同一份任务，换成表格，适合排序和扫一眼。",
   graph: "任务是一根线：左边是源头，右边是它派生出来的。悬停或点一个节点，整条线高亮。",
   projects: "按项目看：每个项目有多少任务在做、已完成和待 Agent 复核，参与过哪些 Agent，对应哪个文件夹。",
@@ -14,7 +14,7 @@ export const VIEW_INTRO: Partial<Record<View, string>> = {
   agents: "查看已检测到的会话与来源；运行状态优先使用实际活动，只有进程信息时标为未知。",
   sessions: "Claude Code 和 Codex 会话持续更新；读对话、查看实时操作与工作区差异，也可打开原会话。",
   skills: "技能池：每个技能给哪些 Agent 挂着。改 SKILL.md 就是改 Agent 的做事方法。",
-  rules: "这台电脑上所有 Agent 都遵守的规则，只有这一份；改完自动同步到 Claude Code、Codex、ZCode。",
+  rules: "检测各 Agent 的全局指令和引用，检查重复冲突；修改先预览差异，托管副本随唯一源文件同步。",
   pitfalls: "踩过的坑和解法。每个 Agent 新开会话时会自动读到，所以同一个坑不会踩第二次。",
 };
 

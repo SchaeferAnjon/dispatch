@@ -1,3 +1,4 @@
+import { MediaProvider, AttachmentList } from "./Media";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isServed, type Api } from "../api";
 import { actorOf, durSince, fmtTime, projectOf, NO_RESUME, projectColor, relTime } from "../derive";
@@ -19,7 +20,7 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
   const host = hostId ?? "";
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [tab, setTab] = useState<"timeline" | "activity" | "files" | "tasks">("timeline");
+  const [tab, setTab] = useState<"timeline" | "activity" | "files" | "tasks" | "attachments">("timeline");
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Which kinds of turns to show. Tools off by default: the conversation is the point.
@@ -84,7 +85,7 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
   const focus = async (id: string) => { try { onDone(await api.focusSession(id)); } catch (e) { onError(String(e)); } };
 
   return (
-    <div className={`sess-wrap${sel ? " has-selection" : ""}`}>
+    <MediaProvider api={api} session={detail?.meta}><div className={`sess-wrap${sel ? " has-selection" : ""}`}>
       <div className="sess-side">
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
@@ -151,6 +152,7 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
               <div className="views session-tabs">
                 <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>对话</button>
                 {current && <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")}>实时活动</button>}
+                <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>图片与产物 {detail.attachments?.length || 0}</button>
                 <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>文件 {detail.workspace?.files.length ?? detail.files.length}</button>
                 <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务与交付 {related.length}</button>
                 {tab === "timeline" && (() => {
@@ -183,6 +185,7 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
                     </div>
                   ));
                 })()}
+                {tab === "attachments" && <AttachmentList items={detail.attachments || []} />}
                 {tab === "activity" && <div className="activity-log">{[...(current?.events ?? [])].filter(e => e.kind !== 'result').reverse().slice(0,40).map(e => <div key={e.id} className={`activity-event ${e.kind}`}><span className="muted mono small">{new Date(e.ts*1000).toLocaleTimeString('zh-CN',{hour12:false})}</span><div><b>{e.kind === 'tool' ? e.tool : e.kind === 'result' ? '工具返回' : e.kind === 'error' ? '执行失败' : e.kind === 'user' ? '你的消息' : e.kind === 'reply' ? 'Agent 回复' : '进展'}</b><p>{e.text}</p></div></div>)}</div>}
                 {tab === "files" && detail.workspace && <section className="workspace-diff"><h3>工作区当前改动 <span className="muted">{detail.workspace.files.length}</span></h3><p className="muted small">{detail.workspace.root} · 包含暂存和未暂存内容；同目录其他会话的修改也会显示。</p>{detail.workspace.unavailable ? <p className="muted">当前目录无法读取 Git 改动</p> : detail.workspace.files.length === 0 ? <p className="muted">工作区没有未提交改动</p> : <><div className="changed-paths">{detail.workspace.files.map(f => <div key={f.path}><span>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code></div>)}</div><details className="fdiff"><summary>展开当前差异</summary><pre className="diff">{detail.workspace.patch.split('\n').map((ln,k) => <div key={k} className={`ln ${ln.startsWith('+') ? 'add' : ln.startsWith('-') ? 'del' : 'same'}`}>{ln}</div>)}</pre>{detail.workspace.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</details></>}</section>}
                 {tab === "files" && <h3 className="recorded-files-title">会话中的文件操作 <span className="muted">{detail.files.length}</span></h3>}
@@ -211,6 +214,6 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
           );
         })()}
       </div>
-    </div>
+    </div></MediaProvider>
   );
 }

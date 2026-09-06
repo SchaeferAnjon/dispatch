@@ -6,21 +6,21 @@ const now = Date.now();
 const ago = (min: number) => new Date(now - min * 60_000).toISOString();
 
 let issues: Issue[] = [
-  { id: "task-9lo", title: "调度台桌面应用 UI 稿（方案 A）", description: "先出一版可点的高保真稿，Notion 式三栏。", status: "in_progress", priority: 1, issue_type: "task", assignee: "claude-code", created_by: "schaefer", created_at: ago(70), updated_at: ago(12), started_at: ago(60), labels: ["project:kanban"], acceptance_criteria: "- [x] 四种状态一眼能分\n- [x] 每张卡能看出谁认领了\n- [ ] Agents 视图显示实时命令", comment_count: 2 },
-  { id: "task-4mk", title: "河牌下注逻辑：按底池比例出注，替换固定 bet size", status: "in_progress", priority: 1, issue_type: "feature", assignee: "codex", created_by: "schaefer", created_at: ago(300), updated_at: ago(41), labels: ["project:poker-trainer"], comment_count: 0 },
-  { id: "task-e1q", title: "Herdr 开局脚本偶发端口占用，加重试", status: "in_progress", priority: 2, issue_type: "bug", assignee: "schaefer", created_by: "schaefer", created_at: ago(400), updated_at: ago(120), labels: ["project:poker-trainer"] },
+  { id: "task-9lo", title: "调度台桌面应用 UI 稿（方案 A）", description: "先出一版可点的高保真稿，Notion 式三栏。", status: "in_progress", priority: 1, issue_type: "task", assignee: "claude-code", created_by: "user", created_at: ago(70), updated_at: ago(12), started_at: ago(60), labels: ["project:kanban"], acceptance_criteria: "- [x] 四种状态一眼能分\n- [x] 每张卡能看出谁认领了\n- [ ] Agents 视图显示实时命令", comment_count: 2 },
+  { id: "task-4mk", title: "导出页面：支持 CSV 和 JSON 两种格式", status: "in_progress", priority: 1, issue_type: "feature", assignee: "codex", created_by: "user", created_at: ago(300), updated_at: ago(41), labels: ["project:demo-app"], comment_count: 0 },
+  { id: "task-e1q", title: "Herdr 开局脚本偶发端口占用，加重试", status: "in_progress", priority: 2, issue_type: "bug", assignee: "user", created_by: "user", created_at: ago(400), updated_at: ago(120), labels: ["project:demo-app"] },
   { id: "task-ss0", title: "给全局板配跨机器同步（Mac mini）", description: "用 Dolt remote 把 ~/tasks 同步到 Mac mini。", status: "blocked", priority: 3, issue_type: "task", created_by: "claude-code", created_at: ago(90), updated_at: ago(90), labels: ["project:kanban"], dependency_count: 1 },
   { id: "task-bzz", title: "Mac mini 上安装 Dolt 并验证 bd dolt pull", status: "open", priority: 3, issue_type: "task", created_by: "claude-code", created_at: ago(80), updated_at: ago(80), labels: ["project:kanban"], acceptance_criteria: "- brew install 成功\n- bd dolt pull 通过" },
-  { id: "task-c2e", title: "2026SS 讲义 PDF 批量转 vault 笔记（第 3–5 讲）", status: "open", priority: 1, issue_type: "task", created_by: "schaefer", created_at: ago(1500), updated_at: ago(1500), labels: ["project:海德堡 2026SS"] },
-  { id: "task-p8a", title: "settings.json 的 PATH 改成脚本生成", status: "open", priority: 4, issue_type: "chore", created_by: "schaefer", created_at: ago(4000), updated_at: ago(4000), labels: ["project:dotfiles"] },
+  { id: "task-c2e", title: "示例 PDF 批量转换为 Markdown 笔记", status: "open", priority: 1, issue_type: "task", created_by: "user", created_at: ago(1500), updated_at: ago(1500), labels: ["project:示例笔记"] },
+  { id: "task-p8a", title: "settings.json 的 PATH 改成脚本生成", status: "open", priority: 4, issue_type: "chore", created_by: "user", created_at: ago(4000), updated_at: ago(4000), labels: ["project:dotfiles"] },
   { id: "task-a1c", title: "全局板初始化 + 三处 BEADS_DIR + Claude/Codex 钩子", status: "closed", priority: 2, issue_type: "task", assignee: "claude-code", created_by: "claude-code", created_at: ago(150), updated_at: ago(60), closed_at: ago(60), close_reason: "冒烟通过", labels: ["project:kanban"] },
-  { id: "task-m3r", title: "poker-start.sh 改成 launchd 常驻", status: "closed", priority: 2, issue_type: "task", assignee: "codex", created_by: "schaefer", created_at: ago(500), updated_at: ago(180), closed_at: ago(180), labels: ["project:poker-trainer"] },
-  { id: "task-k5v", title: "技能池软链误删事故：循环删除前强制回显清单", status: "closed", priority: 2, issue_type: "bug", assignee: "schaefer", created_by: "schaefer", created_at: ago(3000), updated_at: ago(1400), closed_at: ago(1400), labels: ["project:dotfiles", "reviewed"] },
-  { id: "task-x9b", title: "Rechnerarchitektur 第 1–2 讲笔记入库", status: "closed", priority: 2, issue_type: "task", assignee: "claude-code", created_by: "schaefer", created_at: ago(4000), updated_at: ago(2900), closed_at: ago(2900), labels: ["project:海德堡 2026SS", "reviewed"] },
+  { id: "task-m3r", title: "demo-start.sh 改成 launchd 常驻", status: "closed", priority: 2, issue_type: "task", assignee: "codex", created_by: "user", created_at: ago(500), updated_at: ago(180), closed_at: ago(180), labels: ["project:demo-app"] },
+  { id: "task-k5v", title: "技能池软链误删事故：循环删除前强制回显清单", status: "closed", priority: 2, issue_type: "bug", assignee: "user", created_by: "user", created_at: ago(3000), updated_at: ago(1400), closed_at: ago(1400), labels: ["project:dotfiles", "reviewed"] },
+  { id: "task-x9b", title: "示例课程 第 1–2 讲笔记入库", status: "closed", priority: 2, issue_type: "task", assignee: "claude-code", created_by: "user", created_at: ago(4000), updated_at: ago(2900), closed_at: ago(2900), labels: ["project:示例笔记", "reviewed"] },
 ];
 let comments: Comment[] = [
   { id: "c1", issue_id: "task-9lo", author: "claude-code", text: "设计方案定稿：Plex Sans + Mono，调度蓝只用在选中。", created_at: ago(12) },
-  { id: "c2", issue_id: "task-9lo", author: "schaefer", text: "我比较看重效果。", created_at: ago(65) },
+  { id: "c2", issue_id: "task-9lo", author: "user", text: "我比较看重效果。", created_at: ago(65) },
 ];
 let seq = 0;
 const listeners = new Set<() => void>();
@@ -34,7 +34,7 @@ const find = (id: string) => {
 
 export function fixtureApi(): Api {
   return {
-    info: async () => ({ bd_bin: "(浏览器预览：示例数据)", beads_dir: "~/tasks/.beads", actor: "schaefer", version: "preview" }),
+    info: async () => ({ bd_bin: "(浏览器预览：示例数据)", beads_dir: "~/tasks/.beads", actor: "user", version: "preview" }),
     list: async () => issues.map((i) => ({ ...i })),
     show: async (id) => {
       const i = find(id);
@@ -50,24 +50,24 @@ export function fixtureApi(): Api {
       ];
     },
     interactions: async () => [],
-    claim: async (id) => { const i = find(id); i.assignee = "schaefer"; i.status = "in_progress"; i.started_at = new Date().toISOString(); touch(i); notify(); },
+    claim: async (id) => { const i = find(id); i.assignee = "user"; i.status = "in_progress"; i.started_at = new Date().toISOString(); touch(i); notify(); },
     setStatus: async (id, status) => { const i = find(id); i.status = status as Status; touch(i); notify(); },
     close: async (id, reason) => { const i = find(id); i.status = "closed"; i.close_reason = reason; i.closed_at = new Date().toISOString(); touch(i); notify(); },
     reopen: async (id) => { const i = find(id); i.status = "open"; i.closed_at = undefined; i.labels = (i.labels ?? []).filter((l) => l !== "reviewed"); touch(i); notify(); },
-    comment: async (id, text) => { comments = [...comments, { id: "c" + ++seq, issue_id: id, author: "schaefer", text, created_at: new Date().toISOString() }]; const i = find(id); i.comment_count = (i.comment_count ?? 0) + 1; touch(i); notify(); },
+    comment: async (id, text) => { comments = [...comments, { id: "c" + ++seq, issue_id: id, author: "user", text, created_at: new Date().toISOString() }]; const i = find(id); i.comment_count = (i.comment_count ?? 0) + 1; touch(i); notify(); },
     labels: async (id, add, remove) => { const i = find(id); const s = new Set(i.labels ?? []); add.forEach((l) => s.add(l)); remove.forEach((l) => s.delete(l)); i.labels = [...s]; touch(i); notify(); },
     update: async (id, f) => { const i = find(id); if (f.title !== undefined) i.title = f.title; if (f.description !== undefined) i.description = f.description; if (f.priority !== undefined) i.priority = f.priority; if (f.assignee !== undefined) i.assignee = f.assignee; if (f.acceptance !== undefined) i.acceptance_criteria = f.acceptance; touch(i); notify(); },
     create: async (input) => {
-      const i: Issue = { id: "task-" + Math.random().toString(36).slice(2, 5), title: input.title, description: input.description, status: "open", priority: input.priority ?? 2, issue_type: input.issue_type ?? "task", created_by: "schaefer", created_at: new Date().toISOString(), updated_at: new Date().toISOString(), labels: input.labels ?? [], acceptance_criteria: input.acceptance };
+      const i: Issue = { id: "task-" + Math.random().toString(36).slice(2, 5), title: input.title, description: input.description, status: "open", priority: input.priority ?? 2, issue_type: input.issue_type ?? "task", created_by: "user", created_at: new Date().toISOString(), updated_at: new Date().toISOString(), labels: input.labels ?? [], acceptance_criteria: input.acceptance };
       issues = [i, ...issues]; notify(); return i;
     },
     presence: async () => ({
       apps: ["Claude 桌面端"],
       sessions: [
         { agent: "claude-code", session_id: "s1", cwd: "/Users/x/Projects/kanban", project: "kanban", agent_pid: 1, source_kind: "terminal", source_app: "Herdr", entrypoint: "cli", started_at: now / 1000 - 3600, last_at: now / 1000 - 30, state: "working", prompts: 14, alive: true, registered: true },
-        { agent: "claude-code", session_id: "s2", cwd: "/Users/x/Projects/poker-trainer", project: "poker-trainer", agent_pid: 2, source_kind: "terminal", source_app: "Warp", entrypoint: "cli", started_at: now / 1000 - 7200, last_at: now / 1000 - 900, state: "idle", prompts: 6, alive: true, registered: true },
+        { agent: "claude-code", session_id: "s2", cwd: "/Users/x/Projects/demo-app", project: "demo-app", agent_pid: 2, source_kind: "terminal", source_app: "Warp", entrypoint: "cli", started_at: now / 1000 - 7200, last_at: now / 1000 - 900, state: "idle", prompts: 6, alive: true, registered: true },
         { agent: "claude-code", session_id: "s3", cwd: "/Users/x/dotfiles", project: "dotfiles", agent_pid: 3, source_kind: "desktop", source_app: "Claude 桌面端", entrypoint: "", started_at: now / 1000 - 600, last_at: now / 1000 - 60, state: "idle", prompts: 2, alive: true, registered: true },
-        { agent: "codex", session_id: "s4", cwd: "/Users/x/Projects/poker-trainer", project: "poker-trainer", agent_pid: 4, source_kind: "terminal", source_app: "Terminal", entrypoint: "", started_at: now / 1000 - 2400, last_at: now / 1000 - 120, state: "working", prompts: 9, alive: true, registered: true },
+        { agent: "codex", session_id: "s4", cwd: "/Users/x/Projects/demo-app", project: "demo-app", agent_pid: 4, source_kind: "terminal", source_app: "Terminal", entrypoint: "", started_at: now / 1000 - 2400, last_at: now / 1000 - 120, state: "working", prompts: 9, alive: true, registered: true },
       ],
     }),
     taskSessions: async (id) => sessionRefs.filter((r) => r.tasks[id]),
@@ -106,12 +106,19 @@ export function fixtureApi(): Api {
     envUnset: async () => {},
     folders: async (): Promise<import("./types").Folder[]> => [
       { cwd: "/Users/x/Projects/kanban", name: "kanban", sessions: 2, agents: { "claude-code": 2 }, last_at: now / 1000 - 120, first_at: new Date(now - 4 * 3600e3).toISOString(), turns: 300, tasks: ["task-9lo"], exists: true },
-      { cwd: "/Users/x/Projects/poker-trainer", name: "poker-trainer", sessions: 1, agents: { codex: 1 }, last_at: now / 1000 - 5000, first_at: null, turns: 9, tasks: ["task-4mk"], exists: true },
+      { cwd: "/Users/x/Projects/demo-app", name: "demo-app", sessions: 1, agents: { codex: 1 }, last_at: now / 1000 - 5000, first_at: null, turns: 9, tasks: ["task-4mk"], exists: true },
       { cwd: "/Users/x/Projects/bookmark", name: "bookmark", sessions: 1, agents: { "claude-code": 1 }, last_at: now / 1000 - 7 * 3600, first_at: null, turns: 133, tasks: [], exists: false },
     ],
     openPath: async () => {},
     hosts: async () => [],
-    on: async (_h, args) => (args[args.length - 1] === "--json" ? "[]" : "示例输出"),
+    on: async (_h, args) => {
+      if(args[0]==='task') { const i=find(args[2]); const labels=i.labels??[];
+        if(args[1]==='trash'&&!labels.includes('dispatch:trashed')) {i.labels=[...labels,'dispatch:trashed',`dispatch:previous:${i.status}`];i.status='deferred';}
+        else if(args[1]==='restore'){i.status=(labels.find(l=>l.startsWith('dispatch:previous:'))?.split(':')[2]||'open') as Status;i.labels=labels.filter(l=>!l.startsWith('dispatch:'));}
+        touch(i);notify();return JSON.stringify(i);
+      }
+      throw new Error('这是示例预览，请在桌面版或已连接的网页端使用此功能');
+    },
     agentStart: async () => null,
     graph: async () => ({ nodes: issues.map((i) => ({ ...i })), edges: [
       { from: "task-9lo", to: "task-4mk", type: "discovered-from" }, { from: "task-9lo", to: "task-e1q", type: "discovered-from" },
@@ -145,7 +152,7 @@ export function fixtureApi(): Api {
 const sessionRefs: import("./types").SessionRef[] = [
   { agent: "claude-code", session_id: "a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", cwd: "/Users/x/Projects/kanban", project: "kanban", title: "任务集中营软件", last_at: now / 1000 - 120, first_ts: new Date(now - 4 * 3600e3).toISOString(), last_ts: new Date(now - 120e3).toISOString(), entrypoint: "cli", branch: "main", user_msgs: 299, assistant_msgs: 392, tools: { Bash: 136, Edit: 71 }, tasks: { "task-9lo": 124 }, mentions: 124, current_task: "task-9lo", resume_cmd: "cd '/Users/x/Projects/kanban' && claude --resume a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", path: "", size: 2_400_000, subagents: [{ agent_id: "a5bf41fb", type: "claude-code-guide", description: "Verify Claude Code hook fields", tool_use_id: "toolu_1", depth: 1, size: 40000, last_at: now / 1000 - 3000, path: "" }] },
   { agent: "claude-code", session_id: "5d5bd874-5e65-4a4d-aab6-f2cb7985ca69", cwd: "/Users/x/Projects/bookmark", project: "bookmark", title: "Bookmark Chrome extension", last_at: now / 1000 - 7 * 3600, first_ts: "", last_ts: "", entrypoint: "cli", branch: "main", user_msgs: 133, assistant_msgs: 200, tools: {}, tasks: {}, mentions: 0, current_task: null, resume_cmd: "cd '/Users/x/Projects/bookmark' && claude --resume 5d5bd874-5e65-4a4d-aab6-f2cb7985ca69", path: "", size: 900_000, subagents: [] },
-  { agent: "codex", session_id: "019deafa-bcc4-7100-8cdb-0193b715e090", cwd: "/Users/x/Projects/poker-trainer", project: "poker-trainer", title: "河牌下注逻辑", last_at: now / 1000 - 5000, first_ts: "", last_ts: "", entrypoint: "", branch: "", user_msgs: 9, assistant_msgs: 12, tools: {}, tasks: { "task-4mk": 3 }, mentions: 3, current_task: "task-4mk", resume_cmd: "cd '/Users/x/Projects/poker-trainer' && codex resume 019deafa-bcc4-7100-8cdb-0193b715e090", path: "", size: 120_000, subagents: [] },
+  { agent: "codex", session_id: "019deafa-bcc4-7100-8cdb-0193b715e090", cwd: "/Users/x/Projects/demo-app", project: "demo-app", title: "河牌下注逻辑", last_at: now / 1000 - 5000, first_ts: "", last_ts: "", entrypoint: "", branch: "", user_msgs: 9, assistant_msgs: 12, tools: {}, tasks: { "task-4mk": 3 }, mentions: 3, current_task: "task-4mk", resume_cmd: "cd '/Users/x/Projects/demo-app' && codex resume 019deafa-bcc4-7100-8cdb-0193b715e090", path: "", size: 120_000, subagents: [] },
 ];
 
 const skills: import("./types").Skill[] = [

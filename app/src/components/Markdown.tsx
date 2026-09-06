@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useMedia, dataUrl } from "./Media";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
@@ -17,11 +18,37 @@ export function splitFrontmatter(src: string): { meta: [string, string][]; body:
 }
 
 export function Markdown({ src, className }: { src: string; className?: string }) {
+  const media = useMedia();
+  const root = useRef<HTMLDivElement>(null);
   const html = useMemo(() => {
     const raw = marked.parse(src ?? "", { async: false }) as string;
-    return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ["target"] });
-  }, [src]);
-  return <div className={`md sel-text${className ? " " + className : ""}`} dangerouslySetInnerHTML={{ __html: html }} onClick={(e) => {
+    const clean = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ["target"] });
+    const dom = new DOMParser().parseFromString(clean, 'text/html');
+    if (media) for (const img of dom.querySelectorAll('img')) {
+      const path = img.getAttribute('src') || '';
+      if (path && !/^(https?:|data:|blob:)/i.test(path)) { img.dataset.attachment = path; img.removeAttribute('src'); img.alt = img.alt || '图片'; img.classList.add('local-image'); }
+    }
+    return dom.body.innerHTML;
+  }, [src, Boolean(media)]);
+  const markup = useMemo(() => ({ __html: html }), [html]);
+  useEffect(() => {
+    if (!media || !root.current) return;
+    let alive = true;
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) if (entry.isIntersecting) {
+        const img = entry.target as HTMLImageElement; observer.unobserve(img);
+        void media.read(img.dataset.attachment!).then(a => { if (alive) img.src = dataUrl(a); }).catch(() => { if (alive) { img.alt = '图片不可用，点击查看原因'; img.classList.add('unavailable'); } });
+      }
+    }, { rootMargin: '200px' });
+    root.current.querySelectorAll('img[data-attachment]').forEach(img => observer.observe(img));
+    return () => { alive = false; observer.disconnect(); };
+  }, [html, media?.read]);
+  return <div ref={root} className={`md sel-text${className ? " " + className : ""}`} dangerouslySetInnerHTML={markup} onClick={(e) => {
+    const img = (e.target as HTMLElement).closest('img[data-attachment]') as HTMLImageElement | null;
+    if (img && media) { media.open(img.dataset.attachment!); return; }
+    const link = (e.target as HTMLElement).closest('a');
+    const href = link?.getAttribute('href') || '';
+    if (media && href && !/^(https?:|mailto:|#)/i.test(href)) { e.preventDefault(); media.open(href); return; }
     // Links open in the system browser, never inside the app webview.
     const a = (e.target as HTMLElement).closest("a");
     if (a && a.href) { e.preventDefault(); import("@tauri-apps/plugin-opener").then((o) => o.openUrl(a.href)).catch(() => window.open(a.href, "_blank")); }

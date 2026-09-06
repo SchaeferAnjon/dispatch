@@ -65,6 +65,7 @@ export const COLUMNS: { key: Column; label: string; cls: string }[] = [
   { key: "done", label: "已完成", cls: "done" },
 ];
 export function statusLabel(i: Issue): { text: string; cls: string } {
+  if (i.labels?.includes("dispatch:trashed")) return { text: "回收站", cls: "open" };
   if (isReviewed(i)) return { text: "已复核", cls: "rev" };
   switch (i.status) {
     case "closed": return { text: needsReview(i) ? "待 Agent 复核" : "已完成", cls: "done" };

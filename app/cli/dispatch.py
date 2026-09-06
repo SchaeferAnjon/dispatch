@@ -1714,6 +1714,20 @@ def cmd_seen(a):
     out(acknowledge(DISPATCH_DIR, a.key, a.reply), a.json, lambda _: print("已读"))
 
 
+def cmd_attachment(a):
+    from attachments import read, catalog, local_path
+    refs = resolve(load_index(), a.key)
+    if not refs: refs = resolve(refresh_index(), a.key)
+    if not refs: raise ValueError("本机找不到这个会话")
+    first = refs[0]
+    for ref in refs:
+        if (ref['agent'], ref['session_id']) != (first['agent'], first['session_id']): continue
+        path = local_path(a.ref, ref.get('cwd',''))
+        if any(x['id'] == a.ref or (path and x['path'] == path) for x in catalog(ref)):
+            return out(read(ref, a.ref), a.json, lambda d: print(json.dumps(d, ensure_ascii=False)))
+    raise ValueError('文件未附加或链接在此会话中')
+
+
 def cmd_session(a):
     idx = load_index()
     refs = resolve(idx, a.key)
@@ -1729,6 +1743,17 @@ def cmd_session(a):
     d = read_session_detail(refs[0]) if refs else remote_session_detail(a.key)
     if d and refs:
         from activity import workspace_changes
+        from attachments import catalog
+        siblings = [r for r in refs if (r['agent'],r['session_id']) == (refs[0]['agent'],refs[0]['session_id'])]
+        assets = {}; messages = {}
+        for ref in reversed(siblings):
+            for asset in catalog(ref): assets[asset['id']] = asset
+            part = d if ref['path'] == refs[0]['path'] else read_session_detail(ref)
+            for message in part['messages']:
+                key = (message['ts'],message['role'],message['text'],json.dumps(message.get('tools',[]),sort_keys=True))
+                messages[key] = message
+        d['attachments'] = list(assets.values())
+        d['messages'] = sorted(messages.values(), key=lambda m: m['ts'])
         d['workspace'] = workspace_changes(refs[0]['cwd'])
         d['activity_version'] = st.get('version')
         d['reply_id'] = st.get('reply_id')
@@ -1767,6 +1792,9 @@ def cmd_find(a):
 
 def resolve(idx, key):
     """key may be a session id (prefix ok) or a task id."""
+    if ':' in key:
+        agent, sid = key.split(':', 1)
+        return [r for r in session_refs(idx, session_id=sid) if r['agent'] == agent]
     if re.match(r"^[a-z]+-[a-z0-9]{2,8}$", key):
         return session_refs(idx, task_id=key)
     return session_refs(idx, session_id=key)
@@ -2141,6 +2169,26 @@ def bd_json(argv):
         return d[0] if isinstance(d, list) and d else d
     except Exception:
         return {}
+
+
+def cmd_task(a):
+    issue = bd_json(['show', a.task, '--json'])
+    if not issue or not issue.get('id'): raise ValueError('任务不存在')
+    labels = issue.get('labels', [])
+    trashed = 'dispatch:trashed' in labels
+    if (a.op == 'trash') == trashed:
+        return out({'id': a.task, 'unchanged': True}, a.json, lambda _: print('状态未变'))
+    argv = ['update', a.task]
+    if a.op == 'trash':
+        argv += ['--status', 'deferred', '--add-label', 'dispatch:trashed', '--add-label', 'dispatch:previous:' + issue['status']]
+    else:
+        previous = next((x.split(':', 2)[2] for x in labels if x.startswith('dispatch:previous:')), 'open')
+        if previous not in ('open', 'in_progress', 'blocked', 'closed', 'deferred'): previous = 'open'
+        argv += ['--status', previous, '--remove-label', 'dispatch:trashed']
+        for label in labels:
+            if label.startswith('dispatch:previous:'): argv += ['--remove-label', label]
+    result = bd_json([*argv, '--json'])
+    out(result, a.json, lambda _: print('已移到回收站' if a.op == 'trash' else '已恢复任务'))
 
 
 def similar(a_, b_):
@@ -2566,6 +2614,11 @@ def target_state(agent, h):
 
 
 def cmd_rules(a):
+    if a.op in ('inspect', 'optimize', 'check', 'apply', 'restore'):
+        from instructions import command
+        result = command(a, HOME)
+        out(result, a.json, lambda d: print(json.dumps(d, ensure_ascii=False, indent=2)))
+        return
     if a.op == "path":
         print(RULES_FILE)
         return
@@ -3280,7 +3333,9 @@ def main():
         sys.argv = [sys.argv[0]] + rest
     p = argparse.ArgumentParser(prog="dispatch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser('task', help='recoverable task removal'); s.add_argument('op', choices=['trash', 'restore']); s.add_argument('task'); s.add_argument('--json', action='store_true'); s.set_defaults(fn=cmd_task)
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
+    s = sub.add_parser("attachment", help="read a file linked in a conversation"); s.add_argument("key"); s.add_argument("ref"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply"); s.add_argument("key"); s.add_argument("reply"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
@@ -3319,7 +3374,7 @@ def main():
     s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link"); s.add_argument("what", nargs="?", choices=["run", "url"], default="run"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
-    s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_rules)
+    s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)

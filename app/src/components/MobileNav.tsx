@@ -12,12 +12,14 @@ const TABS: { v: View; icon: string; label: string }[] = [
 ];
 const MORE: { v: View; icon: string; label: string }[] = [
   { v: "agents", icon: "agent", label: "Agent 状态" },
+  { v: "quota", icon: "chart", label: "额度" },
+  { v: "trash", icon: "inbox", label: "回收站" },
   { v: "stats", icon: "chart", label: "统计" },
   { v: "graph", icon: "graph", label: "脉络" },
   { v: "projects", icon: "project", label: "项目" },
   { v: "folders", icon: "folder", label: "文件夹" },
   { v: "skills", icon: "skill", label: "技能" },
-  { v: "rules", icon: "rule", label: "规则" },
+  { v: "rules", icon: "rule", label: "指令文档" },
   { v: "pitfalls", icon: "pit", label: "知识库" },
   { v: "env", icon: "rule", label: "环境" },
 ];

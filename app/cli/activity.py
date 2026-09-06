@@ -241,7 +241,11 @@ def activity_list(home, directory, index):
             s['source'] = 'transcript'
             s.pop('pending', None); s.pop('reply_digest', None)
             rows.append(s)
-    return sorted(rows, key=lambda s: -s['last_at'])
+    # A resumed Codex task can have more than one rollout file with the same id.
+    # Keep its newest observation; duplicate React keys otherwise accumulate rows.
+    unique = {}
+    for row in sorted(rows, key=lambda s: -s['last_at']): unique.setdefault(row['key'], row)
+    return list(unique.values())
 
 
 def workspace_changes(cwd):

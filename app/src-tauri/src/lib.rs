@@ -2,13 +2,14 @@ use notify::{RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{mpsc, Mutex};
+use std::sync::{mpsc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 // Embedded Dolt is single-writer with a file lock; serialize our own calls so they
 // never contend with each other (only with external agents).
 static BD_LOCK: Mutex<()> = Mutex::new(());
+static BUNDLED_CLI: OnceLock<PathBuf> = OnceLock::new();
 
 fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
@@ -41,7 +42,7 @@ fn bd_bin() -> PathBuf {
 
 // The GUI is always driven by the human, so it never inherits an agent's BEADS_ACTOR.
 fn actor() -> String {
-    std::env::var("DISPATCH_ACTOR").unwrap_or_else(|_| "schaefer".to_string())
+    std::env::var("DISPATCH_ACTOR").unwrap_or_else(|_| home().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "user".into()))
 }
 
 fn run_bd_blocking(args: &[String]) -> Result<String, String> {
@@ -289,7 +290,8 @@ fn dispatch_bin() -> PathBuf {
     if let Ok(b) = std::env::var("DISPATCH_CLI") {
         return PathBuf::from(b);
     }
-    for c in [home().join(".local/bin/dispatch"), home().join("Projects/kanban/app/cli/dispatch.py")] {
+    if let Some(p) = BUNDLED_CLI.get().filter(|p| p.is_file()) { return p.clone(); }
+    for c in [home().join(".local/bin/dispatch"), PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cli/dispatch.py")] {
         if c.exists() {
             return c;
         }
@@ -784,6 +786,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            if let Ok(resources) = app.path().resource_dir() { let _ = BUNDLED_CLI.set(resources.join("cli/dispatch.py")); }
             ensure_dolt_server();
             start_watcher(app.handle().clone());
             start_indexer();

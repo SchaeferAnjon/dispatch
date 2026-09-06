@@ -8,13 +8,14 @@ import { Avatar, Pri, ProjectTag } from "./ui";
 
 function untilText(epoch: number | null): string {
   if (!epoch) return "";
+  if (epoch * 1000 < Date.now()) return "已过重置时间";
   const m = Math.max(0, Math.round((epoch * 1000 - Date.now()) / 60_000));
   if (m < 60) return `${m}m 后重置`;
   const h = Math.floor(m / 60);
   return h < 48 ? `${h}h${String(m % 60).padStart(2, "0")} 后重置` : `${Math.round(h / 24)}d 后重置`;
 }
 
-function QuotaBar({ w }: { w: { label: string; used_percent: number | null; resets_at: number | null } }) {
+export function QuotaBar({ w }: { w: { label: string; used_percent: number | null; resets_at: number | null } }) {
   const p = w.used_percent ?? 0;
   const cls = p >= 90 ? "crit" : p >= 70 ? "warn" : "";
   return (

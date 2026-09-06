@@ -15,7 +15,7 @@ const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(
 // One markdown file is the rule set for every agent on a machine; each agent's own
 // instruction file only carries a managed block that mirrors it. Every call goes through
 // `dispatch [--host X] rules …`, so the same editor works for any Mac in hosts.json.
-export function RulesView({ api, hosts, onDone, onError }: Props) {
+export function LegacyRulesView({ api, hosts, onDone, onError }: Props) {
   const [host, setHost] = useState("local");
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<RulesStatus | null>(null);

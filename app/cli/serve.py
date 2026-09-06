@@ -34,18 +34,18 @@ def load_conf():
     if not c.get("token"):
         c["token"] = secrets.token_urlsafe(24)
         c.setdefault("port", 7799)
-        c.setdefault("actor", os.environ.get("DISPATCH_ACTOR", "schaefer"))
+        c.setdefault("actor", os.environ.get("DISPATCH_ACTOR", os.path.basename(HOME)))
         os.makedirs(DISPATCH_DIR, exist_ok=True)
         json.dump(c, open(CONF, "w"), indent=2)
         os.chmod(CONF, 0o600)
     return c
 
 
-def sh(args, env=None, timeout=120):
+def sh(args, env=None, timeout=120, input=None):
     e = dict(os.environ, PATH=PATH, BEADS_DIR=BEADS_DIR, BD_NON_INTERACTIVE="1", NO_COLOR="1")
     if env:
         e.update(env)
-    r = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=e, cwd=os.path.dirname(BEADS_DIR))
+    r = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=e, cwd=os.path.dirname(BEADS_DIR) if os.path.isdir(os.path.dirname(BEADS_DIR)) else HOME, input=input, stdin=subprocess.DEVNULL if input is None else None)
     if r.returncode != 0:
         raise RuntimeError((r.stderr.strip() or r.stdout.strip())[:600])
     return r.stdout
@@ -85,6 +85,12 @@ def _rules_path():
 
 # cmd -> (args dict, actor) -> result (str stays a string; anything else is JSON)
 def commands():
+    def dispatch_on(a, actor):
+        argv = a.get('args')
+        if not isinstance(argv, list) or not argv or not all(isinstance(x,str) for x in argv): raise ValueError('无效的命令参数')
+        host = a.get('host')
+        full = ['--host', host] if host and host != 'local' else []
+        return sh(['python3', DISPATCH_PY, *full, *argv], env={'BEADS_ACTOR': actor}, timeout=300, input=a.get('stdin'))
     def bd(*a):
         return lambda args, actor: json_only(run_bd(list(a), actor))
 
@@ -192,6 +198,7 @@ def commands():
         "env_set": lambda a, _: run_dispatch(["env", "set", a["name"], a["value"], "--note", a.get("note", "")]),
         "env_unset": lambda a, _: run_dispatch(["env", "unset", a["name"]]),
         "quota": lambda a, _: run_dispatch(["quota", "--json"]),
+        "dispatch_on": dispatch_on,
         "stats": stats,
         "hosts": lambda a, _: run_dispatch(["hosts", "--json"]),
         "graph": lambda a, _: run_dispatch(["graph", "--json"]),

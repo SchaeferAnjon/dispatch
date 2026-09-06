@@ -1,6 +1,6 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "folders" | "agents" | "sessions" | "stats" | "skills" | "rules" | "pitfalls" | "env";
+export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "folders" | "agents" | "sessions" | "stats" | "skills" | "rules" | "pitfalls" | "env" | "quota" | "trash";
 
 export interface StatsTokens { in: number; out: number; cr: number; cw: number; think: number }
 export interface StatsDay { date: string; msgs: number; tokens: number; in: number; out: number; cr: number; cw: number; by: Record<string, number> }
@@ -68,7 +68,7 @@ export interface SessionRef {
 }
 export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; text: string; tools: { name: string; summary: string; id?: string }[] }
 export interface FileChange { kind: "edit" | "write" | "patch"; old: string; new: string; ts: string; op?: string; add?: number; del?: number }
-export interface SessionDetail { activity_version?: string; reply_id?: string; workspace?: { root: string; files: { path: string; untracked: boolean }[]; patch: string; truncated?: boolean; unavailable?: string }; meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
+export interface SessionDetail { attachments?: import("./components/Media").Attachment[]; activity_version?: string; reply_id?: string; workspace?: { root: string; files: { path: string; untracked: boolean }[]; patch: string; truncated?: boolean; unavailable?: string }; meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
 export interface Memory { key: string; value: string }
 export interface Skill { name: string; path: string; in_pool: boolean; description: string; agents: Record<string, boolean>; mounts?: Record<string, string | null>; usage?: Record<string, number>; last_used?: string }
 export interface SkillImprove { prompt: string; command: string; top: { name: string; usage: Record<string, number>; last_used: string }[] }

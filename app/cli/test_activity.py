@@ -31,6 +31,14 @@ class ActivityTests(unittest.TestCase):
 
     def row(self): return activity_list(self.home, self.store, {})[0]
 
+    def test_multiple_rollouts_for_one_session_are_not_duplicate_conversations(self):
+        meta={'type':'session_meta','payload':{'id':'same-session','cwd':'/project'}}
+        self.append(meta,record('assistant','old reply',self.t))
+        with open(os.path.join(os.path.dirname(self.path),'resumed.jsonl'),'w') as f:
+            f.write(json.dumps(meta)+'\n'+json.dumps(record('assistant','new reply',self.t+1))+'\n')
+        rows=activity_list(self.home,self.store,{})
+        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['last_at'],self.t+1)
+
     def test_read_new_reply_and_stale_ack(self):
         self.append(record('assistant', 'one', self.t))
         first = self.row()
