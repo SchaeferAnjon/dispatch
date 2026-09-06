@@ -687,3 +687,4 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .hostpick .dot.on{background:var(--s-done)}
 .hostpick-why{font-size:12px;color:var(--s-block);background:var(--s-block-bg);border-radius:6px;padding:2px 8px}
 .hostsw .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--line-2);margin-right:5px;vertical-align:1px}.hostsw .dot.on{background:var(--s-done)}
+.side-hosts{display:flex;gap:2px;margin:6px 10px 4px;padding:3px;background:var(--panel-2);border-radius:8px}.side-hosts button{flex:1;padding:4px 6px;border-radius:6px;font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side-hosts button.on{background:var(--win);color:var(--ink);font-weight:500;box-shadow:var(--card-shadow)}

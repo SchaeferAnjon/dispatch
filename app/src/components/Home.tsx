@@ -113,11 +113,10 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
                 <span className="muted small">{a.sessions.length ? `${a.sessions.length} 个会话 · ${a.sessions.filter((s) => s.state === "working").length} 在跑` : a.online ? "在线" : "离线"}</span>
               </div>
               {(() => {
-                const qs = quota.filter((x) => x.agent === a.actor.id && (!hostFilter || (x.host_name ?? "") === hostFilter));
+                const qs = quota.filter((x) => x.agent === a.actor.id && (hostFilter ? (x.host_name ?? "") === hostFilter : !x.remote));
                 if (!qs.length || a.actor.kind === "human") return null;
                 return qs.map((q) => (
                   <div key={q.host ?? "local"} className="quotas" title={q.updated_at ? `额度数据更新于 ${relTime(new Date(q.updated_at * 1000).toISOString())} 前 · 来源 ${q.source}` : q.note}>
-                    {qs.length > 1 && <span className="tag" title="这台机器上登录的账号">{q.host_name}</span>}
                     {q.windows.length ? q.windows.map((w) => <QuotaBar key={w.label} w={w} />) : <span className="muted small">{q.note || "没有额度数据"}</span>}
                     {q.windows.length > 0 && (() => {
                       const ageMin = q.updated_at ? (Date.now() / 1000 - q.updated_at) / 60 : null;

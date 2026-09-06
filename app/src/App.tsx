@@ -261,12 +261,6 @@ export default function App() {
         </div>
         <div className="tb-right">
           <label className="search">🔍<input ref={searchRef} placeholder="搜任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} /><kbd>⌘K</kbd></label>
-          {hosts.length > 1 && (
-            <div className="views hostsw" title="只看一台机器上的任务、会话、额度、统计">
-              <button className={hostFilter === "" ? "on" : ""} onClick={() => setHostFilter("")}>全部机器</button>
-              {hosts.map((h) => <button key={h.id} className={hostFilter === h.name ? "on" : ""} onClick={() => setHostFilter(h.name)}><span className={`dot${h.online ? " on" : ""}`} />{h.name}</button>)}
-            </div>
-          )}
           <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
           <button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
           <button className="btn ghost status" onClick={() => setView("agents")} title="查看 Agent 状态"><span className="pulse" />{counts.agents} 在线 · {liveSessions} 窗口 ›</button>
@@ -275,7 +269,7 @@ export default function App() {
       </div>
 
       <div className={`body${selected ? " with-detail" : ""}`}>
-        <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} />
+        <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} hosts={hosts} hostFilter={hostFilter} setHostFilter={setHostFilter} />
         <main className="main">
           <div className="toolbar">
             <h2>{VIEW_LABEL[view]}{BOARD_VIEWS.includes(view) && filters.project !== null && <span className="muted"> · {filters.project || "未分项目"}</span>}</h2>

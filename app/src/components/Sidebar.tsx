@@ -15,12 +15,15 @@ interface Props {
   agents: AgentPresence[];
   filters: Filters;
   setFilters: (f: Filters) => void;
+  hosts?: { id: string; name: string; online: boolean; local: boolean }[];
+  hostFilter?: string;
+  setHostFilter?: (name: string) => void;
 }
 
 // The sidebar is the map. Three groups, each answering one question; the
 // current place is marked by a colour bar, counts stay quiet unless they are
 // asking for you (等你 turns red).
-export function Sidebar({ info, view, setView, counts, projects, agents, filters, setFilters }: Props) {
+export function Sidebar({ info, view, setView, counts, projects, agents, filters, setFilters, hosts = [], hostFilter = "", setHostFilter }: Props) {
   const go = (v: View) => { setView(v); setFilters({ ...filters, blocked: false, review: false }); };
   const item = (v: View, icon: string, label: string, right?: React.ReactNode, active?: boolean) => (
     <a className={(active ?? view === v) ? "on" : ""} onClick={() => go(v)}>
@@ -37,6 +40,12 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
           <div className="path" title={info?.beads_dir}>{info?.beads_dir?.replace(/^\/Users\/[^/]+/, "~") ?? "…"}</div>
         </div>
       </div>
+      {hosts.length > 1 && setHostFilter && (
+        <div className="hostsw side-hosts" title="看哪台机器：任务、会话、额度、统计都只看它；「全部」合并两台" onClick={(e) => e.stopPropagation()}>
+          <button className={hostFilter === "" ? "on" : ""} onClick={() => setHostFilter("")}>全部</button>
+          {hosts.map((h) => <button key={h.id} className={hostFilter === h.name ? "on" : ""} onClick={() => setHostFilter(h.name)} title={h.online ? (h.local ? "这台电脑" : "在线") : "离线"}><span className={`dot${h.online ? " on" : ""}`} />{h.name}</button>)}
+        </div>
+      )}
 
       <nav className="nav">
         {item("home", "home", "总览")}
