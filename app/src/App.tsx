@@ -24,16 +24,21 @@ type Theme = "light" | "dark" | "";
 const VIEW_LABEL: Record<View, string> = { home: "总览", inbox: "等你", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "聊天记录", stats: "统计", skills: "技能", rules: "规则", pitfalls: "知识库", env: "环境" };
 const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env"];
 const BOARD_VIEWS: View[] = ["board", "table"];
+const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
 
 export default function App() {
   const [api, setApi] = useState<Api | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [issuesLoaded, setIssuesLoaded] = useState(false);
+  const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; err?: boolean } | null>(null);
-  const [view, setView] = useState<View>("home");
+  const [view, changeView] = useState<View>("home");
+  const [inboxTab, setInboxTab] = useState<keyof InboxItems | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const setView = useCallback((next: View) => { changeView(next); setSelected(null); setInboxTab(null); }, []);
   const [filters, setFilters] = useState<Filters>({ project: null, mine: false, urgent: false, agent: null, blocked: false, review: false });
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -49,6 +54,10 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("dispatch-host", hostFilter); } catch { /* ignore */ } }, [hostFilter]);
   const [theme, setTheme] = useState<Theme>(() => { try { return (localStorage.getItem("dispatch-theme") as Theme) ?? ""; } catch { return ""; } });
   const searchRef = useRef<HTMLInputElement>(null);
+  const [focusSearch, setFocusSearch] = useState(false);
+  const allTasks = () => { setFilters(EMPTY_FILTERS); setQuery(""); setView("board"); };
+  const searchTasks = useCallback(() => { setFilters(EMPTY_FILTERS); setView("table"); setFocusSearch(true); }, [setView]);
+  useEffect(() => { if (focusSearch) { searchRef.current?.focus(); searchRef.current?.select(); setFocusSearch(false); } }, [focusSearch]);
   const toastTimer = useRef<number | undefined>(undefined);
 
   const me = info?.actor ?? "schaefer";
@@ -65,6 +74,7 @@ export default function App() {
     try {
       const list = await x.list();
       setIssues(list);
+      setIssuesLoaded(true);
       setErr(null);
       setLastSync(new Date());
       setVersion((v) => v + 1);
@@ -100,7 +110,7 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     let alive = true;
-    const tick = async () => { try { const p = await api.presence(); if (alive) setPresence(p); } catch { /* keep last */ } };
+    const tick = async () => { try { const p = await api.presence(); if (alive) { setPresence(p); setPresenceLoaded(true); } } catch { /* keep last */ } };
     tick();
     const t = window.setInterval(tick, 5_000);
     return () => { alive = false; window.clearInterval(t); };
@@ -113,13 +123,13 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchTasks(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); setCreating(true); }
       if (e.key === "Escape" && document.activeElement === searchRef.current) { setQuery(""); searchRef.current?.blur(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [searchTasks]);
 
   // Lineage roots (which thread each task belongs to), refreshed with the issue list.
   const [roots, setRoots] = useState<Map<string, string>>(new Map());
@@ -187,35 +197,41 @@ export default function App() {
   }), [issuesF, presenceF]);
 
   const counts = useMemo(() => ({
-    total: issuesF.filter((i) => i.status !== "closed").length,
+    total: issuesF.length,
     blocked: inbox.blocked.length,
     review: inbox.review.length,
     agents: agents.filter((a) => a.online).length,
     inbox: inbox.waiting.length + inbox.review.length + inbox.blocked.length,
   }), [issuesF, agents, inbox]);
 
+  // Use unfiltered data: switching machines is not a new event.
+  const notificationInbox = useMemo(() => ({
+    waiting: presence.sessions.filter((s) => s.alive && s.state === "idle" && s.registered),
+    review: issues.filter((i) => i.status === "closed" && !isReviewed(i)),
+  }), [presence, issues]);
+
   // Notifications: only for things that newly entered the inbox after the first load.
   const seen = useRef<{ ready: boolean; waiting: Set<string>; review: Set<string> }>({ ready: false, waiting: new Set(), review: new Set() });
   useEffect(() => {
-    if (!api) return;
+    if (!api || !issuesLoaded || !presenceLoaded) return;
     const s = seen.current;
-    const w = new Set(inbox.waiting.map((x) => x.session_id));
-    const r = new Set(inbox.review.map((x) => x.id));
+    const w = new Set(notificationInbox.waiting.map((x) => x.session_id));
+    const r = new Set(notificationInbox.review.map((x) => x.id));
     if (s.ready) {
-      for (const x of inbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : x.agent === "qoder" ? "Qoder" : x.agent === "qoder-ide" ? "Qoder IDE" : "Claude Code"} 在等你`, `${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`);
-      for (const x of inbox.review) if (!s.review.has(x.id)) api.notify("有任务待你审核", `${x.id} ${x.title}`);
+      for (const x of notificationInbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : x.agent === "qoder" ? "Qoder" : x.agent === "qoder-ide" ? "Qoder IDE" : "Claude Code"} 在等你`, `${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`).catch(() => {});
+      for (const x of notificationInbox.review) if (!s.review.has(x.id)) api.notify("有任务待你审核", `${x.id} ${x.title}`).catch(() => {});
     }
     s.waiting = w; s.review = r;
     if (!s.ready && (presence.sessions.length > 0 || issues.length > 0)) s.ready = true;
-  }, [inbox, api, presence.sessions.length, issues.length]);
+  }, [notificationInbox, api, presence.sessions.length, issues.length, issuesLoaded, presenceLoaded]);
 
   useEffect(() => {
     if (!api) return;
     const working = presence.sessions.filter((s) => s.alive && s.state === "working").length;
     // Menu bars fill up fast; keep the status text to a few characters.
-    const parts = [working ? `${working}跑` : "", inbox.waiting.length ? `${inbox.waiting.length}等` : "", inbox.review.length ? `${inbox.review.length}审` : ""].filter(Boolean);
-    api.tray(parts.join(" "), `Dispatch · ${working} 在跑 · ${inbox.waiting.length} 等你 · ${inbox.review.length} 待审 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
-  }, [api, presence, inbox, issues]);
+    const parts = [working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
+    api.tray(parts.join(" "), `Dispatch · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待审 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
+  }, [api, presence, notificationInbox, issues]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try { await fn(); say(label); await reload(); } catch (e) { say(String(e), true); }
@@ -256,11 +272,11 @@ export default function App() {
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
           <b className="link" onClick={() => setView("home")}>全局板</b>{hostFilter && <><span className="sep">›</span><span>{hostFilter}</span></>}<span className="sep">›</span><span>{VIEW_LABEL[view]}</span>
-          {filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
+          {BOARD_VIEWS.includes(view) && filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
           <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && " · 浏览器预览"}</span>
         </div>
         <div className="tb-right">
-          <label className="search">🔍<input ref={searchRef} placeholder="搜任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} /><kbd>⌘K</kbd></label>
+          {BOARD_VIEWS.includes(view) ? <label className="search">🔍<input ref={searchRef} placeholder="搜任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="清除任务搜索" onClick={() => setQuery("")}>✕</button>}<kbd>⌘K</kbd></label> : <button className="btn ghost" onClick={searchTasks}>搜索任务 <kbd>⌘K</kbd></button>}
           <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
           <button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
           <button className="btn ghost status" onClick={() => setView("agents")} title="查看 Agent 状态"><span className="pulse" />{counts.agents} 在线 · {liveSessions} 窗口 ›</button>
@@ -269,7 +285,7 @@ export default function App() {
       </div>
 
       <div className={`body${selected ? " with-detail" : ""}`}>
-        <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} hosts={hosts} hostFilter={hostFilter} setHostFilter={setHostFilter} />
+        <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} hosts={hosts} hostFilter={hostFilter} setHostFilter={(h) => { setHostFilter(h); setSelected(null); }} onAllTasks={allTasks} />
         <main className="main">
           <div className="toolbar">
             <h2>{VIEW_LABEL[view]}{BOARD_VIEWS.includes(view) && filters.project !== null && <span className="muted"> · {filters.project || "未分项目"}</span>}</h2>
@@ -281,7 +297,7 @@ export default function App() {
             )}
             <span className="spacer" />
             {BOARD_VIEWS.includes(view) && (<>
-              <button className={`chip${!filters.blocked && !filters.review && !filters.agent ? " on" : ""}`} onClick={() => setFilters({ ...filters, agent: null, blocked: false, review: false })}>全部</button>
+              <button className="chip" disabled={!Object.values(filters).some(Boolean) && filters.project === null && !query} onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>清除筛选</button>
               <button className={`chip${filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>待审核 {counts.review}</button>
               <button className={`chip${filters.blocked ? " on" : ""}`} onClick={() => setFilters({ ...filters, blocked: !filters.blocked, review: false })}>阻塞 {counts.blocked}</button>
               <button className={`chip${filters.urgent ? " on" : ""}`} onClick={() => setFilters({ ...filters, urgent: !filters.urgent })}>P0–P1</button>
@@ -291,9 +307,9 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} issues={issuesF} agents={agents} refs={refsF} me={me} counts={{ working: presenceF.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={setView} onFocus={focusSession} />}
+            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} issues={issuesF} agents={agents} refs={refsF} me={me} counts={{ working: presenceF.sessions.filter((s) => s.alive && s.state === "working").length, waiting: inbox.waiting.length, review: inbox.review.length, blocked: inbox.blocked.length }} onSelect={setSelected} onView={(v) => { if (v === "board") allTasks(); else setView(v); }} onInbox={(tab) => { setView("inbox"); setInboxTab(tab); }} onFocus={focusSession} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
-            {view === "inbox" && <InboxView items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} onReview={(id) => run("审核通过", () => api!.labels(id, ["reviewed"], []))} />}
+            {view === "inbox" && <InboxView initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView agents={agents} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
@@ -308,11 +324,11 @@ export default function App() {
           </section>
         </main>
         {selected && api && (
-          <Detail id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
+          <Detail key={selected} id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
         )}
       </div>
 
-      <MobileNav view={view} setView={(v) => { setView(v); setSelected(null); }} badge={counts.inbox} />
+      <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}

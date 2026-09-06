@@ -15,12 +15,12 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
-  const [host, setHost] = useState<string>("");
-  useEffect(() => { setHost(hostId ?? ""); }, [hostId]);
+  const host = hostId ?? "";
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<"timeline" | "files" | "tasks">("timeline");
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   // Which kinds of turns to show. Tools off by default: the conversation is the point.
   const [kinds, setKinds] = useState<Record<"user" | "assistant" | "tool", boolean>>(() => { try { return { user: true, assistant: true, tool: false, ...JSON.parse(localStorage.getItem("dispatch-tl-kinds") || "{}") }; } catch { return { user: true, assistant: true, tool: false }; } });
   const flip = (k: "user" | "assistant" | "tool") => { const v = { ...kinds, [k]: !kinds[k] }; setKinds(v); try { localStorage.setItem("dispatch-tl-kinds", JSON.stringify(v)); } catch { /* ignore */ } };
@@ -31,7 +31,9 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
     if (!sel) { setDetail(null); return; }
     let alive = true;
     setBusy(true);
-    api.sessionDetail(sel).then((d) => { if (alive) setDetail(d); }).catch((e) => onError(String(e))).finally(() => alive && setBusy(false));
+    setDetail(null);
+    setLoadError(false);
+    api.sessionDetail(sel).then((d) => { if (alive) setDetail(d); }).catch((e) => { if (alive) { setLoadError(true); onError(String(e)); } }).finally(() => alive && setBusy(false));
     return () => { alive = false; };
   }, [sel, api]);
 
@@ -39,7 +41,6 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
     const qq = q.trim().toLowerCase();
     return refs.filter((r) => (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
   }, [refs, q, agent, host]);
-  const hostList = useMemo(() => { const m = new Map<string, string>(); for (const r of refs) if (r.host) m.set(r.host, r.host_name ?? r.host); return [...m.entries()]; }, [refs]);
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
@@ -54,12 +55,6 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
             {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"], ["qoder", "Qoder"], ["qoder-ide", "Qoder IDE"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
             <span className="spacer" /><span className="muted mono small">{items.length}</span>
           </div>
-          {hostList.length > 1 && (
-            <div className="views" style={{ marginTop: 4 }} title="哪台机器上的聊天记录">
-              <button className={host === "" ? "on" : ""} onClick={() => setHost("")}>两台都看</button>
-              {hostList.map(([id, name]) => <button key={id} className={host === id ? "on" : ""} onClick={() => setHost(id)}>{name}</button>)}
-            </div>
-          )}
         </div>
         <div className="sess-items">
           {!loaded && <div className="empty">索引中…（首次要读完全部历史）</div>}
@@ -80,7 +75,7 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
 
       <div className="sess-main">
         {!sel && <div className="empty">选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
-        {sel && !detail && <div className="empty">{busy ? "读取对话记录…" : ""}</div>}
+        {sel && !detail && <div className="empty">{busy ? "读取对话记录…" : loadError ? "对话读取失败，请重新选择会话。" : ""}</div>}
         {detail && (() => {
           const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id);
           return (
@@ -94,15 +89,18 @@ export function SessionsView({ api, me, live, onSelectTask, onDone, onError, ini
                 {(l || NO_RESUME.has(m.agent)) && <button className="btn primary sm" onClick={() => focus(m.session_id)} title={l?.herdr ? `Herdr ${l.herdr.tab_id}` : l?.source_app ?? "ZCode"}>打开会话</button>}
                 {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
               </div>
-              <div className="sess-meta kv">
+              <details className="session-context" key={m.session_id}>
+                <summary>{m.user_msgs} 轮对话 · {m.subagents.length} 个子 Agent<span>会话信息</span></summary>
+                <div className="sess-meta kv">
                 <b>开始</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>
                 <b>最近</b><span className="mono">{m.last_ts ? `${fmtTime(m.last_ts)}（${durSince(m.last_at)}前）` : "?"}</span>
                 <b>来源</b><span>{ENTRY[m.entrypoint] ?? m.entrypoint ?? "?"}{l ? ` · ${l.source_app}` : ""}{m.remote && <span className="host-chip">{m.host_name}</span>}</span>
                 <b>对话</b><span>{m.user_msgs} 轮 · {m.assistant_msgs} 次回复 · {(m.size / 1e6).toFixed(1)} MB</span>
                 <b>工具</b><span className="mono small">{Object.entries(detail.tool_counts).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</span>
                 {m.subagents.length > 0 && (<><b>子 Agent</b><span className="subs">{m.subagents.map((s) => <span key={s.agent_id} className="sub-chip" title={s.path}>↳ <b>{s.type}</b> {s.description}<span className="muted mono"> · {(s.size / 1e3).toFixed(0)} KB</span></span>)}</span></>)}
-              </div>
-              <div className="views" style={{ padding: "0 16px", borderBottom: "1px solid var(--line)" }}>
+                </div>
+              </details>
+              <div className="views session-tabs">
                 <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>时间线 {detail.messages.length}</button>
                 <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>改动 {detail.files.length}</button>
                 <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务 {Object.keys(m.tasks).length}</button>

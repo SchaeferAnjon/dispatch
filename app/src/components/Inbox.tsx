@@ -1,21 +1,27 @@
+import { useState } from "react";
 import { actorOf, durSince, NO_RESUME, projectOf, relTime } from "../derive";
 import type { Issue, Session } from "../types";
 import { Avatar, Pri, ProjectTag } from "./ui";
 
 export interface InboxItems { waiting: Session[]; review: Issue[]; blocked: Issue[] }
 
-interface Props { items: InboxItems; me: string; onSelect: (id: string) => void; onResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; onReview: (id: string) => void }
+interface Props { initialTab?: keyof InboxItems | null; items: InboxItems; me: string; onSelect: (id: string) => void; onResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void }
 
 // The one screen that answers "what needs me right now": sessions that stopped
 // and are waiting for input, finished work awaiting review, and blocked tasks.
-export function InboxView({ items, me, onSelect, onResume, onFocus, onReview }: Props) {
+export function InboxView({ initialTab, items, me, onSelect, onResume, onFocus }: Props) {
+  const [tab, setTab] = useState<keyof InboxItems>(() => initialTab ?? (items.review.length ? "review" : items.waiting.length ? "waiting" : "review"));
   const total = items.waiting.length + items.review.length + items.blocked.length;
   return (
     <div className="inbox">
+      <div className="inbox-tabs views" aria-label="待处理分类">
+        {([["review", "待审核"], ["waiting", "会话已空闲"], ["blocked", "被卡住"]] as const).map(([key, label]) => <button key={key} className={tab === key ? "on" : ""} aria-pressed={tab === key} onClick={() => setTab(key)}>{label} <span className="mono">{items[key].length}</span></button>)}
+      </div>
+      {total > 0 && items[tab].length === 0 && <div className="empty">这个分类没有待处理事项</div>}
       {total === 0 && <div className="empty big">✓ 没有在等你的事<br /><span className="muted">Agent 都在跑，或者都空着。</span></div>}
-      {items.waiting.length > 0 && (
+      {tab === "waiting" && items.waiting.length > 0 && (
         <section>
-          <h4>等你回复 <span className="n">{items.waiting.length}</span><span className="muted">Agent 答完了，光标停在输入框</span></h4>
+          <h4>会话已空闲 <span className="n">{items.waiting.length}</span><span className="muted">最近一轮已结束，可打开查看是否需要继续</span></h4>
           {items.waiting.map((s) => {
             const a = actorOf(s.agent, me);
             return (
@@ -23,38 +29,39 @@ export function InboxView({ items, me, onSelect, onResume, onFocus, onReview }: 
                 <Avatar actor={a} />
                 <div className="ib-main">
                   <div className="t">{s.herdr?.title || s.title || s.project || s.cwd || s.session_id}</div>
-                  <div className="muted small">{a?.name} · {s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}{s.project ? ` · ${s.project}` : ""} · 等了 {durSince(s.last_at)}{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
+                  <div className="muted small">{a?.name} · {s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}{s.project ? ` · ${s.project}` : ""} · 最近活动 {durSince(s.last_at)}前{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
                 </div>
-                <button className="btn primary sm" onClick={() => onFocus(s.session_id)} title={s.herdr ? `Herdr 标签 ${s.herdr.tab_id}` : s.source_app}>打开会话</button>
+                <button className="btn sm" onClick={() => onFocus(s.session_id)} title={s.herdr ? `Herdr 标签 ${s.herdr.tab_id}` : s.source_app}>打开会话</button>
                 {s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && <button className="copy-btn" onClick={() => onResume(s.agent, s.session_id, s.cwd)}>恢复命令</button>}
               </div>
             );
           })}
         </section>
       )}
-      {items.review.length > 0 && (
+      {tab === "review" && items.review.length > 0 && (
         <section>
           <h4>待你审核 <span className="n">{items.review.length}</span><span className="muted">Agent 标记完成，还没人验收</span></h4>
           {items.review.map((i) => {
             const a = actorOf(i.assignee, me);
             return (
-              <div key={i.id} className="ib-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
+              <div key={i.id} className="ib-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSelect(i.id); } }}>
                 <Avatar actor={a} />
                 <div className="ib-main">
                   <div className="t">{i.title}</div>
-                  <div className="muted small"><Pri p={i.priority} /> <ProjectTag name={projectOf(i)} /> <span className="mono">{i.id}</span> · {a?.name ?? "未知"} 完成于 {relTime(i.closed_at ?? i.updated_at)}{i.close_reason ? ` · "${i.close_reason}"` : ""}</div>
+                  <div className="muted small"><Pri p={i.priority} /> <ProjectTag name={projectOf(i)} /> <span className="mono">{i.id}</span> · {a?.name ?? "未知"} 完成于 {relTime(i.closed_at ?? i.updated_at)}</div>
+                  {i.close_reason && <div className="ib-summary">{i.close_reason}</div>}
                 </div>
-                <button className="btn primary sm" onClick={(e) => { e.stopPropagation(); onReview(i.id); }}>✓ 通过</button>
+                <button className="btn sm" onClick={(e) => { e.stopPropagation(); onSelect(i.id); }}>查看验收</button>
               </div>
             );
           })}
         </section>
       )}
-      {items.blocked.length > 0 && (
+      {tab === "blocked" && items.blocked.length > 0 && (
         <section>
           <h4>被卡住 <span className="n">{items.blocked.length}</span><span className="muted">有未完成的依赖</span></h4>
           {items.blocked.map((i) => (
-            <div key={i.id} className="ib-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
+            <div key={i.id} className="ib-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSelect(i.id); } }}>
               <span className="st sm block">⊘</span>
               <div className="ib-main"><div className="t">{i.title}</div><div className="muted small"><Pri p={i.priority} /> <ProjectTag name={projectOf(i)} /> <span className="mono">{i.id}</span> · 依赖 {i.dependency_count} 项</div></div>
             </div>

@@ -39,7 +39,9 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
   const [editAc, setEditAc] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [reason, setReason] = useState("");
-  const [draft, setDraft] = useState("");
+  const [expandedReason, setExpandedReason] = useState(false);
+  const [draft, setDraft] = useState(() => { try { return sessionStorage.getItem(`dispatch-draft:${id}`) ?? ""; } catch { return ""; } });
+  useEffect(() => { try { if (draft) sessionStorage.setItem(`dispatch-draft:${id}`, draft); else sessionStorage.removeItem(`dispatch-draft:${id}`); } catch { /* storage unavailable */ } }, [id, draft]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -61,6 +63,16 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
   const act = async (label: string, fn: () => Promise<void>) => {
     setBusy(true);
     try { await fn(); onDone(label); } catch (e) { onError(String(e)); } finally { setBusy(false); }
+  };
+  const sendComment = async () => {
+    if (busy || !draft.trim()) return;
+    setBusy(true);
+    try {
+      await api.comment(id, draft.trim());
+      setDraft("");
+      try { sessionStorage.removeItem(`dispatch-draft:${id}`); } catch { /* storage unavailable */ }
+      onDone("留言已发");
+    } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
   const who = actorOf(issue.assignee, me);
   const st = statusLabel(issue);
@@ -125,7 +137,7 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
           {(issue.dependencies ?? []).length > 0 && (<><span className="k">依赖</span><span className="v">{issue.dependencies!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}{d.status === "closed" ? " ✓" : ""}</span>)}</span></>)}
           {(issue.dependents ?? []).length > 0 && (<><span className="k">被依赖</span><span className="v">{issue.dependents!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}</span>)}</span></>)}
           <span className="k">创建</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.created_at)}{issue.created_by ? ` · ${actorOf(issue.created_by, me)?.name}` : ""}</span>
-          {issue.closed_at && (<><span className="k">完成</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.closed_at)}{issue.close_reason ? ` · ${issue.close_reason}` : ""}</span></>)}
+          {issue.closed_at && (<><span className="k">完成</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.closed_at)}</span></>)}
         </div>
 
         <div className="actions">
@@ -141,6 +153,12 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
             </div>
           )}
         </div>
+
+        {issue.status === "closed" && issue.close_reason && <div className="sec">
+          <h4>完成说明</h4>
+          <p className={expandedReason ? "" : "completion-preview"}>{issue.close_reason}</p>
+          <button className="link-btn" aria-expanded={expandedReason} onClick={() => setExpandedReason(!expandedReason)}>{expandedReason ? "收起" : "展开完成说明"}</button>
+        </div>}
 
         <div className="sec">
           <h4>描述</h4>
@@ -166,8 +184,8 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
         </div>
 
         {related.length > 0 && (
-          <div className="sec">
-            <h4>相关的坑 <span className="muted" style={{ textTransform: "none", letterSpacing: 0 }}>这个任务 / 项目下记过的</span></h4>
+          <details className="sec context-fold">
+            <summary>相关的坑 <span className="muted">{related.length} 条 · 任务与项目背景</span></summary>
             <div className="rel-pits">
               {related.map((p) => (
                 <div key={p.key} className="rel-pit">
@@ -176,7 +194,7 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
                 </div>
               ))}
             </div>
-          </div>
+          </details>
         )}
 
         <div className="sec">
@@ -223,9 +241,9 @@ export function Detail({ id, api, me, initial, root, stamp, live, onClose, onSel
         </div>
       </div>
       <div className="compose">
-        <textarea placeholder="留言给下一个接手的 Agent…（⌘⏎ 发送）" value={draft} rows={1} onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) { const t = draft.trim(); setDraft(""); act("留言已发", () => api.comment(id, t)); } }} />
-        <button className="btn primary" disabled={!draft.trim() || busy} onClick={() => { const t = draft.trim(); setDraft(""); act("留言已发", () => api.comment(id, t)); }}>发送</button>
+        <textarea placeholder="留言给下一个接手的 Agent…（⌘⏎ 发送）" value={draft} disabled={busy} rows={1} onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void sendComment(); } }} />
+        <button className="btn primary" disabled={!draft.trim() || busy} onClick={() => void sendComment()}>发送</button>
       </div>
     </aside>
   );

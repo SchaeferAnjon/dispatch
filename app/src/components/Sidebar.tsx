@@ -15,6 +15,7 @@ interface Props {
   agents: AgentPresence[];
   filters: Filters;
   setFilters: (f: Filters) => void;
+  onAllTasks: () => void;
   hosts?: { id: string; name: string; online: boolean; local: boolean }[];
   hostFilter?: string;
   setHostFilter?: (name: string) => void;
@@ -23,10 +24,10 @@ interface Props {
 // The sidebar is the map. Three groups, each answering one question; the
 // current place is marked by a colour bar, counts stay quiet unless they are
 // asking for you (等你 turns red).
-export function Sidebar({ info, view, setView, counts, projects, agents, filters, setFilters, hosts = [], hostFilter = "", setHostFilter }: Props) {
+export function Sidebar({ info, view, setView, counts, projects, agents, filters, setFilters, onAllTasks, hosts = [], hostFilter = "", setHostFilter }: Props) {
   const go = (v: View) => { setView(v); setFilters({ ...filters, blocked: false, review: false }); };
   const item = (v: View, icon: string, label: string, right?: React.ReactNode, active?: boolean) => (
-    <a className={(active ?? view === v) ? "on" : ""} onClick={() => go(v)}>
+    <a role="button" tabIndex={0} className={(active ?? view === v) ? "on" : ""} onClick={() => v === "board" ? onAllTasks() : go(v)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); v === "board" ? onAllTasks() : go(v); } }}>
       <span className="ic"><Icon name={icon} /></span>{label}{right}
     </a>
   );
@@ -71,8 +72,8 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
         {item("agents", "agent", "Agent 状态")}
         {item("stats", "chart", "统计")}
         <div className="agents sub">
-          {agents.map((a) => (
-            <button key={a.actor.id} className={`agent${a.online ? "" : " off"}`} onClick={() => { setView("table"); setFilters({ ...filters, agent: filters.agent === a.actor.id ? null : a.actor.id }); }} title={`只看 ${a.actor.name} 的任务`}>
+          {agents.filter((a) => a.online).map((a) => (
+            <button key={a.actor.id} className="agent" onClick={() => { onAllTasks(); setView("table"); setFilters({ project: null, mine: false, urgent: false, blocked: false, review: false, agent: a.actor.id }); }} title={`只看 ${a.actor.name} 的任务`}>
               <Avatar actor={a.actor} online={a.online} />
               <div style={{ minWidth: 0 }}>
                 <div className="nm">{a.actor.name}{a.sessions.length > 0 && <small>{a.sessions.length} 窗口{a.sessions.some((s) => s.state === "working") ? ` · ${a.sessions.filter((s) => s.state === "working").length} 在跑` : ""}</small>}</div>

@@ -36,6 +36,7 @@ interface Props {
   counts: { working: number; waiting: number; review: number; blocked: number };
   onSelect: (id: string) => void;
   onView: (v: View) => void;
+  onInbox: (tab: "review" | "waiting" | "blocked") => void;
   onFocus: (sessionId: string) => void;
 }
 
@@ -43,7 +44,7 @@ interface Lane { agent: AgentPresence; items: { issue: Issue; session?: Session;
 
 // The page that answers "what is everyone doing right now, and how far along":
 // one lane per agent, one row per task in progress, with the newest progress note.
-export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, onSelect, onView, onFocus }: Props) {
+export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, onSelect, onView, onInbox, onFocus }: Props) {
   const [lastNote, setLastNote] = useState<Record<string, Comment | undefined>>({});
   const [quota, setQuota] = useState<Quota[]>([]);
 
@@ -85,7 +86,7 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
       for (const [t, s] of sessTask) if (!claimed.has(t)) items.push({ issue: byId.get(t)!, session: s, last: lastNote[t] });
       const idleSessions = a.sessions.filter((s) => ![...sessTask.values()].includes(s));
       return { agent: a, items, idleSessions };
-    }).filter((l) => l.agent.actor.kind !== "human" || l.items.length > 0);
+    }).filter((l) => l.agent.online || l.items.length > 0);
   }, [agents, inProgress, refs, lastNote, me, issues]);
 
   const recent = useMemo(() => [...issues].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 12), [issues]);
@@ -94,9 +95,9 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
     <div className="home">
       <div className="stats">
         <button className="stat" onClick={() => onView("agents")}><b>{counts.working}</b><span>在跑</span></button>
-        <button className="stat warn" onClick={() => onView("inbox")}><b>{counts.waiting}</b><span>等你回复</span></button>
-        <button className="stat" onClick={() => onView("inbox")}><b>{counts.review}</b><span>待你审核</span></button>
-        <button className="stat" onClick={() => onView("inbox")}><b>{counts.blocked}</b><span>被卡住</span></button>
+        <button className="stat warn" onClick={() => onInbox("waiting")}><b>{counts.waiting}</b><span>会话已空闲</span></button>
+        <button className="stat" onClick={() => onInbox("review")}><b>{counts.review}</b><span>待你审核</span></button>
+        <button className="stat" onClick={() => onInbox("blocked")}><b>{counts.blocked}</b><span>被卡住</span></button>
         <span className="spacer" />
         <button className="btn sm" onClick={() => onView("board")}>看板 →</button>
       </div>
@@ -132,7 +133,7 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
               {items.map(({ issue: i, session: s, last }) => {
                 const ac = parseAcceptance(i.acceptance_criteria);
                 const done = ac.filter((x) => x.done).length;
-                const st = s ? (s.state === "working" ? { text: "在跑", cls: "prog" } : s.state === "idle" ? { text: "等你", cls: "done" } : { text: "开着", cls: "open" }) : { text: "没有会话在跑", cls: "open" };
+                const st = s ? (s.state === "working" ? { text: "在跑", cls: "prog" } : s.state === "idle" ? { text: "空闲", cls: "done" } : { text: "开着", cls: "open" }) : { text: "没有会话在跑", cls: "open" };
                 return (
                   <div key={i.id} className="now-card opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0}>
                     <div className="l1">
@@ -159,7 +160,7 @@ export function HomeView({ hostFilter, api, issues, agents, refs, me, counts, on
                 <div className="idle-sess">
                   {idleSessions.map((s) => (
                     <div key={s.session_id} className="idle-row">
-                      <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{s.state === "working" ? "在跑" : s.state === "idle" ? "等你" : "未登记"}</span>
+                      <span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{s.state === "working" ? "在跑" : s.state === "idle" ? "空闲" : "未登记"}</span>
                       <span className="t">{s.herdr?.title || s.title || s.project || s.cwd || "（未知目录）"}</span>
                       <span className="muted small">{s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>} · 没挂任务</span>
                       <button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button>
