@@ -10,3 +10,5 @@ app/dist/
 app/node_modules/
 app/src-tauri/gen/schemas/
 app/src-tauri/target/
+__pycache__/
+*.pyc
