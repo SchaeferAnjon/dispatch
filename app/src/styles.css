@@ -267,7 +267,7 @@ td .t{font-weight:500}
 .trend .col i{display:block;width:100%;border-radius:2px 2px 0 0;min-height:1px}
 .trend .lb{font-size:9px;height:12px;white-space:nowrap}
 .st-foot{line-height:1.6;max-width:90ch}
-.hosts-bar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.hosts-bar{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;margin:0 0 4px}
 .hosts-bar .host{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--win)}
 .hosts-bar .host.off{opacity:.6}
 .hosts-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--line-2)}
