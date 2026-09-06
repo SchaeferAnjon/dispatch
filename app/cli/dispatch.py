@@ -239,16 +239,20 @@ def remote_dispatch(h, args, ttl):
     cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in args) + " --json"
     try:
         r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd], capture_output=True, text=True, timeout=12)
+        if r.returncode == 255:
+            raise ConnectionError(r.stderr.strip()[:200])  # ssh itself failed: host unreachable
         if r.returncode != 0:
-            raise RuntimeError(r.stderr.strip()[:200])
+            return stale()  # the command failed there (old checkout, bad args): host is fine, don't mark it down
         s = r.stdout
         start = min(i for i in (s.find("["), s.find("{")) if i >= 0)
         data = json.loads(s[start:])
-    except Exception:
+    except (ConnectionError, subprocess.TimeoutExpired):
         try:
             open(down, "w").close()
         except OSError:
             pass
+        return stale()
+    except Exception:
         return stale()
     try:
         tmp = cache + ".tmp"
