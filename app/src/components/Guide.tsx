@@ -1,43 +1,15 @@
 import { useEffect, useState } from "react";
 import type { View } from "../types";
 
-// One sentence per view, shown under the title until dismissed. Plain words,
-// no product jargon: what you see here and what to do with it.
-export const VIEW_INTRO: Partial<Record<View, string>> = {
-  home: "按项目看现在的情况：每个项目下等你回的会话、在跑的会话、进行中的任务和最新成果。点项目名进入完整记录。",
-  inbox: "未读回复在读到最新后自动移出；明确的确认请求和被卡住的任务单独保留。Agent 复核不计入你的待处理数量。",
-  board: "所有任务，三列对应工作进度：待办 → 进行中 → 已完成；Agent 复核单独记录。卡片上的「源自」是它属于哪条线。右键卡片或点击 ⋯ 可操作，移除的任务可在回收站恢复。",
-  table: "和看板同一份任务，换成表格，适合排序和扫一眼。",
-  graph: "任务是一根线：左边是源头，右边是它派生出来的。悬停或点一个节点，整条线高亮。",
-  projects: "一个项目的完整记录：会话、任务、成果各一页；任务可指定发起和参与的会话，成果可汇总多个任务。",
-  agents: "查看已检测到的会话与来源；运行状态优先使用实际活动，只有进程信息时标为未知。",
-  sessions: "Claude Code 和 Codex 会话持续更新；读对话、查看实时操作与工作区差异，也可打开原会话。",
-  skills: "技能池：每个技能给哪些 Agent 挂着。改 SKILL.md 就是改 Agent 的做事方法。",
-  rules: "检测各 Agent 的全局指令和引用，检查重复冲突；修改先预览差异，托管副本随唯一源文件同步。",
-  pitfalls: "踩过的坑和解法。每个 Agent 新开会话时会自动读到，所以同一个坑不会踩第二次。",
-};
-
+// The tour follows the product's one axis: a project has conversations, a
+// conversation spins off tasks, tasks add up to outcomes.
 const STEPS: { title: string; body: string; view: View }[] = [
-  { title: "从项目接着工作", body: "工作台按项目排列：一个项目有多个会话，每个会话延伸出任务。卡片上是它现在的情况——等你回的、在跑的、做到哪的；点项目名看完整记录。", view: "home" },
-  { title: "什么会出现在「等我」", body: "新回复会进入未读列表，读到最新后自动清除；在原 Agent 里继续回复，也会被识别。仅在原应用中查看，暂时无法同步已读。明确的确认请求仍需处理。", view: "inbox" },
-  { title: "对话、操作与文件放在一起", body: "会话页持续刷新。向上翻历史时不会强制跳回底部；「实时活动」显示工具操作，「文件」展示当前工作区差异和会话中的编辑记录。", view: "sessions" },
-  { title: "任务记录交付过程", body: "看板按待办、进行中、已完成排列。完成由 Agent 记录，互审独立进行；你无需再点击一次完成。", view: "board" },
-  { title: "知识供下一次工作使用", body: "技能、规则和踩坑记录供各个 Agent 共用，避免重复解释和重复犯错。", view: "skills" },
+  { title: "一切从项目开始", body: "工作台按项目排列。每张卡片是这个项目此刻的情况：等你回的会话、在跑的会话、进行中的任务和最新成果。☆ 收藏置顶，做完的项目可以归档。", view: "home" },
+  { title: "项目里有会话、任务、成果和目录", body: "点进一个项目：会话是工作发生的地方，任务由会话延伸出来并明确关联，多个任务和会话汇成一项成果。目录页能打开文件夹或在那里新建会话。", view: "projects" },
+  { title: "「等我」只放需要你动手的事", body: "未读回复读到最新后自动移出，在原 Agent 里继续回复也会被识别；明确的确认请求单独列出。被卡住的任务和 Agent 互审不算在红点里。", view: "inbox" },
+  { title: "会话页：对话、操作、文件和回复", body: "对话持续刷新，向上翻历史不会被拉回底部。「实时活动」是工具操作，「文件」是工作区差异，底部可直接回复原会话。", view: "sessions" },
+  { title: "任务和知识给下一次用", body: "任务由 Agent 建、认领、记进展、收尾；看板只是全局视角。技能、规则、踩坑记录所有 Agent 共用。⌘K 随时搜项目、会话、任务。", view: "board" },
 ];
-
-export function useIntro(view: View): [string | null, () => void] {
-  const key = `dispatch-intro-off-${view}`;
-  const [off, setOff] = useState<boolean>(() => { try { return localStorage.getItem(key) === "1"; } catch { return false; } });
-  useEffect(() => { try { setOff(localStorage.getItem(key) === "1"); } catch { setOff(false); } }, [key]);
-  const text = VIEW_INTRO[view];
-  return [off || !text ? null : text!, () => { try { localStorage.setItem(key, "1"); } catch { /* ignore */ } setOff(true); }];
-}
-
-export function ViewIntro({ view }: { view: View }) {
-  const [text, dismiss] = useIntro(view);
-  if (!text) return null;
-  return <div className="view-intro"><span>{text}</span><button className="btn ghost sm" onClick={dismiss} title="知道了，以后不显示">知道了</button></div>;
-}
 
 export function Tour({ onClose, onGo }: { onClose: () => void; onGo: (v: View) => void }) {
   const [i, setI] = useState(0);

@@ -672,9 +672,6 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .opens:hover::after{opacity:1}
 .opens:hover{border-color:var(--line-2)}
 .card.opens::after{top:14px;transform:none}
-.view-intro{display:flex;align-items:center;gap:12px;margin:0;padding:8px 16px;background:var(--accent-soft);color:var(--ink);font-size:12.5px;line-height:1.5;border-bottom:1px solid var(--line)}
-.view-intro span{flex:1;max-width:90ch}
-.view-intro .btn{flex:none}
 .dialog.tour{width:460px;gap:10px}
 .dialog.tour p{margin:0;color:var(--ink-2);line-height:1.6}
 .tour-dots{display:flex;gap:6px;justify-content:center;margin-top:4px}
