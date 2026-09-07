@@ -87,6 +87,7 @@ def remember_topic(state, text):
     if '## My request' in text:
         text = re.split(r'## My request[^\n]*\n', text)[-1]
     text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'\[Image[^\]]*\]', '', text, flags=re.IGNORECASE).strip()
     text = re.sub(r'!\[[^]]*\]\([^)]*\)', '', text)
     text = re.sub(r'\[([^]]+)\]\([^)]*\)', r'\1', text)
     text = re.sub(r'[*`#]', '', text)
@@ -210,9 +211,9 @@ def read_stream(db, path, agent):
     st = os.stat(path)
     row = db.execute('SELECT inode,off,mtime,data FROM streams WHERE path=?', (path,)).fetchone()
     state = json.loads(row[3]) if row and row[0] == st.st_ino and row[1] <= st.st_size else {}
-    if state.get('parser_version') != 5: state = {}
+    if state.get('parser_version') != 6: state = {}
     off = row[1] if state else 0
-    state['parser_version'] = 5
+    state['parser_version'] = 6
     if row and off > 0 and row[2] == st.st_mtime and off == st.st_size: return state
     state.setdefault('agent', agent)
     state.setdefault('session_id', os.path.basename(path).removesuffix('.jsonl'))

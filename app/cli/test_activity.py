@@ -31,6 +31,11 @@ class ActivityTests(unittest.TestCase):
 
     def row(self): return activity_list(self.home, self.store, {})[0]
 
+    def test_image_reference_is_not_a_goal(self):
+        state={}
+        remember_topic(state, '[Image: source: /Users/me/.claude/image-cache/a.png]')
+        self.assertNotIn('overview', state)
+
     def test_overview_keeps_opening_and_later_goals(self):
         self.append(record('user', '请优化工作台，会话应该显示文件夹和项目名称。', self.t))
         for i in range(100): self.append(record('assistant', '处理中', self.t+i+1, 'commentary'))
