@@ -17,7 +17,8 @@ import { InboxView, type InboxItems } from "./components/Inbox";
 import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
 import { SearchPalette } from "./components/Search";
-import { PROJECT_FLAGS_KEY, parseProjectFlags, parseSettings, serializeProjectFlags, withProjectFlag, type DispatchSettings, type ProjectFlags } from "./projectFlags";
+import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, parseProjectFlags, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags } from "./projectFlags";
+import { SettingsView } from "./components/Settings";
 import { isOutcome, knownProjects, linkedSessions, projectGroups, sourceTasks, projectConversations } from "./projectModel";
 import { UNGROUPED_PROJECT, activityKey, conversationProject, isScriptSession, isSubagentSession, mergeActivity, resolveProject } from "./activity";
 import { isArchived, rankProjects } from "./projectFlags";
@@ -28,8 +29,8 @@ import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, 
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash"];
+const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
 
@@ -218,18 +219,21 @@ export default function App() {
   }, [api]);
   const hostId = useMemo(() => { if (!hostFilter) return ""; const h = hosts.find((x) => x.name === hostFilter); return h ? (h.local ? "local" : h.id) : ""; }, [hostFilter, hosts]);
   const localName = hosts.find((h) => h.local)?.name ?? "";
-  const observedPresence = useMemo(() => mergeActivity(presence, activity.sessions), [presence, activity]);
+  const [settings, setSettings] = useState<DispatchSettings>(DEFAULT_SETTINGS);
+  const archiveDays = settings.session_archive_days;
+  const saveSettings = async (next: DispatchSettings) => { if (!api) return; try { await api.remember(SETTINGS_KEY, serializeSettings(next)); setSettings(next); say("设置已保存"); } catch (e) { say(String(e), true); } };
+  const known = useMemo(() => knownProjects(issues, activity.sessions), [issues, activity]);
+  const normalise = useCallback(<T extends { cwd: string; project: string; project_override?: string; scheduled?: boolean; path?: string; entrypoint?: string }>(x: T): T => ({ ...x, project: resolveProject(x, known), scheduled: x.scheduled ?? (settings.sdk_sessions_scheduled && isScriptSession(x) ? true : undefined) }), [known, settings.sdk_sessions_scheduled]);
+  const activityRows = useMemo(() => activity.sessions.filter((a) => !isSubagentSession(a)).map(normalise), [activity, normalise]);
+  const observedPresence = useMemo(() => mergeActivity(presence, activityRows), [presence, activityRows]);
   const presenceF = useMemo(() => hostFilter ? { ...observedPresence, sessions: observedPresence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : observedPresence, [observedPresence, hostFilter, localName]);
   // Every conversation carries its resolved project from here on, so each view agrees on it.
-  const known = useMemo(() => knownProjects(issues, activity.sessions), [issues, activity]);
-  const refsF = useMemo(() => new Map([...refs].filter(([, r]) => !isSubagentSession(r) && (!hostFilter || (r.host_name ?? localName) === hostFilter)).map(([id, r]) => [id, { ...r, project: resolveProject(r, known) }])), [refs, hostFilter, localName, known]);
-  const activityF = useMemo(() => activity.sessions.filter(a => !isSubagentSession(a) && (!hostFilter || (a.host_name ?? localName) === hostFilter)).map(a => ({ ...a, project: resolveProject(a, known) })), [activity, hostFilter, localName, known]);
+  const refsF = useMemo(() => new Map([...refs].filter(([, r]) => !isSubagentSession(r) && (!hostFilter || (r.host_name ?? localName) === hostFilter)).map(([id, r]) => [id, normalise(r)])), [refs, hostFilter, localName, normalise]);
+  const activityF = useMemo(() => activityRows.filter(a => !hostFilter || (a.host_name ?? localName) === hostFilter), [activityRows, hostFilter, localName]);
   const scriptCount = useMemo(() => [...refsF.values()].filter(isScriptSession).length, [refsF]);
   const projectRows = useMemo(()=>projectConversations(activityF,[...refsF.values()]),[activityF,refsF]);
   // 收藏 / 归档 per project: one shared bd memory, re-read whenever the board changes.
   const [projectFlags, setProjectFlags] = useState<ProjectFlags>({});
-  const [settings, setSettings] = useState<DispatchSettings>({ session_archive_days: 30 });
-  const archiveDays = settings.session_archive_days;
   useEffect(() => {
     if (!api) return;
     let alive = true;
@@ -331,7 +335,7 @@ export default function App() {
     if (!api) return;
     const working = observedPresence.sessions.filter((s) => s.alive && s.state === "working" && !s.scheduled).length;
     // Menu bars fill up fast; keep the status text to a few characters.
-    const unread = activity.sessions.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)).length;
+    const unread = activityRows.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)).length;
     // Quota in the menu bar: this Mac's worst window per agent, as one letter and a percent.
     const local = quota.filter((q) => !q.remote && q.windows.length);
     const names: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", pi: "pi", zcode: "ZCode" };
@@ -340,7 +344,7 @@ export default function App() {
     const quotaLines = local.flatMap((q) => q.windows.map((w) => `${names[q.agent] ?? q.agent} · ${w.label} ${w.used_percent === null ? "—" : Math.round(w.used_percent) + "%"}${until(w.resets_at) ? ` · ${until(w.resets_at)}` : ""}`));
     const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
     api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成`, quotaLines).catch(() => {});
-  }, [api, observedPresence, notificationInbox, issues, activity, quota, inArchivedProject]);
+  }, [api, observedPresence, notificationInbox, issues, activityRows, quota, inArchivedProject]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try { await fn(); say(label); await reload(); } catch (e) { say(String(e), true); }
@@ -425,7 +429,7 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && api && <HomeView quota={quota} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
+            {view === "home" && api && <HomeView quota={quota} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
             {view === "projects" && api && <ProjectHub archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} onPhone={phoneLink} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
@@ -437,6 +441,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
+            {view === "settings" && <SettingsView settings={settings} onSave={saveSettings} />}
             {view === "env" && api && <EnvView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
           </section>
@@ -448,7 +453,7 @@ export default function App() {
 
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
-      {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!=="未关联项目")try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
+      {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}

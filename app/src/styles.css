@@ -488,6 +488,23 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .session-modes{flex-wrap:wrap}
 .sess-item-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
 .conversation-title .star,.sess-item .star{font-size:13px;padding:0 2px;cursor:default}
+.home-project>header .fold{width:22px;height:22px;border-radius:6px;color:var(--ink-3);font-size:18px;line-height:1;display:grid;place-items:center;transition:transform .12s;flex:none}
+.home-project>header .fold.open{transform:rotate(90deg)}
+.home-project>header .fold:hover{background:var(--panel-2);color:var(--ink)}
+.home-project.folded{padding:8px 14px;gap:0}
+.home-project.folded>header .name{font-size:15px}
+.home-project>header .digest{font-size:12.5px;color:var(--ink-2);text-align:left;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-project>header .digest .hot{color:var(--s-block);font-weight:500}
+.settings{padding:20px 24px 40px;max-width:760px;display:flex;flex-direction:column;gap:16px}
+.settings-card{border:1px solid var(--line);border-radius:12px;background:var(--win);padding:6px 18px}
+.settings-card h3{margin:10px 0 4px;font-size:14px}
+.settings-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:12px 0;border-top:1px solid var(--line);cursor:pointer}
+.settings-row:first-of-type{border-top:0}
+.settings-row b{font-weight:500}
+.settings-row p{margin:4px 0 0;color:var(--ink-3);font-size:12px;line-height:1.5}
+.settings-num{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.settings-num input{width:72px;text-align:right}
+.settings-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .home-projects{display:flex;flex-direction:column;gap:14px}
 .home-project{border:1px solid var(--line);border-radius:14px;background:var(--win);box-shadow:var(--card-shadow);padding:14px 18px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .home-project.quiet{background:var(--panel)}

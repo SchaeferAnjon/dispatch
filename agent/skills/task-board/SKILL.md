@@ -57,7 +57,7 @@ dispatch claim <id> [--force]                # 认领守卫：别人正在做的
 # 文件级互斥：hook ~/tasks/.dispatch/edit-guard.py（Claude Edit/Write、Codex apply_patch）——别的会话 30 分钟内改过的文件第一次会被拒并说明，重试放行；登记在 ~/tasks/.dispatch/edits/，prime 的「同目录在跑」会列出对方正在改的文件
 dispatch quota                               # 各 Agent 额度；prime 里有你自己的，≥80% 省 token，≥95% 只收尾换 Agent
 dispatch project <名> --star|--unstar|--archive|--unarchive   # 项目收藏（工作台置顶）/ 归档（做完暂时不用，从工作台和项目列表隐藏）；dispatch projects 列出；两台 Mac 共享，用户在界面上也能点
-dispatch settings [session_archive_days [N]]  # 共享设置：普通会话 N 天无活动自动归档（默认 30）；收藏（追踪中）的会话不归档，prime 会列出本项目追踪中的会话，相关的活先看它们的记录
+dispatch settings [键 [值]]                  # 共享设置（界面「设置」页同源）：session_archive_days 普通会话 N 天无活动自动归档（默认 30，收藏的不归档）；home_expanded 工作台默认展开数；sdk_sessions_scheduled SDK 起的会话自动当定时会话。prime 会列出本项目追踪中的会话，相关的活先看它们的记录
 dispatch session-preferences <agent>:<sid> '{"starred":true}'   # 会话级开关：starred 追踪中 / archived 归档 / scheduled 定时 / project_override 归属项目（用户一般在界面右键点）
 bd show <id> --json  /  bd ready --json  /  bd blocked
 bd create "bug" -l project:xxx -t bug -p 1 --deps discovered-from:<当前id> --json

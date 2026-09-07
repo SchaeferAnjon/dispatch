@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { AgentPresence } from "../derive";
 import { actorOf, durSince, parseAcceptance, projectColor, relTime, sessionStatus } from "../derive";
-import { activityKey, conversationProject, conversationSummary, sessionLifecycle } from "../activity";
+import { UNGROUPED_PROJECT, activityKey, conversationProject, conversationSummary, sessionLifecycle } from "../activity";
 import { projectGroups } from "../projectModel";
 import { isStarred, rankProjects, type ProjectFlags } from "../projectFlags";
 import type { Activity, Issue, Quota, Session, View } from "../types";
@@ -45,6 +45,7 @@ interface Props {
   progress: Record<string, string>;
   flags: ProjectFlags;
   archiveDays: number;
+  expandedDefault: number;
   onFlag: (name: string, change: { starred?: boolean; archived?: boolean }) => void;
   onOpen: (sessionId: string) => void;
   onFocus: (sessionId: string) => void;
@@ -55,7 +56,7 @@ interface Props {
   onPhone?: () => void;
 }
 
-const UNGROUPED = "未关联项目";
+const UNGROUPED = UNGROUPED_PROJECT;
 const sessionProject = (s: Session) => conversationProject({ cwd: s.cwd, project: s.project } as Activity);
 const plain = (md: string) => md.replace(/```[\s\S]*?(?:```|$)/g, "").replace(/[#*`>\[\]()!_]/g, " ").replace(/\s+/g, " ").trim();
 
@@ -81,7 +82,7 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ quota, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, flags, archiveDays, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone }: Props) {
+export function HomeView({ quota, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone }: Props) {
   // The count chips narrow this page instead of leaving it.
   const [focus, setFocus] = useState<"" | "unread" | "waiting" | "blocked" | "running">("");
   const toggleFocus = (f: typeof focus) => setFocus((cur) => (cur === f ? "" : f));
@@ -121,6 +122,12 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
   const ungrouped = cards.find((c) => c.name === UNGROUPED);
   const [showRest, setShowRest] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // Cards fold to one line so the page is a list of projects, not a wall. The first few and
+  // anything waiting on the user start open; the user's own toggles win afterwards.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [allOpen, setAllOpen] = useState<boolean | null>(null);
+  const isOpen = (c: Card, index: number) => focus !== "" || (toggled[c.name] ?? allOpen ?? (index < expandedDefault || c.waiting.length + c.unread.length > 0));
+  const toggle = (name: string, open: boolean) => setToggled((t) => ({ ...t, [name]: !open }));
 
   const running = cards.reduce((n, c) => n + c.running.length, 0);
   const waitingCount = inbox.unread.length + inbox.waiting.length + inbox.blocked.length;
@@ -131,20 +138,24 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
 
   const quotaByAgent = agents.filter((a) => a.actor.kind !== "human").map((a) => ({ agent: a, qs: quota.filter((x) => x.agent === a.actor.id && x.windows.length && (hostFilter ? (x.host_name ?? "") === hostFilter : !x.remote)) })).filter((x) => x.qs.length);
 
-  const renderCard = (c: Card) => {
+  const renderCard = (c: Card, index = 0) => {
+    const open = isOpen(c, index);
+    const digest = [c.waiting.length + c.unread.length ? `等你 ${c.waiting.length + c.unread.length}` : "", c.running.length ? `在跑 ${c.running.length}` : "", c.tracked.length ? `追踪 ${c.tracked.length}` : "", c.tasks.length ? `任务 ${c.tasks.length}` : "", c.blockedTasks.length ? `卡住 ${c.blockedTasks.length}` : ""].filter(Boolean).join(" · ");
     const more = Math.max(0, c.waiting.length + c.unread.length - 3) + Math.max(0, c.running.length - 3) + Math.max(0, c.tasks.length - 3);
     return (
-      <article key={c.name} className={`home-project${c.live ? "" : " quiet"}`}>
+      <article key={c.name} className={`home-project${c.live ? "" : " quiet"}${open ? "" : " folded"}`}>
         <header>
+          <button className={`fold${open ? " open" : ""}`} onClick={() => toggle(c.name, open)} aria-expanded={open} aria-label={open ? `收起 ${c.name}` : `展开 ${c.name}`}>›</button>
           <span className="proj" style={{ background: projectColor(c.name) }} />
           <button className="name" onClick={() => onProject(c.name)}>{c.name}</button>
           {c.name !== UNGROUPED && <button className={`star${isStarred(flags, c.name) ? " on" : ""}`} onClick={() => onFlag(c.name, { starred: !isStarred(flags, c.name) })} title={isStarred(flags, c.name) ? "取消收藏" : "收藏：置顶，近期重点关注"} aria-label={isStarred(flags, c.name) ? `取消收藏 ${c.name}` : `收藏 ${c.name}`}>{isStarred(flags, c.name) ? "★" : "☆"}</button>}
-          <span className="counts muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.blocked ? ` · ${c.blocked} 项被卡住` : ""}{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span>
+          {open ? <span className="counts muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.blocked ? ` · ${c.blocked} 项被卡住` : ""}{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span> : <button className="digest" onClick={() => toggle(c.name, open)}>{digest ? <span className={c.waiting.length + c.unread.length ? "hot" : ""}>{digest}</span> : <span className="muted">{c.latest ? `最近：${c.latest.title}` : "没有会话"}</span>}<span className="muted small"> · {c.lastActive ? `${durSince(c.lastActive)}前` : ""}</span></button>}
           <span className="spacer" />
           <button className="btn sm" onClick={() => onNew(c.latest)}>新建会话</button>
           <button className="link" onClick={() => onProject(c.name)}>进入项目 ›</button>
         </header>
 
+        {open && <>
         {(!focus || focus === "waiting" || focus === "unread") && (c.waiting.length > 0 || c.unread.length > 0) && (
           <div className="home-group">
             <div className="home-group-h hot">等你 <b>{c.waiting.length + c.unread.length}</b></div>
@@ -260,6 +271,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
           {c.results[0] ? <button className="link outcome" onClick={() => onTask(c.results[0].id)} title={plain(c.results[0].description ?? "")}>最新成果 · {c.results[0].title} ›</button> : <span className="muted small">还没登记成果</span>}
           {more > 0 && <button className="link" onClick={() => onProject(c.name)}>还有 {more} 项，进入项目 ›</button>}
         </footer>}
+        </>}
       </article>
     );
   };
@@ -284,6 +296,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
         <button className={`home-count${inbox.blocked.length ? " hot" : ""}${focus === "blocked" ? " on" : ""}`} aria-pressed={focus === "blocked"} onClick={() => toggleFocus("blocked")} title="只看被卡住的任务">被卡住 <b>{inbox.blocked.length}</b></button>
         <button className={`home-count${focus === "running" ? " on" : ""}`} aria-pressed={focus === "running"} onClick={() => toggleFocus("running")} title="只看正在跑的会话">在跑 <b>{running}</b></button>
         {focus && <button className="link" onClick={() => setFocus("")}>显示全部 ✕</button>}
+        {!focus && featured.length > 1 && <button className="link" onClick={() => { setAllOpen(allOpen === false ? true : allOpen === true ? false : featured.every((c, i) => isOpen(c, i)) ? false : true); setToggled({}); }}>{(allOpen ?? featured.every((c, i) => isOpen(c, i))) ? "全部收起" : "全部展开"}</button>}
         <span className="spacer" />
         {quotaByAgent.map(({ agent: a, qs }) => (
           <button key={a.actor.id} className="home-quota" onClick={() => onView("quota")} title={`${a.actor.name} 的额度 · 点开看详情`}>
@@ -319,8 +332,8 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
       {loaded && featured.length === 0 && rest.length === 0 && archived.length === 0 && <div className="home-quiet">还没有项目。会话按工作目录归入项目，任务用 <span className="mono">project:名字</span> 标签归类。<button className="link" onClick={() => onNew()}>新建会话 ›</button></div>}
       {!loaded && <div className="home-quiet">正在读取项目与会话…</div>}
       <div className="home-projects">
-        {featured.map(renderCard)}
-        {ungrouped && ungrouped.live && matches(ungrouped) && renderCard(ungrouped)}
+        {featured.map((c, i) => renderCard(c, i))}
+        {ungrouped && ungrouped.live && matches(ungrouped) && renderCard(ungrouped, featured.length)}
       </div>
 
       {!focus && rest.length > 0 && (

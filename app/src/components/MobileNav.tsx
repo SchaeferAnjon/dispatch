@@ -19,6 +19,7 @@ const MORE: { v: View; icon: string; label: string }[] = [
   { v: "skills", icon: "skill", label: "技能" },
   { v: "rules", icon: "rule", label: "规则与资料" },
   { v: "pitfalls", icon: "pit", label: "知识库" },
+  { v: "settings", icon: "gear", label: "设置" },
 ];
 
 export function MobileNav({ view, setView, badge }: { view: View; setView: (v: View) => void; badge: number }) {

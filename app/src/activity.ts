@@ -53,7 +53,7 @@ export function conversationSummary(a: Activity): string {
   return result.length > 110 ? result.slice(0, 109) + '…' : result;
 }
 
-export const UNGROUPED_PROJECT = '未关联项目';
+export const UNGROUPED_PROJECT = '零散会话';
 
 // The one rule for which project a conversation belongs to. Precedence: what the
 // user set by hand; a home-directory chat belongs to nothing; anything under

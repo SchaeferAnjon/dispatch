@@ -2723,7 +2723,7 @@ def project_flags_load():
 
 # ---------------------------------------------------------------- settings (shared, one bd memory)
 SETTINGS_KEY = "dispatch-settings"
-SETTING_DEFAULTS = {"session_archive_days": 30}
+SETTING_DEFAULTS = {"session_archive_days": 30, "home_expanded": 2, "sdk_sessions_scheduled": 1}
 
 
 def settings_parse(raw):
@@ -2761,7 +2761,8 @@ def cmd_settings(a):
         cur[a.key] = val
         wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
     shown = {a.key: cur[a.key]} if a.key else cur
-    out(shown, a.json, lambda x: [print(f"{k} = {v}" + ("（天，无活动后会话自动归档；收藏的不归档）" if k == "session_archive_days" else "")) for k, v in x.items()])
+    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话"}
+    out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes[k]}）") for k, v in x.items()])
 
 
 def cmd_project(a):

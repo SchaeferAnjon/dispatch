@@ -281,6 +281,7 @@ def activity_list(home, directory, index):
             s['tasks'] = list(e.get('tasks', {}))
             s['path'] = path
             s['project'] = os.path.basename(s.get('cwd', ''))
+            s['entrypoint'] = e.get('entrypoint', '')
             s['key'] = s['agent'] + ':' + s['session_id']
             prefs = db.execute('SELECT data FROM session_preferences WHERE key=?', (s['key'],)).fetchone()
             s.update(json.loads(prefs[0]) if prefs else {})
