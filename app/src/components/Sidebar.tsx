@@ -34,10 +34,10 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
   const taskView = view === "board" || view === "table";
   return (
     <aside className="side">
-      <div className={`ws link${view === "home" ? " on" : ""}`} onClick={() => go("home")} role="button" tabIndex={0}>
+      <div className="ws" title="所有项目共用这一块任务板">
         <div className="glyph">bd</div>
         <div style={{ minWidth: 0 }}>
-          <div className="name">全局板</div>
+          <div className="name">任务板</div>
           <div className="path" title={info?.beads_dir}>{info?.beads_dir?.replace(/^\/Users\/[^/]+/, "~") ?? "…"}</div>
         </div>
       </div>
@@ -50,15 +50,15 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
 
       <nav className="nav">
         {item("home", "home", "工作台")}
-        {item("sessions", "chat", "会话")}
+        {item("projects", "project", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>)}
         {item("inbox", "inbox", "等我", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
+        {item("sessions", "chat", "会话")}
       </nav>
 
       <nav className="nav">
         <div className="h">任务</div>
         {item("board", "board", "全部任务", <span className="n">{counts.total}</span>, taskView)}
         {item("graph", "graph", "脉络")}
-        {item("projects", "project", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>)}
         {filters.project !== null && taskView && (
           <a className="filter-row" onClick={() => setFilters({ ...filters, project: null })} title="点击清除筛选">
             <span className="proj" style={{ background: projectColor(filters.project) }} />只看 {filters.project || "未分项目"}<span className="n">✕</span>

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import type { Api } from "../api";
+import type { Api, AgentStartInput } from "../api";
 import type { Insights } from "../types";
 
-interface Props { api: Api; onDone: (m: string) => void; onError: (m: string) => void }
+interface Props { api: Api; host?: string; onStart?: (input: AgentStartInput) => Promise<unknown>; onDone: (m: string) => void; onError: (m: string) => void }
 
 // The cross-agent "/insights": how the agents behaved lately — unanswered confirmation
 // questions, user corrections, context overflows, over-long sessions — with samples,
 // and one button that hands an agent the job of turning that into rule/skill changes.
-export function InsightsCard({ api, onDone, onError }: Props) {
+export function InsightsCard({ api, host, onStart, onDone, onError }: Props) {
   const [days, setDays] = useState(14);
   const [r, setR] = useState<Insights | null>(null);
   const [busy, setBusy] = useState(false);
@@ -19,9 +19,18 @@ export function InsightsCard({ api, onDone, onError }: Props) {
     return () => { alive = false; };
   }, [api, days]);
 
+  const [starting, setStarting] = useState(false);
+  // Dispatch can start agents itself; the clipboard is only the fallback for a page without that transport.
   const improve = async () => {
     if (!r) return;
-    try { await navigator.clipboard.writeText(r.command); onDone("改进任务的启动命令已复制：在终端粘贴运行，Agent 会读样本、改规则/技能并把结论写进知识库"); }
+    if (onStart) {
+      setStarting(true);
+      try { await onStart({ kind: "claude", host: host && host !== "local" ? host : "", prompt: r.prompt, label: "跨 Agent 复盘改进" }); }
+      catch (e) { onError(String(e)); }
+      finally { setStarting(false); }
+      return;
+    }
+    try { await navigator.clipboard.writeText(r.command); onDone("改进任务的启动命令已复制：在终端粘贴运行"); }
     catch { onDone("剪贴板不可用；命令：" + r.command.slice(0, 120) + "…"); }
   };
   const tot = (k: keyof NonNullable<Insights["per_agent"][string]>) => Object.values(r?.per_agent ?? {}).reduce((a, b) => a + (b[k] as number), 0);
@@ -31,7 +40,7 @@ export function InsightsCard({ api, onDone, onError }: Props) {
       <h4>洞察<span className="muted">最近 {days} 天 · {r?.total_sessions ?? 0} 个会话</span>
         <span className="spacer" />
         <span className="views">{[7, 14, 30].map((d) => <button key={d} className={days === d ? "on" : ""} onClick={() => setDays(d)}>{d} 天</button>)}</span>
-        <button className="btn primary sm" disabled={!r || busy} onClick={improve}>✦ 生成改进任务</button>
+        <button className="btn primary sm" disabled={!r || busy || starting} onClick={improve} title={onStart ? "在这台机器起一个 Claude Code，读样本、改规则/技能、把结论写进知识库" : "复制启动命令"}>{starting ? "正在派活…" : onStart ? "✦ 派 Agent 做改进" : "✦ 复制改进命令"}</button>
       </h4>
       {busy && !r && <div className="empty small">读会话中…</div>}
       {r && (

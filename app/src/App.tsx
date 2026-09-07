@@ -2,7 +2,7 @@ import { ConversationActions } from './components/ConversationActions';
 import { TaskActions, isTrashed } from "./components/TaskActions";
 import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getApi, isTauri, isServed, type Api } from "./api";
+import { getApi, isTauri, isServed, type Api, type AgentStartInput } from "./api";
 import { Detail } from "./components/Detail";
 import { NewSession, SessionActions } from "./components/SessionActions";
 import { NewTask } from "./components/NewTask";
@@ -16,6 +16,7 @@ import { EnvView } from "./components/Env";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
+import { SearchPalette } from "./components/Search";
 import { PROJECT_FLAGS_KEY, parseProjectFlags, serializeProjectFlags, withProjectFlag, type ProjectFlags } from "./projectFlags";
 import { isOutcome, knownProjects, linkedSessions, projectGroups, sourceTasks, projectConversations } from "./projectModel";
 import { UNGROUPED_PROJECT, activityKey, conversationProject, mergeActivity, resolveProject } from "./activity";
@@ -78,10 +79,12 @@ export default function App() {
   const [backStack, setBackStack] = useState<{ view: View; selected: string | null }[]>([]);
   const navigateContext = (next: View) => { setBackStack((stack) => [...stack, { view, selected }]); changeView(next); setSelected(null); };
   const goBack = () => { const previous = backStack[backStack.length - 1]; if (previous) { changeView(previous.view); setSelected(previous.selected); setBackStack((stack) => stack.slice(0, -1)); } };
-  const setView = useCallback((next: View) => { changeView(next); setSelected(null); setInboxTab(null); setBackStack([]); }, []);
+  const setView = useCallback((next: View) => { changeView(next); setSelected(null); setInboxTab(null); setBackStack([]); if (next === "projects") setProjectSelection(null); }, []);
+  const openProject = (name: string) => { setProjectSelection(name); navigateContext("projects"); };
   const [filters, setFilters] = useState<Filters>({ project: null, mine: false, urgent: false, agent: null, blocked: false, review: false });
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState(false);
   const [sessionFocus, setSessionFocus] = useState<string | null>(null);
   // The tour never opens on its own; the design should carry itself. `?` still has it.
   const [tour, setTour] = useState(false);
@@ -94,10 +97,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("dispatch-host", hostFilter); } catch { /* ignore */ } }, [hostFilter]);
   const [theme, setTheme] = useState<Theme>(() => { try { return (localStorage.getItem("dispatch-theme") as Theme) ?? ""; } catch { return ""; } });
   const searchRef = useRef<HTMLInputElement>(null);
-  const [focusSearch, setFocusSearch] = useState(false);
   const allTasks = () => { setFilters(EMPTY_FILTERS); setQuery(""); setView("board"); };
-  const searchTasks = useCallback(() => { setFilters(EMPTY_FILTERS); setView("table"); setFocusSearch(true); }, [setView]);
-  useEffect(() => { if (focusSearch) { searchRef.current?.focus(); searchRef.current?.select(); setFocusSearch(false); } }, [focusSearch]);
   const toastTimer = useRef<number | undefined>(undefined);
 
   const me = info?.actor ?? "user";
@@ -130,7 +130,7 @@ export default function App() {
         const inf = await a.info();
         setInfo(inf);
         const requestedView = new URLSearchParams(window.location.search).get("page") ?? inf.initial_view;
-        if ((VIEWS as string[]).includes(requestedView ?? "")) setView(requestedView as View);
+        if ((VIEWS as string[]).includes(requestedView ?? "")) changeView(requestedView as View);
         if (inf.initial_task && !inf.initial_task.startsWith("session:")) setSelected(inf.initial_task);
       } catch (e) { setErr(String(e)); }
       await reload(a);
@@ -164,13 +164,13 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchTasks(); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); setCreating(true); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSearch(true); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); setNewSession(true); }
       if (e.key === "Escape" && document.activeElement === searchRef.current) { setQuery(""); searchRef.current?.blur(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [searchTasks]);
+  }, []);
 
   // Lineage roots (which thread each task belongs to), refreshed with the issue list.
   const [roots, setRoots] = useState<Map<string, string>>(new Map());
@@ -348,6 +348,8 @@ export default function App() {
     try { say((await api.focusSession(id)).trim() || "已切过去"); } catch (e) { say(String(e), true); }
   };
 
+  const startAgent = async (i: AgentStartInput) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; };
+
   const phoneLink = isTauri && api ? async () => { try { await api.copy((await api.on("local", ["serve", "url"])).trim()); say("手机访问链接已复制"); } catch (e) { say(String(e), true); } } : undefined;
 
   const copyResume = async (agent: string, sessionId: string, cwd: string) => {
@@ -360,16 +362,17 @@ export default function App() {
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
-          {backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}<b className="link" onClick={() => setView("home")}>全局板</b>{hostFilter && <><span className="sep">›</span><span>{hostFilter}</span></>}<span className="sep">›</span><span>{VIEW_LABEL[view]}</span>
+          {backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}{hostFilter && <><span>{hostFilter}</span><span className="sep">›</span></>}<b>{VIEW_LABEL[view]}</b>
+          {view === "projects" && projectSelection && <><span className="sep">›</span><span>{projectSelection}</span></>}
           {BOARD_VIEWS.includes(view) && filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
           <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && (isServed ? " · 网页连接" : " · 示例数据")}</span>
         </div>
         <div className="tb-right">
-          {BOARD_VIEWS.includes(view) ? <label className="search">🔍<input ref={searchRef} placeholder="搜任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="清除任务搜索" onClick={() => setQuery("")}>✕</button>}<kbd>⌘K</kbd></label> : <button className="btn ghost" onClick={searchTasks}>搜索任务 <kbd>⌘K</kbd></button>}
+          <button className="btn ghost" onClick={() => setSearch(true)} title="搜项目、会话、任务">搜索 <kbd>⌘K</kbd></button>
           <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
           <button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
           <button className="btn ghost status" onClick={() => setView("agents")} title="查看 Agent 状态"><span className="pulse" />{counts.agents} 在线 · {runningSessions} 进行中 ›</button>
-          <button className="btn ghost" onClick={() => setCreating(true)} title="任务通常由 Agent 自己建；这里手动建一条">＋</button>
+          <button className="btn ghost" onClick={() => setNewSession(true)} title="新建会话（⌘N）">＋ 会话</button>
         </div>
       </div>
 
@@ -388,6 +391,8 @@ export default function App() {
             )}
             <span className="spacer" />
             {BOARD_VIEWS.includes(view) && (<>
+              <label className="search board-search">🔍<input ref={searchRef} placeholder="筛任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="清除任务筛选" onClick={() => setQuery("")}>✕</button>}</label>
+              <button className="chip" onClick={() => setCreating(true)} title="任务通常由 Agent 自己建；这里手动建一条">＋ 新任务</button>
               <button className="chip" onClick={()=>setView("trash")}>回收站 {hostIssues.filter(isTrashed).length}</button>
               <button className="chip" disabled={!Object.values(filters).some(Boolean) && filters.project === null && !query} onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>清除筛选</button>
               <button className={`chip${filters.review ? " on" : ""}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>Agent 复核 {counts.review}</button>
@@ -399,16 +404,16 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={(name)=>{setProjectSelection(name);setView("projects");}} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onInbox={(tab)=>{setView("inbox");setInboxTab(tab);}} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
+            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onInbox={(tab)=>{setView("inbox");setInboxTab(tab);}} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
             {view === "projects" && api && <ProjectHub flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} onPhone={phoneLink} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
-            {view === "agents" && <AgentsView agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
+            {view === "agents" && <AgentsView agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={startAgent} />}
             {view === "sessions" && api && <SessionsView outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
-            {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
+            {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "env" && api && <EnvView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
@@ -423,6 +428,7 @@ export default function App() {
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!=="未关联项目")try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
+      {search && <SearchPalette projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
     </div></TaskActions></ConversationActions></SessionActions>

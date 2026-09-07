@@ -45,6 +45,20 @@
 .project-card:hover{border-color:var(--accent)}.project-card>div:first-child{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.project-card h3{margin:0;font-size:19px;overflow-wrap:anywhere}
 .project-card p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.7;min-height:48px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .project-card>.link{margin-top:auto}.project-latest{font-size:13px;color:var(--accent);overflow-wrap:anywhere}
+.dialog.palette{width:min(640px,calc(100vw - 24px));padding:12px;max-height:calc(100dvh - 80px);display:flex;flex-direction:column;gap:8px}
+.dialog.palette .palette-input{display:flex;flex-direction:row;align-items:center;gap:8px;width:100%;margin:0}
+.dialog.palette .palette-input input{flex:1;font-size:14px}
+.palette-hint{padding:8px 4px}
+.palette-list{overflow:auto;display:flex;flex-direction:column;gap:10px}
+.palette-list h4{margin:0 0 4px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.palette-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;min-width:0}
+.palette-row.on{background:var(--accent-soft)}
+.palette-row .proj{width:9px;height:9px;border-radius:3px;flex:none}
+.palette-row .t{flex:1;min-width:0;display:flex;flex-direction:column;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.palette-row .t b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.palette-row .t .sub{font-size:11.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.palette-row .right{margin-left:auto;white-space:nowrap}
+.board-search{width:200px;padding:3px 8px}
 .blk.deferred{color:var(--ink-3);background:var(--panel-2)}
 .linked-tasks,.linked-task{font-size:11.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .hub-dir-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px}.hub-dir-head code{font-family:var(--mono);font-size:13px;overflow-wrap:anywhere}

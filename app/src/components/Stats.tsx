@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Api } from "../api";
+import type { Api, AgentStartInput } from "../api";
 import { actorOf } from "../derive";
 import type { Stats, StatsDay, StatsRank } from "../types";
 import { InsightsCard } from "./Insights";
 
-interface Props { api: Api; me: string; host?: string; hostName?: string; onDone?: (m: string) => void; onError: (m: string) => void }
+interface Props { api: Api; me: string; host?: string; hostName?: string; onDone?: (m: string) => void; onError: (m: string) => void; onStart?: (input: AgentStartInput) => Promise<unknown> }
 const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 
 const AGENTS = ["claude-code", "codex", "pi", "zcode"];
@@ -127,7 +127,7 @@ function Trend({ days, metric, n }: { days: StatsDay[]; metric: "tokens" | "msgs
   );
 }
 
-export function StatsView({ api, me, host, hostName, onDone, onError }: Props) {
+export function StatsView({ api, me, host, hostName, onDone, onError, onStart }: Props) {
   const [agent, setAgent] = useState<string>(() => { try { const saved = localStorage.getItem("dispatch-stats-agent") ?? ""; return AGENTS.includes(saved) ? saved : ""; } catch { return ""; } });
   const [days, setDays] = useState<number>(() => { try { return Number(localStorage.getItem("dispatch-stats-days") ?? 90); } catch { return 90; } });
   const [metric, setMetric] = useState<"tokens" | "msgs">("tokens");
@@ -163,7 +163,7 @@ export function StatsView({ api, me, host, hostName, onDone, onError }: Props) {
         {busy && <span className="muted small">统计中…</span>}
       </div>
 
-      <InsightsCard api={api} onDone={onDone ?? (() => {})} onError={onError} />
+      <InsightsCard api={api} host={host} onStart={onStart} onDone={onDone ?? (() => {})} onError={onError} />
       {!s && !busy && <div className="empty">还没有统计数据。索引第一次要把全部聊天记录读一遍，稍等一分钟再来。</div>}
       {s && t && (
         <>

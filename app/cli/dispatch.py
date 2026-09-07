@@ -3207,6 +3207,32 @@ def quota_line(actor):
     return f"额度（{actor}）：" + " · ".join(parts) + "。", worst
 
 
+AGENT_ACTORS = {"claude-code", "claude", "codex", "pi", "zcode", "cursor"}
+
+
+def bd_comments(tid):
+    code, o, err = sh(["bd", "comments", tid, "--json"])
+    if code != 0:
+        return []
+    try:
+        d = json.loads(o[o.find("["):])
+    except Exception:
+        return []
+    return sorted(d, key=lambda c: c.get("created_at", "")) if isinstance(d, list) else []
+
+
+def human_note(comments, actor):
+    """The user's latest note on a task, while no agent has answered it since.
+    The task detail's 留言 box has no other reader; this is how it reaches the agent."""
+    if not comments:
+        return ""
+    last = comments[-1]
+    author = (last.get("author") or "").lower()
+    if not author or author in AGENT_ACTORS or author == (actor or "").lower():
+        return ""
+    return re.sub(r"\s+", " ", last.get("text") or "").strip()[:240]
+
+
 def cmd_prime(a):
     """What an Agent needs at session start, and nothing else: who it is, the board's
     protocol in four lines, this project's tasks, and the wiki entries for this project
@@ -3247,6 +3273,12 @@ def cmd_prime(a):
             lines.append(f"{mark} {t['id']}{who} {t.get('title', '')}")
         if len(mine) > len(shown):
             lines.append(f"…还有 {len(mine) - len(shown)} 条：`bd ready`")
+        # the user's unanswered note on a task this agent holds
+        for t in shown:
+            if t.get("status") == "in_progress" and actor and t.get("assignee") == actor:
+                note = human_note(bd_comments(t["id"]), actor)
+                if note:
+                    lines.append(f"💬 {t['id']} 用户留言（未回复）：{note}")
     # wiki: this project's entries + global ones (no project tag)
     items = [it for it in wiki_all() if it["kind"]]
     local = [it for it in items if proj and it["project"].lower() == proj.lower()]

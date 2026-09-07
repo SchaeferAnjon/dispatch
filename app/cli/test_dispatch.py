@@ -305,3 +305,13 @@ class ProjectFlags(unittest.TestCase):
     def test_internal_memory_hidden_from_wiki(self):
         with patch.object(dispatch, "sh", return_value=(0, json.dumps({"schema_version": 1, "pit-a": "【坑】x", "dispatch-projects": "{}"}), "")):
             self.assertEqual([it["key"] for it in dispatch.wiki_all()], ["pit-a"])
+
+
+class HumanNote(unittest.TestCase):
+    def test_only_the_users_latest_unanswered_note_is_injected(self):
+        user = {"author": "schaefer", "text": "请补一下  手机截图", "created_at": "2"}
+        agent = {"author": "claude-code", "text": "好的", "created_at": "3"}
+        self.assertEqual(dispatch.human_note([agent, user], "claude-code"), "请补一下 手机截图")
+        self.assertEqual(dispatch.human_note([user, agent], "claude-code"), "")
+        self.assertEqual(dispatch.human_note([{"author": "codex", "text": "x", "created_at": "1"}], "claude-code"), "")
+        self.assertEqual(dispatch.human_note([], "claude-code"), "")
