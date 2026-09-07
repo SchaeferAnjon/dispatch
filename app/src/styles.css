@@ -786,6 +786,15 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .conversation-row.unread{background:var(--accent-soft)}
 .conversation-row .av{flex-shrink:0;margin-top:3px}
 .conversation-summary{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.conversation-location{display:flex;align-items:baseline;gap:8px 18px;flex-wrap:wrap;font-size:12px;min-width:0}
+.conversation-project,.conversation-folder{display:flex;gap:7px;align-items:baseline;min-width:0}
+.conversation-project>span,.conversation-folder>span,.conversation-caption{color:var(--ink-3);font-size:11px;flex-shrink:0}
+.conversation-project b{font-weight:600;color:var(--accent);overflow-wrap:anywhere}
+.conversation-folder{flex:1;min-width:min(220px,100%)}
+.conversation-folder code{color:var(--ink-2);font:12px ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere;white-space:normal}
+.conversation-caption{margin-right:8px}
+.conversation-current{font-size:11px;color:var(--ink-3);white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+@media(max-width:760px){.conversation-location{flex-direction:column;gap:6px}.conversation-folder{min-width:0;max-width:100%}.conversation-folder code{font-size:11px}}
 .conversation-title{display:flex;align-items:flex-start;gap:12px;justify-content:space-between}
 .conversation-title strong{font-size:14px;font-weight:600;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .activity-badge{font-size:11px;border-radius:5px;padding:2px 6px;background:var(--panel);color:var(--ink-3);white-space:nowrap;flex-shrink:0}
