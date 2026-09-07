@@ -981,3 +981,9 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
   .env-actions>.btn,.env-more>summary{min-height:36px;padding:7px 10px}
   .env-dialog .row{grid-template-columns:1fr}
 }
+
+.conversation-overview{color:var(--ink-2)}
+.conversation-overview-detail{margin:0 18px 10px 62px;font-size:12px;color:var(--ink-2)}
+.conversation-overview-detail summary{cursor:pointer;color:var(--accent)}
+.conversation-overview-detail p{line-height:1.7;overflow-wrap:anywhere;white-space:pre-wrap}
+.conversation-overview-detail small{color:var(--ink-3)}

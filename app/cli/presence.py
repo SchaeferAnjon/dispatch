@@ -66,7 +66,7 @@ def event_status(event, data, prev):
     elif event == "PermissionRequest" or (event == "Notification" and data.get("notification_type") in ("permission_prompt", "elicitation_dialog")):
         state, attention = "idle", "input"
     elif event == "PostToolUseFailure" and not data.get("is_interrupt"):
-        state, attention = "idle", "failure"
+        state, attention = "working", None  # The Agent handles tool errors; they are not a request for the user.
     return state, attention
 
 

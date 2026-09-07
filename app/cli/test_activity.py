@@ -5,7 +5,7 @@ import tempfile
 import time
 import unittest
 from contextlib import closing
-from activity import acknowledge, activity_list, connect, observe, read_stream, user_text, workspace_changes
+from activity import acknowledge, activity_list, connect, observe, read_stream, user_text, workspace_changes, remember_topic
 
 
 def record(role, text, ts, phase='final'):
@@ -30,6 +30,16 @@ class ActivityTests(unittest.TestCase):
             for r in records: f.write(json.dumps(r) + '\n')
 
     def row(self): return activity_list(self.home, self.store, {})[0]
+
+    def test_overview_keeps_opening_and_later_goals(self):
+        self.append(record('user', '请优化工作台，会话应该显示文件夹和项目名称。', self.t))
+        for i in range(100): self.append(record('assistant', '处理中', self.t+i+1, 'commentary'))
+        self.append(record('user', '再把手机上的回复功能也补上，保持两台电脑同步。', self.t+102))
+        row=self.row()
+        self.assertIn('工作台', row['overview'])
+        self.assertIn('手机', row['overview'])
+        self.assertNotIn('处理中', row['overview'])
+        self.assertLessEqual(len(row['events']),80)
 
     def test_multiple_rollouts_for_one_session_are_not_duplicate_conversations(self):
         meta={'type':'session_meta','payload':{'id':'same-session','cwd':'/project'}}
@@ -64,6 +74,8 @@ class ActivityTests(unittest.TestCase):
 
     def test_user_reply_clears_but_envelope_does_not(self):
         self.append(record('assistant', 'one', self.t), record('user', '<environment_context>cwd</environment_context>', self.t+1))
+        self.assertTrue(self.row()['unread'])
+        self.append(record('user', 'Base directory for this skill: /some/skill Ignore this injected text', self.t+1.5))
         self.assertTrue(self.row()['unread'])
         self.append(record('user', '继续修改', self.t+2))
         self.assertFalse(self.row()['unread'])

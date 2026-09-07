@@ -7,24 +7,24 @@ import { Avatar, Pri, ProjectTag } from "./ui";
 
 export interface InboxItems { unread: Activity[]; waiting: Session[]; idle: Session[]; review: Issue[]; blocked: Issue[] }
 
-interface Props { onOpen: (id: string) => void; initialTab?: keyof InboxItems | null; items: InboxItems; me: string; onSelect: (id: string) => void; onResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void }
+interface Props { onRead: (a: Activity) => Promise<void>; onOpen: (id: string) => void; initialTab?: keyof InboxItems | null; items: InboxItems; me: string; onSelect: (id: string) => void; onResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void }
 
 // The one screen that answers "what needs me right now": sessions that stopped
 // and are waiting for input, finished work awaiting review, and blocked tasks.
-export function InboxView({ onOpen, initialTab, items, me, onSelect, onResume, onFocus }: Props) {
-  const [tab, setTab] = useState<keyof InboxItems>(() => initialTab ?? (items.unread.length ? "unread" : items.waiting.length ? "waiting" : items.blocked.length ? "blocked" : "waiting"));
+export function InboxView({ onRead, onOpen, initialTab, items, me, onSelect, onResume, onFocus }: Props) {
+  const [tab, setTab] = useState<keyof InboxItems>(() => initialTab ?? "unread");
   const total = items.unread.length + items.waiting.length + items.blocked.length;
   return (
     <div className="inbox">
       <div className="inbox-tabs views" aria-label="待处理分类">
-        {([["unread", "未读回复"], ["waiting", "等待确认 / 失败"], ["blocked", "被卡住"], ["review", "Agent 复核"], ["idle", "空闲会话"]] as const).map(([key, label]) => <button key={key} className={tab === key ? "on" : ""} aria-pressed={tab === key} onClick={() => setTab(key)}>{label} <span className="mono">{items[key].length}</span></button>)}
+        {([["unread", "未读回复"], ["waiting", "等待确认"], ["blocked", "被卡住"], ["review", "Agent 复核"], ["idle", "空闲会话"]] as const).map(([key, label]) => <button key={key} className={tab === key ? "on" : ""} aria-pressed={tab === key} onClick={() => setTab(key)}>{label} <span className="mono">{items[key].length}</span></button>)}
       </div>
       {(total > 0 || tab === "review" || tab === "idle") && items[tab].length === 0 && <div className="empty">这个分类没有待处理事项</div>}
       {total === 0 && tab !== "idle" && tab !== "review" && <div className="empty big">✓ 暂时没有等我的事项<br /><span className="muted">新回复会出现在这里；读到最新后自动移出。</span></div>}
-      {tab === "unread" && <ConversationRows rows={items.unread} me={me} onOpen={onOpen} />}
+      {tab === "unread" && <ConversationRows onRead={onRead} rows={items.unread} me={me} onOpen={onOpen} />}
       {(tab === "waiting" || tab === "idle") && items[tab].length > 0 && (
         <section>
-          <h4>{tab === "idle" ? "空闲会话" : "需要处理"}<span className="n">{items[tab].length}</span><span className="muted">{tab === "idle" ? "不计入待处理数量，也不会触发通知" : "仅展示明确上报的确认请求或工具失败"}</span></h4>
+          <h4>{tab === "idle" ? "空闲会话" : "需要处理"}<span className="n">{items[tab].length}</span><span className="muted">{tab === "idle" ? "不计入待处理数量，也不会触发通知" : "仅展示明确上报的确认请求"}</span></h4>
           {items[tab].map((s) => {
             const a = actorOf(s.agent, me);
             return (

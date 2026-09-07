@@ -128,9 +128,9 @@ describe("line diff", () => {
 describe("attention signals", () => {
   const s = { alive: true, registered: true, state: "idle" } as Session;
   it("idle never triggers attention", () => expect(needsAttention(s)).toBe(false));
-  it("explicit input and failure require attention", () => {
+  it("only explicit input requires attention", () => {
     expect(needsAttention({ ...s, attention: "input" })).toBe(true);
-    expect(sessionStatus({ ...s, attention: "failure" })).toBe("工具执行失败");
+    expect(needsAttention({ ...s, attention: "failure" })).toBe(false);
   });
   it("dead or unregistered sessions cannot raise attention", () => {
     expect(needsAttention({ ...s, alive: false, attention: "input" })).toBe(false);

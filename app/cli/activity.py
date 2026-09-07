@@ -39,7 +39,7 @@ def user_text(text):
     for tag in ('recommended_plugins', 'in-app-browser-context', 'environment_context', 'system-reminder'):
         text = re.sub(r'<' + tag + r'\b[^>]*>[\s\S]*?</' + tag + r'>', '', text)
     text = text.strip()
-    if text.startswith(('# AGENTS.md instructions', '<local-command', '<command-name>', '<bash-input>')): return ''
+    if text.startswith(('# AGENTS.md instructions', '<local-command', '<command-name>', '<bash-input>', 'Base directory for this skill:', '<skill>')): return ''
     return text.removeprefix('## My request:').strip()
 
 
@@ -76,6 +76,30 @@ def operation_summary(name, inp, raw):
         if 'view_image' in str(raw): return '检查截图'
         return '正在调用工具'
     return name
+
+
+def remember_topic(state, text):
+    """An extractive overview of user goals across the transcript, not last reply.
+
+    Keep the opening goal and recent distinct changes even after event trimming.
+    Only user-visible text is used; no reasoning or tool payloads are summarized.
+    """
+    if '## My request' in text:
+        text = re.split(r'## My request[^\n]*\n', text)[-1]
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'!\[[^]]*\]\([^)]*\)', '', text)
+    text = re.sub(r'\[([^]]+)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r'[*`#]', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    if len(text) < 12 or text.startswith(('【Dispatch 连通性测试】', '[Request interrupted')):
+        return
+    topic = text[:100].rstrip() + ('…' if len(text) > 100 else '')
+    topics = state.setdefault('topics', [])
+    if topic in topics: return
+    topics.append(topic)
+    if len(topics) > 24: topics[1:2] = []
+    selected = topics if len(topics) <= 3 else [topics[0], *topics[-2:]]
+    state['overview'] = ('最初：' + selected[0] + '；后续：' + '；'.join(selected[1:])) if len(selected) > 1 else selected[0]
 
 
 def observe(state, d):
@@ -124,6 +148,7 @@ def observe(state, d):
         state['last_at'] = max(ts, state.get('last_at', 0))
     if role == 'user' and text.strip() and not text.lstrip().startswith(('<environment_context>', '<system-reminder>', '<local-command', '<command-name>')):
         state['user_at'] = ts
+        remember_topic(state, text)
         state['state'], state['activity'] = 'working', '正在处理你的消息'
         if not state.get('title'): state['title'] = text.strip().split('\n')[0][:100]
         event('user', text)
@@ -185,9 +210,9 @@ def read_stream(db, path, agent):
     st = os.stat(path)
     row = db.execute('SELECT inode,off,mtime,data FROM streams WHERE path=?', (path,)).fetchone()
     state = json.loads(row[3]) if row and row[0] == st.st_ino and row[1] <= st.st_size else {}
-    if state.get('parser_version') != 3: state = {}
+    if state.get('parser_version') != 5: state = {}
     off = row[1] if state else 0
-    state['parser_version'] = 3
+    state['parser_version'] = 5
     if row and off > 0 and row[2] == st.st_mtime and off == st.st_size: return state
     state.setdefault('agent', agent)
     state.setdefault('session_id', os.path.basename(path).removesuffix('.jsonl'))
@@ -239,7 +264,7 @@ def activity_list(home, directory, index):
             s['tracking_since'] = started_at
             s['stale'] = s.get('state') == 'working' and time.time() - s['last_at'] > 180
             s['source'] = 'transcript'
-            s.pop('pending', None); s.pop('reply_digest', None)
+            s.pop('topics', None); s.pop('pending', None); s.pop('reply_digest', None)
             rows.append(s)
     # A resumed Codex task can have more than one rollout file with the same id.
     # Keep its newest observation; duplicate React keys otherwise accumulate rows.

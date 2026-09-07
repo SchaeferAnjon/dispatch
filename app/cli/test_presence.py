@@ -10,7 +10,7 @@ class PresenceSignals(unittest.TestCase):
         self.assertEqual(event_status("Notification", {"notification_type": "idle_prompt"}, {"state": "idle"}), ("idle", None))
     def test_request_and_recovery(self):
         self.assertEqual(event_status("PermissionRequest", {}, {}), ("idle", "input"))
-        self.assertEqual(event_status("PostToolUseFailure", {}, {}), ("idle", "failure"))
+        self.assertEqual(event_status("PostToolUseFailure", {}, {}), ("working", None))
         self.assertEqual(event_status("PostToolUse", {}, {"attention": "failure"}), ("working", None))
     def test_unknown_event_does_not_invent_idle(self):
         self.assertEqual(event_status("Other", {}, {}), ("unknown", None))

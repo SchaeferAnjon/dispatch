@@ -300,11 +300,11 @@ export function hostOfIssue(i: { labels?: string[]; id: string }, refs: Map<stri
 
 // Process presence and execution state are different signals. Never infer a request from idle.
 export function needsAttention(s: Session): boolean {
-  return s.alive && s.registered && (s.attention === "input" || s.attention === "failure");
+  return s.alive && s.registered && s.attention === "input";
 }
 export function sessionStatus(s: Session): string {
   if (!s.alive) return "已结束";
-  if (needsAttention(s)) return s.attention === "failure" ? "工具执行失败" : "等待确认";
+  if (needsAttention(s)) return "等待确认";
   if (s.state === "unknown" || !s.registered) return "状态未知";
   return s.state === "working" ? "在跑" : "空闲";
 }

@@ -45,7 +45,7 @@ export default function App() {
       await api.sessionSeen(a.host ?? 'local', a.key, reply);
       acknowledged.current.set(activityKey(a), reply);
       setActivity(old => ({ ...old, sessions: old.sessions.map(x => activityKey(x) === activityKey(a) && x.reply_id === reply ? { ...x, unread: false } : x) }));
-    } catch { /* Keep unread on failed acknowledgement; next visible poll retries. */ }
+    } catch { setToast({text: "标记已读失败，请重试", err: true}); }
   }, [api]);
   useEffect(() => {
     if (!api) return;
@@ -264,19 +264,28 @@ export default function App() {
     review: issues.filter((i) => needsReview(i)),
   }), [presence, issues]);
 
-  // Notifications: only for things that newly entered the inbox after the first load.
-  const seen = useRef<{ ready: boolean; waiting: Set<string>; review: Set<string> }>({ ready: false, waiting: new Set(), review: new Set() });
+  // Ignore transient failures; wait for a stable explicit request. Keep identities
+  // across disconnects and distinguish the same session id on different machines.
+  const notified = useRef(new Set<string>());
+  const requestSignature = notificationInbox.waiting.map(x => `${x.host ?? 'local'}:${x.agent}:${x.session_id}:${x.last_at}`).sort().join('|');
+  const notificationReady = useRef(false);
   useEffect(() => {
     if (!api || !issuesLoaded || !presenceLoaded) return;
-    const s = seen.current;
-    const w = new Set(notificationInbox.waiting.map((x) => x.session_id));
-    const r = new Set(notificationInbox.review.map((x) => x.id));
-    if (s.ready) {
-      for (const x of notificationInbox.waiting) if (!s.waiting.has(x.session_id)) api.notify(`${x.agent === "codex" ? "Codex" : x.agent === "zcode" ? "ZCode" : "Claude Code"} 需要处理`, `${x.attention === "failure" ? "工具执行失败" : "等待确认"} · ${x.herdr?.title || x.title || x.project || x.cwd}（${x.source_app}）`).catch(() => {});
+    const key = (x: typeof presence.sessions[number]) => `${x.host ?? 'local'}:${x.agent}:${x.session_id}:${x.last_at}`;
+    if (!notificationReady.current) {
+      notificationInbox.waiting.forEach(x => notified.current.add(key(x)));
+      notificationReady.current = true;
+      return;
     }
-    s.waiting = w; s.review = r;
-    if (!s.ready && (presence.sessions.length > 0 || issues.length > 0)) s.ready = true;
-  }, [notificationInbox, api, presence.sessions.length, issues.length, issuesLoaded, presenceLoaded]);
+    const timer = window.setTimeout(() => {
+      for (const x of notificationInbox.waiting) {
+        if (notified.current.has(key(x))) continue;
+        notified.current.add(key(x));
+        api.notify(`${x.agent === 'codex' ? 'Codex' : x.agent === 'zcode' ? 'ZCode' : 'Claude Code'} 等待确认`, `${x.herdr?.title || x.title || x.project || x.cwd} · ${x.host_name || '本机'} · 请打开会话查看确认请求`).catch(() => {});
+      }
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [requestSignature, api, issuesLoaded, presenceLoaded]);
 
   useEffect(() => {
     if (!api) return;
@@ -363,9 +372,9 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && <Workspace onNew={() => setNewSession(true)} onPhone={isTauri ? async () => { if (!api) return; try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say("手机访问链接已复制，在同一 Tailscale 网络的手机浏览器打开"); } catch(e) { say(String(e), true); } } : undefined} rows={activityF} loaded={activity.updated_at > 0} error={activityError} unavailable={activity.unavailable_hosts} issues={issuesF} me={me} onOpen={openSession} onTask={setSelected} onInbox={() => { setView("inbox"); setInboxTab("unread"); }} onSessions={() => setView("sessions")} />}
+            {view === "home" && <Workspace onRead={a => markRead(a, a.reply_id!)} onNew={() => setNewSession(true)} onPhone={isTauri ? async () => { if (!api) return; try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say("手机访问链接已复制，在同一 Tailscale 网络的手机浏览器打开"); } catch(e) { say(String(e), true); } } : undefined} rows={activityF} loaded={activity.updated_at > 0} error={activityError} unavailable={activity.unavailable_hosts} issues={issuesF} me={me} onOpen={openSession} onTask={setSelected} onInbox={() => { setView("inbox"); setInboxTab("unread"); }} onSessions={() => setView("sessions")} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
-            {view === "inbox" && <InboxView onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
+            {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView agents={agents} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
