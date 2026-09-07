@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import type { AgentPresence } from "../derive";
 import { actorOf, durSince, parseAcceptance, projectColor, relTime, sessionStatus } from "../derive";
-import { activityKey, conversationProject, conversationSummary } from "../activity";
+import { activityKey, conversationProject, conversationSummary, sessionLifecycle } from "../activity";
 import { projectGroups } from "../projectModel";
 import { isStarred, rankProjects, type ProjectFlags } from "../projectFlags";
 import type { Activity, Issue, Quota, Session, View } from "../types";
@@ -45,6 +45,7 @@ interface Props {
   inbox: InboxItems;
   progress: Record<string, string>;
   flags: ProjectFlags;
+  archiveDays: number;
   onFlag: (name: string, change: { starred?: boolean; archived?: boolean }) => void;
   onOpen: (sessionId: string) => void;
   onFocus: (sessionId: string) => void;
@@ -67,6 +68,7 @@ interface Card {
   waiting: Session[];
   unread: Activity[];
   running: Activity[];
+  tracked: Activity[];
   tasks: Issue[];
   blocked: number;
   open: number;
@@ -79,7 +81,7 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ api, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, flags, onFlag, onOpen, onFocus, onTask, onProject, onView, onInbox, onNew, onPhone }: Props) {
+export function HomeView({ api, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, flags, archiveDays, onFlag, onOpen, onFocus, onTask, onProject, onView, onInbox, onNew, onPhone }: Props) {
   const [quota, setQuota] = useState<Quota[]>([]);
   useEffect(() => {
     let alive = true;
@@ -92,18 +94,23 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
   const cards = useMemo<Card[]>(() => {
     const unreadKeys = new Set(inbox.unread.map(activityKey));
     return projectGroups(rows, issues, outcomes).map((p) => {
-      const ordinary = p.sessions.filter((a) => !a.scheduled);
+      const ordinary = p.sessions.filter((a) => !a.scheduled && sessionLifecycle(a, archiveDays) !== "archived");
       const waiting = inbox.waiting.filter((s) => sessionProject(s) === p.name);
       const waitingIds = new Set(waiting.map((s) => s.session_id));
       const running = ordinary.filter((a) => a.state === "working" && !a.stale && !waitingIds.has(a.session_id));
       // A session still working will supersede its last reply; list it under 在跑 only.
       const unread = ordinary.filter((a) => unreadKeys.has(activityKey(a)) && !waitingIds.has(a.session_id) && !running.includes(a));
+      const busy = new Set([...waiting.map((s) => s.session_id), ...unread.map((a) => a.session_id), ...running.map((a) => a.session_id)]);
+      const tracked = ordinary.filter((a) => a.starred && !busy.has(a.session_id));
       const tasks = p.items.filter((i) => i.status === "in_progress");
       const blocked = p.items.filter((i) => i.status === "blocked").length;
       const open = p.items.filter((i) => i.status !== "closed").length;
-      return { name: p.name, last: p.last, live: waiting.length + unread.length + running.length + tasks.length + blocked > 0, waiting, unread, running, tasks, blocked, open, sessions: ordinary.length, results: p.results, latest: ordinary[0] };
+      return { name: p.name, last: p.last, live: waiting.length + unread.length + running.length + tasks.length + blocked + tracked.length > 0, waiting, unread, running, tracked, tasks, blocked, open, sessions: ordinary.length, results: p.results, latest: ordinary[0] };
     }).sort((a, b) => Number(b.live) - Number(a.live) || b.last - a.last);
-  }, [rows, issues, outcomes, inbox.unread, inbox.waiting]);
+  }, [rows, issues, outcomes, inbox.unread, inbox.waiting, archiveDays]);
+
+  // Every tracked conversation, across projects, newest first.
+  const trackedAll = useMemo(() => rows.filter((a) => !a.scheduled && sessionLifecycle(a, archiveDays) === "starred").sort((x, y) => y.last_at - x.last_at), [rows, archiveDays]);
 
   // Projects with something happening get a full card; the rest stay one line each.
   const DAY = 86_400;
@@ -187,6 +194,23 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           </div>
         )}
 
+        {c.tracked.length > 0 && (
+          <div className="home-group">
+            <div className="home-group-h">追踪中 <b>{c.tracked.length}</b></div>
+            {c.tracked.slice(0, 3).map((a) => {
+              const who = actorOf(a.agent, me);
+              return (
+                <div key={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
+                  <Avatar actor={who} size={22} />
+                  <span className="star on" title="追踪中">★</span>
+                  <span className="t">{a.title}<span className="sub">{conversationSummary(a)}</span></span>
+                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {durSince(a.last_at)}前</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {c.tasks.length > 0 && (
           <div className="home-group">
             <div className="home-group-h">进行中的任务 <b>{c.tasks.length}</b></div>
@@ -255,6 +279,28 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           </button>
         ))}
       </div>
+
+      {trackedAll.length > 0 && (
+        <section className="home-tracked">
+          <h4>★ 追踪中 <span className="muted">你收藏的会话，跨项目集中在这里，不会自动归档</span><button className="link right" onClick={() => onView("sessions")}>会话页 ›</button></h4>
+          <div className="home-rows">
+            {trackedAll.slice(0, 6).map((a) => {
+              const who = actorOf(a.agent, me);
+              const live = a.state === "working" && !a.stale;
+              return (
+                <div key={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
+                  <Avatar actor={who} size={22} />
+                  <span className={`st sm ${live ? "prog" : a.unread ? "rev" : "open"}`}>{live ? "进行中" : a.unread ? "未读回复" : "追踪中"}</span>
+                  <span className="t">{a.title}<span className="sub">{live && a.activity ? `正在做：${a.activity}` : conversationSummary(a)}</span></span>
+                  <span className="meta muted small">{conversationProject(a)} · {who?.name} · {durSince(a.last_at)}前</span>
+                  <button className="btn sm" onClick={(e) => { e.stopPropagation(); onOpen(a.session_id); }}>查看并回复</button>
+                </div>
+              );
+            })}
+            {trackedAll.length > 6 && <button className="link" onClick={() => onView("sessions")}>还有 {trackedAll.length - 6} 条，去会话页看 ›</button>}
+          </div>
+        </section>
+      )}
 
       {loaded && featured.length === 0 && rest.length === 0 && archived.length === 0 && <div className="home-quiet">还没有项目。会话按工作目录归入项目，任务用 <span className="mono">project:名字</span> 标签归类。<button className="link" onClick={() => onNew()}>新建会话 ›</button></div>}
       {!loaded && <div className="home-quiet">正在读取项目与会话…</div>}

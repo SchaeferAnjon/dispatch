@@ -2,6 +2,16 @@ import type { Activity } from './types';
 
 export const activityKey = (a: Activity) => `${a.host ?? 'local'}:${a.key}`;
 
+// A conversation is either tracked (★, never fades), ordinary (fades into the
+// archive after `days` without activity) or archived (by hand or by time).
+export type Lifecycle = 'starred' | 'active' | 'archived';
+export const DEFAULT_ARCHIVE_DAYS = 30;
+export function sessionLifecycle(a: { starred?: boolean; archived?: boolean; last_at: number }, days = DEFAULT_ARCHIVE_DAYS, now = Date.now() / 1000): Lifecycle {
+  if (a.archived) return 'archived';
+  if (a.starred) return 'starred';
+  return days > 0 && a.last_at > 0 && now - a.last_at > days * 86_400 ? 'archived' : 'active';
+}
+
 // Extract a short quotation from available conversation text, without inventing
 // an AI summary or showing serialized tool payloads as prose.
 export function conversationSummary(a: Activity): string {

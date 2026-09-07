@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { conversationProject, conversationSummary } from "../activity";
+import { conversationProject, conversationSummary, sessionLifecycle } from "../activity";
 import { actorOf, durSince, projectColor, projectOf, relTime, statusLabel } from "../derive";
 import type { Activity, Issue } from "../types";
 import { Avatar } from "./ui";
 
 interface Props {
+  archiveDays: number;
   projects: string[];
   rows: Activity[];
   issues: Issue[];
@@ -19,7 +20,7 @@ type Hit = { kind: "project"; key: string; name: string } | { kind: "session"; k
 
 // One search box for the whole app (⌘K): projects, conversations and tasks in one
 // list, so the user never has to know which view a thing lives in first.
-export function SearchPalette({ projects, rows, issues, me, onProject, onSession, onTask, onClose }: Props) {
+export function SearchPalette({ archiveDays, projects, rows, issues, me, onProject, onSession, onTask, onClose }: Props) {
   const [q, setQ] = useState("");
   const [cursor, setCursor] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -68,7 +69,7 @@ export function SearchPalette({ projects, rows, issues, me, onProject, onSession
                   const idx = hits.indexOf(h);
                   const cls = `palette-row${idx === cursor ? " on" : ""}`;
                   if (h.kind === "project") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><span className="proj" style={{ background: projectColor(h.name) }} /><b>{h.name}</b><span className="muted small">进入项目</span></div>;
-                  if (h.kind === "session") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><Avatar actor={actorOf(h.a.agent, me)} size={20} /><span className="t"><b>{h.a.title}</b><span className="sub">{conversationSummary(h.a)}</span></span><span className="muted small right">{conversationProject(h.a)} · {durSince(h.a.last_at)}前</span></div>;
+                  if (h.kind === "session") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><Avatar actor={actorOf(h.a.agent, me)} size={20} /><span className="t"><b>{h.a.starred && "★ "}{h.a.title}</b><span className="sub">{conversationSummary(h.a)}</span></span><span className="muted small right">{sessionLifecycle(h.a, archiveDays) === "archived" && <span className="st sm open">已归档</span>} {conversationProject(h.a)} · {durSince(h.a.last_at)}前</span></div>;
                   const st = statusLabel(h.i);
                   return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><span className={`st sm ${st.cls}`}>{st.text}</span><span className="t"><b>{h.i.title}</b></span><span className="muted small right mono">{h.i.id} · {relTime(h.i.updated_at)}</span></div>;
                 })}

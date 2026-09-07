@@ -241,8 +241,9 @@ def acknowledge(directory, key, reply_id):
 
 def set_preferences(directory, key, changes):
     if not isinstance(key, str) or ':' not in key or len(key) > 250: raise ValueError('无效的会话标识')
-    if not isinstance(changes, dict) or set(changes) - {'scheduled', 'project_override'}: raise ValueError('无效的分类字段')
-    if 'scheduled' in changes and type(changes['scheduled']) is not bool: raise ValueError('定时标记必须是布尔值')
+    if not isinstance(changes, dict) or set(changes) - {'scheduled', 'project_override', 'starred', 'archived'}: raise ValueError('无效的分类字段')
+    for flag in ('scheduled', 'starred', 'archived'):
+        if flag in changes and type(changes[flag]) is not bool: raise ValueError('标记必须是布尔值')
     if 'project_override' in changes:
         value=changes['project_override']
         if not isinstance(value, str) or len(value.strip()) > 120 or any(ord(c)<32 for c in value): raise ValueError('无效的项目名称')

@@ -2721,6 +2721,49 @@ def project_flags_load():
     return project_flags_parse(d.get(PROJECT_FLAGS_KEY, ""))
 
 
+# ---------------------------------------------------------------- settings (shared, one bd memory)
+SETTINGS_KEY = "dispatch-settings"
+SETTING_DEFAULTS = {"session_archive_days": 30}
+
+
+def settings_parse(raw):
+    try:
+        d = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    return {k: v for k, v in d.items() if isinstance(d, dict) and k in SETTING_DEFAULTS and isinstance(v, (int, float)) and v >= 0} if isinstance(d, dict) else {}
+
+
+def settings_load():
+    code, o, err = sh(["bd", "memories", "--json"])
+    if code != 0:
+        return dict(SETTING_DEFAULTS)
+    try:
+        d = json.loads(o[o.find("{"):])
+    except Exception:
+        return dict(SETTING_DEFAULTS)
+    return {**SETTING_DEFAULTS, **settings_parse(d.get(SETTINGS_KEY, ""))}
+
+
+def cmd_settings(a):
+    cur = settings_load()
+    if a.key and a.key not in SETTING_DEFAULTS:
+        print(f"没有这个设置：{a.key}；可用：{', '.join(SETTING_DEFAULTS)}", file=sys.stderr)
+        sys.exit(2)
+    if a.key and a.value is not None:
+        try:
+            val = int(a.value)
+            if val < 0:
+                raise ValueError
+        except ValueError:
+            print("值必须是非负整数", file=sys.stderr)
+            sys.exit(2)
+        cur[a.key] = val
+        wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
+    shown = {a.key: cur[a.key]} if a.key else cur
+    out(shown, a.json, lambda x: [print(f"{k} = {v}" + ("（天，无活动后会话自动归档；收藏的不归档）" if k == "session_archive_days" else "")) for k, v in x.items()])
+
+
 def cmd_project(a):
     flags = project_flags_load()
     changes = {}
@@ -3233,6 +3276,22 @@ def human_note(comments, actor):
     return re.sub(r"\s+", " ", last.get("text") or "").strip()[:240]
 
 
+def starred_sessions(prefs, idx, proj, names, limit=5):
+    """Conversations the user marked 追踪中 in this project: the long threads an agent
+    should know exist before it starts a new one."""
+    rows = []
+    for path, e in idx.items():
+        pref = prefs.get(f"{e.get('agent')}:{e.get('session_id')}") or {}
+        if not pref.get("starred") or pref.get("archived"):
+            continue
+        p = pref.get("project_override") or project_of_cwd(e.get("cwd", ""), names) or os.path.basename((e.get("cwd") or "").rstrip("/"))
+        if proj and p.lower() != proj.lower():
+            continue
+        rows.append({"agent": e.get("agent", ""), "session_id": e.get("session_id", ""), "title": (e.get("title") or "")[:70], "last_at": e.get("mtime", 0)})
+    rows.sort(key=lambda r: -(r["last_at"] or 0))
+    return rows[:limit]
+
+
 def cmd_prime(a):
     """What an Agent needs at session start, and nothing else: who it is, the board's
     protocol in four lines, this project's tasks, and the wiki entries for this project
@@ -3279,6 +3338,19 @@ def cmd_prime(a):
                 note = human_note(bd_comments(t["id"]), actor)
                 if note:
                     lines.append(f"💬 {t['id']} 用户留言（未回复）：{note}")
+    # conversations the user is tracking in this project
+    try:
+        from activity import session_preferences
+        tracked = starred_sessions(session_preferences(DISPATCH_DIR), load_index(), proj, names)
+    except Exception as e:
+        tracked = []
+        print(f"追踪中的会话读取失败：{e}", file=sys.stderr)
+    if tracked:
+        lines.append(f"## 追踪中的会话（{len(tracked)}）")
+        for r in tracked:
+            when = ago(r["last_at"])
+            lines.append(f"★ {r['agent']} {r['session_id'][:8]} · {r['title']} · {when if when.startswith('刚') else when + '前'} · 看摘要 `dispatch session {r['session_id'][:8]}`")
+        lines.append("这些是用户长期跟的线；相关的活先看它们的记录，别另起炉灶。")
     # wiki: this project's entries + global ones (no project tag)
     items = [it for it in wiki_all() if it["kind"]]
     local = [it for it in items if proj and it["project"].lower() == proj.lower()]
@@ -3369,6 +3441,7 @@ def main():
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("attachment", help="read a file linked in a conversation"); s.add_argument("key"); s.add_argument("ref"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
+    s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
     s = sub.add_parser("project", help="star / archive a project (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
     s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)
     s = sub.add_parser("session-preferences", help="classify a conversation without changing its transcript"); s.add_argument("key"); s.add_argument("changes"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_preferences)

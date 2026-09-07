@@ -482,6 +482,10 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .home-quota .q.crit .mono{color:var(--s-block)}
 .home-quiet{padding:28px 20px;text-align:center;color:var(--ink-2);border:1px dashed var(--line);border-radius:12px;display:flex;flex-direction:column;gap:6px;align-items:center}
 .home-quiet .muted{font-size:12px}
+.home-tracked{border:1px solid var(--line);border-radius:14px;background:var(--win);padding:12px 16px 14px;box-shadow:var(--card-shadow)}
+.home-tracked h4{margin-bottom:8px}
+.session-modes{flex-wrap:wrap}
+.conversation-title .star,.sess-item .star{font-size:13px;padding:0 2px;cursor:default}
 .home-projects{display:flex;flex-direction:column;gap:14px}
 .home-project{border:1px solid var(--line);border-radius:14px;background:var(--win);box-shadow:var(--card-shadow);padding:14px 18px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .home-project.quiet{background:var(--panel)}

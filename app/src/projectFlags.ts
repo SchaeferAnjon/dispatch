@@ -35,6 +35,17 @@ export function withProjectFlag(flags: ProjectFlags, name: string, change: { sta
   return out;
 }
 
+// Shared settings live next to the flags, in their own memory (`dispatch settings`).
+export const SETTINGS_KEY = "dispatch-settings";
+export interface DispatchSettings { session_archive_days: number }
+export function parseSettings(memories: Memory[]): DispatchSettings {
+  const out: DispatchSettings = { session_archive_days: 30 };
+  const raw = memories.find((m) => m.key === SETTINGS_KEY)?.value;
+  if (!raw) return out;
+  try { const d = JSON.parse(raw); if (d && typeof d.session_archive_days === "number" && d.session_archive_days >= 0) out.session_archive_days = d.session_archive_days; } catch { /* keep defaults */ }
+  return out;
+}
+
 export const serializeProjectFlags = (flags: ProjectFlags) => JSON.stringify(Object.fromEntries(Object.keys(flags).sort().map((k) => [k, flags[k]])));
 export const isStarred = (flags: ProjectFlags, name: string) => !!flags[name]?.starred;
 export const isArchived = (flags: ProjectFlags, name: string) => !!flags[name]?.archived;

@@ -40,7 +40,7 @@ export interface RulesStatus { hash: string; source: string; targets: RuleTarget
 
 export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string }
 export interface SessionRef {
-  scheduled?: boolean; project_override?: string;
+  scheduled?: boolean; project_override?: string; starred?: boolean; archived?: boolean;
   agent: string;
   session_id: string;
   cwd: string;
@@ -173,7 +173,7 @@ export interface ActivityEvent { id: string; ts: number; kind: string; text: str
 export interface Activity {
   key: string; agent: string; session_id: string; cwd: string; project: string; title: string;
   last_at: number; state: string; activity: string; version: string; events: ActivityEvent[];
-  scheduled?: boolean; project_override?: string; overview?: string; files?: Record<string, number>; tasks: string[]; reply_id?: string; reply_at?: number; reply_preview?: string;
+  scheduled?: boolean; project_override?: string; starred?: boolean; archived?: boolean; overview?: string; files?: Record<string, number>; tasks: string[]; reply_id?: string; reply_at?: number; reply_preview?: string;
   unread: boolean; stale: boolean; tracking_since: number; source: string;
   host?: string; host_name?: string; remote?: boolean;
 }

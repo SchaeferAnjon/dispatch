@@ -315,3 +315,18 @@ class HumanNote(unittest.TestCase):
         self.assertEqual(dispatch.human_note([user, agent], "claude-code"), "")
         self.assertEqual(dispatch.human_note([{"author": "codex", "text": "x", "created_at": "1"}], "claude-code"), "")
         self.assertEqual(dispatch.human_note([], "claude-code"), "")
+
+
+class SessionLifecycle(unittest.TestCase):
+    def test_settings_parse_keeps_known_numeric_keys(self):
+        self.assertEqual(dispatch.settings_parse(json.dumps({"session_archive_days": 45, "x": 1, "bad": "no"})), {"session_archive_days": 45})
+        self.assertEqual(dispatch.settings_parse("nope"), {})
+
+    def test_starred_sessions_of_project(self):
+        idx = {"/a": {"agent": "claude-code", "session_id": "aaaa1111", "cwd": "/Users/x/Projects/kanban/app", "title": "长线", "mtime": 5},
+               "/b": {"agent": "codex", "session_id": "bbbb2222", "cwd": "/Users/x/Projects/other", "title": "别的", "mtime": 9},
+               "/c": {"agent": "codex", "session_id": "cccc3333", "cwd": "/Users/x/Projects/kanban", "title": "归档了", "mtime": 9}}
+        prefs = {"claude-code:aaaa1111": {"starred": True}, "codex:bbbb2222": {"starred": True}, "codex:cccc3333": {"starred": True, "archived": True}}
+        rows = dispatch.starred_sessions(prefs, idx, "kanban", {"kanban": "kanban"})
+        self.assertEqual([r["session_id"] for r in rows], ["aaaa1111"])
+        self.assertEqual([r["session_id"] for r in dispatch.starred_sessions(prefs, idx, "", {})], ["bbbb2222", "aaaa1111"])

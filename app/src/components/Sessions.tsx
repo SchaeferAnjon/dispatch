@@ -4,23 +4,23 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
 import { actorOf, durSince, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
 import { lineDiff, withContext } from "../diff";
-import { canReadReply, activityLabel } from "../activity";
+import { canReadReply, activityLabel, sessionLifecycle } from "../activity";
 import type { Activity, Issue, Session, SessionDetail, SessionRef } from "../types";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 import { OpenSessionButton } from "./SessionActions";
 import { SessionReply } from "./SessionReply";
 
-interface Props { outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
+interface Props { archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
-export function SessionsView({ activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
   const [refs, setRefs] = useState<SessionRef[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
-  const [showScheduled, setShowScheduled] = useState(false);
+  const [mode, setMode] = useState<"active" | "starred" | "archived" | "scheduled">("active");
   const host = hostId ?? "";
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -79,11 +79,12 @@ export function SessionsView({ activities, issues, outcomes, activityError, onSe
     const all = new Map(refs.map(r => [r.session_id, r]));
     for (const a of activities) {
       const old = all.get(a.session_id);
-      all.set(a.session_id, old ? { ...old, last_at: a.last_at, scheduled: old.scheduled || a.scheduled } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
+      all.set(a.session_id, old ? { ...old, last_at: a.last_at, scheduled: old.scheduled || a.scheduled, starred: old.starred || a.starred, archived: old.archived || a.archived } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
     }
-    return [...all.values()].sort((a,b) => b.last_at - a.last_at).filter((r) => !!r.scheduled === showScheduled && (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
-  }, [refs, activities, q, agent, host, showScheduled]);
-  const scheduledCount = useMemo(() => [...new Set([...refs, ...activities].filter((r) => r.scheduled).map((r) => r.session_id))].length, [refs, activities]);
+    const inMode = (r: SessionRef) => { if (mode === "scheduled") return !!r.scheduled; if (r.scheduled) return false; const life = sessionLifecycle(r, archiveDays); return mode === "archived" ? life === "archived" : mode === "starred" ? life === "starred" : life !== "archived"; };
+    return [...all.values()].sort((a,b) => Number(!!b.starred) - Number(!!a.starred) || b.last_at - a.last_at).filter((r) => inMode(r) && (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
+  }, [refs, activities, q, agent, host, mode, archiveDays]);
+  const counts = useMemo(() => { const seen = new Map<string, SessionRef | Activity>(); for (const r of [...refs, ...activities]) if (!seen.has(r.session_id)) seen.set(r.session_id, r); const all = [...seen.values()]; return { scheduled: all.filter((r) => r.scheduled).length, starred: all.filter((r) => !r.scheduled && sessionLifecycle(r, archiveDays) === "starred").length, archived: all.filter((r) => !r.scheduled && sessionLifecycle(r, archiveDays) === "archived").length }; }, [refs, activities, archiveDays]);
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
@@ -93,21 +94,27 @@ export function SessionsView({ activities, issues, outcomes, activityError, onSe
       <div className="sess-side">
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+          <div className="views session-modes" style={{ marginTop: 6 }}>
+            <button className={mode === "active" ? "on" : ""} onClick={() => setMode("active")}>最近</button>
+            <button className={mode === "starred" ? "on" : ""} onClick={() => setMode("starred")} title="收藏的会话：长期追踪，不会自动归档">★ 追踪中 {counts.starred}</button>
+            <button className={mode === "archived" ? "on" : ""} onClick={() => setMode("archived")} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>已归档 {counts.archived}</button>
+            {counts.scheduled > 0 && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="定时任务产生的会话">定时 {counts.scheduled}</button>}
+          </div>
           <div className="views" style={{ marginTop: 6 }}>
             {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
-            <span className="spacer" />{scheduledCount > 0 && <button className={`chip${showScheduled ? " on" : ""}`} onClick={() => setShowScheduled(!showScheduled)} title="定时任务产生的会话，默认不列出">定时 {scheduledCount}</button>}<span className="muted mono small">{items.length}</span>
+            <span className="spacer" /><span className="muted mono small">{items.length}</span>
           </div>
         </div>
         <div className="sess-items">
           {!loaded && <div className="empty">索引中…（首次要读完全部历史）</div>}
-          {loaded && items.length === 0 && <div className="empty">没有匹配的会话</div>}
+          {loaded && items.length === 0 && <div className="empty">{mode === "archived" ? `没有归档的会话（${archiveDays} 天没有活动的会自动归到这里）` : mode === "starred" ? "还没有收藏的会话。右键一条会话，选「收藏：长期追踪」。" : "没有匹配的会话"}</div>}
           {items.map((r) => {
             const a = actorOf(r.agent, me);
             const l = liveOf(r.session_id);
             const active = activities.find(a => a.session_id === r.session_id);
             return (
               <div key={r.session_id} className={`sess-item${sel === r.session_id ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
-                <div className="l1"><Avatar actor={a} /><span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
+                <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title="追踪中">★</span>}<span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && <div className="l3 activity-text">{activityLabel(active)} · {active.activity}</div>}
                 {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}

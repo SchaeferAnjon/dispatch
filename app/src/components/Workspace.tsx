@@ -17,7 +17,7 @@ export function ConversationRows({ rows, me, onOpen, onRead, taskContent }: { ta
   return <div className="conversation-rows">{rows.map(a => <div className={`conversation-row${a.unread ? ' unread' : ''}`} key={activityKey(a)} onContextMenu={e => openMenu(a,e)}><button className="conversation-main" onClick={() => onOpen(a.session_id)} aria-label={`查看并回复：${a.title}`}>
     <Avatar actor={actorOf(a.agent, me)} size={30} />
     <div className="conversation-summary">
-      <div className="conversation-title"><strong>{a.title}</strong><span className={`activity-badge ${a.stale ? '' : a.state === 'working' ? 'running' : a.unread ? 'new' : ''}`}>{a.scheduled ? '定时会话' : activityLabel(a)}</span></div>
+      <div className="conversation-title">{a.starred&&<span className="star on" title="追踪中">★</span>}<strong>{a.title}</strong><span className={`activity-badge ${a.stale ? '' : a.state === 'working' ? 'running' : a.unread ? 'new' : ''}`}>{a.scheduled ? '定时会话' : activityLabel(a)}</span></div>
       <div className="conversation-location"><span className="conversation-project"><span>项目</span><b>{conversationProject(a)}</b></span><span className="conversation-folder" title={a.cwd || '未记录工作目录'}><span>文件夹</span><code>{a.cwd ? a.cwd.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, '~') : '未记录'}</code></span></div>
       <div className="conversation-preview conversation-overview" title="根据整段会话中的需求与变更整理"><span className="conversation-caption">会话概览</span>{a.overview || '暂无足够的对话内容可整理'}</div>
       <div className="conversation-preview"><span className="conversation-caption">{a.reply_preview ? '回复摘要' : '进展摘要'}</span>{conversationSummary(a)}</div>

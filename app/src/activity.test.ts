@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canReadReply, activityKey, conversationSummary, conversationProject, mergeActivity, resolveProject } from './activity';
+import { canReadReply, activityKey, conversationSummary, conversationProject, mergeActivity, resolveProject, sessionLifecycle } from './activity';
 import type { Activity } from './types';
 const a = { key: 'codex:id', host:'local', unread:true, reply_id:'2:reply' } as Activity;
 describe('read cursor', () => {
@@ -53,5 +53,16 @@ describe('presence merge', () => {
     const merged = mergeActivity(presence, [live]);
     expect(merged.sessions[0]).toMatchObject({ state: 'working', scheduled: true });
     expect(mergeActivity({ sessions: [], apps: [] }, [live]).sessions[0]).toMatchObject({ scheduled: true, alive: true });
+  });
+});
+
+describe('session lifecycle', () => {
+  const now = 100_000_000;
+  it('tracks starred, fades ordinary ones after the configured days, honours manual archive', () => {
+    expect(sessionLifecycle({ last_at: now - 40 * 86400 }, 30, now)).toBe('archived');
+    expect(sessionLifecycle({ last_at: now - 10 * 86400 }, 30, now)).toBe('active');
+    expect(sessionLifecycle({ last_at: now - 40 * 86400, starred: true }, 30, now)).toBe('starred');
+    expect(sessionLifecycle({ last_at: now, archived: true, starred: true }, 30, now)).toBe('archived');
+    expect(sessionLifecycle({ last_at: now - 400 * 86400 }, 0, now)).toBe('active');
   });
 });
