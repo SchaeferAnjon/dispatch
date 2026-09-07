@@ -40,7 +40,6 @@ dispatch done <id> --reason "做了什么；跑过哪些验证" [--verified] \
 密钥统一存 `~/.config/dispatch/env`（0600），不进板、不进 wiki、不进 commit。`dispatch prime` 只列名字和用途；需要时 `dispatch env get NAME`；用户给新 Key 时 `dispatch env set NAME VALUE --note "用途"`（或 `--stdin`）；`dispatch env list`；shell 里 `eval "$(dispatch env export)"`（fish 新终端已自动加载）。
 
 ## 派活给别的 Agent / 模型（`dispatch agent`，底层是 Herdr）
-**前提：用户明确要求派给别的 Agent。** 没要求就自己做，不要为了「并行」或「让别人验证」主动派活。
 要让另一个模型干一件独立的事（比如让 Codex 跑测试、让另一台 Mac 上的 Claude 处理一个目录），不要自己 spawn 子进程，用这几条：
 ```bash
 dispatch agent list [--host mini]                                   # 本机 / Mac mini 的 Herdr 里有哪些 Agent 在跑
@@ -52,7 +51,7 @@ dispatch agent read <目标> --lines 80 / wait <目标> / keys <目标> enter / 
 kind 可选 claude、codex、opencode、gemini 等（Herdr 支持的都行）；`--extra "--effort high"` 透传给 Agent 命令行。`start --task` 会以对应身份（claude→claude-code、codex）认领任务并留一条"谁派给谁"的评论。输出里若出现"stalled"，多半是对方在等一个对话框（信任目录、审查 hooks），用 `keys <目标> enter` 或 `t` 回应。对方做完后照常 `dispatch done`；你负责汇总验证。
 
 ## 讨论后分工（动态工作流，`dispatch discuss` / `dispatch split`）
-**只在用户当前对话里明确要求「让几个 Agent 讨论」「派给 X」时才用；不要自己决定派活或发起讨论**——每次都是一整个新会话的 token。用户没说就自己做。
+**只在用户当前对话里明确要求「让几个 Agent 讨论」时才用，不要自己发起**——每个参与者都是一整个新会话的 token。派活（`dispatch agent start`）不受此限。
 一件事拿不准怎么拆、想让几个模型先各说一次再分工：
 ```bash
 dispatch discuss <id> --with codex,claude [-q "想让他们决定什么"] [--rounds 2] [--close]   # 依次起每个 Agent（自动模式），各读任务和前面的【讨论】发言，只留一条 dispatch log "【讨论】…" 就停；结束打印全部发言
