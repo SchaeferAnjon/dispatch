@@ -12,11 +12,11 @@ import { OpenSessionButton } from "./SessionActions";
 import { ConversationMenuButton, useConversationMenu } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 
-interface Props { refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
+interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
-export function SessionsView({ refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
   const openMenu = useConversationMenu();
   const [showScripts, setShowScripts] = useState(false);
   const [q, setQ] = useState("");
@@ -80,12 +80,12 @@ export function SessionsView({ refs, scriptCount, refsLoaded: loaded, archiveDay
       const old = all.get(a.session_id);
       all.set(a.session_id, old ? { ...old, last_at: a.last_at, scheduled: old.scheduled || a.scheduled, starred: old.starred || a.starred, archived: old.archived || a.archived } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
     }
-    const inMode = (r: SessionRef) => { if (!showScripts && isScriptSession(r)) return false; if (mode === "scheduled") return !!r.scheduled; if (r.scheduled) return false; const life = sessionLifecycle(r, archiveDays); return mode === "archived" ? life === "archived" : mode === "starred" ? life === "starred" : life !== "archived"; };
+    const inMode = (r: SessionRef) => { if (!showScripts && isScriptSession(r)) return false; if (mode === "scheduled") return !!r.scheduled; if (r.scheduled) return false; const life = archivedProjects.has(r.project_override || r.project) ? "archived" : sessionLifecycle(r, archiveDays); return mode === "archived" ? life === "archived" : mode === "starred" ? life === "starred" : life !== "archived"; };
     return [...all.values()].sort((a,b) => Number(!!b.starred) - Number(!!a.starred) || b.last_at - a.last_at).filter((r) => inMode(r) && (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
-  }, [refs, showScripts, activities, q, agent, host, mode, archiveDays]);
+  }, [refs, showScripts, activities, q, agent, host, mode, archiveDays, archivedProjects]);
   // The menu wants the conversation shape; a catalog row becomes one with the same identity.
   const asActivity = (r: SessionRef): Activity => activities.find((a) => a.session_id === r.session_id && (a.host ?? "local") === (r.host ?? "local")) ?? ({ ...r, key: `${r.agent}:${r.session_id}`, tasks: Object.keys(r.tasks || {}), state: "unknown", stale: true, unread: false, activity: "", version: "", events: [], tracking_since: 0, source: "catalog" } as Activity);
-  const counts = useMemo(() => { const seen = new Map<string, SessionRef | Activity>(); for (const r of [...refs, ...activities]) if (!seen.has(r.session_id)) seen.set(r.session_id, r); const all = [...seen.values()]; return { scheduled: all.filter((r) => r.scheduled).length, starred: all.filter((r) => !r.scheduled && sessionLifecycle(r, archiveDays) === "starred").length, archived: all.filter((r) => !r.scheduled && sessionLifecycle(r, archiveDays) === "archived").length }; }, [refs, activities, archiveDays]);
+  const counts = useMemo(() => { const seen = new Map<string, SessionRef | Activity>(); for (const r of [...refs, ...activities]) if (!seen.has(r.session_id)) seen.set(r.session_id, r); const all = [...seen.values()]; const life = (r: SessionRef | Activity) => archivedProjects.has(r.project_override || r.project) ? "archived" : sessionLifecycle(r, archiveDays); return { scheduled: all.filter((r) => r.scheduled).length, starred: all.filter((r) => !r.scheduled && life(r) === "starred").length, archived: all.filter((r) => !r.scheduled && life(r) === "archived").length }; }, [refs, activities, archiveDays, archivedProjects]);
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
