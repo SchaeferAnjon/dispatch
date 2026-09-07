@@ -88,7 +88,18 @@ export function NewSession({ api, hosts, initialHost, onClose, onCreated, onComp
     const pending = { request_id: request.current, state: 'starting', host, agent, cwd: path, message: '正在连接电脑…' };
     try { sessionStorage.setItem('dispatch-new-session', JSON.stringify(pending)); } catch { /* private mode */ }
     try { const r = await control<Launch>(api, host, 'start', {request_id: request.current, agent, cwd: path, prompt}); setLaunch(r); }
-    catch (e) { setError(String(e)); /* Keep identity: a lost response is not a new launch. */ }
+    catch (e) {
+      setError(String(e));
+      // Distinguish rejected input from an accepted launch with a lost response.
+      // A transport failure keeps the same identity and switches to polling.
+      try { setLaunch(await control<Launch>(api, host, 'status', { request_id: request.current })); }
+      catch (lookup) {
+        if (String(lookup).includes('找不到这次创建记录')) {
+          request.current = null;
+          try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ }
+        } else { setLaunch(pending); }
+      }
+    }
     finally { setBusy(false); }
   };
   const locked = busy || !!launch;
