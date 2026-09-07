@@ -2,9 +2,8 @@ import { TaskMenuButton, useTaskMenu } from "./TaskActions";
 import { useState } from "react";
 import { sessionStatus, sessionEvidence } from "../derive";
 import type { AgentPresence } from "../derive";
-import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
+import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, delegatedBy, delegatedTo, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
 import type { Column, Host, Issue, Session, SessionRef } from "../types";
-import type { AgentStartInput, AgentStartResult } from "../api";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 import { linkedSessions } from "../projectModel";
 
@@ -26,6 +25,7 @@ export function Card({ issue, progress, selected, onSelect, me, root, draggable,
         <span className="id">{issue.id}</span>
         {issue.issue_type !== "task" && <span className="muted">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>}
       </div>
+      {delegatedBy(issue) && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>↪ {actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 {actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}</div>}
       {blocked && <div className="blk">⊘ 被 {issue.dependency_count ?? ""} 项依赖卡住</div>}
       {issue.status === "deferred" && <div className="blk deferred">⏸ 搁置 · 暂不安排</div>}
       {!blocked && (issue.dependency_count ?? 0) > 0 && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>↳ 依赖 {issue.dependency_count} 项</div>}
@@ -109,50 +109,9 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
 
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
-// "派活": start an agent on a machine through Herdr and send it a first prompt.
-const KINDS: [string, string][] = [["claude", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini CLI"], ["opencode", "OpenCode"]];
-function Delegate({ host, onClose, onStart }: { host: Host; onClose: () => void; onStart: (input: AgentStartInput) => Promise<AgentStartResult | null> }) {
-  const [kind, setKind] = useState("claude");
-  const [cwd, setCwd] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [res, setRes] = useState<AgentStartResult | null>(null);
-  const [err, setErr] = useState("");
-  const go = async () => {
-    if (!prompt.trim()) return;
-    setBusy(true); setErr("");
-    try { setRes(await onStart({ kind, host: host.local ? "" : host.id, cwd: cwd.trim() || undefined, prompt: prompt.trim(), label: prompt.trim().slice(0, 24) })); }
-    catch (e) { setErr(String(e)); }
-    finally { setBusy(false); }
-  };
-  return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog" role="dialog" aria-label="派活">
-        <h3>在 {host.name} 上派活</h3>
-        <div className="views">{KINDS.map(([k, l]) => <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{l}</button>)}</div>
-        <input placeholder={host.local ? "目录（默认当前目录）" : "目录（默认那台机器的家目录）"} value={cwd} onChange={(e) => setCwd(e.target.value)} />
-        <textarea rows={4} placeholder="第一句话：要它做什么" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-        {err && <div className="err">{err}</div>}
-        {res && (
-          <div className="sel-text small">
-            <div><b>{res.status}</b> · Herdr {res.pane_id} · {res.actor}{res.warning ? ` · ${res.warning}` : ""}</div>
-            {res.output && <pre className="diff" style={{ maxHeight: 220, overflow: "auto" }}>{res.output.split("\n").filter((l) => l.trim()).slice(-25).join("\n")}</pre>}
-          </div>
-        )}
-        <div className="foot">
-          <button className="btn ghost" onClick={onClose}>{res ? "关闭" : "取消"}</button>
-          <button className="btn primary" disabled={busy || !prompt.trim()} onClick={go}>{busy ? "起中，等它回话…" : res ? "再派一个" : "起 Agent 并发送"}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function AgentsView({ agents, scheduled, apps, onSelect, onCopyResume, onFocus, refs, hosts, onOpenUrl, onCopyText, onStart }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onStart: (input: AgentStartInput) => Promise<AgentStartResult | null> }) {
-  const [delegate, setDelegate] = useState<Host | null>(null);
+export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onCopyResume, onFocus, refs, hosts, onOpenUrl, onCopyText, onDelegate }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; issues: Issue[]; me: string; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onDelegate: (host: Host) => void }) {
   return (
     <div className="agrid">
-      {delegate && <Delegate host={delegate} onClose={() => setDelegate(null)} onStart={onStart} />}
       {hosts.length > 0 && (
         <div className="hosts-bar">
           {hosts.map((h) => {
@@ -168,7 +127,7 @@ export function AgentsView({ agents, scheduled, apps, onSelect, onCopyResume, on
                 <span className={`dot ${h.online ? "on" : ""}`} />
                 <b>{h.name}</b><span className="mono muted small">{h.ip}</span>
                 {h.overlay?.kind && <span className="host-chip">{OVERLAY[h.overlay.kind] ?? h.overlay.kind}</span>}
-                {h.online && <button className="btn sm" onClick={() => setDelegate(h)} title="在这台机器的 Herdr 里起一个 Agent 并发第一句话">派活</button>}
+                {h.online && <button className="btn sm" onClick={() => onDelegate(h)} title="在这台机器的 Herdr 里起一个 Agent，可以把任务派给它">派活</button>}
                 {ways.map((w) => <button key={w.key} className={`btn sm${w.key === h.recommend || (h.recommend === "vnc" && w.key === "novnc") ? "" : " ghost"}`} onClick={w.act} title={w.hint}>{w.label}</button>)}
                 {h.novnc_issue && <span className="host-connection-note">{h.novnc_issue}</span>}
                 {ways.length === 0 && <span className="muted small">{h.why}</span>}
@@ -216,7 +175,18 @@ export function AgentsView({ agents, scheduled, apps, onSelect, onCopyResume, on
               })}
             </div>
           )}
-          {a.current.length > 0 && <details className="agent-task-context"><summary>关联进行中任务 · {a.current.length}</summary>{a.current.map(i => <button key={i.id} className="cur" onClick={() => onSelect(i.id)}><div className="t">{i.title}</div><div className="mono muted small">{i.id}</div></button>)}</details>}
+          {a.current.length > 0 && <details className="agent-task-context"><summary>关联进行中任务 · {a.current.length}</summary>{a.current.map(i => <button key={i.id} className="cur" onClick={() => onSelect(i.id)}><div className="t">{i.title}</div><div className="mono muted small">{i.id}{delegatedBy(i) ? ` · ← ${actorOf(delegatedBy(i), me)?.name ?? delegatedBy(i)} 派的` : ""}</div></button>)}</details>}
+          {(() => {
+            // 派活关系: tasks this agent handed out, and tasks handed to it, still open.
+            const open = issues.filter((i) => i.status !== "closed");
+            const out = open.filter((i) => actorOf(delegatedBy(i), me)?.id === a.actor.id);
+            const got = open.filter((i) => actorOf(delegatedTo(i), me)?.id === a.actor.id);
+            if (!out.length && !got.length) return null;
+            return <div className="agent-delegations">
+              {out.length > 0 && <div><span className="lbl">派出 {out.length}</span>{out.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>→ {actorOf(delegatedTo(i), me)?.name ?? delegatedTo(i)} · {i.title.slice(0, 28)}</button>)}</div>}
+              {got.length > 0 && <div><span className="lbl">接到 {got.length}</span>{got.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>← {actorOf(delegatedBy(i), me)?.name ?? delegatedBy(i)} · {i.title.slice(0, 28)}</button>)}</div>}
+            </div>;
+          })()}
 
         </div>
       );})}

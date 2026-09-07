@@ -514,6 +514,8 @@ def cmd_agent(a):
         me = os.environ.get("BEADS_ACTOR", "schaefer")
         if a.task:
             code, o, e = sh(["bd", "update", a.task, "--claim", "--json"], env={"BEADS_ACTOR": actor})
+            # who handed the task to whom: labels the views read, a comment for the record
+            sh(["bd", "update", a.task, "--add-label", f"delegated-by:{me}", "--add-label", f"delegated-to:{actor}", "--json"], env={"BEADS_ACTOR": me})
             note = f"{me} 通过 dispatch agent 派给 {actor}（Herdr {pane} @ {where}，目录 {cwd}）"
             sh(["bd", "comments", "add", a.task, note], env={"BEADS_ACTOR": me})
         res = {"host": where, "pane_id": pane, "tab_id": tab_id, "name": name, "kind": kind, "actor": actor, "cwd": cwd, "status": started.get("agent_status"), "task": a.task or "", "output": ""}
@@ -3469,7 +3471,8 @@ def cmd_prime(a):
         for t in shown:
             mark = "◐" if t.get("status") == "in_progress" else "○"
             who = f" [{t.get('assignee')}]" if t.get("assignee") else ""
-            lines.append(f"{mark} {t['id']}{who} {t.get('title', '')}")
+            by = next((l.split(":", 1)[1] for l in t.get("labels") or [] if l.startswith("delegated-by:")), "")
+            lines.append(f"{mark} {t['id']}{who} {t.get('title', '')}" + (f" ← {by} 派的" if by else ""))
         if len(mine) > len(shown):
             lines.append(f"…还有 {len(mine) - len(shown)} 条：`bd ready`")
         # the user's unanswered note on a task this agent holds

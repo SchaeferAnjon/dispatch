@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Api } from "../api";
-import { actorOf, durSince, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
+import { actorOf, delegatedBy, delegatedTo, durSince, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
 import type { Activity, Comment, HistoryEntry, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
@@ -130,10 +130,11 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
               {[0, 1, 2, 3, 4].map((p) => <option key={p} value={p}>P{p}{p === 0 ? " 最急" : p === 4 ? " 最低" : ""}</option>)}
             </select>}
           </span>
+          {delegatedBy(issue) && (<><span className="k">派活</span><span className="v">{actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 {actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}</span></>)}
           <span className="k">类型</span><span className="v">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>
           <span className="k">项目</span><span className="v"><ProjectTag name={projectOf(issue)} /></span>
           {root && (<><span className="k">源自</span><span className="v"><span className="link" onClick={() => onSelect(root.id)} title={root.title}>{root.id}</span><span className="muted" style={{ fontSize: 12 }}>{root.title}</span></span></>)}
-          {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && l !== "reviewed").length > 0 && (<><span className="k">标签</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && l !== "reviewed").join(" · ")}</span></>)}
+          {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && !l.startsWith("delegated-") && !l.startsWith("host:") && l !== "reviewed").length > 0 && (<><span className="k">标签</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && !l.startsWith("delegated-") && !l.startsWith("host:") && l !== "reviewed").join(" · ")}</span></>)}
           {(issue.dependencies ?? []).length > 0 && (<><span className="k">依赖</span><span className="v">{issue.dependencies!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}{d.status === "closed" ? " ✓" : ""}</span>)}</span></>)}
           {(issue.dependents ?? []).length > 0 && (<><span className="k">被依赖</span><span className="v">{issue.dependents!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}</span>)}</span></>)}
           <span className="k">创建</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.created_at)}{issue.created_by ? ` · ${actorOf(issue.created_by, me)?.name}` : ""}</span>

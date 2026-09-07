@@ -7,7 +7,7 @@ type Menu = { issue: Issue; x: number; y: number };
 const Context = createContext<(issue: Issue, e: MouseEvent) => void>(() => {});
 export const useTaskMenu = () => useContext(Context);
 
-export function TaskActions({ api, children, onOpen, onDone, onError }: { api: Api | null; children: ReactNode; onOpen: (id:string)=>void; onDone:(m:string,id?:string)=>void; onError:(m:string)=>void }) {
+export function TaskActions({ api, children, onOpen, onDelegate, onDone, onError }: { api: Api | null; children: ReactNode; onOpen: (id:string)=>void; onDelegate: (id:string)=>void; onDone:(m:string,id?:string)=>void; onError:(m:string)=>void }) {
   const [menu,setMenu]=useState<Menu|null>(null); const [busy,setBusy]=useState(false); const panel=useRef<HTMLDivElement>(null); const returnFocus=useRef<HTMLElement|null>(null);
   const open=(issue:Issue,e:MouseEvent)=>{e.preventDefault();e.stopPropagation();returnFocus.current=e.currentTarget as HTMLElement;setMenu({issue,x:e.clientX||e.currentTarget.getBoundingClientRect().left,y:e.clientY||e.currentTarget.getBoundingClientRect().bottom});};
   useLayoutEffect(()=>{if(!menu||!panel.current)return;const el=panel.current;el.style.left=`${Math.max(8,Math.min(menu.x,innerWidth-el.offsetWidth-8))}px`;el.style.top=`${Math.max(8,Math.min(menu.y,innerHeight-el.offsetHeight-8))}px`;el.querySelector<HTMLButtonElement>('button')?.focus();},[menu]);
@@ -20,6 +20,7 @@ export function TaskActions({ api, children, onOpen, onDone, onError }: { api: A
     <button role="menuitem" disabled={busy} onClick={()=>{onOpen(i.id);close();}}>打开任务详情</button>
     <button role="menuitem" disabled={busy} onClick={()=>void act('任务 ID 已复制',()=>api.copy(i.id))}>复制任务 ID</button>
     <button role="menuitem" disabled={busy} onClick={()=>void act('任务内容已复制',()=>api.copy(`${i.title}\n${i.id}\n\n${i.description||''}`))}>复制任务内容</button>
+    {!isTrashed(i)&&i.status!=='closed'&&<button role="menuitem" disabled={busy} onClick={()=>{onDelegate(i.id);close();}}>派给 Agent…</button>}
     {!isTrashed(i)&&<><hr/><button role="menuitem" disabled={busy||i.status==='open'} onClick={()=>void act('已移到待办',()=>i.status==='closed'?api.reopen(i.id):api.setStatus(i.id,'open'))}>移到待办</button><button role="menuitem" disabled={busy||i.status==='in_progress'} onClick={()=>void act('已移到进行中',async()=>{if(i.status==='closed')await api.reopen(i.id);await api.setStatus(i.id,'in_progress');})}>移到进行中</button><button role="menuitem" disabled={busy||i.status==='closed'} onClick={()=>void act('已标记完成',()=>api.close(i.id,'用户在 Dispatch 中标记完成'))}>标记完成</button></>}
     <hr/><button role="menuitem" className={isTrashed(i)?'':'danger'} disabled={busy} onClick={()=>void act(isTrashed(i)?'任务已恢复':'已移到回收站，可从任务页恢复',()=>api.on('local',['task',isTrashed(i)?'restore':'trash',i.id,'--json']),!isTrashed(i))}>{isTrashed(i)?'从回收站恢复':'移到回收站'}</button>
   </div></div>}</Context.Provider>;

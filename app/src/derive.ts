@@ -48,6 +48,9 @@ export function projectOf(i: Issue): string {
   const l = (i.labels ?? []).find((x) => x.startsWith(PROJECT_PREFIX));
   return l ? l.slice(PROJECT_PREFIX.length) : "";
 }
+// Who handed a task to whom (`dispatch agent start --task`).
+export const delegatedBy = (i: Issue) => (i.labels ?? []).find((l) => l.startsWith("delegated-by:"))?.slice(13) ?? "";
+export const delegatedTo = (i: Issue) => (i.labels ?? []).find((l) => l.startsWith("delegated-to:"))?.slice(13) ?? "";
 export function isReviewed(i: Issue): boolean {
   return i.status === "closed" && (i.labels ?? []).includes("reviewed");
 }

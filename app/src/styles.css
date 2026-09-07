@@ -495,6 +495,10 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .home-project.folded>header .name{font-size:15px}
 .home-project>header .digest{font-size:12.5px;color:var(--ink-2);text-align:left;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .home-project>header .digest .hot{color:var(--s-block);font-weight:500}
+.agent-delegations{display:flex;flex-direction:column;gap:6px;padding:8px 0 2px;font-size:12px}
+.agent-delegations>div{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.agent-delegations .lbl{color:var(--ink-3);white-space:nowrap}
+.dialog.delegate{width:min(600px,calc(100vw - 24px))}
 .settings{padding:20px 24px 40px;max-width:760px;display:flex;flex-direction:column;gap:16px}
 .settings-card{border:1px solid var(--line);border-radius:12px;background:var(--win);padding:6px 18px}
 .settings-card h3{margin:10px 0 4px;font-size:14px}
