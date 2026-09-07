@@ -330,3 +330,27 @@ class SessionLifecycle(unittest.TestCase):
         rows = dispatch.starred_sessions(prefs, idx, "kanban", {"kanban": "kanban"})
         self.assertEqual([r["session_id"] for r in rows], ["aaaa1111"])
         self.assertEqual([r["session_id"] for r in dispatch.starred_sessions(prefs, idx, "", {})], ["bbbb2222", "aaaa1111"])
+
+
+class Facts(unittest.TestCase):
+    TEXT = "# x\n\n## 通用\n\n**机器**\n- 本机 MacBook，Tailscale 100.85.245.72\n- mini 100.118.80.86\n\n**我常说的话**\n- 密钥只进 dispatch env\n\n## kanban\n- 板在 ~/tasks/.beads\n"
+
+    def test_topics_and_get(self):
+        secs = dict(dispatch.facts_sections(self.TEXT))
+        self.assertEqual([t for t, _ in dispatch.facts_topics(secs["通用"])], ["机器", "我常说的话"])
+        hits = dispatch.facts_get("机器", "", self.TEXT)
+        self.assertEqual([(h, t) for h, t, _ in hits], [("通用", "机器")])
+        self.assertIn("100.85.245.72", hits[0][2])
+        self.assertEqual(dispatch.facts_get("常说", "kanban", self.TEXT)[0][1], "我常说的话")
+        self.assertEqual(dispatch.facts_get("nothing", "", self.TEXT), [])
+
+    def test_search_carries_topic(self):
+        rows = dispatch.facts_search("mini 100", [("通用", self.TEXT)])
+        self.assertEqual(rows, [("通用", "机器", "- mini 100.118.80.86")])
+
+    def test_import_candidates_skip_known_and_irrelevant(self):
+        src = [("/m/a.md", "---\nname: x\n---\n\n本机 MacBook，Tailscale 100.85.245.72 就是这台\n\n今天天气不错，写了很多代码，非常开心的一天。\n\nHetzner 别名 hetzner，root@178.104.140.55，裸 IP 会 Permission denied\n"), ("/m/b.md", "Hetzner 别名 hetzner，root@178.104.140.55，裸 IP 会 Permission denied")]
+        cands = dispatch.facts_candidates(src, self.TEXT)
+        self.assertEqual([p for p, _ in cands], ["/m/a.md", "/m/a.md"])
+        self.assertTrue(any("Hetzner" in c for _, c in cands))
+        self.assertFalse(any("天气" in c for _, c in cands))

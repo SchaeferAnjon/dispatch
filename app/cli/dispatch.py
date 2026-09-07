@@ -2394,6 +2394,78 @@ def facts_for(proj, text=None):
     return [(h, b) for h, b in secs if facts_key(h) in want and b]
 
 
+def facts_topics(body):
+    """A section body is a list of `**topic**` blocks → [(topic, block_text)]; lines before
+    the first bold heading form a topic named ''."""
+    out, head, buf = [], "", []
+    for line in body.splitlines():
+        m = re.match(r"^\*\*(.+?)\*\*\s*(.*)$", line.strip())
+        if m and not line.strip().startswith("-"):
+            if head or buf:
+                out.append((head, "\n".join(buf).strip()))
+            head, buf = m.group(1).strip(), ([m.group(2)] if m.group(2) else [])
+        else:
+            buf.append(line)
+    if head or buf:
+        out.append((head, "\n".join(buf).strip()))
+    return [(h, b) for h, b in out if b]
+
+
+def facts_get(query, proj="", text=None):
+    """Topic blocks whose title contains the query (case-insensitive), from the general
+    section and this project's section."""
+    q = query.strip().lower()
+    hits = []
+    for h, b in facts_for(proj, text):
+        for topic, block in facts_topics(b):
+            if q in topic.lower() or (not topic and q in h.lower()):
+                hits.append((h, topic, block))
+    return hits
+
+
+def facts_search(query, docs_text):
+    """Lines matching every word of the query, across [(doc_name, text)], with their topic."""
+    words = [w for w in query.lower().split() if w]
+    rows = []
+    for name, text in docs_text:
+        topic = ""
+        for line in text.splitlines():
+            m = re.match(r"^\*\*(.+?)\*\*", line.strip())
+            if m:
+                topic = m.group(1).strip()
+            elif line.startswith("## "):
+                topic = line[3:].strip()
+            low = line.lower()
+            if line.strip() and all(w in low for w in words):
+                rows.append((name, topic, line.strip()))
+    return rows
+
+
+FACT_WORDS = re.compile(r"(tailscale|100\.\d+\.\d+\.\d+|mac mini|macbook|ssh |hetzner|vps|supabase|cloudflare|stripe|\bR2\b|github|api[ _-]?key|密钥|token|域名|dns|数据库|postgres|sqlite|redis|apple id|xcode|udid|team|obsidian|hermes|telegram|deepseek|kimi|minimax|openai|zhipu|智谱|豆包|端口|port \d|launchagent|cron)", re.I)
+
+
+def facts_candidates(sources, existing_text):
+    """Paragraph-sized snippets from other agents' memory files that look like cross-project
+    facts (machines, accounts, keys, tools) and are not already in FACTS.md.
+    sources: [(path, text)] → [(path, snippet)] deduplicated."""
+    def norm(s):
+        return re.sub(r"[\s`*_#>\-·。，,.:：;；()（）\[\]]+", "", s.lower())
+    have = norm(existing_text)
+    seen, out = set(), []
+    for path, text in sources:
+        text = re.sub(r"^---\n[\s\S]*?\n---\n", "", text)  # frontmatter
+        for para in re.split(r"\n\s*\n", text):
+            para = para.strip()
+            if len(para) < 20 or len(para) > 1200 or not FACT_WORDS.search(para):
+                continue
+            key = norm(para)[:160]
+            if key in seen or (len(key) > 40 and key in have):
+                continue
+            seen.add(key)
+            out.append((path, para))
+    return out
+
+
 def facts_docs():
     """The documents the 常用信息 page edits: the machine-wide FACTS.md plus, for every
     project label on the board whose directory is known from the session index, that
@@ -2457,6 +2529,73 @@ def cmd_facts(a):
             if not str(vault.get('path', '')).strip(): continue
             rows.append({'id': ident, 'name': path.name, 'path': str(path), 'exists': path.is_dir(), 'open': bool(vault.get('open'))})
         out(rows, a.json, lambda rs: print(json.dumps(rs, ensure_ascii=False)))
+    elif a.op == "topics":
+        rows = [{"section": h, "topic": t, "lines": len(b.splitlines())} for h, b in facts_sections(facts_text()) for t, b2 in facts_topics(b) for b in [b2]]
+        out(rows, a.json, lambda rs: [print(f"{r['section']:<10} {r['topic']}") for r in rs])
+    elif a.op == "get":
+        if not a.query:
+            print("用法：dispatch facts get <主题词>（`dispatch facts topics` 列主题）", file=sys.stderr); sys.exit(2)
+        hits = facts_get(a.query, a.project or project_of_cwd(os.getcwd(), project_names()))
+        if a.json:
+            print(json.dumps([{"section": h, "topic": t, "text": b} for h, t, b in hits], ensure_ascii=False)); return
+        if not hits:
+            print(f"没有叫「{a.query}」的主题；`dispatch facts topics` 看有哪些，或 `dispatch facts search {a.query}` 全文搜。", file=sys.stderr); sys.exit(1)
+        for h, t, b in hits:
+            print(f"### {t or h}\n{b}\n")
+    elif a.op == "search":
+        if not a.query:
+            print("用法：dispatch facts search <关键词>", file=sys.stderr); sys.exit(2)
+        docs = [(d["name"], open(d["path"], encoding="utf-8").read()) for d in facts_docs() if d["exists"]]
+        rows = facts_search(a.query, docs)
+        if a.json:
+            print(json.dumps([{"doc": n, "topic": t, "line": l} for n, t, l in rows], ensure_ascii=False)); return
+        if not rows:
+            print("没找到；`dispatch facts topics` 看主题，或问用户。", file=sys.stderr); sys.exit(1)
+        for n, t, l in rows[:40]:
+            print(f"[{n} · {t}] {l}")
+    elif a.op == "import":
+        import glob, datetime
+        sources = []
+        for pat in [os.path.join(HOME, ".claude", "projects", "*", "memory", "*.md"), os.path.join(HOME, ".codex", "memories", "raw_memories.md")]:
+            for path in sorted(glob.glob(pat)):
+                if os.path.basename(path) == "MEMORY.md":
+                    continue
+                try:
+                    sources.append((path, open(path, encoding="utf-8").read()))
+                except OSError:
+                    pass
+        cands = facts_candidates(sources, facts_text())
+        report = [f"# 记忆导入清单（{datetime.date.today()}）", "", f"扫描 {len(sources)} 个记忆文件，抽出 {len(cands)} 段像跨项目事实、且 FACTS.md 里还没有的内容。", "逐段看：该进 FACTS.md 的留下，其余删掉；确认后 `dispatch facts import --apply` 会把清单原样追加到 FACTS.md「通用」节末尾的「待整理」块，原记忆文件不动。", ""]
+        by = {}
+        for path, para in cands:
+            by.setdefault(path, []).append(para)
+        for path, paras in by.items():
+            report.append(f"## {path.replace(HOME, '~')}")
+            for p_ in paras:
+                report.append(p_); report.append("")
+        os.makedirs(DISPATCH_DIR, exist_ok=True)
+        out_path = a.out or os.path.join(DISPATCH_DIR, "facts-import.md")
+        open(out_path, "w", encoding="utf-8").write("\n".join(report))
+        if a.apply:
+            if not cands:
+                print("没有可追加的内容"); return
+            block = [f"\n**待整理（{datetime.date.today()} 从各 Agent 记忆导入，核对后并入上面的主题或删掉）**"]
+            for path, para in cands:
+                block.append(f"- （{os.path.basename(os.path.dirname(os.path.dirname(path))) if '/memory/' in path else 'codex'}）" + re.sub(r"\s*\n\s*", " ", para))
+            text = facts_text()
+            secs = facts_sections(text)
+            gen = next((h for h, b in secs if facts_key(h) in FACTS_GENERAL), None)
+            if gen is None:
+                text = text.rstrip() + "\n\n## 通用\n" + "\n".join(block) + "\n"
+            else:
+                idx = text.index("## " + gen)
+                nxt = re.search(r"^## ", text[idx + 3:], re.M)
+                end = idx + 3 + nxt.start() if nxt else len(text)
+                text = text[:end].rstrip() + "\n" + "\n".join(block) + "\n\n" + text[end:]
+            open(FACTS_FILE, "w", encoding="utf-8").write(text)
+            print(f"已把 {len(cands)} 段追加到 FACTS.md「通用」末尾的待整理块；清单在 {out_path}")
+        else:
+            print(f"清单写到 {out_path}（{len(cands)} 段，来自 {len(by)} 个文件）。看过后 `dispatch facts import --apply` 追加进 FACTS.md，或手动挑选粘贴。")
     elif a.op == "docs":
         rows = facts_docs()
         out(rows, a.json, lambda rs: [print(f"{r['key']:<12} {'有' if r['exists'] else '无':<2} {r['path']}") for r in rs])
@@ -3367,10 +3506,17 @@ def cmd_prime(a):
     # 常用信息：服务器/域名/数据库/API 名字、用户常重复说的话——通用节 + 本项目节
     fx = facts_for(proj)
     if fx:
-        lines.append("## 常用信息（跨项目通用；项目专属的在项目目录 AGENTS.md。改：Dispatch → 指令 → 常用信息）")
+        lines.append("## 常用信息（跨项目事实只存这里，不写进各自的记忆；改：Dispatch → 规则与资料 → 常用资料）")
         for h, b in fx:
-            lines.append(f"### {h}")
-            lines.append(b)
+            if facts_key(h) in FACTS_GENERAL:
+                topics = [t for t, _ in facts_topics(b) if t]
+                sayings = next((blk for t, blk in facts_topics(b) if "常说" in t), "")
+                lines.append("通用主题：" + " · ".join(topics) + "。要哪个 `dispatch facts get <主题词>`，全文 `dispatch facts search <词>`。")
+                if sayings:
+                    lines.append(sayings)
+            else:
+                lines.append(f"### {h}")
+                lines.append(b)
     env_line = env_summary_line()
     if env_line:
         lines.append(env_line)
@@ -3487,7 +3633,7 @@ def main():
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
-    s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs", "vaults"]); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
+    s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs", "vaults", "topics", "get", "search", "import"]); s.add_argument("query", nargs="?", default=""); s.add_argument("--apply", action="store_true", help="import: 追加进 FACTS.md"); s.add_argument("--out", default="", help="import: 清单路径"); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
