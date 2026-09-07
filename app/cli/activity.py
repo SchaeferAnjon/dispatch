@@ -201,6 +201,7 @@ def connect(directory):
     os.chmod(path, 0o600)
     db.execute('CREATE TABLE IF NOT EXISTS streams (path TEXT PRIMARY KEY, inode INTEGER, off INTEGER, mtime REAL, data TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS read_replies (key TEXT, reply_id TEXT, PRIMARY KEY(key, reply_id))')
+    db.execute('CREATE TABLE IF NOT EXISTS session_preferences (key TEXT PRIMARY KEY, data TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL)')
     db.execute('INSERT OR IGNORE INTO settings VALUES (?, ?)', ('started_at', time.time()))
     db.commit()
@@ -238,6 +239,21 @@ def acknowledge(directory, key, reply_id):
     return {'ok': True}
 
 
+def set_preferences(directory, key, changes):
+    if not isinstance(key, str) or ':' not in key or len(key) > 250: raise ValueError('无效的会话标识')
+    if not isinstance(changes, dict) or set(changes) - {'scheduled', 'project_override'}: raise ValueError('无效的分类字段')
+    if 'scheduled' in changes and type(changes['scheduled']) is not bool: raise ValueError('定时标记必须是布尔值')
+    if 'project_override' in changes:
+        value=changes['project_override']
+        if not isinstance(value, str) or len(value.strip()) > 120 or any(ord(c)<32 for c in value): raise ValueError('无效的项目名称')
+        changes={**changes, 'project_override':value.strip()}
+    with closing(connect(directory)) as db, db:
+        row=db.execute('SELECT data FROM session_preferences WHERE key=?',(key,)).fetchone()
+        data={**(json.loads(row[0]) if row else {}), **changes}
+        db.execute('INSERT OR REPLACE INTO session_preferences VALUES (?,?)',(key,json.dumps(data,ensure_ascii=False)))
+    return data
+
+
 def activity_list(home, directory, index):
     paths = []
     for folder, agent in (('.claude/projects', 'claude-code'), ('.codex/sessions', 'codex')):
@@ -260,6 +276,8 @@ def activity_list(home, directory, index):
             s['path'] = path
             s['project'] = os.path.basename(s.get('cwd', ''))
             s['key'] = s['agent'] + ':' + s['session_id']
+            prefs = db.execute('SELECT data FROM session_preferences WHERE key=?', (s['key'],)).fetchone()
+            s.update(json.loads(prefs[0]) if prefs else {})
             receipt = db.execute('SELECT reply_id FROM read_replies WHERE key=? AND reply_id=?', (s['key'], s.get('reply_id'))).fetchone()
             s['unread'] = bool(s.get('reply_at', 0) > max(started_at, s.get('user_at', 0)) and (not receipt or receipt[0] != s.get('reply_id')))
             s['tracking_since'] = started_at

@@ -27,6 +27,7 @@ describe('conversation context', () => {
   it('limits preview length and distinguishes a home folder from a project', () => {
     expect(conversationSummary({...a, reply_preview:'长'.repeat(200)})).toHaveLength(110);
     expect(conversationProject({...a, cwd:'/Users/apple', project:'apple'})).toBe('未关联项目');
+    expect(conversationProject({...a,cwd:'/Users/apple',project:'apple',project_override:'日报'})).toBe('日报');
     expect(conversationProject({...a, cwd:'/Users/apple/Projects/kanban', project:'kanban'})).toBe('kanban');
     expect(conversationProject({...a, cwd:'/Users/apple/Projects/relecture/app', project:'app'})).toBe('relecture');
   });

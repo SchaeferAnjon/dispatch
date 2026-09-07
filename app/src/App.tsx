@@ -1,3 +1,4 @@
+import { ConversationActions } from './components/ConversationActions';
 import { TaskActions, isTrashed } from "./components/TaskActions";
 import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -243,12 +244,12 @@ export default function App() {
   }, [api, view, visible]);
 
   const inbox = useMemo<InboxItems>(() => ({
-    unread: activityF.filter(a => a.unread),
-    waiting: presenceF.sessions.filter((s) => needsAttention(s)).sort((a, b) => b.last_at - a.last_at),
+    unread: activityF.filter(a => a.unread && !a.scheduled),
+    waiting: presenceF.sessions.filter((s) => needsAttention(s) && !activity.sessions.some(a => a.scheduled && a.session_id === s.session_id && (a.host ?? 'local') === (s.host ?? 'local'))).sort((a, b) => b.last_at - a.last_at),
     idle: presenceF.sessions.filter((s) => s.alive && s.state === "idle" && !needsAttention(s)),
     review: issuesF.filter((i) => needsReview(i)).sort((a, b) => (b.closed_at ?? b.updated_at).localeCompare(a.closed_at ?? a.updated_at)),
     blocked: issuesF.filter((i) => i.status === "blocked"),
-  }), [issuesF, presenceF, activityF]);
+  }), [issuesF, presenceF, activityF, activity]);
 
   const counts = useMemo(() => ({
     total: issuesF.length,
@@ -260,17 +261,18 @@ export default function App() {
 
   // Use unfiltered data: switching machines is not a new event.
   const notificationInbox = useMemo(() => ({
-    waiting: presence.sessions.filter((s) => needsAttention(s)),
+    waiting: presence.sessions.filter((s) => needsAttention(s) && !activity.sessions.some(a => a.scheduled && a.session_id === s.session_id && (a.host ?? 'local') === (s.host ?? 'local'))),
     review: issues.filter((i) => needsReview(i)),
-  }), [presence, issues]);
+  }), [presence, issues, activity]);
 
   // Ignore transient failures; wait for a stable explicit request. Keep identities
   // across disconnects and distinguish the same session id on different machines.
   const notified = useRef(new Set<string>());
   const requestSignature = notificationInbox.waiting.map(x => `${x.host ?? 'local'}:${x.agent}:${x.session_id}:${x.last_at}`).sort().join('|');
   const notificationReady = useRef(false);
+  const activityReady = activity.updated_at > 0;
   useEffect(() => {
-    if (!api || !issuesLoaded || !presenceLoaded) return;
+    if (!api || !issuesLoaded || !presenceLoaded || !activityReady) return;
     const key = (x: typeof presence.sessions[number]) => `${x.host ?? 'local'}:${x.agent}:${x.session_id}:${x.last_at}`;
     if (!notificationReady.current) {
       notificationInbox.waiting.forEach(x => notified.current.add(key(x)));
@@ -285,13 +287,13 @@ export default function App() {
       }
     }, 8000);
     return () => window.clearTimeout(timer);
-  }, [requestSignature, api, issuesLoaded, presenceLoaded]);
+  }, [requestSignature, api, issuesLoaded, presenceLoaded, activityReady]);
 
   useEffect(() => {
     if (!api) return;
     const working = observedPresence.sessions.filter((s) => s.alive && s.state === "working").length;
     // Menu bars fill up fast; keep the status text to a few characters.
-    const unread = activity.sessions.filter(a => a.unread).length;
+    const unread = activity.sessions.filter(a => a.unread && !a.scheduled).length;
     const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
     api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
   }, [api, observedPresence, notificationInbox, issues, activity]);
@@ -329,7 +331,7 @@ export default function App() {
   };
 
   return (
-    <SessionActions api={api} notify={say}><TaskActions api={api} onOpen={setSelected} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
+    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?{...x,...c}:x)}));say(c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':'项目关联已保存');}}><TaskActions api={api} onOpen={setSelected} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
@@ -399,6 +401,6 @@ export default function App() {
       {newSession && api && <NewSession api={api} hosts={hosts} initialHost={hostId} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => setNewSession(false)} onCreated={(sid, host) => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
-    </div></TaskActions></SessionActions>
+    </div></TaskActions></ConversationActions></SessionActions>
   );
 }

@@ -1472,6 +1472,11 @@ def cmd_activity(a):
     out({"sessions": sorted(rows, key=lambda r: -r["last_at"]), "updated_at": time.time(), "unavailable_hosts": unavailable}, a.json, lambda x: print(json.dumps(x, ensure_ascii=False)))
 
 
+def cmd_session_preferences(a):
+    from activity import set_preferences
+    out(set_preferences(DISPATCH_DIR, a.key, json.loads(a.changes)), a.json, lambda x: print(json.dumps(x, ensure_ascii=False)))
+
+
 def cmd_seen(a):
     from activity import acknowledge
     out(acknowledge(DISPATCH_DIR, a.key, a.reply), a.json, lambda _: print("已读"))
@@ -3250,6 +3255,7 @@ def main():
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("attachment", help="read a file linked in a conversation"); s.add_argument("key"); s.add_argument("ref"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
+    s = sub.add_parser("session-preferences", help="classify a conversation without changing its transcript"); s.add_argument("key"); s.add_argument("changes"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_preferences)
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply"); s.add_argument("key"); s.add_argument("reply"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
     s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status"]); s.set_defaults(fn=cmd_session_control)
     s = sub.add_parser("reply", help="reply to an exact Agent session"); s.add_argument("op", choices=["status", "send"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)

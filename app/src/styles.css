@@ -987,3 +987,5 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .conversation-overview-detail summary{cursor:pointer;color:var(--accent)}
 .conversation-overview-detail p{line-height:1.7;overflow-wrap:anywhere;white-space:pre-wrap}
 .conversation-overview-detail small{color:var(--ink-3)}
+
+.conversation-menu{width:min(330px,calc(100vw - 16px))}.conversation-menu p{padding:0 12px;line-height:1.6}.conversation-menu form{padding:12px}.conversation-menu input{width:100%;box-sizing:border-box;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:var(--paper)}

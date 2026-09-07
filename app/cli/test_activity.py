@@ -5,7 +5,7 @@ import tempfile
 import time
 import unittest
 from contextlib import closing
-from activity import acknowledge, activity_list, connect, observe, read_stream, user_text, workspace_changes, remember_topic
+from activity import acknowledge, activity_list, connect, observe, read_stream, user_text, workspace_changes, remember_topic, set_preferences
 
 
 def record(role, text, ts, phase='final'):
@@ -30,6 +30,22 @@ class ActivityTests(unittest.TestCase):
             for r in records: f.write(json.dumps(r) + '\n')
 
     def row(self): return activity_list(self.home, self.store, {})[0]
+
+    def test_preferences_persist_independently_of_new_replies(self):
+        self.append(record('assistant','first',self.t))
+        a=self.row()
+        set_preferences(self.store,a['key'],{'scheduled':True,'project_override':'研究项目'})
+        self.append(record('assistant','second',self.t+1))
+        b=self.row()
+        self.assertTrue(b['scheduled']);self.assertTrue(b['unread'])
+        self.assertEqual(b['project_override'],'研究项目')
+        set_preferences(self.store,a['key'],{'scheduled':False})
+        self.assertFalse(self.row()['scheduled'])
+        self.assertEqual(self.row()['project_override'],'研究项目')
+        set_preferences(self.store,a['key'],{'project_override':''})
+        self.assertEqual(self.row()['project_override'],'')
+        with self.assertRaises(ValueError): set_preferences(self.store,a['key'],{'scheduled':'yes'})
+        with self.assertRaises(ValueError): set_preferences(self.store,a['key'],{'unread':False})
 
     def test_image_reference_is_not_a_goal(self):
         state={}

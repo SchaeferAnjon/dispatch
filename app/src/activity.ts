@@ -37,6 +37,7 @@ export function conversationSummary(a: Activity): string {
 }
 
 export function conversationProject(a: Activity): string {
+  if (a.project_override) return a.project_override;
   if (/^\/(?:Users|home)\/[^/]+\/?$/.test(a.cwd)) return '未关联项目';
   const workspace = a.cwd.match(/^\/(?:Users|home)\/[^/]+\/Projects\/([^/]+)/)?.[1];
   return workspace && a.project === a.cwd.split('/').filter(Boolean).slice(-1)[0] ? workspace : a.project || '未关联项目';
