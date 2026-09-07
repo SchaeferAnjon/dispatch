@@ -354,3 +354,18 @@ class Facts(unittest.TestCase):
         self.assertEqual([p for p, _ in cands], ["/m/a.md", "/m/a.md"])
         self.assertTrue(any("Hetzner" in c for _, c in cands))
         self.assertFalse(any("天气" in c for _, c in cands))
+
+
+class DynamicWorkflow(unittest.TestCase):
+    def test_split_spec(self):
+        self.assertEqual(dispatch.split_spec('codex:写测试|覆盖 diff'), ("codex", "写测试", "覆盖 diff"))
+        self.assertEqual(dispatch.split_spec('claude:只有标题'), ("claude", "只有标题", ""))
+        with self.assertRaises(ValueError): dispatch.split_spec("没有冒号")
+        with self.assertRaises(ValueError): dispatch.split_spec("codex:")
+
+    def test_discussion_filter_and_prompts(self):
+        cs = [{"text": "普通进展"}, {"text": " 【讨论】codex：拆成两块"}]
+        self.assertEqual(dispatch.discussion_of(cs), [cs[1]])
+        p1 = dispatch.discuss_prompt("task-1", "标题", 1, "先做哪个")
+        self.assertIn("bd show task-1", p1); self.assertIn("先做哪个", p1); self.assertIn("不要改代码", p1)
+        self.assertIn("第 2 轮", dispatch.discuss_prompt("task-1", "标题", 2))

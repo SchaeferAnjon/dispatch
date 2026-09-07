@@ -50,6 +50,14 @@ dispatch agent read <目标> --lines 80 / wait <目标> / keys <目标> enter / 
 ```
 kind 可选 claude、codex、opencode、gemini 等（Herdr 支持的都行）；`--extra "--effort high"` 透传给 Agent 命令行。`start --task` 会以对应身份（claude→claude-code、codex）认领任务并留一条"谁派给谁"的评论。输出里若出现"stalled"，多半是对方在等一个对话框（信任目录、审查 hooks），用 `keys <目标> enter` 或 `t` 回应。对方做完后照常 `dispatch done`；你负责汇总验证。
 
+## 讨论后分工（动态工作流，`dispatch discuss` / `dispatch split`）
+一件事拿不准怎么拆、想让几个模型先各说一次再分工：
+```bash
+dispatch discuss <id> --with codex,claude [-q "想让他们决定什么"] [--rounds 2] [--close]   # 依次起每个 Agent（自动模式），各读任务和前面的【讨论】发言，只留一条 dispatch log "【讨论】…" 就停；结束打印全部发言
+dispatch split <id> --to codex:"子任务标题|说明" --to claude:"…" [--no-start]           # 你拍板：按讨论建子任务（parent-child），打 delegated-by/to 标签，起对应 Agent 开始做；父任务留【分工】记录
+```
+派给别人的 Agent 会以自动模式启动（Codex `--dangerously-bypass-approvals-and-sandbox`，Claude `--dangerously-skip-permissions`），启动对话框（信任 hooks / 目录）会被自动应答。子任务各自 `dispatch done`，父任务由发起者收尾。界面：任务详情「讨论与分工」块，Agent 状态页看派出/接到。
+
 ## 其他常用
 ```bash
 bd list --status in_progress                 # 谁在做什么；dispatch prime 里的「同目录在跑」是同一目录的活跃会话

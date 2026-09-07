@@ -466,6 +466,33 @@ def agent_row(a):
     return {"pane_id": a.get("pane_id"), "tab_id": a.get("tab_id"), "agent": a.get("agent"), "name": a.get("name", ""), "status": a.get("agent_status"), "cwd": a.get("cwd"), "title": a.get("terminal_title_stripped") or a.get("terminal_title", ""), "focused": a.get("focused")}
 
 
+# An agent that works unattended (handed a task, or asked for one discussion turn) cannot
+# stop at every sandbox / permission prompt; these are the CLIs' own "just do it" flags.
+AUTONOMOUS_ARGS = {"codex": ["--dangerously-bypass-approvals-and-sandbox"], "claude": ["--dangerously-skip-permissions"]}
+
+# Start-up dialogs that swallow the first prompt if nobody answers them.
+STARTUP_DIALOGS = [
+    (re.compile(r"Press t to trust all", re.I), ["t"]),
+    (re.compile(r"Press enter to view hooks; esc to close", re.I), ["esc"]),
+    (re.compile(r"trust the files in this folder|Do you trust|Yes, proceed", re.I), ["enter"]),
+    (re.compile(r"Press Enter to continue", re.I), ["enter"]),
+]
+
+
+def dismiss_startup_dialogs(host, pane, tries=3):
+    """Read the pane; if a known dialog is showing, answer it. Returns what was pressed."""
+    pressed = []
+    for _ in range(tries):
+        txt = herdr(host, ["agent", "read", pane, "--lines", "40"], raw=True) or ""
+        hit = next((keys for rx, keys in STARTUP_DIALOGS if rx.search(txt)), None)
+        if not hit:
+            break
+        herdr(host, ["agent", "send-keys", pane] + hit)
+        pressed += hit
+        time.sleep(2.5)
+    return pressed
+
+
 def cmd_agent(a):
     host = herdr_target_host(a.host)
     where = host["name"] if host else local_host_name()
@@ -500,14 +527,17 @@ def cmd_agent(a):
         extra = shlex.split(a.extra) if a.extra else []
         if a.model:
             extra = ["--model", a.model] + extra
+        if (a.auto or a.task) and not any(x in extra for x in AUTONOMOUS_ARGS.get(kind, [])):
+            extra = AUTONOMOUS_ARGS.get(kind, []) + extra
         if extra:
             sargs += ["--"] + extra
-        # The new tab's shell needs a moment before it counts as "an available shell".
+        # The new tab's shell needs a while before it counts as "an available shell":
+        # fish start-up (prime, env export) can take most of a minute on a busy Mac.
         started = None
-        for attempt in range(8):
+        for attempt in range(24):
             d = herdr(host, sargs, timeout=150)
-            if isinstance(d, dict) and (d.get("error") or {}).get("code") == "agent_pane_busy" and attempt < 7:
-                time.sleep(1.5)
+            if isinstance(d, dict) and (d.get("error") or {}).get("code") == "agent_pane_busy" and attempt < 23:
+                time.sleep(2.5)
                 continue
             started = herdr_ok(d, "起 Agent").get("agent", {})
             break
@@ -524,10 +554,15 @@ def cmd_agent(a):
             time.sleep(2)
             if tab_id:
                 herdr(host, ["tab", "focus", tab_id])
+            if dismiss_startup_dialogs(host, pane):
+                res["dismissed"] = True
             pargs = ["agent", "prompt", pane, a.prompt]
             if a.wait:
                 pargs += ["--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(a.timeout)]
             d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
+            if isinstance(d, dict) and d.get("error") and dismiss_startup_dialogs(host, pane):
+                # a dialog appeared after the prompt went in: answer it and send the prompt once more
+                d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
             if isinstance(d, dict) and d.get("error"):
                 res["status"], res["warning"] = "stalled", (d["error"].get("message") or "")[:200] + "——看输出，可能在等你回答一个对话框（dispatch agent keys <pane> enter）"
             else:
@@ -3418,6 +3453,157 @@ def human_note(comments, actor):
     return re.sub(r"\s+", " ", last.get("text") or "").strip()[:240]
 
 
+# ---------------------------------------------------------------- dynamic workflow: discuss, then split
+# A task can be talked over by several agents before anyone touches code: each one reads
+# the task and the earlier voices, leaves exactly one 【讨论】 comment, and stops. The
+# initiator then splits the task into sub-tasks and hands each to an agent.
+DISCUSS_TAG = "【讨论】"
+SPLIT_TAG = "【分工】"
+
+
+def self_cmd():
+    return [sys.executable, os.path.realpath(__file__)]
+
+
+def task_project_dir(issue, names=None):
+    """Where an agent working on this task should sit: the project's latest conversation
+    folder, else ~/Projects/<project>, else here."""
+    proj = next((l.split(":", 1)[1] for l in issue.get("labels") or [] if l.startswith("project:")), "")
+    if not proj:
+        return os.getcwd()
+    names = names if names is not None else project_names()
+    best = ("", 0)
+    try:
+        for e in load_index().values():
+            cwd = (e.get("cwd") or "").rstrip("/")
+            if cwd and os.path.isdir(cwd) and project_of_cwd(cwd, names).lower() == proj.lower() and e.get("mtime", 0) > best[1]:
+                best = (cwd, e.get("mtime", 0))
+    except Exception:
+        pass
+    if best[0]:
+        return best[0]
+    guess = os.path.join(HOME, "Projects", proj)
+    return guess if os.path.isdir(guess) else os.getcwd()
+
+
+def discuss_prompt(tid, title, round_no, question=""):
+    if round_no <= 1:
+        return (f"你参加任务 {tid}「{title}」的讨论。步骤：1) `bd show {tid}` 读背景与验收项；2) `bd comments {tid}` 读已有发言（带{DISCUSS_TAG}的）；"
+                f"3) 只写一条评论：`dispatch log {tid} \"{DISCUSS_TAG}<你的身份>：方案 / 拆分建议（每个子任务一行：标题 · 建议谁做 · 为什么）/ 风险\"`。"
+                f"不要改代码、不要认领任务，写完就停。" + (f" 发起人的问题：{question}" if question else ""))
+    return (f"第 {round_no} 轮：再读一遍 `bd comments {tid}` 里别人的{DISCUSS_TAG}发言，用一条 `dispatch log {tid} \"{DISCUSS_TAG}…\"` 回应：同意什么、反对什么、最终建议怎么拆。写完就停。")
+
+
+def split_spec(spec):
+    """`codex:标题|说明` → (kind, title, description)."""
+    if ":" not in spec:
+        raise ValueError(f"格式是 kind:标题[|说明]，收到：{spec}")
+    kind, rest = spec.split(":", 1)
+    title, _, desc = rest.partition("|")
+    if not kind.strip() or not title.strip():
+        raise ValueError(f"kind 和标题都不能空：{spec}")
+    return kind.strip(), title.strip(), desc.strip()
+
+
+def discussion_of(comments):
+    return [c for c in comments if (c.get("text") or "").lstrip().startswith(DISCUSS_TAG)]
+
+
+def cmd_discuss(a):
+    issue = bd_json(["show", a.task, "--json"])
+    if not issue.get("id"):
+        raise SystemExit(f"没有任务 {a.task}")
+    kinds = [k.strip() for k in (a.with_ or "").split(",") if k.strip()]
+    if not kinds:
+        raise SystemExit("要指定参加讨论的 Agent：--with codex,claude")
+    me = os.environ.get("BEADS_ACTOR", "schaefer")
+    cwd = a.cwd or task_project_dir(issue)
+    before = len(discussion_of(bd_comments(a.task)))
+    sh(["bd", "comments", "add", a.task, f"{DISCUSS_TAG}发起：{me} 邀请 {', '.join(kinds)} 讨论" + (f"：{a.question}" if a.question else "")], env={"BEADS_ACTOR": me})
+    hostargs = ["--host", a.host] if a.host else []
+    panes = {}
+    for r in range(1, max(1, a.rounds) + 1):
+        for kind in kinds:
+            prompt = discuss_prompt(a.task, issue.get("title", ""), r, a.question)
+            if kind not in panes:
+                argv = self_cmd() + ["agent", "start", kind, "--cwd", cwd, "--label", f"讨论 {a.task}", "-p", prompt, "--auto", "--timeout", str(a.timeout), "--lines", "40", "--json"] + hostargs
+            else:
+                argv = self_cmd() + ["agent", "ask", panes[kind], prompt, "--timeout", str(a.timeout), "--lines", "40", "--json"] + hostargs
+            code, o, err = sh(argv, timeout=a.timeout // 1000 + 180)
+            try:
+                res = json.loads(o[o.find("{"):])
+            except Exception:
+                res = {}
+            if code != 0 or not res:
+                print(f"⚠ {kind} 第 {r} 轮没跑起来：{(err or o).strip()[:300]}", file=sys.stderr)
+                continue
+            panes.setdefault(kind, res.get("pane_id"))
+            if not a.json:
+                print(f"· 第 {r} 轮 {kind}（Herdr {res.get('pane_id')}）{res.get('status')}" + (f" · {res.get('warning')}" if res.get("warning") else ""))
+    comments = discussion_of(bd_comments(a.task))
+    new = comments[before:]
+    if a.close:
+        for kind, pane in panes.items():
+            if pane:
+                sh(self_cmd() + ["agent", "close", pane] + hostargs, timeout=60)
+    result = {"task": a.task, "participants": kinds, "rounds": a.rounds, "panes": panes, "comments": new}
+    if a.json:
+        print(json.dumps(result, ensure_ascii=False)); return
+    print(f"\n讨论结束：{len(new)} 条新发言（含发起）。")
+    for c in new:
+        print(f"— {c.get('author')}：{re.sub(r'\\s+', ' ', (c.get('text') or '')[len(DISCUSS_TAG):]).strip()[:400]}")
+    if panes and not a.close:
+        print("\n讨论用的 Agent 还开着：" + "、".join(f"{k}={p}" for k, p in panes.items()) + "（`dispatch agent close <pane>` 关掉）")
+    print(f"\n下一步由你拍板拆分：dispatch split {a.task} --to codex:\"子任务标题|说明\" --to claude:\"…\"")
+
+
+def cmd_split(a):
+    parent = bd_json(["show", a.task, "--json"])
+    if not parent.get("id"):
+        raise SystemExit(f"没有任务 {a.task}")
+    try:
+        specs = [split_spec(s) for s in (a.to or [])]
+    except ValueError as e:
+        raise SystemExit(str(e))
+    if not specs:
+        raise SystemExit("要给至少一个 --to kind:\"标题|说明\"")
+    me = os.environ.get("BEADS_ACTOR", "schaefer")
+    proj = next((l.split(":", 1)[1] for l in parent.get("labels") or [] if l.startswith("project:")), "")
+    cwd = a.cwd or task_project_dir(parent)
+    hostargs = ["--host", a.host] if a.host else []
+    made = []
+    for kind, title, desc in specs:
+        argv = ["create", title, "-t", "task", "-p", str(parent.get("priority", 2)), "--deps", f"parent-child:{a.task}", "--json"]
+        if proj:
+            argv += ["-l", f"project:{proj}"]
+        argv += ["--description", (desc + "\n\n" if desc else "") + f"父任务 {a.task}「{parent.get('title', '')}」的分工，由 {me} 按讨论拆出。"]
+        sub = bd_json(argv)
+        sid = sub.get("id")
+        if not sid:
+            print(f"⚠ 建不出子任务：{title}", file=sys.stderr)
+            continue
+        row = {"id": sid, "title": title, "kind": kind, "started": False}
+        if not a.no_start:
+            prompt = f"你接手子任务 {sid}「{title}」（父任务 {a.task}）。先 `bd show {sid}` 和 `bd comments {a.task}` 读讨论结论，按验收项做完，进展 dispatch log，收尾 dispatch done --reason。"
+            code, o, err = sh(self_cmd() + ["agent", "start", kind, "--cwd", cwd, "--task", sid, "--label", title[:24], "-p", prompt, "--no-wait", "--json"] + hostargs, timeout=240)
+            row["started"] = code == 0
+            try:
+                row["pane_id"] = json.loads(o[o.find("{"):]).get("pane_id")
+            except Exception:
+                pass
+            if code != 0:
+                print(f"⚠ {kind} 没起来（{sid} 已建好，可以稍后派）：{(err or o).strip()[:200]}", file=sys.stderr)
+        made.append(row)
+    note = SPLIT_TAG + "；".join(f"{r['id']} {r['title']} → {r['kind']}" + ("" if r["started"] else "（未起）") for r in made)
+    sh(["bd", "comments", "add", a.task, note], env={"BEADS_ACTOR": me})
+    if a.json:
+        print(json.dumps({"task": a.task, "subtasks": made}, ensure_ascii=False)); return
+    for r in made:
+        print(f"{r['id']}  {r['title']}  → {r['kind']}" + (f" · Herdr {r.get('pane_id')}" if r.get("pane_id") else "") + ("" if r["started"] else "  （未派出）"))
+    print(f"父任务 {a.task} 已留{SPLIT_TAG}记录；子任务做完各自 dispatch done，父任务最后由你收尾。")
+
+
+
 def starred_sessions(prefs, idx, proj, names, limit=5):
     """Conversations the user marked 追踪中 in this project: the long threads an agent
     should know exist before it starts a new one."""
@@ -3613,6 +3799,8 @@ def main():
     s = sub.add_parser("review", help="record independent Agent review and its evidence"); s.add_argument("task"); s.add_argument("--verdict", choices=["pass", "changes"], required=True); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("discuss", help="dynamic workflow step 1: several agents read a task and each leaves one 【讨论】 comment"); s.add_argument("task"); s.add_argument("--with", dest="with_", required=True, help="comma-separated kinds: codex,claude,gemini…"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
+    s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
     s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])
     s.add_argument("target_or_kind", nargs="?", help="start: kind (claude|codex|opencode|gemini…); others: pane id / name / title / task id")
@@ -3630,6 +3818,7 @@ def main():
     s.add_argument("--lines", type=int, default=80, help="lines of terminal output to read back")
     s.add_argument("--json", action="store_true")
     s.add_argument("--extra", default="", help="start: extra args for the agent CLI, as one quoted string (e.g. --extra '--effort high')")
+    s.add_argument("--auto", action="store_true", help="start: unattended mode (Codex bypasses sandbox approvals, Claude skips permissions); implied by --task")
     s.set_defaults(fn=cmd_agent)
     s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link"); s.add_argument("what", nargs="?", choices=["run", "url"], default="run"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)

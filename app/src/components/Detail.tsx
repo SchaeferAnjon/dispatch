@@ -6,6 +6,7 @@ import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
 
 import { TaskRelations } from "./ProjectHub";
+import { KINDS } from "./Delegate";
 
 interface Props { rows: Activity[]; onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
 
@@ -46,6 +47,26 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   const [draft, setDraft] = useState(() => { try { return sessionStorage.getItem(`dispatch-draft:${id}`) ?? ""; } catch { return ""; } });
   useEffect(() => { try { if (draft) sessionStorage.setItem(`dispatch-draft:${id}`, draft); else sessionStorage.removeItem(`dispatch-draft:${id}`); } catch { /* storage unavailable */ } }, [id, draft]);
   const [busy, setBusy] = useState(false);
+  // Dynamic workflow: a discussion round (each agent leaves one 【讨论】 comment) and a split into sub-tasks.
+  const [wf, setWf] = useState<"" | "discuss" | "split">("");
+  const [wfKinds, setWfKinds] = useState<string[]>(["codex"]);
+  const [wfQuestion, setWfQuestion] = useState("");
+  const [wfRows, setWfRows] = useState<{ kind: string; title: string; desc: string }[]>([{ kind: "codex", title: "", desc: "" }]);
+  const [wfBusy, setWfBusy] = useState(false);
+  const refreshAfterWorkflow = async () => { try { const [i, c] = await Promise.all([api.show(id), api.comments(id)]); setIssue(i); setComments(c); } catch { /* next stamp reloads */ } };
+  const runDiscuss = async () => {
+    if (!wfKinds.length) return;
+    setWfBusy(true);
+    try { const raw = await api.on("local", ["discuss", id, "--with", wfKinds.join(","), ...(wfQuestion.trim() ? ["--question", wfQuestion.trim()] : []), "--json"]); const r = JSON.parse(raw.slice(raw.indexOf("{"))); onDone(`讨论结束：${(r.comments?.length ?? 1) - 1} 条发言`); setWf(""); await refreshAfterWorkflow(); }
+    catch (e) { onError(String(e)); } finally { setWfBusy(false); }
+  };
+  const runSplit = async () => {
+    const rows = wfRows.filter((r) => r.title.trim());
+    if (!rows.length) return;
+    setWfBusy(true);
+    try { const raw = await api.on("local", ["split", id, ...rows.flatMap((r) => ["--to", `${r.kind}:${r.title.trim()}${r.desc.trim() ? "|" + r.desc.trim() : ""}`]), "--json"]); const r = JSON.parse(raw.slice(raw.indexOf("{"))); onDone(`已拆出 ${r.subtasks?.length ?? rows.length} 个子任务并派出`); setWf(""); await refreshAfterWorkflow(); }
+    catch (e) { onError(String(e)); } finally { setWfBusy(false); }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -154,6 +175,31 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
         </div>}
 
         <section className="sec"><h4>所属会话</h4><TaskRelations issue={issue} rows={rows} api={api} onOpen={onOpenSession} onSaved={()=>onDone("会话归属已保存")}/></section>
+        {(() => {
+          const discussion = comments.filter((c) => c.text.trimStart().startsWith("【讨论】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
+          const subtasks = (issue.dependents ?? []).filter((d) => !d.dependency_type || d.dependency_type === "parent-child");
+          if (issue.status === "closed" && !discussion.length && !subtasks.length) return null;
+          return (
+            <section className="sec workflow">
+              <h4>讨论与分工 <span className="muted">先让几个 Agent 各说一次，再拆成子任务派出去</span></h4>
+              {discussion.length > 0 && <div className="discussion">{discussion.map((c) => { const a = actorOf(c.author, me); return <div key={c.id} className="say"><Avatar actor={a} /><div><div className="l1"><b>{a?.name ?? c.author}</b><span className="ts">{relTime(c.created_at)}</span></div><Markdown src={c.text.trimStart().slice(4)} className="compact" /></div></div>; })}</div>}
+              {subtasks.length > 0 && <div className="subtasks">{subtasks.map((d) => { const st = statusLabel(d); const who = actorOf(d.assignee, me); return <button key={d.id} className="subtask" onClick={() => onSelect(d.id)}><span className={`st sm ${st.cls}`}>{st.text}</span><span className="t">{d.title}</span>{who && <span className="muted small">{who.name}</span>}<span className="mono muted small">{d.id}</span></button>; })}</div>}
+              {issue.status !== "closed" && wf === "" && <div className="task-links"><button className="btn sm" onClick={() => setWf("discuss")}>发起讨论…</button><button className="btn sm" onClick={() => setWf("split")}>拆分并派活…</button></div>}
+              {wf === "discuss" && <div className="wf-form">
+                <div className="task-links">{KINDS.map(([k, l]) => <label key={k} className="chip"><input type="checkbox" checked={wfKinds.includes(k)} onChange={(e) => setWfKinds(e.target.checked ? [...wfKinds, k] : wfKinds.filter((x) => x !== k))} /> {l}</label>)}</div>
+                <input placeholder="想让他们决定什么（可空）" value={wfQuestion} onChange={(e) => setWfQuestion(e.target.value)} />
+                <p className="muted small">每个 Agent 会在这台电脑的 Herdr 里起一个会话，读任务和前面的发言，只留一条【讨论】评论就停。通常要几分钟，期间这个面板会等着。</p>
+                <div className="task-links"><button className="btn primary sm" disabled={wfBusy || !wfKinds.length} onClick={() => void runDiscuss()}>{wfBusy ? "讨论进行中…" : "开始讨论"}</button><button className="btn sm" disabled={wfBusy} onClick={() => setWf("")}>取消</button></div>
+              </div>}
+              {wf === "split" && <div className="wf-form">
+                {wfRows.map((r, n) => <div key={n} className="wf-row"><select value={r.kind} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, kind: e.target.value } : x))}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select><input placeholder="子任务标题" value={r.title} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, title: e.target.value } : x))} /><input placeholder="说明（可空）" value={r.desc} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, desc: e.target.value } : x))} /></div>)}
+                <div className="task-links"><button className="link" onClick={() => setWfRows([...wfRows, { kind: "codex", title: "", desc: "" }])}>＋ 再加一个</button></div>
+                <p className="muted small">每个子任务建成父任务的子项，标上谁派给谁，并在 Herdr 里起对应 Agent 开始做。</p>
+                <div className="task-links"><button className="btn primary sm" disabled={wfBusy || !wfRows.some((r) => r.title.trim())} onClick={() => void runSplit()}>{wfBusy ? "拆分中…" : "拆分并派出"}</button><button className="btn sm" disabled={wfBusy} onClick={() => setWf("")}>取消</button></div>
+              </div>}
+            </section>
+          );
+        })()}
         {issue.status === "closed" && <section className="sec review-evidence">
           <h4>交付与验证 <span className="muted">{isReviewed(issue) ? "已记录复核通过" : needsReview(issue) ? "等待 Agent 复核" : "已完成 · 无需你点击审核"}</span></h4>
           <p className="review-gap">{ac.length ? `${ac.filter((a) => a.done).length}/${ac.length} 项已勾选 · ${ac.filter((a) => !a.done).length} 项仍待核对` : "尚未填写验收标准"}</p>

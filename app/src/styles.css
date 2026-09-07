@@ -495,6 +495,15 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .home-project.folded>header .name{font-size:15px}
 .home-project>header .digest{font-size:12.5px;color:var(--ink-2);text-align:left;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .home-project>header .digest .hot{color:var(--s-block);font-weight:500}
+.workflow .discussion{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.workflow .say{display:flex;gap:8px;align-items:flex-start;font-size:12.5px}
+.workflow .say .l1{display:flex;gap:8px;align-items:baseline}.workflow .say .ts{color:var(--ink-3);font-size:11px}
+.workflow .subtasks{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.workflow .subtask{display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--win);text-align:left;font-size:12.5px}
+.workflow .subtask .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-form{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px dashed var(--line);border-radius:8px;margin-top:6px}
+.wf-form .chip input{margin:0 2px 0 0}
+.wf-row{display:grid;grid-template-columns:110px 1fr 1fr;gap:6px}
 .agent-delegations{display:flex;flex-direction:column;gap:6px;padding:8px 0 2px;font-size:12px}
 .agent-delegations>div{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .agent-delegations .lbl{color:var(--ink-3);white-space:nowrap}
