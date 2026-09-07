@@ -1,6 +1,6 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "folders" | "agents" | "sessions" | "stats" | "skills" | "rules" | "pitfalls" | "env" | "quota" | "trash";
+export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "agents" | "sessions" | "stats" | "skills" | "rules" | "pitfalls" | "env" | "quota" | "trash";
 
 export interface StatsTokens { in: number; out: number; cr: number; cw: number; think: number }
 export interface StatsDay { date: string; msgs: number; tokens: number; in: number; out: number; cr: number; cw: number; by: Record<string, number> }
@@ -26,7 +26,6 @@ export interface Host {
   rustdesk: boolean; rustdesk_id: string; sunshine: boolean; sunshine_ui: string; uu: boolean;
   recommend: "novnc" | "vnc" | "rustdesk" | "moonlight" | "uu" | ""; why: string;
 }
-export interface Folder { cwd: string; name: string; sessions: number; agents: Record<string, number>; last_at: number; first_at: string | null; turns: number; tasks: string[]; exists: boolean }
 export interface GraphEdge { from: string; to: string; type: string }
 export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }
 export interface QuotaWindow { used_percent: number | null; resets_at: number | null; label: string }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Activity, Issue, SessionRef } from './types';
-import { projectConversations, isOutcome, linkedSessions, originSession, projectGroups, sourceTasks } from './projectModel';
+import { projectConversations, isOutcome, knownProjects, linkedSessions, originSession, projectGroups, sourceTasks } from './projectModel';
 
 describe('project ownership and outcomes', () => {
   const task = {id:'task-one',labels:['project:demo'],updated_at:'2026-09-07T12:00:00Z'} as Issue;
@@ -32,5 +32,12 @@ describe('project ownership and outcomes', () => {
     const groups=projectGroups([{...session,project_override:'research'}],[],[{...task,labels:['project:delivery','dispatch:outcome']}]);
     expect(groups.map(p=>p.name).sort()).toEqual(['delivery','research']);
     expect(groups.find(p=>p.name==='delivery')?.items).toEqual([]);
+  });
+});
+
+describe('known project names', () => {
+  it('collects task labels and hand-set conversation projects once', () => {
+    const rows=[{project_override:'研究'} as Activity,{project_override:''} as Activity,{project_override:'研究'} as Activity];
+    expect(knownProjects([{labels:['project:demo']} as Issue,{labels:[] as string[]} as Issue],rows)).toEqual(['demo','研究']);
   });
 });

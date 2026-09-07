@@ -1,4 +1,4 @@
-import type { ActivitySnapshot, Comment, Folder, GraphData, HistoryEntry, Host, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar, Insights } from "./types";
+import type { ActivitySnapshot, Comment, GraphData, HistoryEntry, Host, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar, Insights } from "./types";
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
@@ -39,7 +39,6 @@ export interface Api {
   hosts(): Promise<Host[]>;
   on(host: string, args: string[], stdin?: string): Promise<string>;
   graph(): Promise<GraphData>;
-  folders(): Promise<Folder[]>;
   openPath(path: string): Promise<void>;
   rulesRead(): Promise<string>;
   rulesWrite(content: string): Promise<void>;
@@ -136,7 +135,6 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "notify" | "tra
     hosts: async () => parse<Host[]>(await call("hosts"), []),
     on: (host, args, stdin) => call("dispatch_on", { host: host === "local" ? null : host, args, stdin: stdin ?? null }),
     graph: async () => parse<GraphData>(await call("graph"), { nodes: [], edges: [] }),
-    folders: async () => parse<Folder[]>(await call("folders"), []),
     openPath: async (path) => void (await invoke("open_path", { path })),
     rulesRead: () => call("rules_read"),
     rulesWrite: async (content) => void (await call("rules_write", { content })),

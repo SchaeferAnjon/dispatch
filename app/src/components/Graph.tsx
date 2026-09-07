@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import dagre from "@dagrejs/dagre";
 import type { Api } from "../api";
 import { actorOf, projectColor, projectOf, statusLabel } from "../derive";
+import { isOutcome } from "../projectModel";
+import { isTrashed } from "./TaskActions";
 import type { GraphData, Issue } from "../types";
 
 interface Props { api: Api; me: string; version: number; selected: string | null; onSelect: (id: string) => void }
@@ -22,7 +24,13 @@ export function GraphView({ api, me, version, selected, onSelect }: Props) {
 
   useEffect(() => {
     let alive = true;
-    api.graph().then((g) => { if (alive) { setData(g); setLoaded(true); } }).catch(() => {});
+    api.graph().then((g) => {
+      if (!alive) return;
+      // Outcomes are deliverables, trashed tasks are gone: neither belongs on a thread.
+      const keep = new Set(g.nodes.filter((n) => !isOutcome(n) && !isTrashed(n)).map((n) => n.id));
+      setData({ nodes: g.nodes.filter((n) => keep.has(n.id)), edges: g.edges.filter((e) => keep.has(e.from) && keep.has(e.to)) });
+      setLoaded(true);
+    }).catch(() => {});
     return () => { alive = false; };
   }, [api, version]);
 

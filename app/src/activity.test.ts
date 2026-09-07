@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canReadReply, activityKey, conversationSummary, conversationProject } from './activity';
+import { canReadReply, activityKey, conversationSummary, conversationProject, resolveProject } from './activity';
 import type { Activity } from './types';
 const a = { key: 'codex:id', host:'local', unread:true, reply_id:'2:reply' } as Activity;
 describe('read cursor', () => {
@@ -30,5 +30,17 @@ describe('conversation context', () => {
     expect(conversationProject({...a,cwd:'/Users/apple',project:'apple',project_override:'日报'})).toBe('日报');
     expect(conversationProject({...a, cwd:'/Users/apple/Projects/kanban', project:'kanban'})).toBe('kanban');
     expect(conversationProject({...a, cwd:'/Users/apple/Projects/relecture/app', project:'app'})).toBe('relecture');
+  });
+});
+
+describe('project resolution', () => {
+  const at = (cwd: string, project = cwd.split('/').filter(Boolean).slice(-1)[0] || '') => ({ cwd, project });
+  it('follows one precedence: override, home, ~/Projects, known board name, leaf folder', () => {
+    expect(resolveProject({ ...at('/Users/x'), project_override: '日报' })).toBe('日报');
+    expect(resolveProject(at('/Users/x'))).toBe('未关联项目');
+    expect(resolveProject(at('/Users/x/Projects/kanban/app/src'))).toBe('kanban');
+    expect(resolveProject(at('/Users/x/workspace/HIWI/notes'), ['hiwi'])).toBe('hiwi');
+    expect(resolveProject(at('/Users/x/workspace/HIWI/notes'))).toBe('notes');
+    expect(resolveProject(at('/Users/x/Documents/thesis/'))).toBe('thesis');
   });
 });

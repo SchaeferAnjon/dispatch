@@ -104,11 +104,6 @@ export function fixtureApi(): Api {
     envGet: async () => "abc123def456",
     envSet: async () => {},
     envUnset: async () => {},
-    folders: async (): Promise<import("./types").Folder[]> => [
-      { cwd: "/Users/x/Projects/kanban", name: "kanban", sessions: 2, agents: { "claude-code": 2 }, last_at: now / 1000 - 120, first_at: new Date(now - 4 * 3600e3).toISOString(), turns: 300, tasks: ["task-9lo"], exists: true },
-      { cwd: "/Users/x/Projects/demo-app", name: "demo-app", sessions: 1, agents: { codex: 1 }, last_at: now / 1000 - 5000, first_at: null, turns: 9, tasks: ["task-4mk"], exists: true },
-      { cwd: "/Users/x/Projects/bookmark", name: "bookmark", sessions: 1, agents: { "claude-code": 1 }, last_at: now / 1000 - 7 * 3600, first_at: null, turns: 133, tasks: [], exists: false },
-    ],
     openPath: async () => {},
     hosts: async () => [],
     on: async (_h, args) => {

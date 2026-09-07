@@ -16,7 +16,6 @@ const MORE: { v: View; icon: string; label: string }[] = [
   { v: "stats", icon: "chart", label: "统计与额度" },
   { v: "graph", icon: "graph", label: "脉络" },
   { v: "projects", icon: "project", label: "项目" },
-  { v: "folders", icon: "folder", label: "文件夹" },
   { v: "skills", icon: "skill", label: "技能" },
   { v: "rules", icon: "rule", label: "规则与资料" },
   { v: "pitfalls", icon: "pit", label: "知识库" },

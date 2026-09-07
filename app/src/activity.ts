@@ -36,12 +36,25 @@ export function conversationSummary(a: Activity): string {
   return result.length > 110 ? result.slice(0, 109) + '…' : result;
 }
 
-export function conversationProject(a: Activity): string {
+export const UNGROUPED_PROJECT = '未关联项目';
+
+// The one rule for which project a conversation belongs to. Precedence: what the
+// user set by hand; a home-directory chat belongs to nothing; anything under
+// ~/Projects/<x>/… is <x>; a path segment that names a project already on the
+// board (case-insensitive) wins over the leaf folder; otherwise the leaf folder.
+export function resolveProject(a: { cwd: string; project: string; project_override?: string }, known: Iterable<string> = []): string {
   if (a.project_override) return a.project_override;
-  if (/^\/(?:Users|home)\/[^/]+\/?$/.test(a.cwd)) return '未关联项目';
-  const workspace = a.cwd.match(/^\/(?:Users|home)\/[^/]+\/Projects\/([^/]+)/)?.[1];
-  return workspace && a.project === a.cwd.split('/').filter(Boolean).slice(-1)[0] ? workspace : a.project || '未关联项目';
+  const cwd = (a.cwd || '').replace(/\/+$/, '');
+  if (!cwd || /^\/(?:Users|home)\/[^/]+$/.test(cwd)) return UNGROUPED_PROJECT;
+  const workspace = cwd.match(/^\/(?:Users|home)\/[^/]+\/Projects\/([^/]+)/)?.[1];
+  if (workspace) return workspace;
+  const names = new Map<string, string>();
+  for (const n of known) if (n) names.set(n.toLowerCase(), n);
+  const parts = cwd.split('/').filter(Boolean);
+  for (let i = parts.length - 1; i >= 0; i--) { const hit = names.get(parts[i].toLowerCase()); if (hit) return hit; }
+  return a.project || parts[parts.length - 1] || UNGROUPED_PROJECT;
 }
+export function conversationProject(a: Activity): string { return resolveProject(a); }
 export function activityLabel(a: Activity) {
   if (a.stale) return '活动已暂停更新';
   if (a.state === 'working') return '进行中';

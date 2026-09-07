@@ -17,18 +17,18 @@ import { InboxView, type InboxItems } from "./components/Inbox";
 import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
 import { PROJECT_FLAGS_KEY, parseProjectFlags, serializeProjectFlags, withProjectFlag, type ProjectFlags } from "./projectFlags";
-import { isOutcome, linkedSessions, sourceTasks, projectConversations } from "./projectModel";
-import { activityKey, conversationProject, mergeActivity } from "./activity";
+import { isOutcome, knownProjects, linkedSessions, projectGroups, sourceTasks, projectConversations } from "./projectModel";
+import { UNGROUPED_PROJECT, activityKey, conversationProject, mergeActivity, resolveProject } from "./activity";
+import { rankProjects } from "./projectFlags";
 import { GraphView } from "./components/Graph";
-import { FoldersView } from "./components/Folders";
 import { Tour } from "./components/Guide";
 import { MobileNav } from "./components/MobileNav";
 import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", folders: "文件夹", agents: "Agent 状态", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "folders", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash"];
+const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
 
@@ -75,7 +75,6 @@ export default function App() {
   const [inboxTab, setInboxTab] = useState<keyof InboxItems | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [projectSelection, setProjectSelection] = useState<string | null>(()=>new URLSearchParams(location.search).get("project"));
-  const [folderSelection, setFolderSelection] = useState<string | null>(null);
   const [backStack, setBackStack] = useState<{ view: View; selected: string | null }[]>([]);
   const navigateContext = (next: View) => { setBackStack((stack) => [...stack, { view, selected }]); changeView(next); setSelected(null); };
   const goBack = () => { const previous = backStack[backStack.length - 1]; if (previous) { changeView(previous.view); setSelected(previous.selected); setBackStack((stack) => stack.slice(0, -1)); } };
@@ -185,20 +184,6 @@ export default function App() {
 
   const [hosts, setHosts] = useState<Host[]>([]);
 
-  // 收藏 / 归档 per project: one shared bd memory, re-read whenever the board changes.
-  const [projectFlags, setProjectFlags] = useState<ProjectFlags>({});
-  useEffect(() => {
-    if (!api) return;
-    let alive = true;
-    api.memories().then((m) => { if (alive) setProjectFlags(parseProjectFlags(m)); }).catch(() => {});
-    return () => { alive = false; };
-  }, [api, version]);
-  const setProjectFlag = async (name: string, change: { starred?: boolean; archived?: boolean }) => {
-    if (!api) return;
-    const next = withProjectFlag(projectFlags, name, change);
-    try { await api.remember(PROJECT_FLAGS_KEY, serializeProjectFlags(next)); setProjectFlags(next); say(change.starred === true ? `已收藏 ${name}` : change.starred === false ? `已取消收藏 ${name}` : change.archived === true ? `已归档 ${name}，工作台不再显示` : `已取消归档 ${name}`); }
-    catch (e) { say(String(e), true); }
-  };
 
   // The Macs on the tailnet (this one + hosts.json), for the 机器 strip on the Agents view.
   useEffect(() => {
@@ -224,20 +209,34 @@ export default function App() {
   const localName = hosts.find((h) => h.local)?.name ?? "";
   const observedPresence = useMemo(() => mergeActivity(presence, activity.sessions), [presence, activity]);
   const presenceF = useMemo(() => hostFilter ? { ...observedPresence, sessions: observedPresence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : observedPresence, [observedPresence, hostFilter, localName]);
-  const refsF = useMemo(() => hostFilter ? new Map([...refs].filter(([, r]) => (r.host_name ?? localName) === hostFilter)) : refs, [refs, hostFilter, localName]);
-  const activityF = useMemo(() => hostFilter ? activity.sessions.filter(a => (a.host_name ?? localName) === hostFilter) : activity.sessions, [activity, hostFilter, localName]);
+  // Every conversation carries its resolved project from here on, so each view agrees on it.
+  const known = useMemo(() => knownProjects(issues, activity.sessions), [issues, activity]);
+  const refsF = useMemo(() => new Map([...refs].filter(([, r]) => !hostFilter || (r.host_name ?? localName) === hostFilter).map(([id, r]) => [id, { ...r, project: resolveProject(r, known) }])), [refs, hostFilter, localName, known]);
+  const activityF = useMemo(() => activity.sessions.filter(a => !hostFilter || (a.host_name ?? localName) === hostFilter).map(a => ({ ...a, project: resolveProject(a, known) })), [activity, hostFilter, localName, known]);
   const projectRows = useMemo(()=>projectConversations(activityF,[...refsF.values()]),[activityF,refsF]);
+  // 收藏 / 归档 per project: one shared bd memory, re-read whenever the board changes.
+  const [projectFlags, setProjectFlags] = useState<ProjectFlags>({});
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    api.memories().then((m) => { if (alive) setProjectFlags(parseProjectFlags(m)); }).catch(() => {});
+    return () => { alive = false; };
+  }, [api, version]);
+  const setProjectFlag = async (name: string, change: { starred?: boolean; archived?: boolean }) => {
+    if (!api) return;
+    const next = withProjectFlag(projectFlags, name, change);
+    try { await api.remember(PROJECT_FLAGS_KEY, serializeProjectFlags(next)); setProjectFlags(next); say(change.starred === true ? `已收藏 ${name}` : change.starred === false ? `已取消收藏 ${name}` : change.archived === true ? `已归档 ${name}，工作台不再显示` : `已取消归档 ${name}`); }
+    catch (e) { say(String(e), true); }
+  };
   const hostIssues = useMemo(() => hostFilter ? issues.filter((i) => hostOfIssue(i, refs) === hostFilter) : issues, [issues, refs, hostFilter]);
   const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)&&!isOutcome(i)), [hostIssues]);
   const outcomesF = useMemo(() => issues.filter(i=>!isTrashed(i)&&isOutcome(i)&&(!hostFilter || linkedSessions(i).some(id=>!!refs.get(id)&&(refs.get(id)?.host_name||localName)===hostFilter) || sourceTasks(i).some(id=>hostIssues.some(t=>t.id===id)))), [issues, hostIssues, hostFilter, refs, localName]);
   const agents = useMemo(() => agentsFrom(issuesF, me, presenceF.sessions), [issuesF, me, presenceF]);
   const runningSessions = presenceF.sessions.filter((s) => s.alive && s.state === "working").length;
-  const projects = useMemo(() => {
-    const m = new Map<string, number>();
-    issuesF.forEach((i) => m.set(projectOf(i), (m.get(projectOf(i)) ?? 0) + 1));
-    activityF.filter(a=>a.project_override).forEach(a => { const name=conversationProject(a); if(!m.has(name))m.set(name,0); });
-    return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => (a.name === "" ? 1 : b.name === "" ? -1 : b.count - a.count));
-  }, [issuesF, activityF]);
+  // The same project list the workbench and project hub show: resolved from conversations,
+  // task labels and outcomes together, archived ones set aside.
+  const projectList = useMemo(() => rankProjects(projectGroups(projectRows, issuesF, outcomesF).filter((p) => p.name !== UNGROUPED_PROJECT), projectFlags), [projectRows, issuesF, outcomesF, projectFlags]);
+  const projects = useMemo(() => projectList.active.map((p) => ({ name: p.name, count: p.items.length })), [projectList]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -408,7 +407,6 @@ export default function App() {
             {view === "sessions" && api && <SessionsView outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
-            {view === "folders" && api && <FoldersView selectedFolder={folderSelection} onFolderChange={setFolderSelection} api={api} me={me} issues={issuesF} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "env" && api && <EnvView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

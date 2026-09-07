@@ -59,7 +59,6 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
         {item("board", "board", "全部任务", <span className="n">{counts.total}</span>, taskView)}
         {item("graph", "graph", "脉络")}
         {item("projects", "project", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>)}
-        {item("folders", "folder", "文件夹")}
         {filters.project !== null && taskView && (
           <a className="filter-row" onClick={() => setFilters({ ...filters, project: null })} title="点击清除筛选">
             <span className="proj" style={{ background: projectColor(filters.project) }} />只看 {filters.project || "未分项目"}<span className="n">✕</span>
