@@ -6,6 +6,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import dispatch
 import session_control as c
 from session_reply import Rejected
 
@@ -16,6 +17,12 @@ class SessionControl(unittest.TestCase):
         self.d = SimpleNamespace(HOME=self.temp.name, DISPATCH_DIR=self.temp.name, SESS_DIR=self.temp.name,
                                  load_index=lambda: {}, herdr=Mock(return_value={'result': {}}), sh=Mock(return_value=(0,'','')))
         self.data = dict(request_id=str(uuid.uuid4()), agent='claude-code', cwd=self.temp.name, prompt='测试 `literal` $(literal)\n下一行')
+
+    def test_named_terminal_fallback_matches_remote_server(self):
+        with patch.object(dispatch, 'HOME', self.temp.name), patch.object(dispatch.os.path, 'exists', side_effect=lambda p: p.endswith('/main/herdr.sock')):
+            self.assertEqual(dispatch.herdr_local_command(['agent','list'])[1:], ['--session','main','agent','list'])
+        with patch.object(dispatch.os.path, 'exists', return_value=True):
+            self.assertEqual(dispatch.herdr_local_command(['agent','list'])[1:], ['agent','list'])
 
     def test_folders_are_real_and_home_is_for_selected_machine(self):
         os.mkdir(self.temp.name+'/项目'); os.mkdir(self.temp.name+'/.hidden')

@@ -80,11 +80,19 @@ def ps_table():
     return t
 
 
+def herdr_local_command(args):
+    # The Mac mini keeps its persistent terminal in the named "main" session.
+    # GUI and SSH callers must resolve the same running server.
+    root = os.path.join(HOME, '.config', 'herdr')
+    named = not os.path.exists(os.path.join(root, 'herdr.sock')) and os.path.exists(os.path.join(root, 'sessions', 'main', 'herdr.sock'))
+    return [HERDR] + (['--session', 'main'] if named else []) + args
+
+
 def herdr_agents():
     if not os.path.exists(HERDR):
         return []
     try:
-        code, o, _ = sh([HERDR, "agent", "list"], timeout=5)
+        code, o, _ = sh(herdr_local_command(["agent", "list"]), timeout=5)
         if code != 0:
             return []
         return json.loads(o).get("result", {}).get("agents", [])
@@ -405,7 +413,7 @@ def herdr(host, args, timeout=30, raw=False):
     parsed JSON — {"result": …} or {"error": …} — or the raw text when raw=True."""
     import shlex
     if host is None:
-        r = subprocess.run([HERDR] + args, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(herdr_local_command(args), capture_output=True, text=True, timeout=timeout)
     else:
         sess = host.get("herdr_session") or "main"
         remote = "env PATH=$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin herdr --session " + shlex.quote(sess) + " " + " ".join(shlex.quote(x) for x in args)
