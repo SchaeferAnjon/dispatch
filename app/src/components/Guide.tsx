@@ -4,12 +4,12 @@ import type { View } from "../types";
 // One sentence per view, shown under the title until dismissed. Plain words,
 // no product jargon: what you see here and what to do with it.
 export const VIEW_INTRO: Partial<Record<View, string>> = {
-  home: "从最近会话接着工作：查看正在执行的操作、未读回复，再进入对话、文件和任务。",
+  home: "按项目看现在的情况：每个项目下等你回的会话、在跑的会话、进行中的任务和最新成果。点项目名进入完整记录。",
   inbox: "未读回复在读到最新后自动移出；明确的确认请求和被卡住的任务单独保留。Agent 复核不计入你的待处理数量。",
   board: "所有任务，三列对应工作进度：待办 → 进行中 → 已完成；Agent 复核单独记录。卡片上的「源自」是它属于哪条线。右键卡片或点击 ⋯ 可操作，移除的任务可在回收站恢复。",
   table: "和看板同一份任务，换成表格，适合排序和扫一眼。",
   graph: "任务是一根线：左边是源头，右边是它派生出来的。悬停或点一个节点，整条线高亮。",
-  projects: "按项目看：每个项目有多少任务在做、已完成和待 Agent 复核，参与过哪些 Agent，对应哪个文件夹。",
+  projects: "一个项目的完整记录：会话、任务、成果各一页；任务可指定发起和参与的会话，成果可汇总多个任务。",
   folders: "按文件夹看：这个目录下你和哪些 Agent 聊过、每次聊了什么（开头那句话就是主题），点进去看完整聊天记录。",
   agents: "查看已检测到的会话与来源；运行状态优先使用实际活动，只有进程信息时标为未知。",
   sessions: "Claude Code 和 Codex 会话持续更新；读对话、查看实时操作与工作区差异，也可打开原会话。",
@@ -19,7 +19,7 @@ export const VIEW_INTRO: Partial<Record<View, string>> = {
 };
 
 const STEPS: { title: string; body: string; view: View }[] = [
-  { title: "从会话接着工作", body: "工作台显示最近会话、正在执行的操作和未读回复。点开一条会话，就能读到最新进展。", view: "home" },
+  { title: "从项目接着工作", body: "工作台按项目排列：一个项目有多个会话，每个会话延伸出任务。卡片上是它现在的情况——等你回的、在跑的、做到哪的；点项目名看完整记录。", view: "home" },
   { title: "什么会出现在「等我」", body: "新回复会进入未读列表，读到最新后自动清除；在原 Agent 里继续回复，也会被识别。仅在原应用中查看，暂时无法同步已读。明确的确认请求仍需处理。", view: "inbox" },
   { title: "对话、操作与文件放在一起", body: "会话页持续刷新。向上翻历史时不会强制跳回底部；「实时活动」显示工具操作，「文件」展示当前工作区差异和会话中的编辑记录。", view: "sessions" },
   { title: "任务记录交付过程", body: "看板按待办、进行中、已完成排列。完成由 Agent 记录，互审独立进行；你无需再点击一次完成。", view: "board" },

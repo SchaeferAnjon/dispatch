@@ -15,6 +15,7 @@ import { RulesView } from "./components/InstructionCenter";
 import { EnvView } from "./components/Env";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { ProjectHub } from "./components/ProjectHub";
+import { HomeView } from "./components/Home";
 import { isOutcome, linkedSessions, sourceTasks, projectConversations } from "./projectModel";
 import { activityKey, conversationProject, mergeActivity } from "./activity";
 import { GraphView } from "./components/Graph";
@@ -237,16 +238,16 @@ export default function App() {
   }, [issuesF, filters, query, me]);
 
   useEffect(() => {
-    if (!api || view !== "board") return;
+    if (!api || (view !== "board" && view !== "home")) return;
     let alive = true;
     // Only the visible active tasks need recent progress; avoid fetching the whole archive.
-    const active = visible.filter((i) => i.status === "in_progress");
+    const active = (view === "home" ? issuesF : visible).filter((i) => i.status === "in_progress");
     Promise.all(active.map(async (i) => {
       try { const notes = await api.comments(i.id); const latest = notes.sort((a, b) => b.created_at.localeCompare(a.created_at))[0]; return [i.id, latest?.text ?? ""] as const; }
       catch { return [i.id, ""] as const; }
     })).then((entries) => { if (alive) setProgress(Object.fromEntries(entries)); });
     return () => { alive = false; };
-  }, [api, view, visible]);
+  }, [api, view, visible, issuesF]);
 
   const inbox = useMemo<InboxItems>(() => ({
     unread: activityF.filter(a => a.unread && !a.scheduled),
@@ -330,6 +331,8 @@ export default function App() {
     try { say((await api.focusSession(id)).trim() || "已切过去"); } catch (e) { say(String(e), true); }
   };
 
+  const phoneLink = isTauri && api ? async () => { try { await api.copy((await api.on("local", ["serve", "url"])).trim()); say("手机访问链接已复制"); } catch (e) { say(String(e), true); } } : undefined;
+
   const copyResume = async (agent: string, sessionId: string, cwd: string) => {
     if (!api) return;
     try { const cmd = await api.resumeCmd(agent, sessionId, cwd); await api.copy(cmd); say("恢复命令已复制，去终端粘贴回车"); } catch (e) { say(String(e), true); }
@@ -379,7 +382,8 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {(view === "home" || view === "projects") && api && <ProjectHub connectionError={activityError} unavailable={activity.unavailable_hosts} onPhone={isTauri ? async()=>{try{await api.copy((await api.on("local",["serve","url"])).trim());say("手机访问链接已复制");}catch(e){say(String(e),true);}} : undefined} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
+            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={(name)=>{setProjectSelection(name);setView("projects");}} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onInbox={(tab)=>{setView("inbox");setInboxTab(tab);}} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
+            {view === "projects" && api && <ProjectHub connectionError={activityError} unavailable={activity.unavailable_hosts} onPhone={phoneLink} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
