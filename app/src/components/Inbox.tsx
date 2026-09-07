@@ -1,3 +1,4 @@
+import { conversationProject } from "../activity";
 import { useState } from "react";
 import { parseAcceptance, sessionStatus, actorOf, durSince, NO_RESUME, projectOf, relTime } from "../derive";
 import { OpenSessionButton } from "./SessionActions";
@@ -21,7 +22,7 @@ export function InboxView({ onRead, onOpen, initialTab, items, me, onSelect, onR
       </div>
       {(total > 0 || tab === "review" || tab === "idle") && items[tab].length === 0 && <div className="empty">这个分类没有待处理事项</div>}
       {total === 0 && tab !== "idle" && tab !== "review" && <div className="empty big">✓ 暂时没有等我的事项<br /><span className="muted">新回复会出现在这里；读到最新后自动移出。</span></div>}
-      {tab === "unread" && <ConversationRows onRead={onRead} rows={items.unread} me={me} onOpen={onOpen} />}
+      {tab === "unread" && [...new Set(items.unread.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows onRead={onRead} rows={items.unread.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
       {(tab === "waiting" || tab === "idle") && items[tab].length > 0 && (
         <section>
           <h4>{tab === "idle" ? "空闲会话" : "需要处理"}<span className="n">{items[tab].length}</span><span className="muted">{tab === "idle" ? "不计入待处理数量，也不会触发通知" : "仅展示明确上报的确认请求"}</span></h4>

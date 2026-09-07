@@ -41,6 +41,7 @@ export interface RulesStatus { hash: string; source: string; targets: RuleTarget
 
 export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string }
 export interface SessionRef {
+  scheduled?: boolean; project_override?: string;
   agent: string;
   session_id: string;
   cwd: string;

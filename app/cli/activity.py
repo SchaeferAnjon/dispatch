@@ -254,6 +254,11 @@ def set_preferences(directory, key, changes):
     return data
 
 
+def session_preferences(directory):
+    with closing(connect(directory)) as db:
+        return {key: json.loads(data) for key, data in db.execute('SELECT key,data FROM session_preferences')}
+
+
 def activity_list(home, directory, index):
     paths = []
     for folder, agent in (('.claude/projects', 'claude-code'), ('.codex/sessions', 'codex')):

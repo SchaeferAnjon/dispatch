@@ -241,6 +241,7 @@ class BeginSessionLink(unittest.TestCase):
         with patch.object(dispatch, 'begin_warnings', return_value=[]), patch.object(dispatch, 'local_host_name', return_value='test'), patch.object(dispatch, 'out'), patch.object(dispatch, 'bd_json', side_effect=[{'id':'task-test'},{}]) as bd:
             dispatch.cmd_begin(a)
         self.assertIn('session:session-123456', bd.call_args_list[0].args[0][bd.call_args_list[0].args[0].index('-l')+1])
+        self.assertIn('session-origin:session-123456', bd.call_args_list[0].args[0][bd.call_args_list[0].args[0].index('-l')+1])
 
     def test_invalid_session_cannot_inject_labels(self):
         from types import SimpleNamespace

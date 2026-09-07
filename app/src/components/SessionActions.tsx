@@ -48,7 +48,7 @@ export function OpenSessionButton({ session, compact = false }: { session: Targe
   </button>;
 }
 
-export function NewSession({ api, hosts, initialHost, onClose, onCreated, onComputer }: { api: Api; hosts: Host[]; initialHost: string; onClose: () => void; onCreated: (sid: string, host: string) => void; onComputer: (host: string) => void }) {
+export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCreated, onComputer }: { api: Api; hosts: Host[]; initialHost: string; initialCwd?: string; onClose: () => void; onCreated: (sid: string, host: string, agent: string) => void; onComputer: (host: string) => void }) {
   const [host, setHost] = useState(initialHost || 'local');
   const [agent, setAgent] = useState('claude-code');
   const [path, setPath] = useState('');
@@ -67,12 +67,12 @@ export function NewSession({ api, hosts, initialHost, onClose, onCreated, onComp
     catch (e) { if (seq === generation.current) setError(String(e)); }
     finally { if (seq === generation.current) setBrowseBusy(false); }
   };
-  useEffect(() => { setFolders(null); setPath(''); void browse(''); return () => { generation.current++; }; }, [host]);
+  useEffect(() => { setFolders(null); setPath(''); void browse(host === (initialHost || 'local') ? initialCwd || '' : ''); return () => { generation.current++; }; }, [host]);
   useEffect(() => {
     if (!launch || !['starting','running'].includes(launch.state)) return;
     let active = true; let timer = 0;
     const poll = async () => {
-      try { const r = await control<Launch>(api, host, 'status', {request_id: launch.request_id}); if (active) { setLaunch(r); setError(''); if (r.state === 'ready' && r.session_id) { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onCreated(r.session_id, host); } } }
+      try { const r = await control<Launch>(api, host, 'status', {request_id: launch.request_id}); if (active) { setLaunch(r); setError(''); if (r.state === 'ready' && r.session_id) { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onCreated(r.session_id, host, agent); } } }
       catch (e) { if (active) setError(`连接中断，正在重新查询创建结果：${String(e)}`); }
       if (active) timer = window.setTimeout(poll, 2000);
     };
@@ -128,7 +128,7 @@ export function NewSession({ api, hosts, initialHost, onClose, onCreated, onComp
     {!!folders?.recent.length && <label>最近使用<select aria-label="最近使用的文件夹" value="" disabled={locked || browseBusy} onChange={e => browse(e.target.value)}><option value="">选择最近使用的文件夹…</option>{folders.recent.map(p => <option key={p} value={p}>{p}</option>)}</select></label>}
     <label>第一条消息<textarea aria-label="第一条消息" value={prompt} disabled={locked} maxLength={16000} onChange={e => setPrompt(e.target.value)} placeholder="告诉 Agent 这次想做什么…" /></label>
     <p className="new-session-note">Agent 在所选电脑的终端中运行，沿用已有登录和权限设置。你可以留在 Dispatch 查看进展并继续回复。</p></>}
-    {launch && <div className="launch-progress" role="status"><b>{launch.state === 'ready' ? '会话已就绪' : launch.state === 'attention' || launch.state === 'failed' ? '需要查看电脑' : '正在新建会话…'}</b><p>{launch.message}</p><code>{launch.cwd}</code>{['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => onComputer(host)}>查看电脑与连接</button>}{launch.session_id && <button className="btn primary" onClick={() => onCreated(launch.session_id!, host)}>进入会话</button>}</div>}
+    {launch && <div className="launch-progress" role="status"><b>{launch.state === 'ready' ? '会话已就绪' : launch.state === 'attention' || launch.state === 'failed' ? '需要查看电脑' : '正在新建会话…'}</b><p>{launch.message}</p><code>{launch.cwd}</code>{['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => onComputer(host)}>查看电脑与连接</button>}{launch.session_id && <button className="btn primary" onClick={() => onCreated(launch.session_id!, host, agent)}>进入会话</button>}</div>}
     {error && <p className="new-session-error" role="alert">{error}</p>}
     <div className="foot"><button className="btn" onClick={onClose}>{launch ? '收起' : '取消'}</button>{!launch && <button className="btn primary" disabled={busy || browseBusy || !path || !prompt.trim()} onClick={submit}>{busy ? '正在创建…' : '创建并发送'}</button>}{launch && ['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onClose(); }}>已了解</button>}</div>
   </div></div>;

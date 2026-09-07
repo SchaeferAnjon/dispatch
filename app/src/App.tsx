@@ -14,11 +14,11 @@ import { SkillsView } from "./components/Skills";
 import { RulesView } from "./components/InstructionCenter";
 import { EnvView } from "./components/Env";
 import { InboxView, type InboxItems } from "./components/Inbox";
-import { Workspace } from "./components/Workspace";
-import { activityKey, mergeActivity } from "./activity";
+import { ProjectHub } from "./components/ProjectHub";
+import { isOutcome, linkedSessions, sourceTasks, projectConversations } from "./projectModel";
+import { activityKey, conversationProject, mergeActivity } from "./activity";
 import { GraphView } from "./components/Graph";
 import { FoldersView } from "./components/Folders";
-import { ProjectsView } from "./components/Projects";
 import { Tour } from "./components/Guide";
 import { MobileNav } from "./components/MobileNav";
 import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
@@ -32,6 +32,8 @@ const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agen
 
 export default function App() {
   const [newSession, setNewSession] = useState(false);
+  const [newSessionContext, setNewSessionContext] = useState<Activity>();
+  const [newSessionProject,setNewSessionProject] = useState<string|null>(null);
   const [api, setApi] = useState<Api | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -70,7 +72,7 @@ export default function App() {
   const [view, changeView] = useState<View>("home");
   const [inboxTab, setInboxTab] = useState<keyof InboxItems | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [projectSelection, setProjectSelection] = useState<string | null>(null);
+  const [projectSelection, setProjectSelection] = useState<string | null>(()=>new URLSearchParams(location.search).get("project"));
   const [folderSelection, setFolderSelection] = useState<string | null>(null);
   const [backStack, setBackStack] = useState<{ view: View; selected: string | null }[]>([]);
   const navigateContext = (next: View) => { setBackStack((stack) => [...stack, { view, selected }]); changeView(next); setSelected(null); };
@@ -207,15 +209,18 @@ export default function App() {
   const presenceF = useMemo(() => hostFilter ? { ...observedPresence, sessions: observedPresence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : observedPresence, [observedPresence, hostFilter, localName]);
   const refsF = useMemo(() => hostFilter ? new Map([...refs].filter(([, r]) => (r.host_name ?? localName) === hostFilter)) : refs, [refs, hostFilter, localName]);
   const activityF = useMemo(() => hostFilter ? activity.sessions.filter(a => (a.host_name ?? localName) === hostFilter) : activity.sessions, [activity, hostFilter, localName]);
+  const projectRows = useMemo(()=>projectConversations(activityF,[...refsF.values()]),[activityF,refsF]);
   const hostIssues = useMemo(() => hostFilter ? issues.filter((i) => hostOfIssue(i, refs) === hostFilter) : issues, [issues, refs, hostFilter]);
-  const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)), [hostIssues]);
+  const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)&&!isOutcome(i)), [hostIssues]);
+  const outcomesF = useMemo(() => issues.filter(i=>!isTrashed(i)&&isOutcome(i)&&(!hostFilter || linkedSessions(i).some(id=>!!refs.get(id)&&(refs.get(id)?.host_name||localName)===hostFilter) || sourceTasks(i).some(id=>hostIssues.some(t=>t.id===id)))), [issues, hostIssues, hostFilter, refs, localName]);
   const agents = useMemo(() => agentsFrom(issuesF, me, presenceF.sessions), [issuesF, me, presenceF]);
   const runningSessions = presenceF.sessions.filter((s) => s.alive && s.state === "working").length;
   const projects = useMemo(() => {
     const m = new Map<string, number>();
     issuesF.forEach((i) => m.set(projectOf(i), (m.get(projectOf(i)) ?? 0) + 1));
+    activityF.filter(a=>a.project_override).forEach(a => { const name=conversationProject(a); if(!m.has(name))m.set(name,0); });
     return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => (a.name === "" ? 1 : b.name === "" ? -1 : b.count - a.count));
-  }, [issuesF]);
+  }, [issuesF, activityF]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -262,7 +267,7 @@ export default function App() {
   // Use unfiltered data: switching machines is not a new event.
   const notificationInbox = useMemo(() => ({
     waiting: presence.sessions.filter((s) => needsAttention(s) && !activity.sessions.some(a => a.scheduled && a.session_id === s.session_id && (a.host ?? 'local') === (s.host ?? 'local'))),
-    review: issues.filter((i) => needsReview(i)),
+    review: issues.filter((i) => needsReview(i) && !isOutcome(i)),
   }), [presence, issues, activity]);
 
   // Ignore transient failures; wait for a stable explicit request. Keep identities
@@ -295,7 +300,7 @@ export default function App() {
     // Menu bars fill up fast; keep the status text to a few characters.
     const unread = activity.sessions.filter(a => a.unread && !a.scheduled).length;
     const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
-    api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed").length} 项未完成`).catch(() => {});
+    api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成`).catch(() => {});
   }, [api, observedPresence, notificationInbox, issues, activity]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
@@ -331,7 +336,7 @@ export default function App() {
   };
 
   return (
-    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?{...x,...c}:x)}));say(c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':'项目关联已保存');}}><TaskActions api={api} onOpen={setSelected} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
+    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?{...r,...c}:r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?{...x,...c}:x)}));say(c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':'项目关联已保存');}}><TaskActions api={api} onOpen={setSelected} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
@@ -374,14 +379,13 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && <Workspace onRead={a => markRead(a, a.reply_id!)} onNew={() => setNewSession(true)} onPhone={isTauri ? async () => { if (!api) return; try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say("手机访问链接已复制，在同一 Tailscale 网络的手机浏览器打开"); } catch(e) { say(String(e), true); } } : undefined} rows={activityF} loaded={activity.updated_at > 0} error={activityError} unavailable={activity.unavailable_hosts} issues={issuesF} me={me} onOpen={openSession} onTask={setSelected} onInbox={() => { setView("inbox"); setInboxTab("unread"); }} onSessions={() => setView("sessions")} />}
+            {(view === "home" || view === "projects") && api && <ProjectHub connectionError={activityError} unavailable={activity.unavailable_hosts} onPhone={isTauri ? async()=>{try{await api.copy((await api.on("local",["serve","url"])).trim());say("手机访问链接已复制");}catch(e){say(String(e),true);}} : undefined} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView agents={agents} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
-            {view === "sessions" && api && <SessionsView activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
-            {view === "projects" && api && <ProjectsView selectedProject={projectSelection} onProjectChange={setProjectSelection} api={api} me={me} issues={issuesF} onSelect={setSelected} onBoard={(p) => { setFilters({ ...filters, project: p, blocked: false, review: false, agent: null }); navigateContext("board"); }} onFolder={(cwd) => { setFolderSelection(cwd); navigateContext("folders"); }} />}
+            {view === "sessions" && api && <SessionsView outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "folders" && api && <FoldersView selectedFolder={folderSelection} onFolderChange={setFolderSelection} api={api} me={me} issues={issuesF} onOpenSession={openSession} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
@@ -392,13 +396,13 @@ export default function App() {
           </section>
         </main>
         {selected && api && (
-          <Detail onOpenSession={openSession} key={selected} id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
+          <Detail rows={projectRows} onOpenSession={openSession} key={selected} id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
         )}
       </div>
 
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
-      {newSession && api && <NewSession api={api} hosts={hosts} initialHost={hostId} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => setNewSession(false)} onCreated={(sid, host) => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
+      {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!=="未关联项目")try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
     </div></TaskActions></ConversationActions></SessionActions>

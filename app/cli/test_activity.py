@@ -5,7 +5,7 @@ import tempfile
 import time
 import unittest
 from contextlib import closing
-from activity import acknowledge, activity_list, connect, observe, read_stream, user_text, workspace_changes, remember_topic, set_preferences
+from activity import acknowledge, activity_list, connect, observe, read_stream, user_text, workspace_changes, remember_topic, set_preferences, session_preferences
 
 
 def record(role, text, ts, phase='final'):
@@ -35,6 +35,7 @@ class ActivityTests(unittest.TestCase):
         self.append(record('assistant','first',self.t))
         a=self.row()
         set_preferences(self.store,a['key'],{'scheduled':True,'project_override':'研究项目'})
+        self.assertEqual(session_preferences(self.store)[a['key']], {'scheduled':True,'project_override':'研究项目'})
         self.append(record('assistant','second',self.t+1))
         b=self.row()
         self.assertTrue(b['scheduled']);self.assertTrue(b['unread'])

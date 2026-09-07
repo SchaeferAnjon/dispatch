@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import type { Api } from "../api";
 import { actorOf, durSince, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
-import type { Comment, HistoryEntry, Issue, Session, SessionRef } from "../types";
+import type { Activity, Comment, HistoryEntry, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
 
-interface Props { onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
+import { TaskRelations } from "./ProjectHub";
+
+interface Props { rows: Activity[]; onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
 
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
-export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
+export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
   const [editProperties, setEditProperties] = useState(false);
   const [issue, setIssue] = useState<Issue | null>(initial);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -131,7 +133,7 @@ export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live,
           <span className="k">类型</span><span className="v">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>
           <span className="k">项目</span><span className="v"><ProjectTag name={projectOf(issue)} /></span>
           {root && (<><span className="k">源自</span><span className="v"><span className="link" onClick={() => onSelect(root.id)} title={root.title}>{root.id}</span><span className="muted" style={{ fontSize: 12 }}>{root.title}</span></span></>)}
-          {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("dispatch:") && l !== "reviewed").length > 0 && (<><span className="k">标签</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("dispatch:") && l !== "reviewed").join(" · ")}</span></>)}
+          {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && l !== "reviewed").length > 0 && (<><span className="k">标签</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && l !== "reviewed").join(" · ")}</span></>)}
           {(issue.dependencies ?? []).length > 0 && (<><span className="k">依赖</span><span className="v">{issue.dependencies!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}{d.status === "closed" ? " ✓" : ""}</span>)}</span></>)}
           {(issue.dependents ?? []).length > 0 && (<><span className="k">被依赖</span><span className="v">{issue.dependents!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}</span>)}</span></>)}
           <span className="k">创建</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.created_at)}{issue.created_by ? ` · ${actorOf(issue.created_by, me)?.name}` : ""}</span>
@@ -150,6 +152,7 @@ export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live,
           )}
         </div>}
 
+        <section className="sec"><h4>所属会话</h4><TaskRelations issue={issue} rows={rows} api={api} onOpen={onOpenSession} onSaved={()=>onDone("会话归属已保存")}/></section>
         {issue.status === "closed" && <section className="sec review-evidence">
           <h4>交付与验证 <span className="muted">{isReviewed(issue) ? "已记录复核通过" : needsReview(issue) ? "等待 Agent 复核" : "已完成 · 无需你点击审核"}</span></h4>
           <p className="review-gap">{ac.length ? `${ac.filter((a) => a.done).length}/${ac.length} 项已勾选 · ${ac.filter((a) => !a.done).length} 项仍待核对` : "尚未填写验收标准"}</p>
@@ -206,7 +209,7 @@ export function Detail({ onOpenSession, id, api, me, initial, root, stamp, live,
         )}
 
         <div className="sec">
-          <h4>会话 · 恢复对话{refs.length > 0 && <span className="muted" style={{ textTransform: "none", letterSpacing: 0 }}>提到过这个任务的 {refs.length} 个会话</span>}</h4>
+          <h4>提及记录 · 供参考{refs.length > 0 && <span className="muted" style={{ textTransform: "none", letterSpacing: 0 }}>提到过这个任务的 {refs.length} 个会话</span>}</h4>
           {refs.length === 0 ? (
             <p className="empty-p" style={{ margin: 0 }}>还没有会话提到 {id}。Agent 在对话里用到这个 ID 后，这里会出现"复制恢复命令"。</p>
           ) : (

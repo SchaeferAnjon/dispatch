@@ -1275,7 +1275,10 @@ def cmd_stats(a):
 def cmd_list(a):
     idx = load_index() if a.cached else refresh_index()
     refs = session_refs(idx)
+    from activity import session_preferences
+    preferences = session_preferences(DISPATCH_DIR)
     for r in refs:
+        r.update(preferences.get(r["agent"] + ":" + r["session_id"], {}))
         r["host"], r["host_name"] = "local", local_host_name()
     if not getattr(a, "local", False):
         refs = sorted(refs + remote_refs(), key=lambda r: -(r.get("last_at") or 0))
@@ -2007,7 +2010,7 @@ def cmd_begin(a):
     labels = [f"project:{a.project}"] if a.project else []
     labels.append(f"host:{local_host_name()}")  # which Mac this work runs on — Dispatch filters by it
     sid = getattr(a, 'session', None) or os.environ.get('CODEX_THREAD_ID') or os.environ.get('CLAUDE_SESSION_ID') or os.environ.get('CLAUDE_CODE_SESSION_ID')
-    if sid and re.fullmatch(r'[A-Za-z0-9_-]{8,120}', sid): labels.append('session:' + sid)
+    if sid and re.fullmatch(r'[A-Za-z0-9_-]{8,120}', sid): labels.extend(['session:' + sid, 'session-origin:' + sid])
     argv = ["create", a.title, "-t", a.type, "-p", str(a.priority), "--json"]
     if labels:
         argv += ["-l", ",".join(labels)]

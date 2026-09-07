@@ -1,0 +1,26 @@
+import type { Activity, Issue, SessionRef } from './types';
+import { conversationProject } from './activity';
+import { projectOf } from './derive';
+export const isOutcome = (i:Issue) => !!i.labels?.includes('dispatch:outcome');
+export const originSession = (i:Issue) => i.labels?.find(l=>l.startsWith('session-origin:'))?.slice(15) || '';
+export const linkedSessions = (i:Issue) => [...new Set([originSession(i), ...(i.labels||[]).filter(l=>l.startsWith('session:')).map(l=>l.slice(8))].filter(Boolean))];
+export const sourceTasks = (i:Issue) => (i.labels||[]).filter(l=>l.startsWith('outcome-task:')).map(l=>l.slice(13));
+export function projectGroups(rows:Activity[], tasks:Issue[], outcomes:Issue[]) {
+  const names=[...new Set([...rows.map(conversationProject),...tasks.map(i=>projectOf(i)||'未关联项目'),...outcomes.map(i=>projectOf(i)||'未关联项目')])];
+  return names.map(name=>{
+    const sessions=rows.filter(a=>conversationProject(a)===name);
+    const items=tasks.filter(i=>(projectOf(i)||'未关联项目')===name);
+    const results=outcomes.filter(i=>(projectOf(i)||'未关联项目')===name);
+    const last=Math.max(0,...sessions.map(a=>a.last_at),...items.map(i=>Date.parse(i.updated_at)/1000||0),...results.map(i=>Date.parse(i.updated_at)/1000||0));
+    return {name,sessions,items,results,last};
+  }).sort((a,b)=>b.last-a.last);
+}
+
+// Historical catalog entries remain visible without inventing live state or unread replies.
+export function projectConversations(live:Activity[], refs:SessionRef[]):Activity[] {
+  const keys=new Set(live.map(a=>`${a.host||'local'}:${a.agent}:${a.session_id}`));
+  return [...live,...refs.filter(r=>!keys.has(`${r.host||'local'}:${r.agent}:${r.session_id}`)).map(r=>({
+    ...r,key:`${r.agent}:${r.session_id}`,tasks:Object.keys(r.tasks||{}),state:'unknown',stale:true,
+    unread:false,activity:'历史会话，打开查看完整记录',version:'',events:[],tracking_since:0,source:'catalog'
+  }))].sort((a,b)=>b.last_at-a.last_at);
+}

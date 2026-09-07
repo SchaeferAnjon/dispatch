@@ -1,7 +1,8 @@
+import { linkedSessions } from "../projectModel";
 import { MediaProvider, AttachmentList } from "./Media";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
-import { actorOf, durSince, fmtTime, projectOf, NO_RESUME, projectColor, relTime } from "../derive";
+import { actorOf, durSince, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
 import { lineDiff, withContext } from "../diff";
 import { canReadReply, activityLabel } from "../activity";
 import type { Activity, Issue, Session, SessionDetail, SessionRef } from "../types";
@@ -10,11 +11,11 @@ import { Markdown } from "./Markdown";
 import { OpenSessionButton } from "./SessionActions";
 import { SessionReply } from "./SessionReply";
 
-interface Props { activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
+interface Props { outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
-export function SessionsView({ activities, issues, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
   const [refs, setRefs] = useState<SessionRef[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
@@ -119,8 +120,9 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
         {sel && !detail && <div className="empty">{busy ? "读取对话记录…" : loadError ? "暂时读不到会话，正在重试。" : ""}<button className="link" onClick={() => setSel(null)}>返回会话列表</button></div>}
         {detail && (() => {
           const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id);
-          const linked = issues.filter(i => i.labels?.includes(`session:${m.session_id}`));
-          const related = linked.length ? linked : issues.filter(i => i.id === m.current_task || (i.assignee === m.agent && i.status === 'in_progress' && projectOf(i) === m.project));
+          const linked = issues.filter(i => linkedSessions(i).includes(m.session_id));
+          const related = linked;
+          const results = outcomes.filter(i=>linkedSessions(i).includes(m.session_id));
           const mentioned = Object.entries(m.tasks).filter(([id]) => !related.some(i => i.id === id));
           return (
             <>
@@ -154,7 +156,7 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
                 {current && <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")}>实时活动</button>}
                 <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>图片与产物 {detail.attachments?.length || 0}</button>
                 <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>文件 {detail.workspace?.files.length ?? detail.files.length}</button>
-                <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务与交付 {related.length}</button>
+                <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务与成果 {related.length + results.length}</button>
                 {tab === "timeline" && (() => {
                   const nU = detail.messages.filter((x) => x.role === "user").length;
                   const nA = detail.messages.filter((x) => x.role === "assistant" && x.text.trim()).length;
@@ -204,9 +206,10 @@ export function SessionsView({ activities, issues, activityError, onSeen, api, m
                   </details>
                 ))}
                 {tab === "tasks" && <>
-                  <h3 className="recorded-files-title">{linked.length ? "这个会话的任务与交付" : "这个 Agent 在项目中的任务"}</h3>
-                  {related.length === 0 && <p className="muted">没有关联的进行中任务</p>}
-                  <div className="task-links">{related.map(i => <button key={i.id} className="chip" onClick={() => onSelectTask(i.id)}><span>{i.title}</span><span className="st sm">{i.status === 'closed' ? '已完成' : '进行中'}</span></button>)}</div>
+                  <h3 className="recorded-files-title">这个会话关联的任务</h3>
+                  {related.length === 0 && <p className="muted">没有明确关联的任务，可在项目的“待归属任务”中指定</p>}
+                  <div className="task-links">{related.map(i => <button key={i.id} className="chip" onClick={() => onSelectTask(i.id)}><span>{i.title}</span><span className="st sm">{statusLabel(i).text}</span></button>)}</div>
+                  {results.map(r=><article className="outcome-card" key={r.id}><h3>成果 · {r.title}</h3><Markdown src={r.description||""}/></article>)}
                   {mentioned.length > 0 && <details className="mentioned-tasks"><summary>对话中还提及过 {mentioned.length} 个任务</summary><p className="muted small">提及过的任务不代表由这个会话负责。</p><div className="task-links">{mentioned.sort((x,y) => y[1]-x[1]).map(([id,n]) => <button key={id} className="chip" onClick={() => onSelectTask(id)}><span>{issues.find(i => i.id === id)?.title ?? id}</span><span className="muted">{n} 次提及</span></button>)}</div></details>}
                 </>}
               </div>

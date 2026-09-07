@@ -10,7 +10,7 @@ export const useMedia = () => useContext(Context);
 export const dataUrl = (a: AttachmentData) => `data:${a.mime};base64,${a.data}`;
 const cache = new Map<string, Promise<AttachmentData>>();
 
-export function MediaProvider({ api, session, children }: { api: Api; session?: SessionRef; children: ReactNode }) {
+export function MediaProvider({ api, session, children }: { api: Api; session?: Pick<SessionRef, 'host' | 'agent' | 'session_id'>; children: ReactNode }) {
   const [value, setValue] = useState<AttachmentData | null>(null);
   const [error, setError] = useState('');
   const [show, setShow] = useState(false);
