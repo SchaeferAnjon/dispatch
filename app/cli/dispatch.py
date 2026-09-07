@@ -2670,7 +2670,86 @@ def wiki_all():
         print(err, file=sys.stderr)
         sys.exit(code)
     d = json.loads(o[o.find("{"):])
-    return [wiki_parse(k, v) for k, v in d.items() if k != "schema_version" and isinstance(v, str)]
+    return [wiki_parse(k, v) for k, v in d.items() if k != "schema_version" and isinstance(v, str) and not k.startswith(INTERNAL_MEMORY_PREFIX)]
+
+
+# ---------------------------------------------------------------- project flags (star / archive)
+# Projects are labels, not records, so their two switches live in one shared bd memory
+# (synced between the Macs with the board). Keys under this prefix are Dispatch's own
+# bookkeeping and stay out of the wiki, prime and the knowledge-base view.
+INTERNAL_MEMORY_PREFIX = "dispatch-"
+PROJECT_FLAGS_KEY = "dispatch-projects"
+PROJECT_FLAG_FIELDS = ("starred", "archived")
+
+
+def project_flags_parse(raw):
+    try:
+        d = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    out = {}
+    for name, v in d.items():
+        if isinstance(v, dict):
+            flags = {f: True for f in PROJECT_FLAG_FIELDS if v.get(f) is True}
+            if flags:
+                out[name] = flags
+    return out
+
+
+def project_flags_apply(flags, name, changes):
+    name = (name or "").strip()
+    if not name or len(name) > 120 or any(ord(c) < 32 for c in name):
+        raise ValueError("无效的项目名称")
+    if set(changes) - set(PROJECT_FLAG_FIELDS) or any(type(v) is not bool for v in changes.values()):
+        raise ValueError("只能设置 starred / archived，值为布尔")
+    cur = {**flags.get(name, {}), **changes}
+    cur = {f: True for f in PROJECT_FLAG_FIELDS if cur.get(f)}
+    out = {k: v for k, v in flags.items() if k != name}
+    if cur:
+        out[name] = cur
+    return out
+
+
+def project_flags_load():
+    code, o, err = sh(["bd", "memories", "--json"])
+    if code != 0:
+        print(err.strip() or o.strip(), file=sys.stderr)
+        sys.exit(code)
+    d = json.loads(o[o.find("{"):])
+    return project_flags_parse(d.get(PROJECT_FLAGS_KEY, ""))
+
+
+def cmd_project(a):
+    flags = project_flags_load()
+    changes = {}
+    if a.star: changes["starred"] = True
+    if a.unstar: changes["starred"] = False
+    if a.archive: changes["archived"] = True
+    if a.unarchive: changes["archived"] = False
+    if changes:
+        try:
+            flags = project_flags_apply(flags, a.name, changes)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            sys.exit(2)
+        wiki_store(PROJECT_FLAGS_KEY, json.dumps(flags, ensure_ascii=False, sort_keys=True))
+    cur = flags.get(a.name.strip(), {})
+    out({"name": a.name.strip(), **{f: bool(cur.get(f)) for f in PROJECT_FLAG_FIELDS}}, a.json,
+        lambda x: print(f"{x['name']}：{'★ 已收藏' if x['starred'] else '未收藏'} · {'已归档' if x['archived'] else '未归档'}"))
+
+
+def cmd_projects(a):
+    flags = project_flags_load()
+    rows = [{"name": k, **{f: bool(v.get(f)) for f in PROJECT_FLAG_FIELDS}} for k, v in sorted(flags.items())]
+    if a.json:
+        print(json.dumps(rows, ensure_ascii=False))
+        return
+    if not rows:
+        print("没有收藏或归档的项目。`dispatch project <名> --star` 收藏，`--archive` 归档。")
+    for r in rows:
+        print(f"{'★' if r['starred'] else ' '} {r['name']}{'（已归档）' if r['archived'] else ''}")
 
 
 def wiki_line(it, width=170):
@@ -3258,6 +3337,8 @@ def main():
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("attachment", help="read a file linked in a conversation"); s.add_argument("key"); s.add_argument("ref"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
+    s = sub.add_parser("project", help="star / archive a project (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
+    s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)
     s = sub.add_parser("session-preferences", help="classify a conversation without changing its transcript"); s.add_argument("key"); s.add_argument("changes"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_preferences)
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply"); s.add_argument("key"); s.add_argument("reply"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
     s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status"]); s.set_defaults(fn=cmd_session_control)

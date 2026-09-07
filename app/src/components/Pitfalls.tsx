@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
+import { INTERNAL_MEMORY_PREFIX } from "../projectFlags";
 import { composeWiki, parsePitfall, projectColor, slugify, WIKI_KINDS, type Pitfall, type WikiKind } from "../derive";
 import type { Memory } from "../types";
 import { Markdown } from "./Markdown";
@@ -25,7 +26,8 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
   };
   useEffect(() => { load(); }, [version]);
 
-  const all = useMemo(() => memories.map(parsePitfall), [memories]);
+  // Dispatch's own bookkeeping (project 收藏/归档) shares the memory store but is not knowledge.
+  const all = useMemo(() => memories.filter((m) => !m.key.startsWith(INTERNAL_MEMORY_PREFIX)).map(parsePitfall), [memories]);
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: 0, plain: 0 };
     for (const k of KINDS) c[k] = 0;

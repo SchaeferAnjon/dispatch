@@ -498,6 +498,16 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .quota.crit .qbar i{background:var(--s-block)}
 .quota .qv{text-align:right}
 .quota .qr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.star{font-size:16px;line-height:1;color:var(--ink-3);padding:2px 4px;border-radius:6px;cursor:pointer;flex:none}
+.star:hover{color:var(--s-prog);background:var(--panel-2)}
+.star.on{color:var(--s-prog)}
+.project-card .star{font-size:18px}.hub-heading h2 .star{vertical-align:2px;margin:0 6px}
+.project-card-foot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.project-card>.link{margin-top:0}
+.hub-list-foot{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap}
+.hub-list-foot .btn.on{border-color:var(--accent);color:var(--accent-ink)}
+.home-rest-item .btn{margin-left:8px;opacity:0}
+.home-rest-item:hover .btn,.home-rest-item:focus-within .btn{opacity:1}
 .home-rest-list{display:flex;flex-direction:column;gap:3px}
 .home-rest-item{display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:8px;font-size:13px;text-align:left;min-width:0}
 .home-rest-item:hover{background:var(--panel)}

@@ -56,6 +56,7 @@ bd list --status in_progress                 # 谁在做什么；dispatch prime 
 dispatch claim <id> [--force]                # 认领守卫：别人正在做的不给抢
 # 文件级互斥：hook ~/tasks/.dispatch/edit-guard.py（Claude Edit/Write、Codex apply_patch）——别的会话 30 分钟内改过的文件第一次会被拒并说明，重试放行；登记在 ~/tasks/.dispatch/edits/，prime 的「同目录在跑」会列出对方正在改的文件
 dispatch quota                               # 各 Agent 额度；prime 里有你自己的，≥80% 省 token，≥95% 只收尾换 Agent
+dispatch project <名> --star|--unstar|--archive|--unarchive   # 项目收藏（工作台置顶）/ 归档（做完暂时不用，从工作台和项目列表隐藏）；dispatch projects 列出；两台 Mac 共享，用户在界面上也能点
 bd show <id> --json  /  bd ready --json  /  bd blocked
 bd create "bug" -l project:xxx -t bug -p 1 --deps discovered-from:<当前id> --json
 dispatch sessions | find <task> | resume <task> --copy | focus <task>   # 会话：谁在跑、哪个会话提过这个任务、恢复命令、跳过去

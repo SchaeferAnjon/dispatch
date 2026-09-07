@@ -281,3 +281,27 @@ class FactsSections(unittest.TestCase):
     def test_no_project_gets_general_only_and_empty_sections_are_dropped(self):
         self.assertEqual([h for h, _ in dispatch.facts_for("", self.DOC)], ["通用"])
         self.assertEqual([h for h, _ in dispatch.facts_for("空节", self.DOC)], ["通用"])
+
+
+class ProjectFlags(unittest.TestCase):
+    def test_parse_keeps_only_true_known_fields(self):
+        raw = json.dumps({"a": {"starred": True, "archived": False, "x": 1}, "b": {"archived": True}, "c": {"starred": False}, "d": "bad"})
+        self.assertEqual(dispatch.project_flags_parse(raw), {"a": {"starred": True}, "b": {"archived": True}})
+        self.assertEqual(dispatch.project_flags_parse(""), {})
+        self.assertEqual(dispatch.project_flags_parse("not json"), {})
+
+    def test_apply_merges_and_drops_empty(self):
+        flags = dispatch.project_flags_apply({}, "ReadOut", {"starred": True})
+        flags = dispatch.project_flags_apply(flags, "ReadOut", {"archived": True})
+        self.assertEqual(flags, {"ReadOut": {"starred": True, "archived": True}})
+        flags = dispatch.project_flags_apply(flags, "ReadOut", {"starred": False, "archived": False})
+        self.assertEqual(flags, {})
+
+    def test_apply_rejects_bad_input(self):
+        with self.assertRaises(ValueError): dispatch.project_flags_apply({}, "", {"starred": True})
+        with self.assertRaises(ValueError): dispatch.project_flags_apply({}, "x", {"pinned": True})
+        with self.assertRaises(ValueError): dispatch.project_flags_apply({}, "x", {"starred": "yes"})
+
+    def test_internal_memory_hidden_from_wiki(self):
+        with patch.object(dispatch, "sh", return_value=(0, json.dumps({"schema_version": 1, "pit-a": "【坑】x", "dispatch-projects": "{}"}), "")):
+            self.assertEqual([it["key"] for it in dispatch.wiki_all()], ["pit-a"])

@@ -4,6 +4,7 @@ import type { AgentPresence } from "../derive";
 import { actorOf, durSince, parseAcceptance, projectColor, relTime, sessionStatus } from "../derive";
 import { activityKey, conversationProject, conversationSummary } from "../activity";
 import { projectGroups } from "../projectModel";
+import { isStarred, rankProjects, type ProjectFlags } from "../projectFlags";
 import type { Activity, Issue, Quota, Session, View } from "../types";
 import type { InboxItems } from "./Inbox";
 import { Avatar, Pri } from "./ui";
@@ -43,6 +44,8 @@ interface Props {
   outcomes: Issue[];
   inbox: InboxItems;
   progress: Record<string, string>;
+  flags: ProjectFlags;
+  onFlag: (name: string, change: { starred?: boolean; archived?: boolean }) => void;
   onOpen: (sessionId: string) => void;
   onFocus: (sessionId: string) => void;
   onTask: (id: string) => void;
@@ -76,7 +79,7 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ api, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, onOpen, onFocus, onTask, onProject, onView, onInbox, onNew, onPhone }: Props) {
+export function HomeView({ api, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, flags, onFlag, onOpen, onFocus, onTask, onProject, onView, onInbox, onNew, onPhone }: Props) {
   const [quota, setQuota] = useState<Quota[]>([]);
   useEffect(() => {
     let alive = true;
@@ -105,10 +108,14 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
   // Projects with something happening get a full card; the rest stay one line each.
   const DAY = 86_400;
   const now = Date.now() / 1000;
-  const featured = cards.filter((c) => c.name !== UNGROUPED && (c.live || now - c.last < 3 * DAY));
-  const rest = cards.filter((c) => c.name !== UNGROUPED && !featured.includes(c));
+  // 收藏 pins a project to the top; 归档 hides it until asked for.
+  const ranked = rankProjects(cards.filter((c) => c.name !== UNGROUPED), flags);
+  const featured = ranked.active.filter((c) => isStarred(flags, c.name) || c.live || now - c.last < 3 * DAY);
+  const rest = ranked.active.filter((c) => !featured.includes(c));
+  const archived = ranked.archived;
   const ungrouped = cards.find((c) => c.name === UNGROUPED);
   const [showRest, setShowRest] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const running = cards.reduce((n, c) => n + c.running.length, 0);
   const waitingCount = inbox.unread.length + inbox.waiting.length + inbox.blocked.length;
@@ -126,6 +133,7 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
         <header>
           <span className="proj" style={{ background: projectColor(c.name) }} />
           <button className="name" onClick={() => onProject(c.name)}>{c.name}</button>
+          {c.name !== UNGROUPED && <button className={`star${isStarred(flags, c.name) ? " on" : ""}`} onClick={() => onFlag(c.name, { starred: !isStarred(flags, c.name) })} title={isStarred(flags, c.name) ? "取消收藏" : "收藏：置顶，近期重点关注"} aria-label={isStarred(flags, c.name) ? `取消收藏 ${c.name}` : `收藏 ${c.name}`}>{isStarred(flags, c.name) ? "★" : "☆"}</button>}
           <span className="counts muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.blocked ? ` · ${c.blocked} 项被卡住` : ""}{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span>
           <span className="spacer" />
           <button className="btn sm" onClick={() => onNew(c.latest)}>新建会话</button>
@@ -248,7 +256,7 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
         ))}
       </div>
 
-      {loaded && featured.length === 0 && rest.length === 0 && <div className="home-quiet">还没有项目。会话按工作目录归入项目，任务用 <span className="mono">project:名字</span> 标签归类。<button className="link" onClick={() => onNew()}>新建会话 ›</button></div>}
+      {loaded && featured.length === 0 && rest.length === 0 && archived.length === 0 && <div className="home-quiet">还没有项目。会话按工作目录归入项目，任务用 <span className="mono">project:名字</span> 标签归类。<button className="link" onClick={() => onNew()}>新建会话 ›</button></div>}
       {!loaded && <div className="home-quiet">正在读取项目与会话…</div>}
       <div className="home-projects">
         {featured.map(renderCard)}
@@ -261,11 +269,30 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           {showRest && (
             <div className="home-rest-list">
               {rest.map((c) => (
-                <button key={c.name} className="home-rest-item opens" onClick={() => onProject(c.name)}>
+                <div key={c.name} className="home-rest-item opens" role="button" tabIndex={0} onClick={() => onProject(c.name)} onKeyDown={(e) => e.key === "Enter" && onProject(c.name)}>
                   <span className="proj" style={{ background: projectColor(c.name) }} /><b>{c.name}</b>
                   <span className="muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span>
                   <span className="muted small right">{c.last ? `${relTime(new Date(c.last * 1000).toISOString())}` : ""}</span>
-                </button>
+                  <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); onFlag(c.name, { archived: true }); }} title="做完了、暂时不用：从工作台和项目列表隐藏，随时可找回">归档</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {archived.length > 0 && (
+        <section className="home-rest">
+          <h4>已归档 <span className="muted">做完了、暂时不用的项目</span><button className="link right" onClick={() => setShowArchived(!showArchived)}>{showArchived ? "收起" : `展开 ${archived.length} 个`}</button></h4>
+          {showArchived && (
+            <div className="home-rest-list">
+              {archived.map((c) => (
+                <div key={c.name} className="home-rest-item opens" role="button" tabIndex={0} onClick={() => onProject(c.name)} onKeyDown={(e) => e.key === "Enter" && onProject(c.name)}>
+                  <span className="proj" style={{ background: projectColor(c.name) }} /><b>{c.name}</b>
+                  <span className="muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span>
+                  <span className="muted small right">{c.last ? `${relTime(new Date(c.last * 1000).toISOString())}` : ""}</span>
+                  <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); onFlag(c.name, { archived: false }); }}>取消归档</button>
+                </div>
               ))}
             </div>
           )}

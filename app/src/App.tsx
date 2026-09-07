@@ -16,6 +16,7 @@ import { EnvView } from "./components/Env";
 import { InboxView, type InboxItems } from "./components/Inbox";
 import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
+import { PROJECT_FLAGS_KEY, parseProjectFlags, serializeProjectFlags, withProjectFlag, type ProjectFlags } from "./projectFlags";
 import { isOutcome, linkedSessions, sourceTasks, projectConversations } from "./projectModel";
 import { activityKey, conversationProject, mergeActivity } from "./activity";
 import { GraphView } from "./components/Graph";
@@ -183,6 +184,21 @@ export default function App() {
   const rootIssue = useCallback((id: string): Issue | undefined => { const r = roots.get(id); return r ? issues.find((i) => i.id === r) : undefined; }, [roots, issues]);
 
   const [hosts, setHosts] = useState<Host[]>([]);
+
+  // 收藏 / 归档 per project: one shared bd memory, re-read whenever the board changes.
+  const [projectFlags, setProjectFlags] = useState<ProjectFlags>({});
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    api.memories().then((m) => { if (alive) setProjectFlags(parseProjectFlags(m)); }).catch(() => {});
+    return () => { alive = false; };
+  }, [api, version]);
+  const setProjectFlag = async (name: string, change: { starred?: boolean; archived?: boolean }) => {
+    if (!api) return;
+    const next = withProjectFlag(projectFlags, name, change);
+    try { await api.remember(PROJECT_FLAGS_KEY, serializeProjectFlags(next)); setProjectFlags(next); say(change.starred === true ? `已收藏 ${name}` : change.starred === false ? `已取消收藏 ${name}` : change.archived === true ? `已归档 ${name}，工作台不再显示` : `已取消归档 ${name}`); }
+    catch (e) { say(String(e), true); }
+  };
 
   // The Macs on the tailnet (this one + hosts.json), for the 机器 strip on the Agents view.
   useEffect(() => {
@@ -382,8 +398,8 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={(name)=>{setProjectSelection(name);setView("projects");}} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onInbox={(tab)=>{setView("inbox");setInboxTab(tab);}} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
-            {view === "projects" && api && <ProjectHub connectionError={activityError} unavailable={activity.unavailable_hosts} onPhone={phoneLink} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
+            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={(name)=>{setProjectSelection(name);setView("projects");}} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onInbox={(tab)=>{setView("inbox");setInboxTab(tab);}} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
+            {view === "projects" && api && <ProjectHub flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} onPhone={phoneLink} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
