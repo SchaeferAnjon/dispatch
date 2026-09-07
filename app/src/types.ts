@@ -142,6 +142,7 @@ export interface Session {
   state_source?: "hook" | "transcript";
   last_event?: string;
   herdr?: { pane_id: string; tab_id: string; title: string; status: string; focused: boolean };
+  scheduled?: boolean;
   title?: string;
   host?: string;
   host_name?: string;

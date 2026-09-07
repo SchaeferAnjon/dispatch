@@ -25,7 +25,7 @@ export function InboxView({ onRead, onOpen, initialTab, items, me, onSelect, onR
       {tab === "unread" && [...new Set(items.unread.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows onRead={onRead} rows={items.unread.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
       {(tab === "waiting" || tab === "idle") && items[tab].length > 0 && (
         <section>
-          <h4>{tab === "idle" ? "空闲会话" : "需要处理"}<span className="n">{items[tab].length}</span><span className="muted">{tab === "idle" ? "不计入待处理数量，也不会触发通知" : "仅展示明确上报的确认请求"}</span></h4>
+          <h4>{tab === "idle" ? "空闲会话" : "需要处理"}<span className="n">{items[tab].length}</span><span className="muted">{tab === "idle" ? "不计入待处理数量，也不会触发通知" : "只有接入事件上报的会话会出现在这里；Codex 桌面端等没有上报的会话请到会话页看"}</span></h4>
           {items[tab].map((s) => {
             const a = actorOf(s.agent, me);
             return (
@@ -65,7 +65,7 @@ export function InboxView({ onRead, onOpen, initialTab, items, me, onSelect, onR
       )}
       {tab === "blocked" && items.blocked.length > 0 && (
         <section>
-          <h4>被卡住 <span className="n">{items.blocked.length}</span><span className="muted">有未完成的依赖</span></h4>
+          <h4>被卡住 <span className="n">{items.blocked.length}</span><span className="muted">有未完成的依赖 · 不计入红点，等依赖完成会自动解开</span></h4>
           {items.blocked.map((i) => (
             <div key={i.id} className="ib-row opens" onClick={() => onSelect(i.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSelect(i.id); } }}>
               <span className="st sm block">⊘</span>

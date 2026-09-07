@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canReadReply, activityKey, conversationSummary, conversationProject, resolveProject } from './activity';
+import { canReadReply, activityKey, conversationSummary, conversationProject, mergeActivity, resolveProject } from './activity';
 import type { Activity } from './types';
 const a = { key: 'codex:id', host:'local', unread:true, reply_id:'2:reply' } as Activity;
 describe('read cursor', () => {
@@ -42,5 +42,16 @@ describe('project resolution', () => {
     expect(resolveProject(at('/Users/x/workspace/HIWI/notes'), ['hiwi'])).toBe('hiwi');
     expect(resolveProject(at('/Users/x/workspace/HIWI/notes'))).toBe('notes');
     expect(resolveProject(at('/Users/x/Documents/thesis/'))).toBe('thesis');
+  });
+});
+
+describe('presence merge', () => {
+  it('carries the scheduled flag so counts can exclude timer-driven sessions', () => {
+    const now = Date.now() / 1000;
+    const live = { agent: 'codex', session_id: 's1', cwd: '/w', project: 'w', title: 't', last_at: now, state: 'working', stale: false, scheduled: true, key: 'codex:s1' } as unknown as Activity;
+    const presence = { sessions: [{ agent: 'codex', session_id: 's1', last_at: now - 100, state: 'idle', alive: true, registered: true } as never], apps: [] };
+    const merged = mergeActivity(presence, [live]);
+    expect(merged.sessions[0]).toMatchObject({ state: 'working', scheduled: true });
+    expect(mergeActivity({ sessions: [], apps: [] }, [live]).sessions[0]).toMatchObject({ scheduled: true, alive: true });
   });
 });

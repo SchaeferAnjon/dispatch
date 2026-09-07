@@ -20,6 +20,7 @@ export function SessionsView({ activities, issues, outcomes, activityError, onSe
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
+  const [showScheduled, setShowScheduled] = useState(false);
   const host = hostId ?? "";
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -78,10 +79,11 @@ export function SessionsView({ activities, issues, outcomes, activityError, onSe
     const all = new Map(refs.map(r => [r.session_id, r]));
     for (const a of activities) {
       const old = all.get(a.session_id);
-      all.set(a.session_id, old ? { ...old, last_at: a.last_at } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
+      all.set(a.session_id, old ? { ...old, last_at: a.last_at, scheduled: old.scheduled || a.scheduled } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
     }
-    return [...all.values()].sort((a,b) => b.last_at - a.last_at).filter((r) => (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
-  }, [refs, activities, q, agent, host]);
+    return [...all.values()].sort((a,b) => b.last_at - a.last_at).filter((r) => !!r.scheduled === showScheduled && (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
+  }, [refs, activities, q, agent, host, showScheduled]);
+  const scheduledCount = useMemo(() => [...new Set([...refs, ...activities].filter((r) => r.scheduled).map((r) => r.session_id))].length, [refs, activities]);
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
@@ -93,7 +95,7 @@ export function SessionsView({ activities, issues, outcomes, activityError, onSe
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
           <div className="views" style={{ marginTop: 6 }}>
             {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
-            <span className="spacer" /><span className="muted mono small">{items.length}</span>
+            <span className="spacer" />{scheduledCount > 0 && <button className={`chip${showScheduled ? " on" : ""}`} onClick={() => setShowScheduled(!showScheduled)} title="定时任务产生的会话，默认不列出">定时 {scheduledCount}</button>}<span className="muted mono small">{items.length}</span>
           </div>
         </div>
         <div className="sess-items">

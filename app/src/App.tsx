@@ -231,8 +231,10 @@ export default function App() {
   const hostIssues = useMemo(() => hostFilter ? issues.filter((i) => hostOfIssue(i, refs) === hostFilter) : issues, [issues, refs, hostFilter]);
   const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)&&!isOutcome(i)), [hostIssues]);
   const outcomesF = useMemo(() => issues.filter(i=>!isTrashed(i)&&isOutcome(i)&&(!hostFilter || linkedSessions(i).some(id=>!!refs.get(id)&&(refs.get(id)?.host_name||localName)===hostFilter) || sourceTasks(i).some(id=>hostIssues.some(t=>t.id===id)))), [issues, hostIssues, hostFilter, refs, localName]);
-  const agents = useMemo(() => agentsFrom(issuesF, me, presenceF.sessions), [issuesF, me, presenceF]);
-  const runningSessions = presenceF.sessions.filter((s) => s.alive && s.state === "working").length;
+  const liveSessions = useMemo(() => presenceF.sessions.filter((s) => !s.scheduled), [presenceF]);
+  const scheduledSessions = useMemo(() => presenceF.sessions.filter((s) => s.scheduled), [presenceF]);
+  const agents = useMemo(() => agentsFrom(issuesF, me, liveSessions), [issuesF, me, liveSessions]);
+  const runningSessions = liveSessions.filter((s) => s.alive && s.state === "working").length;
   // The same project list the workbench and project hub show: resolved from conversations,
   // task labels and outcomes together, archived ones set aside.
   const projectList = useMemo(() => rankProjects(projectGroups(projectRows, issuesF, outcomesF).filter((p) => p.name !== UNGROUPED_PROJECT), projectFlags), [projectRows, issuesF, outcomesF, projectFlags]);
@@ -265,26 +267,26 @@ export default function App() {
   }, [api, view, visible, issuesF]);
 
   const inbox = useMemo<InboxItems>(() => ({
-    unread: activityF.filter(a => a.unread && !a.scheduled),
-    waiting: presenceF.sessions.filter((s) => needsAttention(s) && !activity.sessions.some(a => a.scheduled && a.session_id === s.session_id && (a.host ?? 'local') === (s.host ?? 'local'))).sort((a, b) => b.last_at - a.last_at),
-    idle: presenceF.sessions.filter((s) => s.alive && s.state === "idle" && !needsAttention(s)),
+    unread: activityF.filter(a => a.unread && !a.scheduled && !(a.state === "working" && !a.stale)),
+    waiting: presenceF.sessions.filter((s) => needsAttention(s) && !s.scheduled).sort((a, b) => b.last_at - a.last_at),
+    idle: presenceF.sessions.filter((s) => s.alive && s.state === "idle" && !needsAttention(s) && !s.scheduled),
     review: issuesF.filter((i) => needsReview(i)).sort((a, b) => (b.closed_at ?? b.updated_at).localeCompare(a.closed_at ?? a.updated_at)),
     blocked: issuesF.filter((i) => i.status === "blocked"),
-  }), [issuesF, presenceF, activityF, activity]);
+  }), [issuesF, presenceF, activityF]);
 
   const counts = useMemo(() => ({
     total: issuesF.length,
     blocked: inbox.blocked.length,
     review: inbox.review.length,
     agents: agents.filter((a) => a.online).length,
-    inbox: inbox.unread.length + inbox.waiting.filter(s => !inbox.unread.some(a => a.session_id === s.session_id)).length + inbox.blocked.length,
+    inbox: inbox.unread.length + inbox.waiting.filter(s => !inbox.unread.some(a => a.session_id === s.session_id)).length,
   }), [issuesF, agents, inbox]);
 
   // Use unfiltered data: switching machines is not a new event.
   const notificationInbox = useMemo(() => ({
-    waiting: presence.sessions.filter((s) => needsAttention(s) && !activity.sessions.some(a => a.scheduled && a.session_id === s.session_id && (a.host ?? 'local') === (s.host ?? 'local'))),
+    waiting: observedPresence.sessions.filter((s) => needsAttention(s) && !s.scheduled),
     review: issues.filter((i) => needsReview(i) && !isOutcome(i)),
-  }), [presence, issues, activity]);
+  }), [observedPresence, issues]);
 
   // Ignore transient failures; wait for a stable explicit request. Keep identities
   // across disconnects and distinguish the same session id on different machines.
@@ -312,9 +314,9 @@ export default function App() {
 
   useEffect(() => {
     if (!api) return;
-    const working = observedPresence.sessions.filter((s) => s.alive && s.state === "working").length;
+    const working = observedPresence.sessions.filter((s) => s.alive && s.state === "working" && !s.scheduled).length;
     // Menu bars fill up fast; keep the status text to a few characters.
-    const unread = activity.sessions.filter(a => a.unread && !a.scheduled).length;
+    const unread = activity.sessions.filter(a => a.unread && !a.scheduled && !(a.state === "working" && !a.stale)).length;
     const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
     api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成`).catch(() => {});
   }, [api, observedPresence, notificationInbox, issues, activity]);
@@ -403,7 +405,7 @@ export default function App() {
             {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
-            {view === "agents" && <AgentsView agents={agents} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
+            {view === "agents" && <AgentsView agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={async (i) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; }} />}
             {view === "sessions" && api && <SessionsView outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}

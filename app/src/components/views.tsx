@@ -3,7 +3,7 @@ import { useState } from "react";
 import { sessionStatus, sessionEvidence } from "../derive";
 import type { AgentPresence } from "../derive";
 import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
-import type { Column, Host, Issue, SessionRef } from "../types";
+import type { Column, Host, Issue, Session, SessionRef } from "../types";
 import type { AgentStartInput, AgentStartResult } from "../api";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 import { linkedSessions } from "../projectModel";
@@ -27,6 +27,7 @@ export function Card({ issue, progress, selected, onSelect, me, root, draggable,
         {issue.issue_type !== "task" && <span className="muted">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>}
       </div>
       {blocked && <div className="blk">⊘ 被 {issue.dependency_count ?? ""} 项依赖卡住</div>}
+      {issue.status === "deferred" && <div className="blk deferred">⏸ 搁置 · 暂不安排</div>}
       {!blocked && (issue.dependency_count ?? 0) > 0 && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>↳ 依赖 {issue.dependency_count} 项</div>}
       {ac.length > 0 && issue.status !== "closed" && (
         <div className="chk"><span className="bar"><i style={{ width: `${(done / ac.length) * 100}%` }} /></span>{done}/{ac.length} 验收项</div>
@@ -147,7 +148,7 @@ function Delegate({ host, onClose, onStart }: { host: Host; onClose: () => void;
   );
 }
 
-export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs, hosts, onOpenUrl, onCopyText, onStart }: { agents: AgentPresence[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onStart: (input: AgentStartInput) => Promise<AgentStartResult | null> }) {
+export function AgentsView({ agents, scheduled, apps, onSelect, onCopyResume, onFocus, refs, hosts, onOpenUrl, onCopyText, onStart }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onStart: (input: AgentStartInput) => Promise<AgentStartResult | null> }) {
   const [delegate, setDelegate] = useState<Host | null>(null);
   return (
     <div className="agrid">
@@ -219,6 +220,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
 
         </div>
       );})}
+      {scheduled.length > 0 && <details className="offline-agents"><summary>定时会话 · {scheduled.length}<span className="muted small"> · 不计入在跑、未读和通知</span></summary><div className="sessions">{scheduled.map((s) => <div key={s.session_id} className={`sess ${s.state}`}><span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span><div className="agent-session-main"><div className="agent-session-title"><span className="proj-name">{s.herdr?.title || s.title || s.project || s.cwd}</span><span className={`st sm ${s.state === "working" ? "prog" : "open"}`}>{sessionStatus(s)}</span></div><div className="agent-session-meta"><span>{actorOf(s.agent, "")?.name}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : ""}</span></div></div><div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button></div></div>)}</div></details>}
       <details className="offline-agents"><summary>未检测到活动的 Agent · {agents.filter(a => !a.online && !a.current.length).length}</summary><div>{agents.filter(a => !a.online && !a.current.length).map(a => <span key={a.actor.id}>{a.actor.name}</span>)}</div></details>
     </div>
   );
