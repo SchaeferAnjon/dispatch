@@ -55,7 +55,7 @@ export interface Api {
   agentStart(input: AgentStartInput): Promise<AgentStartResult | null>;
   copy(text: string): Promise<void>;
   notify(title: string, body: string): Promise<void>;
-  tray(title: string, tooltip: string): Promise<void>;
+  tray(title: string, tooltip: string, lines?: string[]): Promise<void>;
   onChange(cb: () => void): Promise<() => void>;
 }
 
@@ -172,7 +172,7 @@ async function tauriApi(): Promise<Api> {
       if (!ok) ok = (await n.requestPermission()) === "granted";
       if (ok) n.sendNotification({ title, body });
     },
-    tray: async (title, tooltip) => void (await invoke("tray_update", { title, tooltip })),
+    tray: async (title, tooltip, lines = []) => void (await invoke("tray_update", { title, tooltip, lines })),
     onChange: async (cb) => listen("beads-changed", () => cb()),
   };
 }

@@ -332,12 +332,13 @@ export default function App() {
     // Menu bars fill up fast; keep the status text to a few characters.
     const unread = activity.sessions.filter(a => a.unread && !a.scheduled && !a.archived && !(a.state === "working" && !a.stale)).length;
     // Quota in the menu bar: this Mac's worst window per agent, as one letter and a percent.
-    const glyph: Record<string, string> = { "claude-code": "C", codex: "X", pi: "π", zcode: "Z" };
     const local = quota.filter((q) => !q.remote && q.windows.length);
-    const quotaParts = local.map((q) => { const worst = Math.max(...q.windows.map((w) => w.used_percent ?? 0)); return `${glyph[q.agent] ?? q.agent[0]}${Math.round(worst)}%`; });
-    const quotaTip = local.map((q) => `${glyph[q.agent] ?? q.agent}：${q.windows.map((w) => `${w.label} ${w.used_percent === null ? "—" : Math.round(w.used_percent) + "%"}`).join("，")}`).join(" · ");
-    const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : "", ...quotaParts].filter(Boolean);
-    api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成${quotaTip ? `\n额度 ${quotaTip}` : ""}`).catch(() => {});
+    const names: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", pi: "pi", zcode: "ZCode" };
+    const until = (epoch: number | null) => { if (!epoch) return ""; const m = Math.round((epoch * 1000 - Date.now()) / 60_000); return m <= 0 ? "" : m < 60 ? `${m}m 后重置` : m < 48 * 60 ? `${Math.floor(m / 60)}h 后重置` : `${Math.round(m / 1440)}d 后重置`; };
+    // The title stays short; each agent's quota goes into the click menu, one line per window.
+    const quotaLines = local.flatMap((q) => q.windows.map((w) => `${names[q.agent] ?? q.agent} · ${w.label} ${w.used_percent === null ? "—" : Math.round(w.used_percent) + "%"}${until(w.resets_at) ? ` · ${until(w.resets_at)}` : ""}`));
+    const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
+    api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成`, quotaLines).catch(() => {});
   }, [api, observedPresence, notificationInbox, issues, activity, quota]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {

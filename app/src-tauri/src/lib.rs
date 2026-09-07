@@ -743,11 +743,27 @@ fn start_watcher(app: AppHandle) {
 // ---------- menu bar item: "2 在跑 · 1 等你" ----------
 
 #[tauri::command]
-fn tray_update(app: AppHandle, title: String, tooltip: String) -> Result<(), String> {
+fn tray_update(app: AppHandle, title: String, tooltip: String, lines: Vec<String>) -> Result<(), String> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     if let Some(tray) = app.tray_by_id("main") {
         let t = if title.is_empty() { None } else { Some(title) };
         tray.set_title(t).map_err(|e| e.to_string())?;
         tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
+        // The click menu carries what the title should not: one line per agent's quota.
+        let show = MenuItem::with_id(&app, "show", "打开 Dispatch", true, None::<&str>).map_err(|e| e.to_string())?;
+        let quit = MenuItem::with_id(&app, "quit", "退出", true, None::<&str>).map_err(|e| e.to_string())?;
+        let menu = Menu::new(&app).map_err(|e| e.to_string())?;
+        menu.append(&show).map_err(|e| e.to_string())?;
+        if !lines.is_empty() {
+            menu.append(&PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            for (i, line) in lines.iter().enumerate() {
+                let item = MenuItem::with_id(&app, format!("quota-{i}"), line, false, None::<&str>).map_err(|e| e.to_string())?;
+                menu.append(&item).map_err(|e| e.to_string())?;
+            }
+        }
+        menu.append(&PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        menu.append(&quit).map_err(|e| e.to_string())?;
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
