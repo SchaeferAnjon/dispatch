@@ -208,10 +208,10 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
           </details>
         )}
 
-        <div className="sec">
-          <h4>提及记录 · 供参考{refs.length > 0 && <span className="muted" style={{ textTransform: "none", letterSpacing: 0 }}>提到过这个任务的 {refs.length} 个会话</span>}</h4>
+        <details className="sec context-fold">
+          <summary>对话中提到过 <span className="muted">{refs.length} 个会话 · 仅供参考，不代表归属</span></summary>
           {refs.length === 0 ? (
-            <p className="empty-p" style={{ margin: 0 }}>还没有会话提到 {id}。Agent 在对话里用到这个 ID 后，这里会出现"复制恢复命令"。</p>
+            <p className="empty-p" style={{ margin: 0 }}>还没有会话提到 {id}。归属以上方「所属会话」为准。</p>
           ) : (
             <div className="sess-list">
               {refs.map((r) => {
@@ -231,7 +231,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
               })}
             </div>
           )}
-        </div>
+        </details>
 
         <div className="sec">
           <h4>活动</h4>

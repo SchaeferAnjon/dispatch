@@ -108,7 +108,7 @@ export function SessionsView({ activities, issues, outcomes, activityError, onSe
                 <div className="l1"><Avatar actor={a} /><span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && <div className="l3 activity-text">{activityLabel(active)} · {active.activity}</div>}
-                {r.current_task && issues.some(i => i.id === r.current_task && i.status === "in_progress") && <div className="l3 mono">关联任务 {r.current_task}</div>}
+                {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}
               </button><OpenSessionButton session={r} compact /></div>
             );
           })}

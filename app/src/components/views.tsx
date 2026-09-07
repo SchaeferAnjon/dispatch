@@ -6,6 +6,7 @@ import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, durSince, isReview
 import type { Column, Host, Issue, SessionRef } from "../types";
 import type { AgentStartInput, AgentStartResult } from "../api";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
+import { linkedSessions } from "../projectModel";
 
 interface Common { progress?: Record<string, string>; issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
 
@@ -206,7 +207,7 @@ export function AgentsView({ agents, apps, onSelect, onCopyResume, onFocus, refs
                   <div className="agent-session-main">
                     <div className="agent-session-title"><span className="proj-name">{s.herdr?.title || r?.title || s.project || "未关联会话记录"}</span><span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{sessionStatus(s)}</span></div>
                     <div className="agent-session-meta"><span>{s.state_source === "transcript" ? "实际会话记录" : s.source_kind === "unknown" ? "来源未识别" : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : "尚无活动上报"}</span></div>
-                    {r?.current_task && a.current.some(i => i.id === r.current_task) && <button className="link mono small" onClick={() => onSelect(r.current_task!)}>{r.current_task}</button>}
+                    {(() => { const own = a.current.find(i => linkedSessions(i).includes(s.session_id)); return own ? <button className="link small linked-task" onClick={() => onSelect(own.id)}><span className="mono">{own.id}</span> {own.title}</button> : null; })()}
                   </div>
                   <div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button>{s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && <button className="copy-btn" onClick={() => onCopyResume(s.agent, s.session_id, s.cwd)}>恢复</button>}</div>
                 </div>
