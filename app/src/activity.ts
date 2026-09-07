@@ -2,6 +2,13 @@ import type { Activity } from './types';
 
 export const activityKey = (a: Activity) => `${a.host ?? 'local'}:${a.key}`;
 
+// Transcripts a parent conversation spawned (Claude Code sub-agents) are part of
+// that conversation, not conversations of their own.
+export const isSubagentSession = (r: { path?: string }) => /\/subagents\//.test(r.path ?? '');
+// Sessions another program started through the SDK (scripts, schedulers, agents
+// driving agents): real conversations, but noise in a list meant for the user's own.
+export const isScriptSession = (r: { path?: string; entrypoint?: string }) => isSubagentSession(r) || /^sdk/.test(r.entrypoint ?? '');
+
 // A conversation is either tracked (★, never fades), ordinary (fades into the
 // archive after `days` without activity) or archived (by hand or by time).
 export type Lifecycle = 'starred' | 'active' | 'archived';

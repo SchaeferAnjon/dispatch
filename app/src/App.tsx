@@ -19,13 +19,13 @@ import { HomeView } from "./components/Home";
 import { SearchPalette } from "./components/Search";
 import { PROJECT_FLAGS_KEY, parseProjectFlags, parseSettings, serializeProjectFlags, withProjectFlag, type DispatchSettings, type ProjectFlags } from "./projectFlags";
 import { isOutcome, knownProjects, linkedSessions, projectGroups, sourceTasks, projectConversations } from "./projectModel";
-import { UNGROUPED_PROJECT, activityKey, conversationProject, mergeActivity, resolveProject } from "./activity";
+import { UNGROUPED_PROJECT, activityKey, conversationProject, isScriptSession, isSubagentSession, mergeActivity, resolveProject } from "./activity";
 import { rankProjects } from "./projectFlags";
 import { GraphView } from "./components/Graph";
 import { Tour } from "./components/Guide";
 import { MobileNav } from "./components/MobileNav";
 import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
-import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, SessionRef, View } from "./types";
+import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
 const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站" };
@@ -184,6 +184,17 @@ export default function App() {
 
   const [hosts, setHosts] = useState<Host[]>([]);
 
+  // Usage limits per agent, refreshed every minute; shown on the workbench and in the menu bar.
+  const [quota, setQuota] = useState<Quota[]>([]);
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    const tick = async () => { try { const q = await api.quota(); if (alive) setQuota(q); } catch { /* keep last */ } };
+    tick();
+    const t = window.setInterval(tick, 60_000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [api]);
+
 
   // The Macs on the tailnet (this one + hosts.json), for the 机器 strip on the Agents view.
   useEffect(() => {
@@ -211,8 +222,9 @@ export default function App() {
   const presenceF = useMemo(() => hostFilter ? { ...observedPresence, sessions: observedPresence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : observedPresence, [observedPresence, hostFilter, localName]);
   // Every conversation carries its resolved project from here on, so each view agrees on it.
   const known = useMemo(() => knownProjects(issues, activity.sessions), [issues, activity]);
-  const refsF = useMemo(() => new Map([...refs].filter(([, r]) => !hostFilter || (r.host_name ?? localName) === hostFilter).map(([id, r]) => [id, { ...r, project: resolveProject(r, known) }])), [refs, hostFilter, localName, known]);
-  const activityF = useMemo(() => activity.sessions.filter(a => !hostFilter || (a.host_name ?? localName) === hostFilter).map(a => ({ ...a, project: resolveProject(a, known) })), [activity, hostFilter, localName, known]);
+  const refsF = useMemo(() => new Map([...refs].filter(([, r]) => !isSubagentSession(r) && (!hostFilter || (r.host_name ?? localName) === hostFilter)).map(([id, r]) => [id, { ...r, project: resolveProject(r, known) }])), [refs, hostFilter, localName, known]);
+  const activityF = useMemo(() => activity.sessions.filter(a => !isSubagentSession(a) && (!hostFilter || (a.host_name ?? localName) === hostFilter)).map(a => ({ ...a, project: resolveProject(a, known) })), [activity, hostFilter, localName, known]);
+  const scriptCount = useMemo(() => [...refsF.values()].filter(isScriptSession).length, [refsF]);
   const projectRows = useMemo(()=>projectConversations(activityF,[...refsF.values()]),[activityF,refsF]);
   // 收藏 / 归档 per project: one shared bd memory, re-read whenever the board changes.
   const [projectFlags, setProjectFlags] = useState<ProjectFlags>({});
@@ -319,9 +331,14 @@ export default function App() {
     const working = observedPresence.sessions.filter((s) => s.alive && s.state === "working" && !s.scheduled).length;
     // Menu bars fill up fast; keep the status text to a few characters.
     const unread = activity.sessions.filter(a => a.unread && !a.scheduled && !a.archived && !(a.state === "working" && !a.stale)).length;
-    const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
-    api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成`).catch(() => {});
-  }, [api, observedPresence, notificationInbox, issues, activity]);
+    // Quota in the menu bar: this Mac's worst window per agent, as one letter and a percent.
+    const glyph: Record<string, string> = { "claude-code": "C", codex: "X", pi: "π", zcode: "Z" };
+    const local = quota.filter((q) => !q.remote && q.windows.length);
+    const quotaParts = local.map((q) => { const worst = Math.max(...q.windows.map((w) => w.used_percent ?? 0)); return `${glyph[q.agent] ?? q.agent[0]}${Math.round(worst)}%`; });
+    const quotaTip = local.map((q) => `${glyph[q.agent] ?? q.agent}：${q.windows.map((w) => `${w.label} ${w.used_percent === null ? "—" : Math.round(w.used_percent) + "%"}`).join("，")}`).join(" · ");
+    const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : "", ...quotaParts].filter(Boolean);
+    api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成${quotaTip ? `\n额度 ${quotaTip}` : ""}`).catch(() => {});
+  }, [api, observedPresence, notificationInbox, issues, activity, quota]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try { await fn(); say(label); await reload(); } catch (e) { say(String(e), true); }
@@ -406,14 +423,14 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && api && <HomeView api={api} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onInbox={(tab)=>{setView("inbox");setInboxTab(tab);}} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
+            {view === "home" && api && <HomeView quota={quota} hostFilter={hostFilter} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} agents={agents} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} />}
             {view === "projects" && api && <ProjectHub archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} onPhone={phoneLink} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onResume={copyResume} onFocus={focusSession} />}
             {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} onSelect={(id) => { setSelected(id); }} onCopyResume={copyResume} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(`${what}已复制`)).catch((e) => say(String(e), true))} onStart={startAgent} />}
-            {view === "sessions" && api && <SessionsView archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
+            {view === "sessions" && api && <SessionsView refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

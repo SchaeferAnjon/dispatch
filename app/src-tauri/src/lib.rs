@@ -759,7 +759,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     TrayIconBuilder::with_id("main")
-        .icon(app.default_window_icon().cloned().expect("app icon"))
+        // A template icon: the app icon is a dark rounded square and would render as a solid block in the menu bar.
+        .icon(tauri::image::Image::new(include_bytes!("../icons/tray.rgba"), 44, 44))
         .icon_as_template(true)
         .title("bd")
         .menu(&menu)

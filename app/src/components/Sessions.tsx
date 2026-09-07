@@ -4,20 +4,21 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
 import { actorOf, durSince, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
 import { lineDiff, withContext } from "../diff";
-import { canReadReply, activityLabel, sessionLifecycle } from "../activity";
+import { canReadReply, activityLabel, isScriptSession, sessionLifecycle } from "../activity";
 import type { Activity, Issue, Session, SessionDetail, SessionRef } from "../types";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 import { OpenSessionButton } from "./SessionActions";
+import { ConversationMenuButton, useConversationMenu } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 
-interface Props { archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
+interface Props { refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
-export function SessionsView({ archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
-  const [refs, setRefs] = useState<SessionRef[]>([]);
-  const [loaded, setLoaded] = useState(false);
+export function SessionsView({ refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
+  const openMenu = useConversationMenu();
+  const [showScripts, setShowScripts] = useState(false);
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
   const [mode, setMode] = useState<"active" | "starred" | "archived" | "scheduled">("active");
@@ -31,8 +32,6 @@ export function SessionsView({ archiveDays, activities, issues, outcomes, activi
   const [kinds, setKinds] = useState<Record<"user" | "assistant" | "tool", boolean>>(() => { try { return { user: true, assistant: true, tool: false, ...JSON.parse(localStorage.getItem("dispatch-tl-kinds") || "{}") }; } catch { return { user: true, assistant: true, tool: false }; } });
   const flip = (k: "user" | "assistant" | "tool") => { const v = { ...kinds, [k]: !kinds[k] }; setKinds(v); try { localStorage.setItem("dispatch-tl-kinds", JSON.stringify(v)); } catch { /* ignore */ } };
 
-  const load = async () => { try { setRefs(await api.sessionList()); setLoaded(true); } catch (e) { onError(String(e)); } };
-  useEffect(() => { load(); const t = window.setInterval(load, 60_000); return () => window.clearInterval(t); }, [api]);
   const scroller = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const timelineScroll = useRef(0);
@@ -81,9 +80,11 @@ export function SessionsView({ archiveDays, activities, issues, outcomes, activi
       const old = all.get(a.session_id);
       all.set(a.session_id, old ? { ...old, last_at: a.last_at, scheduled: old.scheduled || a.scheduled, starred: old.starred || a.starred, archived: old.archived || a.archived } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
     }
-    const inMode = (r: SessionRef) => { if (mode === "scheduled") return !!r.scheduled; if (r.scheduled) return false; const life = sessionLifecycle(r, archiveDays); return mode === "archived" ? life === "archived" : mode === "starred" ? life === "starred" : life !== "archived"; };
+    const inMode = (r: SessionRef) => { if (!showScripts && isScriptSession(r)) return false; if (mode === "scheduled") return !!r.scheduled; if (r.scheduled) return false; const life = sessionLifecycle(r, archiveDays); return mode === "archived" ? life === "archived" : mode === "starred" ? life === "starred" : life !== "archived"; };
     return [...all.values()].sort((a,b) => Number(!!b.starred) - Number(!!a.starred) || b.last_at - a.last_at).filter((r) => inMode(r) && (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
-  }, [refs, activities, q, agent, host, mode, archiveDays]);
+  }, [refs, showScripts, activities, q, agent, host, mode, archiveDays]);
+  // The menu wants the conversation shape; a catalog row becomes one with the same identity.
+  const asActivity = (r: SessionRef): Activity => activities.find((a) => a.session_id === r.session_id && (a.host ?? "local") === (r.host ?? "local")) ?? ({ ...r, key: `${r.agent}:${r.session_id}`, tasks: Object.keys(r.tasks || {}), state: "unknown", stale: true, unread: false, activity: "", version: "", events: [], tracking_since: 0, source: "catalog" } as Activity);
   const counts = useMemo(() => { const seen = new Map<string, SessionRef | Activity>(); for (const r of [...refs, ...activities]) if (!seen.has(r.session_id)) seen.set(r.session_id, r); const all = [...seen.values()]; return { scheduled: all.filter((r) => r.scheduled).length, starred: all.filter((r) => !r.scheduled && sessionLifecycle(r, archiveDays) === "starred").length, archived: all.filter((r) => !r.scheduled && sessionLifecycle(r, archiveDays) === "archived").length }; }, [refs, activities, archiveDays]);
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
@@ -99,6 +100,7 @@ export function SessionsView({ archiveDays, activities, issues, outcomes, activi
             <button className={mode === "starred" ? "on" : ""} onClick={() => setMode("starred")} title="收藏的会话：长期追踪，不会自动归档">★ 追踪中 {counts.starred}</button>
             <button className={mode === "archived" ? "on" : ""} onClick={() => setMode("archived")} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>已归档 {counts.archived}</button>
             {counts.scheduled > 0 && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="定时任务产生的会话">定时 {counts.scheduled}</button>}
+            {scriptCount > 0 && <button className={`chip${showScripts ? " on" : ""}`} onClick={() => setShowScripts(!showScripts)} title="由脚本、定时任务或其他 Agent 通过 SDK 启动的会话，默认不列出">子 Agent / SDK {scriptCount}</button>}
           </div>
           <div className="views" style={{ marginTop: 6 }}>
             {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
@@ -113,12 +115,12 @@ export function SessionsView({ archiveDays, activities, issues, outcomes, activi
             const l = liveOf(r.session_id);
             const active = activities.find(a => a.session_id === r.session_id);
             return (
-              <div key={r.session_id} className={`sess-item${sel === r.session_id ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
+              <div key={r.session_id} className={`sess-item${sel === r.session_id ? " sel" : ""}`} onContextMenu={(e) => openMenu(asActivity(r), e)}><button className="sess-item-main" onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
                 <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title="追踪中">★</span>}<span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && <div className="l3 activity-text">{activityLabel(active)} · {active.activity}</div>}
                 {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}
-              </button><OpenSessionButton session={r} compact /></div>
+              </button><div className="sess-item-actions"><OpenSessionButton session={r} compact /><ConversationMenuButton a={asActivity(r)} /></div></div>
             );
           })}
         </div>

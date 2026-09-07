@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import type { Api } from "../api";
+import { useMemo, useState } from "react";
 import type { AgentPresence } from "../derive";
 import { actorOf, durSince, parseAcceptance, projectColor, relTime, sessionStatus } from "../derive";
 import { activityKey, conversationProject, conversationSummary, sessionLifecycle } from "../activity";
@@ -32,7 +31,7 @@ export function QuotaBar({ w }: { w: { label: string; used_percent: number | nul
 }
 
 interface Props {
-  api: Api;
+  quota: Quota[];
   hostFilter: string;
   me: string;
   loaded: boolean;
@@ -52,7 +51,6 @@ interface Props {
   onTask: (id: string) => void;
   onProject: (name: string) => void;
   onView: (v: View) => void;
-  onInbox: (tab: keyof InboxItems) => void;
   onNew: (a?: Activity) => void;
   onPhone?: () => void;
 }
@@ -70,7 +68,9 @@ interface Card {
   running: Activity[];
   tracked: Activity[];
   tasks: Issue[];
+  blockedTasks: Issue[];
   blocked: number;
+  lastActive: number;
   open: number;
   sessions: number;
   results: Issue[];
@@ -81,15 +81,10 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ api, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, flags, archiveDays, onFlag, onOpen, onFocus, onTask, onProject, onView, onInbox, onNew, onPhone }: Props) {
-  const [quota, setQuota] = useState<Quota[]>([]);
-  useEffect(() => {
-    let alive = true;
-    const tick = async () => { try { const q = await api.quota(); if (alive) setQuota(q); } catch { /* keep last */ } };
-    tick();
-    const t = window.setInterval(tick, 60_000);
-    return () => { alive = false; window.clearInterval(t); };
-  }, [api]);
+export function HomeView({ quota, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, flags, archiveDays, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone }: Props) {
+  // The count chips narrow this page instead of leaving it.
+  const [focus, setFocus] = useState<"" | "unread" | "waiting" | "blocked" | "running">("");
+  const toggleFocus = (f: typeof focus) => setFocus((cur) => (cur === f ? "" : f));
 
   const cards = useMemo<Card[]>(() => {
     const unreadKeys = new Set(inbox.unread.map(activityKey));
@@ -103,10 +98,12 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
       const busy = new Set([...waiting.map((s) => s.session_id), ...unread.map((a) => a.session_id), ...running.map((a) => a.session_id)]);
       const tracked = ordinary.filter((a) => a.starred && !busy.has(a.session_id));
       const tasks = p.items.filter((i) => i.status === "in_progress");
-      const blocked = p.items.filter((i) => i.status === "blocked").length;
+      const blockedTasks = p.items.filter((i) => i.status === "blocked");
       const open = p.items.filter((i) => i.status !== "closed").length;
-      return { name: p.name, last: p.last, live: waiting.length + unread.length + running.length + tasks.length + blocked + tracked.length > 0, waiting, unread, running, tracked, tasks, blocked, open, sessions: ordinary.length, results: p.results, latest: ordinary[0] };
-    }).sort((a, b) => Number(b.live) - Number(a.live) || b.last - a.last);
+      // Recency is conversation activity: a running session counts as now.
+      const lastActive = Math.max(running.length ? Date.now() / 1000 : 0, ...ordinary.map((a) => a.last_at), ...waiting.map((s) => s.last_at), 0);
+      return { name: p.name, last: p.last, lastActive, live: waiting.length + unread.length + running.length + tasks.length + blockedTasks.length + tracked.length > 0, waiting, unread, running, tracked, tasks, blockedTasks, blocked: blockedTasks.length, open, sessions: ordinary.length, results: p.results, latest: ordinary[0] };
+    }).sort((a, b) => b.lastActive - a.lastActive || b.last - a.last);
   }, [rows, issues, outcomes, inbox.unread, inbox.waiting, archiveDays]);
 
   // Every tracked conversation, across projects, newest first.
@@ -117,8 +114,9 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
   const now = Date.now() / 1000;
   // 收藏 pins a project to the top; 归档 hides it until asked for.
   const ranked = rankProjects(cards.filter((c) => c.name !== UNGROUPED), flags);
-  const featured = ranked.active.filter((c) => isStarred(flags, c.name) || c.live || now - c.last < 3 * DAY);
-  const rest = ranked.active.filter((c) => !featured.includes(c));
+  const matches = (c: Card) => focus === "" || (focus === "unread" ? c.unread.length > 0 : focus === "waiting" ? c.waiting.length > 0 : focus === "blocked" ? c.blockedTasks.length > 0 : c.running.length > 0);
+  const featured = ranked.active.filter((c) => (isStarred(flags, c.name) || c.live || now - c.last < 3 * DAY) && matches(c));
+  const rest = focus ? [] : ranked.active.filter((c) => !featured.includes(c));
   const archived = ranked.archived;
   const ungrouped = cards.find((c) => c.name === UNGROUPED);
   const [showRest, setShowRest] = useState(false);
@@ -147,7 +145,7 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           <button className="link" onClick={() => onProject(c.name)}>进入项目 ›</button>
         </header>
 
-        {(c.waiting.length > 0 || c.unread.length > 0) && (
+        {(!focus || focus === "waiting" || focus === "unread") && (c.waiting.length > 0 || c.unread.length > 0) && (
           <div className="home-group">
             <div className="home-group-h hot">等你 <b>{c.waiting.length + c.unread.length}</b></div>
             {c.waiting.slice(0, 3).map((s) => {
@@ -177,7 +175,7 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           </div>
         )}
 
-        {c.running.length > 0 && (
+        {(!focus || focus === "running") && c.running.length > 0 && (
           <div className="home-group">
             <div className="home-group-h">在跑 <b>{c.running.length}</b></div>
             {c.running.slice(0, 3).map((a) => {
@@ -194,7 +192,7 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           </div>
         )}
 
-        {c.tracked.length > 0 && (
+        {!focus && c.tracked.length > 0 && (
           <div className="home-group">
             <div className="home-group-h">追踪中 <b>{c.tracked.length}</b></div>
             {c.tracked.slice(0, 3).map((a) => {
@@ -211,7 +209,21 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           </div>
         )}
 
-        {c.tasks.length > 0 && (
+        {(!focus || focus === "blocked") && c.blockedTasks.length > 0 && (
+          <div className="home-group">
+            <div className="home-group-h hot">被卡住 <b>{c.blockedTasks.length}</b><span className="muted">依赖没完成，等依赖完成会自动解开</span></div>
+            {c.blockedTasks.slice(0, 3).map((i) => (
+              <div key={i.id} className="home-row task opens" role="button" tabIndex={0} onClick={() => onTask(i.id)} onKeyDown={(e) => e.key === "Enter" && onTask(i.id)}>
+                <span className="st sm block">⊘</span>
+                <Pri p={i.priority} />
+                <span className="t">{i.title}<span className="sub">依赖 {i.dependency_count ?? ""} 项未完成</span></span>
+                <span className="meta muted small mono">{i.id}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!focus && c.tasks.length > 0 && (
           <div className="home-group">
             <div className="home-group-h">进行中的任务 <b>{c.tasks.length}</b></div>
             {c.tasks.slice(0, 3).map((i) => {
@@ -233,7 +245,7 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           </div>
         )}
 
-        {!c.live && c.latest && (
+        {!focus && !c.live && c.latest && (
           <div className="home-group">
             <div className="home-group-h">最近一次会话</div>
             <div className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(c.latest!.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(c.latest!.session_id)}>
@@ -244,10 +256,10 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
           </div>
         )}
 
-        <footer>
+        {!focus && <footer>
           {c.results[0] ? <button className="link outcome" onClick={() => onTask(c.results[0].id)} title={plain(c.results[0].description ?? "")}>最新成果 · {c.results[0].title} ›</button> : <span className="muted small">还没登记成果</span>}
           {more > 0 && <button className="link" onClick={() => onProject(c.name)}>还有 {more} 项，进入项目 ›</button>}
-        </footer>
+        </footer>}
       </article>
     );
   };
@@ -267,10 +279,11 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
       </header>
 
       <div className="home-strip">
-        <button className={`home-count${inbox.unread.length ? " hot" : ""}`} onClick={() => onInbox("unread")}>未读回复 <b>{inbox.unread.length}</b></button>
-        <button className={`home-count${inbox.waiting.length ? " hot" : ""}`} onClick={() => onInbox("waiting")}>等待确认 <b>{inbox.waiting.length}</b></button>
-        <button className={`home-count${inbox.blocked.length ? " hot" : ""}`} onClick={() => onInbox("blocked")}>被卡住 <b>{inbox.blocked.length}</b></button>
-        <button className="home-count" onClick={() => onView("agents")}>在跑 <b>{running}</b></button>
+        <button className={`home-count${inbox.unread.length ? " hot" : ""}${focus === "unread" ? " on" : ""}`} aria-pressed={focus === "unread"} onClick={() => toggleFocus("unread")} title="只看有未读回复的项目">未读回复 <b>{inbox.unread.length}</b></button>
+        <button className={`home-count${inbox.waiting.length ? " hot" : ""}${focus === "waiting" ? " on" : ""}`} aria-pressed={focus === "waiting"} onClick={() => toggleFocus("waiting")} title="只看在等你确认的会话">等待确认 <b>{inbox.waiting.length}</b></button>
+        <button className={`home-count${inbox.blocked.length ? " hot" : ""}${focus === "blocked" ? " on" : ""}`} aria-pressed={focus === "blocked"} onClick={() => toggleFocus("blocked")} title="只看被卡住的任务">被卡住 <b>{inbox.blocked.length}</b></button>
+        <button className={`home-count${focus === "running" ? " on" : ""}`} aria-pressed={focus === "running"} onClick={() => toggleFocus("running")} title="只看正在跑的会话">在跑 <b>{running}</b></button>
+        {focus && <button className="link" onClick={() => setFocus("")}>显示全部 ✕</button>}
         <span className="spacer" />
         {quotaByAgent.map(({ agent: a, qs }) => (
           <button key={a.actor.id} className="home-quota" onClick={() => onView("quota")} title={`${a.actor.name} 的额度 · 点开看详情`}>
@@ -280,7 +293,8 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
         ))}
       </div>
 
-      {trackedAll.length > 0 && (
+      {focus && featured.length === 0 && (!ungrouped || !matches(ungrouped)) && <div className="home-quiet">{focus === "unread" ? "没有未读回复" : focus === "waiting" ? "没有会话在等你确认" : focus === "blocked" ? "没有被卡住的任务" : "没有会话在跑"}<button className="link" onClick={() => setFocus("")}>显示全部</button></div>}
+      {!focus && trackedAll.length > 0 && (
         <section className="home-tracked">
           <h4>★ 追踪中 <span className="muted">你收藏的会话，跨项目集中在这里，不会自动归档</span><button className="link right" onClick={() => onView("sessions")}>会话页 ›</button></h4>
           <div className="home-rows">
@@ -306,10 +320,10 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
       {!loaded && <div className="home-quiet">正在读取项目与会话…</div>}
       <div className="home-projects">
         {featured.map(renderCard)}
-        {ungrouped && ungrouped.live && renderCard(ungrouped)}
+        {ungrouped && ungrouped.live && matches(ungrouped) && renderCard(ungrouped)}
       </div>
 
-      {rest.length > 0 && (
+      {!focus && rest.length > 0 && (
         <section className="home-rest">
           <h4>其他项目 <span className="muted">最近没有动静</span><button className="link right" onClick={() => setShowRest(!showRest)}>{showRest ? "收起" : `展开 ${rest.length} 个`}</button><button className="link" onClick={() => onView("projects")}>全部项目 ›</button></h4>
           {showRest && (
@@ -327,7 +341,7 @@ export function HomeView({ api, hostFilter, me, loaded, connectionError, unavail
         </section>
       )}
 
-      {archived.length > 0 && (
+      {!focus && archived.length > 0 && (
         <section className="home-rest">
           <h4>已归档 <span className="muted">做完了、暂时不用的项目</span><button className="link right" onClick={() => setShowArchived(!showArchived)}>{showArchived ? "收起" : `展开 ${archived.length} 个`}</button></h4>
           {showArchived && (
