@@ -22,6 +22,7 @@ export function sessionLifecycle(a: { starred?: boolean; archived?: boolean; las
 // Extract a short quotation from available conversation text, without inventing
 // an AI summary or showing serialized tool payloads as prose.
 export function conversationSummary(a: Activity): string {
+  if (a.summary) return a.summary;
   let text = (a.reply_preview || a.activity || '').trim();
   const raw = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
   if (/^[{[]/.test(raw)) {

@@ -3,6 +3,7 @@ import { projectColor } from "../derive";
 import type { Info, View } from "../types";
 import { Avatar } from "./ui";
 import { Icon } from "./icons";
+import appIcon from "../assets/icon.png";
 
 export interface Filters { project: string | null; mine: boolean; urgent: boolean; agent: string | null; blocked: boolean; review: boolean }
 
@@ -16,6 +17,7 @@ interface Props {
   filters: Filters;
   setFilters: (f: Filters) => void;
   onAllTasks: () => void;
+  onOverview?: () => void;
   hosts?: { id: string; name: string; online: boolean; local: boolean }[];
   hostFilter?: string;
   setHostFilter?: (name: string) => void;
@@ -24,7 +26,7 @@ interface Props {
 // The sidebar is the map. Three groups, each answering one question; the
 // current place is marked by a colour bar, counts stay quiet unless they are
 // asking for you (等你 turns red).
-export function Sidebar({ info, view, setView, counts, projects, agents, filters, setFilters, onAllTasks, hosts = [], hostFilter = "", setHostFilter }: Props) {
+export function Sidebar({ info, view, setView, counts, projects, agents, filters, setFilters, onAllTasks, onOverview, hosts = [], hostFilter = "", setHostFilter }: Props) {
   const go = (v: View) => { setView(v); setFilters({ ...filters, blocked: false, review: false }); };
   const item = (v: View, icon: string, label: string, right?: React.ReactNode, active?: boolean) => (
     <a role="button" tabIndex={0} className={(active ?? view === v) ? "on" : ""} onClick={() => v === "board" ? onAllTasks() : go(v)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); v === "board" ? onAllTasks() : go(v); } }}>
@@ -34,13 +36,13 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
   const taskView = view === "board" || view === "table";
   return (
     <aside className="side">
-      <div className="ws" title="所有项目共用这一块任务板">
-        <div className="glyph">bd</div>
+      <button className="ws" title="Dispatch 有哪些页面、各自干什么" onClick={onOverview}>
+        <img className="glyph app" src={appIcon} alt="" />
         <div style={{ minWidth: 0 }}>
-          <div className="name">任务板</div>
-          <div className="path" title={info?.beads_dir}>{info?.beads_dir?.replace(/^\/Users\/[^/]+/, "~") ?? "…"}</div>
+          <div className="name">Dispatch</div>
+          <div className="path" title={info?.beads_dir}>任务板 {info?.beads_dir?.replace(/^\/Users\/[^/]+/, "~") ?? "…"}</div>
         </div>
-      </div>
+      </button>
       {hosts.length > 1 && setHostFilter && (
         <div className="hostsw side-hosts" title="看哪台机器：任务、会话、额度、统计都只看它；「全部」合并两台" onClick={(e) => e.stopPropagation()}>
           <button className={hostFilter === "" ? "on" : ""} onClick={() => setHostFilter("")}>全部</button>

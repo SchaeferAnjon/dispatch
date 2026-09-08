@@ -87,6 +87,10 @@ interface Card {
 export function HomeView({ insight, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone, onScreen, screenReady }: Props) {
   // The count chips narrow this page instead of leaving it.
   const [focus, setFocus] = useState<"" | "unread" | "waiting" | "blocked" | "running">("");
+  // How the project cards are ordered; starred ones stay on top either way.
+  type Sort = "active" | "sessions" | "open" | "name";
+  const [sort, setSort] = useState<Sort>(() => { try { return (localStorage.getItem("dispatch-home-sort") as Sort) || "active"; } catch { return "active"; } });
+  const changeSort = (s: Sort) => { setSort(s); try { localStorage.setItem("dispatch-home-sort", s); } catch { /* ignore */ } };
   const toggleFocus = (f: typeof focus) => setFocus((cur) => (cur === f ? "" : f));
 
   const cards = useMemo<Card[]>(() => {
@@ -118,7 +122,15 @@ export function HomeView({ insight, me, loaded, connectionError, unavailable, ro
   // 收藏 pins a project to the top; 归档 hides it until asked for.
   const ranked = rankProjects(cards.filter((c) => c.name !== UNGROUPED), flags);
   const matches = (c: Card) => focus === "" || (focus === "unread" ? c.unread.length > 0 : focus === "waiting" ? c.waiting.length > 0 : focus === "blocked" ? c.blockedTasks.length > 0 : c.running.length > 0);
-  const featured = ranked.active.filter((c) => (isStarred(flags, c.name) || c.live || now - c.last < 3 * DAY) && matches(c));
+  const orderBy = (a: Card, b: Card) => {
+    const s = Number(isStarred(flags, b.name)) - Number(isStarred(flags, a.name));
+    if (s) return s;
+    if (sort === "sessions") return b.sessions - a.sessions || b.lastActive - a.lastActive;
+    if (sort === "open") return b.open - a.open || b.lastActive - a.lastActive;
+    if (sort === "name") return a.name.localeCompare(b.name, "zh");
+    return b.lastActive - a.lastActive || b.last - a.last;
+  };
+  const featured = ranked.active.filter((c) => (isStarred(flags, c.name) || c.live || now - c.last < 3 * DAY) && matches(c)).sort(orderBy);
   const rest = focus ? [] : ranked.active.filter((c) => !featured.includes(c));
   const archived = ranked.archived;
   const ungrouped = cards.find((c) => c.name === UNGROUPED);
@@ -300,6 +312,7 @@ export function HomeView({ insight, me, loaded, connectionError, unavailable, ro
         <button className={`home-count${running ? "" : " zero"}${focus === "running" ? " on" : ""}`} aria-pressed={focus === "running"} onClick={() => toggleFocus("running")} title="只看正在跑的会话">在跑 <b>{running}</b></button>
         {focus && <button className="link" onClick={() => setFocus("")}>显示全部 ✕</button>}
         {!focus && featured.length > 1 && <button className="link" onClick={toggleAll}>{everyOpen ? "全部收起" : "全部展开"}</button>}
+        <select className="sess-agent home-sort" value={sort} onChange={(e) => changeSort(e.target.value as Sort)} aria-label="项目排序" title="项目卡片怎么排；收藏的总在最前"><option value="active">按最近活动</option><option value="sessions">按会话数</option><option value="open">按未完成任务</option><option value="name">按名称</option></select>
         {onPhone && <button className="link" onClick={onPhone} title="复制手机访问链接：手机连上 Tailscale 后用浏览器打开">手机访问 ⧉</button>}
         {onScreen && <button className="link" disabled={!screenReady} onClick={onScreen} title={screenReady ? "复制屏幕链接：手机上看并操作这台电脑，登录用这台 Mac 的用户名和密码" : "还没配置屏幕访问：设置页有说明"}>看屏幕 ⧉</button>}
       </div>

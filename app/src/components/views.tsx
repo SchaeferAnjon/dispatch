@@ -50,6 +50,9 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
   const [over, setOver] = useState<Column | null>(null);
   // The done column only shows the last week by default; the rest is a click away.
   const [allDone, setAllDone] = useState(false);
+  // Done groups fold by default; the fold state is remembered per project.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem("dispatch-done-groups") || "{}"); } catch { return {}; } });
+  const toggleGroup = (name: string, open: boolean) => setOpenGroups((g) => { const next = { ...g, [name]: open }; try { localStorage.setItem("dispatch-done-groups", JSON.stringify(next)); } catch { /* ignore */ } return next; });
   const recent = (i: Issue) => Date.now() - Date.parse(i.closed_at ?? i.updated_at) < WEEK;
   return (
     <div className="board">
@@ -68,7 +71,7 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
               {c.key === "todo" && <button className="add" onClick={() => onAdd(c.key)} title="新任务">＋</button>}
             </div>
             <div className="cards">
-              {c.key === "done" && list.length > 0 && (() => { const sorted = [...list].sort((x, y) => (y.closed_at ?? y.updated_at).localeCompare(x.closed_at ?? x.updated_at)); const groups = new Map<string, Issue[]>(); for (const i of sorted) { const k = projectOf(i) || "未分项目"; groups.set(k, [...(groups.get(k) ?? []), i]); } return [...groups.entries()].map(([name, items]) => <div key={name} className="done-group"><div className="done-group-h"><span className="proj" style={{ background: projectColor(name) }} />{name}<span className="muted mono small">{items.length}</span></div>{items.map((i) => <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} />)}</div>); })()}
+              {c.key === "done" && list.length > 0 && (() => { const sorted = [...list].sort((x, y) => (y.closed_at ?? y.updated_at).localeCompare(x.closed_at ?? x.updated_at)); const groups = new Map<string, Issue[]>(); for (const i of sorted) { const k = projectOf(i) || "未分项目"; groups.set(k, [...(groups.get(k) ?? []), i]); } return [...groups.entries()].map(([name, items]) => { const open = openGroups[name] ?? (items.some((i) => i.id === selected) || items.length <= 3); return <details key={name} className="done-group" open={open} onToggle={(e) => { const o = (e.target as HTMLDetailsElement).open; if (o !== open) toggleGroup(name, o); }}><summary className="done-group-h"><span className="proj" style={{ background: projectColor(name) }} />{name}<span className="muted mono small">{items.length}</span><span className="muted small fold-hint">{open ? "收起" : "展开"}</span></summary>{open && items.map((i) => <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} />)}</details>; }); })()}
               {c.key !== "done" && list.map((i) => (
                 <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable
                   onDragStart={(e) => { setDragId(i.id); e.dataTransfer.effectAllowed = "move"; (e.currentTarget as HTMLElement).classList.add("dragging"); }}

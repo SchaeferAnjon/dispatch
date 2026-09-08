@@ -7,11 +7,11 @@ import { Avatar, Pri, ProjectTag } from "./ui";
 
 export interface InboxItems { unread: Activity[]; waiting: Session[]; idle: Session[]; review: Issue[]; blocked: Issue[] }
 
-interface Props { onRead: (a: Activity) => Promise<void>; onOpen: (id: string) => void; initialTab?: keyof InboxItems | null; items: InboxItems; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void }
+interface Props { onSummarize?: (a: Activity) => Promise<void>; onRead: (a: Activity) => Promise<void>; onOpen: (id: string) => void; initialTab?: keyof InboxItems | null; items: InboxItems; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void }
 
 // The one screen that answers "what needs me right now": sessions that stopped
 // and are waiting for input, finished work awaiting review, and blocked tasks.
-export function InboxView({ onRead, onOpen, initialTab, items, me, onSelect, onFocus }: Props) {
+export function InboxView({ onSummarize, onRead, onOpen, initialTab, items, me, onSelect, onFocus }: Props) {
   const [tab, setTab] = useState<keyof InboxItems>(() => initialTab ?? "unread");
   const [readingAll, setReadingAll] = useState(false);
   const readAll = async () => { setReadingAll(true); try { for (const a of items.unread) if (a.reply_id) await onRead(a); } finally { setReadingAll(false); } };
@@ -24,7 +24,7 @@ export function InboxView({ onRead, onOpen, initialTab, items, me, onSelect, onF
       {(total > 0 || tab === "review" || tab === "idle") && items[tab].length === 0 && <div className="empty">这个分类没有待处理事项</div>}
       {total === 0 && tab !== "idle" && tab !== "review" && <div className="empty big">✓ 暂时没有等我的事项<br /><span className="muted">新回复会出现在这里；读到最新后自动移出。</span></div>}
       {tab === "unread" && items.unread.length > 1 && <div className="inbox-bulk"><span className="muted small">{items.unread.length} 条未读 · 每条只留一行摘要，展开看全文请「查看并回复」</span><button className="btn sm" disabled={readingAll} onClick={() => void readAll()}>{readingAll ? "标记中…" : "全部标记已读"}</button></div>}
-      {tab === "unread" && [...new Set(items.unread.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows compact onRead={onRead} rows={items.unread.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
+      {tab === "unread" && [...new Set(items.unread.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows compact onSummarize={onSummarize} onRead={onRead} rows={items.unread.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
       {(tab === "waiting" || tab === "idle") && items[tab].length > 0 && (
         <section>
           <h4>{tab === "idle" ? "空闲会话" : "需要处理"}<span className="n">{items[tab].length}</span><span className="muted">{tab === "idle" ? "不计入待处理数量，也不会触发通知" : "只有接入事件上报的会话会出现在这里；Codex 桌面端等没有上报的会话请到会话页看"}</span></h4>
