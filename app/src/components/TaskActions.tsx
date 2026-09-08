@@ -1,15 +1,16 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type MouseEvent } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import type { Anchor } from './ContextMenu';
 import type { Api } from '../api';
 import type { Issue } from '../types';
 
 export const isTrashed = (i: Issue) => !!i.labels?.includes('dispatch:trashed');
 type Menu = { issue: Issue; x: number; y: number };
-const Context = createContext<(issue: Issue, e: MouseEvent) => void>(() => {});
+const Context = createContext<(issue: Issue, e: Anchor) => void>(() => {});
 export const useTaskMenu = () => useContext(Context);
 
 export function TaskActions({ api, children, onOpen, onDelegate, onDone, onError }: { api: Api | null; children: ReactNode; onOpen: (id:string)=>void; onDelegate: (id:string)=>void; onDone:(m:string,id?:string)=>void; onError:(m:string)=>void }) {
   const [menu,setMenu]=useState<Menu|null>(null); const [busy,setBusy]=useState(false); const panel=useRef<HTMLDivElement>(null); const returnFocus=useRef<HTMLElement|null>(null);
-  const open=(issue:Issue,e:MouseEvent)=>{e.preventDefault();e.stopPropagation();returnFocus.current=e.currentTarget as HTMLElement;setMenu({issue,x:e.clientX||e.currentTarget.getBoundingClientRect().left,y:e.clientY||e.currentTarget.getBoundingClientRect().bottom});};
+  const open=(issue:Issue,e:Anchor)=>{e.preventDefault();e.stopPropagation();const el=e.currentTarget as HTMLElement|null;returnFocus.current=el;const r=el?.getBoundingClientRect();setMenu({issue,x:e.clientX||r?.left||0,y:e.clientY||r?.bottom||0});};
   useLayoutEffect(()=>{if(!menu||!panel.current)return;const el=panel.current;el.style.left=`${Math.max(8,Math.min(menu.x,innerWidth-el.offsetWidth-8))}px`;el.style.top=`${Math.max(8,Math.min(menu.y,innerHeight-el.offsetHeight-8))}px`;el.querySelector<HTMLButtonElement>('button')?.focus();},[menu]);
   const close=()=>{setMenu(null);returnFocus.current?.focus();};
   useEffect(()=>{if(!menu)return;const esc=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}};window.addEventListener('keydown',esc,true);return()=>window.removeEventListener('keydown',esc,true);},[menu]);

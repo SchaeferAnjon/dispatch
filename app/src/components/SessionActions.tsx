@@ -17,6 +17,31 @@ export function SessionActions({ api, notify, children }: { api: Api | null; not
   return <Context.Provider value={{ api, notify }}>{children}</Context.Provider>;
 }
 
+// Open a session in its agent's terminal on the machine it lives on. The same
+// call backs the button and the context-menu entry.
+export function useOpenSession() {
+  const ctx = useContext(Context);
+  const requests = useRef(new Map<string, string>());
+  return async (session: Target) => {
+    if (!ctx?.api) return;
+    const key = `${session.host || 'local'}:${session.session_id}`;
+    if (!requests.current.has(key)) requests.current.set(key, id());
+    try {
+      if (session.agent === 'zcode') { ctx.notify(await ctx.api.on(session.host || 'local', ['focus', session.session_id])); return; }
+      const r = await control<Launch>(ctx.api, session.host || 'local', 'open', { ...session, request_id: requests.current.get(key) });
+      ctx.notify(`${session.host_name || '电脑'}：${r.message}`);
+      if (r.request_id) {
+        for (let n = 0; n < 80; n++) {
+          await new Promise(resolve => window.setTimeout(resolve, 2000));
+          const s = await control<Launch>(ctx.api, session.host || 'local', 'status', { request_id: r.request_id });
+          if (!['starting', 'running'].includes(s.state)) { ctx.notify(s.message, s.state !== 'ready'); break; }
+        }
+      }
+      requests.current.delete(key);
+    } catch (e) { ctx.notify(String(e), true); }
+  };
+}
+
 export function OpenSessionButton({ session, compact = false }: { session: Target; compact?: boolean }) {
   const ctx = useContext(Context);
   const [busy, setBusy] = useState(false);

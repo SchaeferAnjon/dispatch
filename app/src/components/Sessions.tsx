@@ -9,7 +9,7 @@ import type { Activity, Issue, Session, SessionDetail, SessionRef } from "../typ
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 import { OpenSessionButton } from "./SessionActions";
-import { ConversationMenuButton, useConversationMenu } from "./ConversationActions";
+import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 
 interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
@@ -17,7 +17,6 @@ interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
 export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
-  const openMenu = useConversationMenu();
   const [showScripts, setShowScripts] = useState(false);
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
@@ -115,12 +114,12 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
             const l = liveOf(r.session_id);
             const active = activities.find(a => a.session_id === r.session_id);
             return (
-              <div key={r.session_id} className={`sess-item${sel === r.session_id ? " sel" : ""}`} onContextMenu={(e) => openMenu(asActivity(r), e)}><button className="sess-item-main" onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
+              <div key={r.session_id} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${sel === r.session_id ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
                 <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title="追踪中">★</span>}<span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && <div className="l3 activity-text">{activityLabel(active)} · {active.activity}</div>}
                 {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}
-              </button><div className="sess-item-actions"><OpenSessionButton session={r} compact /><ConversationMenuButton a={asActivity(r)} /></div></div>
+              </button><div className="sess-item-actions"><ConversationMenuButton a={asActivity(r)} /></div></div>
             );
           })}
         </div>

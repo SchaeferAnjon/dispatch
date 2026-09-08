@@ -1,8 +1,8 @@
-import { TaskMenuButton, useTaskMenu } from "./TaskActions";
+import { TaskMenuButton } from "./TaskActions";
 import { useState } from "react";
 import { sessionStatus, sessionEvidence } from "../derive";
 import type { AgentPresence } from "../derive";
-import { COLUMNS, NO_RESUME, SOURCE_LABEL, actorOf, columnOf, delegatedBy, delegatedTo, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
+import { COLUMNS, SOURCE_LABEL, actorOf, columnOf, delegatedBy, delegatedTo, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
 import type { Column, Host, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 import { linkedSessions } from "../projectModel";
@@ -10,13 +10,12 @@ import { linkedSessions } from "../projectModel";
 interface Common { progress?: Record<string, string>; issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
 
 export function Card({ issue, progress, selected, onSelect, me, root, draggable, onDragStart, onDragEnd }: { issue: Issue; progress?: string; selected: boolean; onSelect: (id: string) => void; me: string; root?: Issue } & Pick<React.HTMLAttributes<HTMLElement>, "draggable" | "onDragStart" | "onDragEnd">) {
-  const openMenu = useTaskMenu();
   const who = actorOf(issue.assignee, me);
   const ac = parseAcceptance(issue.acceptance_criteria);
   const done = ac.filter((a) => a.done).length;
   const blocked = issue.status === "blocked";
   return (
-    <div onContextMenu={e=>openMenu(issue,e)} className={`card opens${selected ? " sel" : ""}${blocked ? " blocked" : ""}`} onClick={() => onSelect(issue.id)} draggable={draggable} onDragStart={onDragStart} onDragEnd={onDragEnd} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(issue.id)}>
+    <div data-task={issue.id} className={`card opens${selected ? " sel" : ""}${blocked ? " blocked" : ""}`} onClick={() => onSelect(issue.id)} draggable={draggable} onDragStart={onDragStart} onDragEnd={onDragEnd} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(issue.id)}>
       <div className="card-heading"><div className="t" title={issue.title}>{issue.title}</div><TaskMenuButton issue={issue}/></div>
       {root && <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={`这条线的根任务：${root.title}`}><span className="rl-id">↑ 源自 <span className="mono">{root.id}</span></span><span className="rl-t">{root.title}</span></button>}
       <div className="meta">
@@ -32,8 +31,7 @@ export function Card({ issue, progress, selected, onSelect, me, root, draggable,
       {ac.length > 0 && issue.status !== "closed" && (
         <div className="chk"><span className="bar"><i style={{ width: `${(done / ac.length) * 100}%` }} /></span>{done}/{ac.length} 验收项</div>
       )}
-      {(issue.status === "closed" ? issue.close_reason : progress || issue.notes) && <div className="card-progress"><b>{issue.status === "closed" ? "完成说明" : progress ? "最近进展" : "进展备注"}</b> {issue.status === "closed" ? issue.close_reason : progress || issue.notes}</div>}
-      {ac.some((a) => !a.done) && <div className="card-next"><b>{issue.status === "closed" ? "待核对" : "下一验收项"}</b> {ac.find((a) => !a.done)?.text}</div>}
+      {(() => { const note = issue.status === "closed" ? issue.close_reason : progress || issue.notes; const next = ac.find((a) => !a.done)?.text; return note ? <div className="card-progress" title={next ? `下一验收项：${next}` : undefined}><b>{issue.status === "closed" ? "完成说明" : progress ? "最近进展" : "进展备注"}</b> {note}</div> : next ? <div className="card-next"><b>{issue.status === "closed" ? "待核对" : "下一验收项"}</b> {next}</div> : null; })()}
       {isReviewed(issue) ? (
         <div className="rev-by">✓ 已复核 · {relTime(issue.updated_at)}</div>
       ) : who ? (
@@ -77,7 +75,6 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
 }
 
 export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
-  const openMenu=useTaskMenu();
   if (issues.length === 0) return <div className="empty">没有符合条件的任务</div>;
   return (
     <div className="tw">
@@ -88,7 +85,7 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
             const who = actorOf(i.assignee, me);
             const root = rootOf?.(i.id);
             return (
-              <tr onContextMenu={e=>openMenu(i,e)} key={i.id} className={selected === i.id ? "sel" : ""} onClick={() => onSelect(i.id)}>
+              <tr data-task={i.id} key={i.id} className={selected === i.id ? "sel" : ""} onClick={() => onSelect(i.id)}>
                 <td className="mono">{i.id}</td>
                 <td className="t">{i.title}</td>
                 <td>{root ? <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={root.title}><span className="mono">{root.id}</span></button> : <span className="muted">—</span>}</td>
@@ -109,7 +106,7 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
 
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
-export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onCopyResume, onFocus, refs, hosts, onOpenUrl, onCopyText, onDelegate }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; issues: Issue[]; me: string; onSelect: (id: string) => void; onCopyResume: (agent: string, sessionId: string, cwd: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onDelegate: (host: Host) => void }) {
+export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFocus, refs, hosts, onOpenUrl, onCopyText, onDelegate }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; issues: Issue[]; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onDelegate: (host: Host) => void }) {
   return (
     <div className="agrid">
       {hosts.length > 0 && (
@@ -159,20 +156,20 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onCo
                   </span>
                 ))}
               </div>
-              {a.sessions.map((s) => {
+              {(() => { const now = Date.now() / 1000; const isActive = (s: Session) => s.state === "working" || (s.alive && now - s.last_at < 3600); const activeList = a.sessions.filter(isActive); const older = a.sessions.filter((s) => !isActive(s)); const row = (s: Session) => {
                 const r = refs.get(s.session_id);
                 return (
-                <div key={s.session_id} className={`sess ${s.state}`} title={`${s.cwd || s.session_id} · ${sessionEvidence(s)}`}>
+                <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className={`sess ${s.state}`} title={`${s.cwd || s.session_id} · ${sessionEvidence(s)} · 右键更多操作`}>
                   <span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span>
                   <div className="agent-session-main">
                     <div className="agent-session-title"><span className="proj-name">{s.herdr?.title || r?.title || s.project || "未关联会话记录"}</span><span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{sessionStatus(s)}</span></div>
                     <div className="agent-session-meta"><span>{s.state_source === "transcript" ? "实际会话记录" : s.source_kind === "unknown" ? "来源未识别" : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : "尚无活动上报"}</span></div>
                     {(() => { const own = a.current.find(i => linkedSessions(i).includes(s.session_id)); return own ? <button className="link small linked-task" onClick={() => onSelect(own.id)}><span className="mono">{own.id}</span> {own.title}</button> : null; })()}
                   </div>
-                  <div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button>{s.registered && !s.session_id.startsWith("pid-") && !NO_RESUME.has(s.agent) && <button className="copy-btn" onClick={() => onCopyResume(s.agent, s.session_id, s.cwd)}>恢复</button>}</div>
+                  <div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button></div>
                 </div>
                 );
-              })}
+              }; return <>{activeList.map(row)}{activeList.length === 0 && older.length > 0 && <div className="muted small" style={{ padding: "4px 2px" }}>现在没有活跃会话</div>}{older.length > 0 && <details className="older-sessions"><summary>更早的会话 · {older.length}<span className="muted small"> · 一小时内没动静；完整历史在会话页</span></summary>{older.map(row)}</details>}</>; })()}
             </div>
           )}
           {a.current.length > 0 && <details className="agent-task-context"><summary>关联进行中任务 · {a.current.length}</summary>{a.current.map(i => <button key={i.id} className="cur" onClick={() => onSelect(i.id)}><div className="t">{i.title}</div><div className="mono muted small">{i.id}{delegatedBy(i) ? ` · ← ${actorOf(delegatedBy(i), me)?.name ?? delegatedBy(i)} 派的` : ""}</div></button>)}</details>}
@@ -190,7 +187,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onCo
 
         </div>
       );})}
-      {scheduled.length > 0 && <details className="offline-agents"><summary>定时会话 · {scheduled.length}<span className="muted small"> · 不计入在跑、未读和通知</span></summary><div className="sessions">{scheduled.map((s) => <div key={s.session_id} className={`sess ${s.state}`}><span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span><div className="agent-session-main"><div className="agent-session-title"><span className="proj-name">{s.herdr?.title || s.title || s.project || s.cwd}</span><span className={`st sm ${s.state === "working" ? "prog" : "open"}`}>{sessionStatus(s)}</span></div><div className="agent-session-meta"><span>{actorOf(s.agent, "")?.name}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : ""}</span></div></div><div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button></div></div>)}</div></details>}
+      {scheduled.length > 0 && <details className="offline-agents"><summary>定时会话 · {scheduled.length}<span className="muted small"> · 不计入在跑、未读和通知</span></summary><div className="sessions">{scheduled.map((s) => <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className={`sess ${s.state}`}><span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span><div className="agent-session-main"><div className="agent-session-title"><span className="proj-name">{s.herdr?.title || s.title || s.project || s.cwd}</span><span className={`st sm ${s.state === "working" ? "prog" : "open"}`}>{sessionStatus(s)}</span></div><div className="agent-session-meta"><span>{actorOf(s.agent, "")?.name}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : ""}</span></div></div><div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button></div></div>)}</div></details>}
       <details className="offline-agents"><summary>未检测到活动的 Agent · {agents.filter(a => !a.online && !a.current.length).length}</summary><div>{agents.filter(a => !a.online && !a.current.length).map(a => <span key={a.actor.id}>{a.actor.name}</span>)}</div></details>
     </div>
   );

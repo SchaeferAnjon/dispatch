@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
-import type { AgentPresence } from "../derive";
 import { actorOf, durSince, parseAcceptance, projectColor, relTime, sessionStatus } from "../derive";
 import { UNGROUPED_PROJECT, activityKey, conversationProject, conversationSummary, sessionLifecycle } from "../activity";
 import { projectGroups } from "../projectModel";
 import { isStarred, rankProjects, type ProjectFlags } from "../projectFlags";
-import type { Activity, Issue, Quota, Session, View } from "../types";
+import type { Activity, Issue, Session, View } from "../types";
 import type { InboxItems } from "./Inbox";
 import { Avatar, Pri } from "./ui";
+import { useViewMenuExtras } from "./ContextMenu";
+
+const sessionKey = (s: { host?: string; agent: string; session_id: string }) => `${s.host ?? "local"}:${s.agent}:${s.session_id}`;
 
 function untilText(epoch: number | null): string {
   if (!epoch) return "";
@@ -31,14 +33,11 @@ export function QuotaBar({ w }: { w: { label: string; used_percent: number | nul
 }
 
 interface Props {
-  quota: Quota[];
-  hostFilter: string;
   me: string;
   loaded: boolean;
   connectionError: boolean;
   unavailable: string[];
   rows: Activity[];
-  agents: AgentPresence[];
   issues: Issue[];
   outcomes: Issue[];
   inbox: InboxItems;
@@ -53,7 +52,6 @@ interface Props {
   onProject: (name: string) => void;
   onView: (v: View) => void;
   onNew: (a?: Activity) => void;
-  onPhone?: () => void;
 }
 
 const UNGROUPED = UNGROUPED_PROJECT;
@@ -82,7 +80,7 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ quota, hostFilter, me, loaded, connectionError, unavailable, rows, agents, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone }: Props) {
+export function HomeView({ me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew }: Props) {
   // The count chips narrow this page instead of leaving it.
   const [focus, setFocus] = useState<"" | "unread" | "waiting" | "blocked" | "running">("");
   const toggleFocus = (f: typeof focus) => setFocus((cur) => (cur === f ? "" : f));
@@ -129,21 +127,23 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
   const isOpen = (c: Card, index: number) => focus !== "" || (toggled[c.name] ?? allOpen ?? (index < expandedDefault || c.waiting.length + c.unread.length > 0));
   const toggle = (name: string, open: boolean) => setToggled((t) => ({ ...t, [name]: !open }));
 
+  const toggleAll = () => { setAllOpen(allOpen === false ? true : allOpen === true ? false : featured.every((c, i) => isOpen(c, i)) ? false : true); setToggled({}); };
+  const everyOpen = allOpen ?? featured.every((c, i) => isOpen(c, i));
+  useViewMenuExtras(featured.length > 1 && !focus ? [{ label: everyOpen ? "全部收起" : "全部展开", onClick: toggleAll }] : [], [everyOpen, featured.length, focus]);
+
   const running = cards.reduce((n, c) => n + c.running.length, 0);
-  const waitingCount = inbox.unread.length + inbox.waiting.length + inbox.blocked.length;
   const openTasks = issues.filter((i) => i.status !== "closed").length;
-  const summary = [running ? `${running} 个会话在跑` : "", waitingCount ? `${waitingCount} 项等你` : "", `${openTasks} 项未完成`].filter(Boolean).join(" · ");
+  const summary = `${openTasks} 项未完成`;
 
   const openSession = (id: string) => (id.startsWith("pid-") ? onFocus(id) : onOpen(id));
 
-  const quotaByAgent = agents.filter((a) => a.actor.kind !== "human").map((a) => ({ agent: a, qs: quota.filter((x) => x.agent === a.actor.id && x.windows.length && (hostFilter ? (x.host_name ?? "") === hostFilter : !x.remote)) })).filter((x) => x.qs.length);
 
   const renderCard = (c: Card, index = 0) => {
     const open = isOpen(c, index);
     const digest = [c.waiting.length + c.unread.length ? `等你 ${c.waiting.length + c.unread.length}` : "", c.running.length ? `在跑 ${c.running.length}` : "", c.tracked.length ? `追踪 ${c.tracked.length}` : "", c.tasks.length ? `任务 ${c.tasks.length}` : "", c.blockedTasks.length ? `卡住 ${c.blockedTasks.length}` : ""].filter(Boolean).join(" · ");
     const more = Math.max(0, c.waiting.length + c.unread.length - 3) + Math.max(0, c.running.length - 3) + Math.max(0, c.tasks.length - 3);
     return (
-      <article key={c.name} className={`home-project${c.live ? "" : " quiet"}${open ? "" : " folded"}`}>
+      <article key={c.name} data-project={c.name} className={`home-project${c.live ? "" : " quiet"}${open ? "" : " folded"}`}>
         <header>
           <button className={`fold${open ? " open" : ""}`} onClick={() => toggle(c.name, open)} aria-expanded={open} aria-label={open ? `收起 ${c.name}` : `展开 ${c.name}`}>›</button>
           <span className="proj" style={{ background: projectColor(c.name) }} />
@@ -162,7 +162,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
             {c.waiting.slice(0, 3).map((s) => {
               const who = actorOf(s.agent, me);
               return (
-                <div key={s.session_id} className="home-row opens" role="button" tabIndex={0} onClick={() => openSession(s.session_id)} onKeyDown={(e) => e.key === "Enter" && openSession(s.session_id)}>
+                <div key={s.session_id} data-session={sessionKey(s)} className="home-row opens" role="button" tabIndex={0} onClick={() => openSession(s.session_id)} onKeyDown={(e) => e.key === "Enter" && openSession(s.session_id)}>
                   <Avatar actor={who} size={22} />
                   <span className="st sm block">{sessionStatus(s)}</span>
                   <span className="t">{s.herdr?.title || s.title || s.cwd}</span>
@@ -174,7 +174,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
             {c.unread.slice(0, Math.max(0, 3 - c.waiting.length)).map((a) => {
               const who = actorOf(a.agent, me);
               return (
-                <div key={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
+                <div key={activityKey(a)} data-session={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
                   <Avatar actor={who} size={22} />
                   <span className="st sm rev">未读回复</span>
                   <span className="t">{a.title}<span className="sub">{conversationSummary(a)}</span></span>
@@ -192,7 +192,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
             {c.running.slice(0, 3).map((a) => {
               const who = actorOf(a.agent, me);
               return (
-                <div key={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
+                <div key={activityKey(a)} data-session={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
                   <Avatar actor={who} size={22} />
                   <span className="st sm prog">进行中</span>
                   <span className="t">{a.title}{a.activity && <span className="sub">正在做：{a.activity}</span>}</span>
@@ -209,7 +209,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
             {c.tracked.slice(0, 3).map((a) => {
               const who = actorOf(a.agent, me);
               return (
-                <div key={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
+                <div key={activityKey(a)} data-session={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
                   <Avatar actor={who} size={22} />
                   <span className="star on" title="追踪中">★</span>
                   <span className="t">{a.title}<span className="sub">{conversationSummary(a)}</span></span>
@@ -224,7 +224,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
           <div className="home-group">
             <div className="home-group-h hot">被卡住 <b>{c.blockedTasks.length}</b><span className="muted">依赖没完成，等依赖完成会自动解开</span></div>
             {c.blockedTasks.slice(0, 3).map((i) => (
-              <div key={i.id} className="home-row task opens" role="button" tabIndex={0} onClick={() => onTask(i.id)} onKeyDown={(e) => e.key === "Enter" && onTask(i.id)}>
+              <div key={i.id} data-task={i.id} className="home-row task opens" role="button" tabIndex={0} onClick={() => onTask(i.id)} onKeyDown={(e) => e.key === "Enter" && onTask(i.id)}>
                 <span className="st sm block">⊘</span>
                 <Pri p={i.priority} />
                 <span className="t">{i.title}<span className="sub">依赖 {i.dependency_count ?? ""} 项未完成</span></span>
@@ -244,7 +244,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
               const who = actorOf(i.assignee, me);
               const note = progress[i.id] || i.notes;
               return (
-                <div key={i.id} className="home-row task opens" role="button" tabIndex={0} onClick={() => onTask(i.id)} onKeyDown={(e) => e.key === "Enter" && onTask(i.id)}>
+                <div key={i.id} data-task={i.id} className="home-row task opens" role="button" tabIndex={0} onClick={() => onTask(i.id)} onKeyDown={(e) => e.key === "Enter" && onTask(i.id)}>
                   <Avatar actor={who} size={22} />
                   <Pri p={i.priority} />
                   <span className="t">{i.title}<span className="sub">{note ? `最新：${note}` : next ? `下一项：${next.text}` : "还没留过进度"}</span></span>
@@ -259,7 +259,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
         {!focus && !c.live && c.latest && (
           <div className="home-group">
             <div className="home-group-h">最近一次会话</div>
-            <div className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(c.latest!.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(c.latest!.session_id)}>
+            <div data-session={activityKey(c.latest)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(c.latest!.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(c.latest!.session_id)}>
               <Avatar actor={actorOf(c.latest.agent, me)} size={22} />
               <span className="t">{c.latest.title}<span className="sub">{conversationSummary(c.latest)}</span></span>
               <span className="meta muted small">{durSince(c.latest.last_at)}前</span>
@@ -286,7 +286,6 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
         </div>
         <div className="home-head-actions">
           <button className="btn primary" onClick={() => onNew()}>新建会话</button>
-          {onPhone && <button className="btn" onClick={onPhone}>手机访问</button>}
         </div>
       </header>
 
@@ -296,14 +295,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
         <button className={`home-count${inbox.blocked.length ? " hot" : ""}${focus === "blocked" ? " on" : ""}`} aria-pressed={focus === "blocked"} onClick={() => toggleFocus("blocked")} title="只看被卡住的任务">被卡住 <b>{inbox.blocked.length}</b></button>
         <button className={`home-count${focus === "running" ? " on" : ""}`} aria-pressed={focus === "running"} onClick={() => toggleFocus("running")} title="只看正在跑的会话">在跑 <b>{running}</b></button>
         {focus && <button className="link" onClick={() => setFocus("")}>显示全部 ✕</button>}
-        {!focus && featured.length > 1 && <button className="link" onClick={() => { setAllOpen(allOpen === false ? true : allOpen === true ? false : featured.every((c, i) => isOpen(c, i)) ? false : true); setToggled({}); }}>{(allOpen ?? featured.every((c, i) => isOpen(c, i))) ? "全部收起" : "全部展开"}</button>}
-        <span className="spacer" />
-        {quotaByAgent.map(({ agent: a, qs }) => (
-          <button key={a.actor.id} className="home-quota" onClick={() => onView("quota")} title={`${a.actor.name} 的额度 · 点开看详情`}>
-            <Avatar actor={a.actor} online={a.online} size={18} />
-            {qs[0].windows.map((w) => { const p = w.used_percent ?? 0; return <span key={w.label} className={`q${p >= 90 ? " crit" : p >= 70 ? " warn" : ""}`}><span className="ql">{w.label}</span><span className="qbar"><i style={{ width: `${Math.min(100, p)}%` }} /></span><span className="mono">{w.used_percent === null ? "—" : `${Math.round(p)}%`}</span></span>; })}
-          </button>
-        ))}
+        {!focus && featured.length > 1 && <button className="link" onClick={toggleAll}>{everyOpen ? "全部收起" : "全部展开"}</button>}
       </div>
 
       {focus && featured.length === 0 && (!ungrouped || !matches(ungrouped)) && <div className="home-quiet">{focus === "unread" ? "没有未读回复" : focus === "waiting" ? "没有会话在等你确认" : focus === "blocked" ? "没有被卡住的任务" : "没有会话在跑"}<button className="link" onClick={() => setFocus("")}>显示全部</button></div>}
@@ -315,12 +307,11 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
               const who = actorOf(a.agent, me);
               const live = a.state === "working" && !a.stale;
               return (
-                <div key={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
+                <div key={activityKey(a)} data-session={activityKey(a)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(a.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(a.session_id)}>
                   <Avatar actor={who} size={22} />
                   <span className={`st sm ${live ? "prog" : a.unread ? "rev" : "open"}`}>{live ? "进行中" : a.unread ? "未读回复" : "追踪中"}</span>
                   <span className="t">{a.title}<span className="sub">{live && a.activity ? `正在做：${a.activity}` : conversationSummary(a)}</span></span>
                   <span className="meta muted small">{conversationProject(a)} · {who?.name} · {durSince(a.last_at)}前</span>
-                  <button className="btn sm" onClick={(e) => { e.stopPropagation(); onOpen(a.session_id); }}>查看并回复</button>
                 </div>
               );
             })}
@@ -342,11 +333,10 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
           {showRest && (
             <div className="home-rest-list">
               {rest.map((c) => (
-                <div key={c.name} className="home-rest-item opens" role="button" tabIndex={0} onClick={() => onProject(c.name)} onKeyDown={(e) => e.key === "Enter" && onProject(c.name)}>
+                <div key={c.name} data-project={c.name} className="home-rest-item opens" role="button" tabIndex={0} onClick={() => onProject(c.name)} onKeyDown={(e) => e.key === "Enter" && onProject(c.name)} title="右键：收藏、归档、新建会话">
                   <span className="proj" style={{ background: projectColor(c.name) }} /><b>{c.name}</b>
                   <span className="muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span>
                   <span className="muted small right">{c.last ? `${relTime(new Date(c.last * 1000).toISOString())}` : ""}</span>
-                  <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); onFlag(c.name, { archived: true }); }} title="做完了、暂时不用：从工作台和项目列表隐藏，随时可找回">归档</button>
                 </div>
               ))}
             </div>
@@ -360,7 +350,7 @@ export function HomeView({ quota, hostFilter, me, loaded, connectionError, unava
           {showArchived && (
             <div className="home-rest-list">
               {archived.map((c) => (
-                <div key={c.name} className="home-rest-item opens" role="button" tabIndex={0} onClick={() => onProject(c.name)} onKeyDown={(e) => e.key === "Enter" && onProject(c.name)}>
+                <div key={c.name} data-project={c.name} className="home-rest-item opens" role="button" tabIndex={0} onClick={() => onProject(c.name)} onKeyDown={(e) => e.key === "Enter" && onProject(c.name)}>
                   <span className="proj" style={{ background: projectColor(c.name) }} /><b>{c.name}</b>
                   <span className="muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span>
                   <span className="muted small right">{c.last ? `${relTime(new Date(c.last * 1000).toISOString())}` : ""}</span>
