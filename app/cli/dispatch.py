@@ -1995,6 +1995,26 @@ def cmd_skills(a):
             print(open(skill_file(a.file), encoding="utf-8").read())
     elif a.op == "open":
         subprocess.run(["open", "-R", skill_file(a.file)] if a.reveal else ["open", skill_file(a.file)])
+    elif a.op == "trash":
+        # Unmount everywhere, then move the folder to the Trash (Finder), so it is recoverable.
+        import shutil
+        real = os.path.realpath(r["path"])
+        for ag, dirs in AGENT_SKILL_DIRS.items():
+            for d in dirs:
+                p = os.path.join(d, a.name)
+                if os.path.islink(p):
+                    os.remove(p)
+        if not real.startswith(os.path.realpath(POOL) + os.sep):
+            print(f"{a.name} 不在技能池里（{real}），只卸了挂载，没删本体", file=sys.stderr)
+            sys.exit(2)
+        script = f'tell application "Finder" to delete POSIX file "{real}"'
+        code, o, e = sh(["osascript", "-e", script], timeout=20)
+        if code != 0:
+            trash = os.path.join(HOME, ".Trash", os.path.basename(real))
+            shutil.move(real, trash)
+        if os.path.islink(r["path"]):
+            os.remove(r["path"])
+        print(f"{a.name} 已移到废纸篓（可从废纸篓拖回 {POOL}）")
     elif a.op == "write":
         new = sys.stdin.read()
         if not new.strip():
@@ -3908,7 +3928,7 @@ def main():
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
-    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write"]); s.add_argument("name", nargs="?"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
+    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash"]); s.add_argument("name", nargs="?"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)

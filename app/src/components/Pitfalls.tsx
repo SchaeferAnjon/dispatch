@@ -4,6 +4,7 @@ import { INTERNAL_MEMORY_PREFIX } from "../projectFlags";
 import { composeWiki, parsePitfall, projectColor, slugify, WIKI_KINDS, type Pitfall, type WikiKind } from "../derive";
 import type { Memory } from "../types";
 import { Markdown } from "./Markdown";
+import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
 
 interface Props { api: Api; projects: string[]; version: number; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
 
@@ -48,6 +49,25 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
   const forget = async (key: string) => {
     try { await api.forget(key); onDone("已删除"); await load(); } catch (e) { onError(String(e)); }
   };
+  useItemMenu("wiki", (key) => {
+    const p = all.find((x) => x.key === key);
+    if (!p) return null;
+    return { title: p.key, items: [
+      ...(p.kind ? [{ label: "编辑", onClick: () => setEditing(p) }] : []),
+      { label: "复制内容", onClick: () => api.copy(p.raw).then(() => onDone("已复制")) },
+      { label: "复制 key", onClick: () => api.copy(p.key).then(() => onDone("已复制")) },
+      ...(p.task ? [{ label: `打开任务 ${p.task}`, onClick: () => onSelectTask(p.task) }] : []),
+      ...(p.project ? [{ label: `只看 ${p.project} 的条目`, onClick: () => setQ(p.project) }] : []),
+      "-",
+      { label: "删除", danger: true, onClick: () => forget(p.key) },
+    ] };
+  }, [all, api]);
+  useViewMenuExtras([
+    { label: "记一个坑", onClick: () => setAdding("pit") },
+    { label: "记一件做对的事", onClick: () => setAdding("win") },
+    { label: "记一个方法", onClick: () => setAdding("howto") },
+    { label: "刷新", onClick: () => void load() },
+  ], []);
 
   return (
     <div className="pit-wrap">
@@ -67,7 +87,7 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
       {loaded && items.length === 0 && <div className="empty">还没有记录。</div>}
       <div className="pit-list">
         {items.map((p) => (
-          <div key={p.key} className={`pit ${p.kind ?? "plain"}`}>
+          <div key={p.key} data-menu="wiki" data-id={p.key} className={`pit ${p.kind ?? "plain"}`}>
             <div className="pit-top">
               <span className={`kind ${p.kind ?? "plain"}`}>{p.kind ? WIKI_KINDS[p.kind].label : "记忆"}</span>
               <span className="mono key">{p.key}</span>

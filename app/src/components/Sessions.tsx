@@ -1,5 +1,6 @@
 import { linkedSessions } from "../projectModel";
 import { MediaProvider, AttachmentList, InlineImage } from "./Media";
+import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
 import { actorOf, durSince, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
@@ -91,6 +92,21 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
 
   const liveOf = (id: string) => live.find((s) => s.session_id === id);
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
+  useItemMenu("file", (rel) => {
+    const root = detail?.workspace?.root;
+    if (!root) return null;
+    const full = `${root.replace(/\/$/, "")}/${rel}`;
+    return { title: rel, items: [
+      { label: "打开文件", onClick: () => api.openPath(full).catch((e) => onError(String(e))) },
+      { label: "在访达中打开", onClick: () => api.openPath(full.replace(/\/[^/]+$/, "")).catch((e) => onError(String(e))) },
+      { label: "复制路径", onClick: () => api.copy(full).then(() => onDone("路径已复制")) },
+      { label: "复制相对路径", onClick: () => api.copy(rel).then(() => onDone("已复制")) },
+    ] };
+  }, [detail?.workspace?.root, api]);
+  useViewMenuExtras(detail ? [
+    { label: "复制恢复命令", onClick: () => void copy(detail.meta.resume_cmd) },
+    { label: "复制会话 ID", onClick: () => api.copy(detail.meta.session_id).then(() => onDone("已复制")) },
+  ] : [], [detail?.meta.session_id]);
 
   return (
     <MediaProvider api={api} session={detail?.meta}><div className={`sess-wrap${sel ? " has-selection" : ""}`}>
@@ -225,7 +241,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   const byFile = new Map<string, string>();
                   for (const chunk of detail.workspace.patch.split(/^(?=diff --git )/m)) { const m = /^diff --git a\/(.+?) b\//.exec(chunk); if (m) byFile.set(m[1], chunk); }
                   const stat = (t: string) => { let add = 0, del = 0; for (const ln of t.split('\n')) { if (ln.startsWith('+') && !ln.startsWith('+++')) add++; else if (ln.startsWith('-') && !ln.startsWith('---')) del++; } return { add, del }; };
-                  return <><div className="changed-files">{detail.workspace!.files.map(f => { const t = byFile.get(f.path); const s = t ? stat(t) : null; return <details key={f.path} className="fdiff file"><summary><span className={`st sm ${f.untracked ? 'rev' : 'prog'}`}>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code>{s && <span className="mono small diffstat"><span className="add">+{s.add}</span> <span className="del">−{s.del}</span></span>}</summary>{t ? <pre className="diff">{t.split('\n').map((ln, k) => <div key={k} className={`ln ${ln.startsWith('+') && !ln.startsWith('+++') ? 'add' : ln.startsWith('-') && !ln.startsWith('---') ? 'del' : 'same'}`}>{ln}</div>)}</pre> : <p className="muted small">{f.untracked ? '新文件，git 还没有它的差异；打开文件查看。' : '这个文件的差异不在当前补丁里。'}</p>}</details>; })}</div>{detail.workspace!.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</>;
+                  return <><div className="changed-files">{detail.workspace!.files.map(f => { const t = byFile.get(f.path); const s = t ? stat(t) : null; return <details key={f.path} data-menu="file" data-id={f.path} className="fdiff file"><summary><span className={`st sm ${f.untracked ? 'rev' : 'prog'}`}>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code>{s && <span className="mono small diffstat"><span className="add">+{s.add}</span> <span className="del">−{s.del}</span></span>}</summary>{t ? <pre className="diff">{t.split('\n').map((ln, k) => <div key={k} className={`ln ${ln.startsWith('+') && !ln.startsWith('+++') ? 'add' : ln.startsWith('-') && !ln.startsWith('---') ? 'del' : 'same'}`}>{ln}</div>)}</pre> : <p className="muted small">{f.untracked ? '新文件，git 还没有它的差异；打开文件查看。' : '这个文件的差异不在当前补丁里。'}</p>}</details>; })}</div>{detail.workspace!.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</>;
                 })()}</section>}
                 {tab === "files" && <h3 className="recorded-files-title">会话中的文件操作 <span className="muted">{detail.files.length}</span></h3>}
                 {tab === "files" && detail.files.length === 0 && <p className="muted">未记录到直接编辑工具调用；通过终端修改的文件可在上方工作区查看。</p>}

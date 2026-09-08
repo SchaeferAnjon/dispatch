@@ -6,6 +6,7 @@ import { COLUMNS, SOURCE_LABEL, actorOf, columnOf, delegatedBy, delegatedTo, dur
 import type { Column, Host, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 import { linkedSessions } from "../projectModel";
+import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
 
 interface Common { progress?: Record<string, string>; issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
 
@@ -114,6 +115,18 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
 export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFocus, refs, hosts, onOpenUrl, onCopyText, onDelegate }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; issues: Issue[]; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onDelegate: (host: Host) => void }) {
+  useItemMenu("host", (id) => {
+    const h = hosts.find((x) => x.id === id);
+    if (!h) return null;
+    return { title: h.name, items: [
+      ...(h.online ? [{ label: "派活：在这台起一个 Agent", onClick: () => onDelegate(h) }] : []),
+      { label: "复制 ssh 地址", onClick: () => onCopyText(h.ssh, "ssh 地址") },
+      { label: "复制 IP", onClick: () => onCopyText(h.ip, "IP") },
+      ...(h.novnc_up && h.novnc.startsWith("https://") ? [{ label: "复制手机看屏幕链接", onClick: () => onCopyText(h.novnc, "手机看屏幕的链接") }] : []),
+      ...(h.screen_sharing && !h.local ? [{ label: "看它的屏幕", onClick: () => onOpenUrl(h.vnc) }] : []),
+    ] };
+  }, [hosts, onDelegate, onCopyText, onOpenUrl]);
+  useViewMenuExtras(hosts.filter((h) => h.online).map((h) => ({ label: `在 ${h.name} 派活`, onClick: () => onDelegate(h) })), [hosts]);
   return (
     <div className="agrid">
       {hosts.length > 0 && (
@@ -127,7 +140,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
             if (h.sunshine) ways.push({ key: "moonlight", label: "Moonlight 配对", act: () => onOpenUrl(h.sunshine_ui), hint: "打开 Sunshine 配对页；手机装 Moonlight，画质最高" });
             if (h.uu) ways.push({ key: "uu", label: "UU远程", act: () => onOpenUrl("/Applications"), hint: "已装网易UU远程；它没有接口，去它里面连" });
             return (
-              <div key={h.id} className={`host${h.online ? "" : " off"}`} title={h.why}>
+              <div key={h.id} data-menu="host" data-id={h.id} className={`host${h.online ? "" : " off"}`} title={h.why}>
                 <span className={`dot ${h.online ? "on" : ""}`} />
                 <b>{h.name}</b><span className="mono muted small">{h.ip}</span>
                 {h.overlay?.kind && <span className="host-chip">{OVERLAY[h.overlay.kind] ?? h.overlay.kind}</span>}

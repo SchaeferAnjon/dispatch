@@ -1,5 +1,5 @@
 import { ConversationActions } from './components/ConversationActions';
-import { GlobalContextMenu, ProjectActions, ViewMenu, type ViewMenuItem } from './components/ContextMenu';
+import { GlobalContextMenu, ItemMenus, ProjectActions, ViewMenu, type ViewMenuItem } from './components/ContextMenu';
 import { TaskActions, isTrashed } from "./components/TaskActions";
 import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -422,6 +422,14 @@ export default function App() {
   // This Mac's usage windows per agent, shown in the title bar.
   const quotaByAgent = useMemo(() => agents.filter((a) => a.actor.kind !== "human").map((a) => ({ agent: a, qs: quota.filter((x) => x.agent === a.actor.id && x.windows.length && (hostFilter ? (x.host_name ?? "") === hostFilter : !x.remote)) })).filter((x) => x.qs.length), [agents, quota, hostFilter]);
   const viewMenuItems: ViewMenuItem[] = [
+    // What this page can do, then what every page can do.
+    ...(BOARD_VIEWS.includes(view) ? [
+      { label: view === "board" ? "切到表格" : "切到看板", onClick: () => setView(view === "board" ? "table" : "board") },
+      { label: "清除筛选", onClick: () => { setFilters(EMPTY_FILTERS); setQuery(""); }, disabled: !Object.values(filters).some(Boolean) && filters.project === null && !query },
+      { label: "回收站", onClick: () => setView("trash") },
+    ] : []),
+    ...(view === "inbox" && inbox.unread.length > 0 ? [{ label: `全部标记已读（${inbox.unread.length}）`, onClick: async () => { for (const a of inbox.unread) if (a.reply_id) await markRead(a, a.reply_id); } }] : []),
+    ...(view === "settings" ? [{ label: "检查更新", onClick: () => void checkUpdate() }] : []),
     { label: "新建会话", hint: "⌘N", onClick: () => setNewSession(true) },
     { label: "新建任务", hint: "⌘T", onClick: () => setCreating(true) },
     { label: "刷新", hint: "⌘R", onClick: () => void reload() },
@@ -454,7 +462,7 @@ export default function App() {
   }
 
   return (
-    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?{...r,...c}:r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?{...x,...c}:x)}));say(c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), hosts, onMove: async (a, hostId, hostName) => { say(`正在把会话和项目目录搬到 ${hostName}…`); try { const r = JSON.parse((await api!.on("local", ["move", a.session_id, "--to", hostId, "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(`已迁移到 ${hostName}：${r.remote_cwd}，那边会话页能看到它继续；这里的原会话可以关了`); } catch (e) { say(String(e), true); } } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectRows.find((a) => conversationProject(a) === n)); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
+    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?{...r,...c}:r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?{...x,...c}:x)}));say(c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), hosts, onMove: async (a, hostId, hostName) => { say(`正在把会话和项目目录搬到 ${hostName}…`); try { const r = JSON.parse((await api!.on("local", ["move", a.session_id, "--to", hostId, "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(`已迁移到 ${hostName}：${r.remote_cwd}，那边会话页能看到它继续；这里的原会话可以关了`); } catch (e) { say(String(e), true); } } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectRows.find((a) => conversationProject(a) === n)); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
         <div className="crumb" data-tauri-drag-region>
@@ -538,6 +546,6 @@ export default function App() {
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
       <GlobalContextMenu issues={issues} sessions={sessionByKey} />
-    </div></TaskActions></ViewMenu></ProjectActions></ConversationActions></SessionActions>
+    </div></TaskActions></ItemMenus></ViewMenu></ProjectActions></ConversationActions></SessionActions>
   );
 }

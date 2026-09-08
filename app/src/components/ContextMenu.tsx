@@ -50,7 +50,7 @@ export function ProjectActions({ children, ...act }: ProjectMenuActions & { chil
 
 // ---- View menu (right-click on empty space) --------------------------------
 
-export interface ViewMenuItem { label: string; hint?: string; onClick: () => void; disabled?: boolean }
+export interface ViewMenuItem { label: string; hint?: string; onClick: () => void | Promise<void>; disabled?: boolean; danger?: boolean }
 interface ViewMenuContext { open: (e: Anchor) => void; setExtras: (items: ViewMenuItem[]) => void }
 const ViewContext = createContext<ViewMenuContext>({ open: () => {}, setExtras: () => {} });
 export const useViewMenu = () => useContext(ViewContext).open;
@@ -74,6 +74,33 @@ export function ViewMenu({ items, children }: { items: ViewMenuItem[]; children:
   </MenuPanel>}</ViewContext.Provider>;
 }
 
+// ---- Item menus: any view can describe a menu for its own kind of thing --------
+// A row carries data-menu="skill" data-id="pdf-ingestion"; the view that owns skills
+// registers a resolver that turns that id into a titled list of items.
+
+export interface ItemMenuSpec { title: string; items: (ViewMenuItem | "-")[] }
+type Resolver = (id: string, el: HTMLElement) => ItemMenuSpec | null;
+interface ItemMenuContext { register: (kind: string, r: Resolver) => () => void; open: (kind: string, id: string, el: HTMLElement, e: Anchor) => boolean }
+const ItemContext = createContext<ItemMenuContext>({ register: () => () => {}, open: () => false });
+export function useItemMenu(kind: string, resolver: Resolver, deps: unknown[]) {
+  const { register } = useContext(ItemContext);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => register(kind, resolver), deps);
+}
+export function ItemMenus({ children }: { children: ReactNode }) {
+  const resolvers = useRef(new Map<string, Resolver>());
+  const [menu, setMenu] = useState<{ spec: ItemMenuSpec; x: number; y: number; from: HTMLElement | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ctx = useRef<ItemMenuContext>({
+    register: (kind, r) => { resolvers.current.set(kind, r); return () => { if (resolvers.current.get(kind) === r) resolvers.current.delete(kind); }; },
+    open: (kind, id, el, e) => { const r = resolvers.current.get(kind); const spec = r?.(id, el); if (!spec) return false; e.preventDefault(); e.stopPropagation(); setMenu({ spec, x: e.clientX, y: e.clientY, from: el }); return true; },
+  });
+  const close = () => setMenu(null);
+  return <ItemContext.Provider value={ctx.current}>{children}{menu && <MenuPanel x={menu.x} y={menu.y} title={menu.spec.title} label="操作" busy={busy} onClose={close} returnTo={menu.from}>
+    {menu.spec.items.map((i, n) => i === "-" ? <hr key={n} /> : <MenuItem key={i.label} disabled={i.disabled || busy} danger={i.danger} hint={i.hint} onClick={async () => { setBusy(true); try { await i.onClick(); } finally { setBusy(false); close(); } }}>{i.label}</MenuItem>)}
+  </MenuPanel>}</ItemContext.Provider>;
+}
+
 // ---- Global dispatch --------------------------------------------------------
 
 // Every row or card that stands for something carries a data attribute:
@@ -81,9 +108,9 @@ export function ViewMenu({ items, children }: { items: ViewMenuItem[]; children:
 // click anywhere finds the nearest one and opens the matching menu; empty
 // space gets the view menu. Text fields and selected text keep the browser's.
 export function GlobalContextMenu({ issues, sessions }: { issues: Issue[]; sessions: Map<string, Activity> }) {
-  const openTask = useTaskMenu(); const openConversation = useConversationMenu(); const openProject = useProjectMenu(); const openView = useViewMenu();
-  const latest = useRef({ issues, sessions, openTask, openConversation, openProject, openView });
-  latest.current = { issues, sessions, openTask, openConversation, openProject, openView };
+  const openTask = useTaskMenu(); const openConversation = useConversationMenu(); const openProject = useProjectMenu(); const openView = useViewMenu(); const openItem = useContext(ItemContext).open;
+  const latest = useRef({ issues, sessions, openTask, openConversation, openProject, openView, openItem });
+  latest.current = { issues, sessions, openTask, openConversation, openProject, openView, openItem };
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const t = e.target as HTMLElement | null;
@@ -93,13 +120,14 @@ export function GlobalContextMenu({ issues, sessions }: { issues: Issue[]; sessi
       if (sel && !sel.isCollapsed && sel.toString().trim()) return;
       e.preventDefault();
       if (t.closest('.task-menu-shade,.overlay,.dialog')) return;
-      const { issues, sessions, openTask, openConversation, openProject, openView } = latest.current;
-      const found = ['[data-task]', '[data-session]', '[data-project]'].map(s => t.closest<HTMLElement>(s)).filter((x): x is HTMLElement => !!x);
+      const { issues, sessions, openTask, openConversation, openProject, openView, openItem } = latest.current;
+      const found = ['[data-task]', '[data-session]', '[data-project]', '[data-menu]'].map(s => t.closest<HTMLElement>(s)).filter((x): x is HTMLElement => !!x);
       const nearest = found.length ? found.reduce((a, b) => (a.contains(b) ? b : a)) : null;
       const anchor = anchorAt(nearest ?? t, e.clientX, e.clientY);
       if (nearest?.dataset.task) { const i = issues.find(x => x.id === nearest.dataset.task); if (i) { openTask(i, anchor); return; } }
       if (nearest?.dataset.session) { const a = sessions.get(nearest.dataset.session); if (a) { openConversation(a, anchor); return; } }
       if (nearest?.dataset.project !== undefined) { openProject(nearest.dataset.project, anchor); return; }
+      if (nearest?.dataset.menu && openItem(nearest.dataset.menu, nearest.dataset.id ?? '', nearest, anchor)) return;
       openView(anchor);
     };
     document.addEventListener('contextmenu', handler);

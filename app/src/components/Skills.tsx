@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import type { Host, Skill } from "../types";
 import { HostPicker, hostReason } from "./HostPicker";
+import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
 import { Markdown, splitFrontmatter } from "./Markdown";
 
 interface Props { api: Api; hosts: Host[]; hostId?: string; onDone: (m: string) => void; onError: (m: string) => void }
@@ -68,6 +69,33 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
     setBusy(true);
     try { const msg = await api.on(host, ["skills", s.agents[agent] ? "disable" : "enable", s.name, "--agent", agent]); onDone(msg.split("\n")[0] || "已更新"); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
+  // Right-click on a skill: open, mount/unmount, reveal, copy, trash. The view menu adds
+  // the page-level actions.
+  useItemMenu("skill", (name) => {
+    const s = skills.find((x) => x.name === name);
+    if (!s) return null;
+    const on = (agent: string) => api.on(host, ["skills", s.agents[agent] ? "disable" : "enable", s.name, "--agent", agent]).then((m) => { onDone(m.split("\n")[0] || "已更新"); return load(); }).catch((e) => onError(String(e)));
+    return { title: s.name, items: [
+      { label: "查看", onClick: () => setSel(s.name) },
+      { label: s.agents.claude ? "从 Claude Code 卸载" : "挂给 Claude Code", onClick: () => on("claude") },
+      { label: s.agents.codex ? "从 Codex 卸载" : "挂给 Codex", onClick: () => on("codex") },
+      "-",
+      ...(host === "local" ? [
+        { label: "用编辑器打开", onClick: () => api.on(host, ["skills", "open", s.name]).catch((e) => onError(String(e))) },
+        { label: "在访达中打开", onClick: () => api.on(host, ["skills", "open", s.name, "--reveal"]).catch((e) => onError(String(e))) },
+      ] : []),
+      { label: "复制路径", onClick: () => api.copy(s.path).then(() => onDone("路径已复制")) },
+      { label: "复制 SKILL.md 内容", onClick: () => api.on(host, ["skills", "show", s.name]).then((c) => api.copy(c)).then(() => onDone("内容已复制")).catch((e) => onError(String(e))) },
+      "-",
+      { label: s.in_pool ? "移到废纸篓" : "卸载挂载（本体不在池里）", danger: true, onClick: () => api.on(host, ["skills", "trash", s.name]).then((m) => { onDone(m.trim().split("\n")[0]); if (sel === s.name) setSel(null); return load(); }).catch((e) => onError(String(e))) },
+    ] };
+  }, [skills, host, sel, api]);
+  useViewMenuExtras([
+    { label: "刷新技能列表", onClick: () => void load() },
+    { label: "按最近工作流改进技能", onClick: () => void improve() },
+    ...(host === "local" ? [{ label: "在访达中打开技能池", onClick: () => api.openPath(skills.find((s) => s.in_pool)?.path.replace(/\/[^/]+$/, "") || "").catch((e) => onError(String(e))) }] : []),
+  ], [host, skills.length]);
+
   const save = async () => {
     if (!sel || draft === null) return;
     setBusy(true);
@@ -93,7 +121,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
         <div className="sess-items">
           {!loaded && <div className="empty">读取技能池…</div>}
           {items.map((s) => (
-            <button key={s.name} className={`sk-item${sel === s.name ? " sel" : ""}`} onClick={() => setSel(s.name)}>
+            <button key={s.name} data-menu="skill" data-id={s.name} className={`sk-item${sel === s.name ? " sel" : ""}`} onClick={() => setSel(s.name)}>
               <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={`不在共享技能池 ~/.cc-switch/skills 里，只装在这一处：${s.path}`}>池外</span>}<span className="spacer" />{total(s) > 0 && <span className="use mono" title={"调用次数（C=Claude Code，X=Codex）：" + Object.entries(s.usage ?? {}).map(([a, n]) => `${a} ${n} 次`).join("，") + (s.last_used ? `，最近 ${s.last_used}` : "")}>{Object.entries(s.usage ?? {}).map(([a, n]) => `${a === "claude-code" ? "C" : a === "codex" ? "X" : a[0].toUpperCase()}${n}`).join(" ")}</span>}</div>
               <div className="l2">{s.description || <span className="muted">（没有描述）</span>}</div>
               <div className="l3">{AGENTS.map((a) => <span key={a.id} className={`mount ${a.cls}${s.agents[a.id] ? " on" : ""}`}>{a.label}</span>)}</div>
