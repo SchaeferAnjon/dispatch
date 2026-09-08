@@ -174,7 +174,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
           )}
         </div>}
 
-        <section className="sec"><h4>所属会话</h4><TaskRelations issue={issue} rows={rows} api={api} onOpen={onOpenSession} onSaved={()=>onDone("会话归属已保存")}/></section>
+        <section className="sec"><h4>来自哪次会话 <span className="muted small">建这个任务的对话，以及后来参与过的对话；Agent 用 dispatch begin 建任务时会自动记，漏了可以手动指定</span></h4><TaskRelations issue={issue} rows={rows} api={api} onOpen={onOpenSession} onSaved={()=>onDone("会话归属已保存")}/></section>
         {(() => {
           const discussion = comments.filter((c) => c.text.trimStart().startsWith("【讨论】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
           const subtasks = (issue.dependents ?? []).filter((d) => !d.dependency_type || d.dependency_type === "parent-child");
@@ -258,7 +258,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
         <details className="sec context-fold">
           <summary>对话中提到过 <span className="muted">{refs.length} 个会话 · 仅供参考，不代表归属</span></summary>
           {refs.length === 0 ? (
-            <p className="empty-p" style={{ margin: 0 }}>还没有会话提到 {id}。归属以上方「所属会话」为准。</p>
+            <p className="empty-p" style={{ margin: 0 }}>还没有会话提到 {id}。以上方「来自哪次会话」为准。</p>
           ) : (
             <div className="sess-list">
               {refs.map((r) => {

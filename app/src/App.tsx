@@ -1,6 +1,6 @@
 import { ConversationActions } from './components/ConversationActions';
 import { GlobalContextMenu, ItemMenus, ProjectActions, ViewMenu, type ViewMenuItem } from './components/ContextMenu';
-import { TaskActions, isTrashed } from "./components/TaskActions";
+import { TaskActions, isArchivedTask, isTrashed } from "./components/TaskActions";
 import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getApi, isTauri, isServed, type Api, type AgentStartInput } from "./api";
@@ -34,8 +34,8 @@ import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, 
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站", setup: "首次设置" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash", "setup"];
+const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站", archive: "已归档任务", setup: "首次设置" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash", "archive", "setup"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 // ⌘1…⌘9 in sidebar order.
 const SHORTCUT_VIEWS: View[] = ["home", "projects", "inbox", "sessions", "board", "graph", "agents", "stats", "pitfalls"];
@@ -278,7 +278,10 @@ export default function App() {
     catch (e) { say(String(e), true); }
   };
   const hostIssues = useMemo(() => hostFilter ? issues.filter((i) => hostOfIssue(i, refs) === hostFilter) : issues, [issues, refs, hostFilter]);
-  const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)&&!isOutcome(i)), [hostIssues]);
+  const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)&&!isArchivedTask(i)&&!isOutcome(i)), [hostIssues]);
+  // Closed more than 30 days ago and not yet archived: what the 归档 button would put away.
+  const archivable = useMemo(() => hostIssues.filter((i) => i.status === "closed" && !isTrashed(i) && !isArchivedTask(i) && !isOutcome(i) && Date.now() - Date.parse(i.closed_at ?? i.updated_at) > 30 * 86_400_000), [hostIssues]);
+  const archiveOld = async () => { if (!api || !archivable.length) return; say(`正在归档 ${archivable.length} 项…`); try { for (const i of archivable) await api.labels(i.id, ["dispatch:archived"], []); say(`已归档 ${archivable.length} 项完成超过 30 天的任务，「已归档」里能找到`); await reload(); } catch (e) { say(String(e), true); } };
   const outcomesF = useMemo(() => issues.filter(i=>!isTrashed(i)&&isOutcome(i)&&(!hostFilter || linkedSessions(i).some(id=>!!refs.get(id)&&(refs.get(id)?.host_name||localName)===hostFilter) || sourceTasks(i).some(id=>hostIssues.some(t=>t.id===id)))), [issues, hostIssues, hostFilter, refs, localName]);
   const liveSessions = useMemo(() => presenceF.sessions.filter((s) => !s.scheduled), [presenceF]);
   const scheduledSessions = useMemo(() => presenceF.sessions.filter((s) => s.scheduled), [presenceF]);
@@ -427,6 +430,8 @@ export default function App() {
       { label: view === "board" ? "切到表格" : "切到看板", onClick: () => setView(view === "board" ? "table" : "board") },
       { label: "清除筛选", onClick: () => { setFilters(EMPTY_FILTERS); setQuery(""); }, disabled: !Object.values(filters).some(Boolean) && filters.project === null && !query },
       { label: "回收站", onClick: () => setView("trash") },
+      { label: "已归档任务", onClick: () => setView("archive") },
+      ...(archivable.length ? [{ label: `归档 30 天前完成的（${archivable.length}）`, onClick: () => void archiveOld() }] : []),
     ] : []),
     ...(view === "inbox" && inbox.unread.length > 0 ? [{ label: `全部标记已读（${inbox.unread.length}）`, onClick: async () => { for (const a of inbox.unread) if (a.reply_id) await markRead(a, a.reply_id); } }] : []),
     ...(view === "settings" ? [{ label: "检查更新", onClick: () => void checkUpdate() }] : []),
@@ -508,6 +513,8 @@ export default function App() {
               <label className="search board-search">🔍<input ref={searchRef} placeholder="筛任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="清除任务筛选" onClick={() => setQuery("")}>✕</button>}</label>
               <button className="chip" onClick={() => setCreating(true)} title="任务通常由 Agent 自己建；这里手动建一条">＋ 新任务</button>
               <button className={`chip${hostIssues.some(isTrashed) ? "" : " zero"}`} onClick={()=>setView("trash")}>回收站 {hostIssues.filter(isTrashed).length}</button>
+              <button className={`chip${hostIssues.some(isArchivedTask) ? "" : " zero"}`} onClick={()=>setView("archive")} title="归档过的已完成任务：不进已完成列，不计数">已归档 {hostIssues.filter(isArchivedTask).length}</button>
+              {archivable.length > 0 && <button className="chip" onClick={() => void archiveOld()} title="把完成超过 30 天的任务收起来，已完成列和计数都会变小；随时可以取消归档">归档 30 天前完成的 {archivable.length}</button>}
               <button className="chip" disabled={!Object.values(filters).some(Boolean) && filters.project === null && !query} onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>清除筛选</button>
               <button className={`chip${filters.review ? " on" : ""}${counts.review ? "" : " zero"}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>Agent 复核 {counts.review}</button>
               <button className={`chip${filters.blocked ? " on" : ""}${counts.blocked ? "" : " zero"}`} onClick={() => setFilters({ ...filters, blocked: !filters.blocked, review: false })}>阻塞 {counts.blocked}</button>
@@ -526,6 +533,7 @@ export default function App() {
             {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(what.endsWith("。") ? what : `${what}已复制`)).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
             {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
+            {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

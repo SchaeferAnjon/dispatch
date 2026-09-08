@@ -119,7 +119,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
             <button className={mode === "archived" ? "on" : ""} onClick={() => setMode("archived")} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>已归档 {counts.archived}</button>
             {counts.scheduled > 0 && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="定时任务产生的会话">定时 {counts.scheduled}</button>}
             <select className="sess-agent" aria-label="按 Agent 筛选" value={agent} onChange={(e) => setAgent(e.target.value)} title="按 Agent 筛选">{[["", "全部 Agent"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            {scriptCount > 0 && <button className={`chip${showScripts ? " on" : ""}`} onClick={() => setShowScripts(!showScripts)} title="由脚本、定时任务或其他 Agent 通过 SDK 启动的会话，默认不列出">SDK {scriptCount}</button>}
+            {scriptCount > 0 && <button className={`chip${showScripts ? " on" : ""}`} onClick={() => setShowScripts(!showScripts)} title="不是你在终端里开的：由脚本、定时任务或别的 Agent 通过程序接口（SDK）启动的会话，默认不列出；点一下显示">脚本启动的 {scriptCount}</button>}
             <span className="muted mono small" title="当前筛选下的会话数">{items.length} 条</span>
           </div>
         </div>
