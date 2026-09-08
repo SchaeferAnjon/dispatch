@@ -53,6 +53,9 @@ interface Props {
   onProject: (name: string) => void;
   onView: (v: View) => void;
   onNew: (a?: Activity) => void;
+  onPhone?: () => void;
+  onScreen?: () => void;
+  screenReady?: boolean;
 }
 
 const UNGROUPED = UNGROUPED_PROJECT;
@@ -81,7 +84,7 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ insight, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew }: Props) {
+export function HomeView({ insight, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone, onScreen, screenReady }: Props) {
   // The count chips narrow this page instead of leaving it.
   const [focus, setFocus] = useState<"" | "unread" | "waiting" | "blocked" | "running">("");
   const toggleFocus = (f: typeof focus) => setFocus((cur) => (cur === f ? "" : f));
@@ -297,6 +300,8 @@ export function HomeView({ insight, me, loaded, connectionError, unavailable, ro
         <button className={`home-count${running ? "" : " zero"}${focus === "running" ? " on" : ""}`} aria-pressed={focus === "running"} onClick={() => toggleFocus("running")} title="只看正在跑的会话">在跑 <b>{running}</b></button>
         {focus && <button className="link" onClick={() => setFocus("")}>显示全部 ✕</button>}
         {!focus && featured.length > 1 && <button className="link" onClick={toggleAll}>{everyOpen ? "全部收起" : "全部展开"}</button>}
+        {onPhone && <button className="link" onClick={onPhone} title="复制手机访问链接：手机连上 Tailscale 后用浏览器打开">手机访问 ⧉</button>}
+        {onScreen && <button className="link" disabled={!screenReady} onClick={onScreen} title={screenReady ? "复制屏幕链接：手机上看并操作这台电脑，登录用这台 Mac 的用户名和密码" : "还没配置屏幕访问：设置页有说明"}>看屏幕 ⧉</button>}
       </div>
 
       {!focus && insight && <button className="home-insight" onClick={() => onView("stats")} title="最近 14 天跨 Agent 的复盘洞察 · 点开看全部"><span className="home-insight-tag">洞察</span><span className="t">{insight}</span><span className="muted small">统计页 ›</span></button>}

@@ -408,7 +408,7 @@ export default function App() {
   const dirOfProject = useCallback((name: string) => { const p = projectGroups(projectRows, issuesF, outcomesF).find((g) => g.name === name); const a = p?.sessions.find((x) => x.cwd && !/^\/(?:Users|home)\/[^/]+\/?$/.test(x.cwd)); return a?.cwd ?? ""; }, [projectRows, issuesF, outcomesF]);
   const startAgent = async (i: AgentStartInput) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; };
 
-  const phoneLink = isTauri && api ? async () => { try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say(/100\.\d+\.\d+\.\d+/.test(url) ? "手机访问链接已复制。打开前手机先连上 Tailscale，再用浏览器打开，可添加到主屏幕" : "手机访问链接已复制。手机和电脑要在同一个网络里"); } catch (e) { say(String(e), true); } } : undefined;
+  const phoneLink = isTauri && api ? async () => { try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say(/100\.\d+\.\d+\.\d+/.test(url) ? "手机访问链接已复制。手机先连上 Tailscale 再用浏览器打开；链接自带登录令牌，不用输密码，可添加到主屏幕" : "手机访问链接已复制。手机和电脑要在同一个网络里；链接自带登录令牌，不用输密码"); } catch (e) { say(String(e), true); } } : undefined;
 
   // Every conversation a row can stand for, by activity key, for the global right-click.
   const sessionByKey = useMemo(() => {
@@ -437,6 +437,9 @@ export default function App() {
     ...(isTauri && api ? [{ label: "复制手机访问链接", onClick: () => void phoneLink?.() }] : []),
     { label: theme === "dark" ? "切换为浅色主题" : theme === "light" ? "跟随系统主题" : "切换为深色主题", onClick: () => nextTheme() },
   ];
+
+  // The noVNC page asks for a login: it is this Mac's account, which is the part new users miss.
+  const screenLink = async () => { const h = hosts.find((x) => x.local); if (!h?.novnc || !api) { say("还没配置屏幕访问，设置页有说明", true); return; } try { await api.copy(h.novnc); say(`屏幕链接已复制。手机先连上 Tailscale 再打开；页面要登录时，输入这台 Mac 的用户名（${h.ssh?.includes("@") ? h.ssh.split("@")[0] : "登录这台电脑用的那个"}）和开机密码`); } catch (e) { say(String(e), true); } };
 
   const copyResume = async (agent: string, sessionId: string, cwd: string) => {
     if (!api) return;
@@ -515,7 +518,7 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && api && <HomeView insight={insight} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} />}
+            {view === "home" && api && <HomeView insight={insight} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
             {view === "projects" && api && <ProjectHub archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onFocus={focusSession} />}
@@ -527,7 +530,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView onScreen={() => { const h = hosts.find((x) => x.local); if (h?.novnc) void api?.copy(h.novnc).then(() => say("屏幕链接已复制。打开前手机先连上 Tailscale；登录用这台 Mac 的用户名和密码")); }} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
