@@ -114,7 +114,7 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
 
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
 
-export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFocus, refs, hosts, onOpenUrl, onCopyText, onDelegate }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; issues: Issue[]; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onDelegate: (host: Host) => void }) {
+export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFocus, refs, hosts, onOpenUrl, onCopyText, onDelegate , onPhoneLink }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; issues: Issue[]; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onDelegate: (host: Host) => void ; onPhoneLink?: () => void }) {
   useItemMenu("host", (id) => {
     const h = hosts.find((x) => x.id === id);
     if (!h) return null;
@@ -139,6 +139,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
             // to open here (opening your own screen inside itself just mirrors forever).
             if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: "看它的屏幕并操作", act: () => onOpenUrl(h.vnc), hint: "用系统「屏幕共享」打开，能直接操作那台 Mac" });
             if (h.novnc_up && h.novnc.startsWith("https://") && !h.local) ways.push({ key: "novnc", label: "复制手机看屏幕链接 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "发到手机上打开（手机需连着 Tailscale），用这台 Mac 的用户名和登录密码" });
+            if (h.local && onPhoneLink) ways.push({ key: "phone", label: "手机访问 ⧉", act: onPhoneLink, hint: "复制 Dispatch 网页版链接；手机连上 Tailscale 后用浏览器打开，可添加到主屏幕" });
             if (h.local && h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: "看屏幕 ⧉", act: () => onCopyText(h.novnc, "链接已复制。另一个电脑使用当前电脑会无限套娃，在看屏幕之前请打开 Tailscale。"), hint: "另一个电脑使用当前电脑会无限套娃，在看屏幕之前请打开 Tailscale。" });
             if (h.rustdesk) ways.push({ key: "rustdesk", label: h.rustdesk_id ? `RustDesk ${h.rustdesk_id} ⧉` : "RustDesk", act: () => (h.rustdesk_id ? onCopyText(h.rustdesk_id, "RustDesk ID") : onOpenUrl("rustdesk://")), hint: "不用虚拟网：手机 RustDesk 输这个 ID" });
             if (h.sunshine) ways.push({ key: "moonlight", label: "Moonlight 配对", act: () => onOpenUrl(h.sunshine_ui), hint: "打开 Sunshine 配对页；手机装 Moonlight，画质最高" });
