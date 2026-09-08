@@ -1197,3 +1197,13 @@ pre.diff.dv-pre button.skip{display:block;width:100%;text-align:left;padding:2px
 .ins-seen{margin-top:4px}.ins-seen summary{cursor:pointer;list-style:none}.ins-seen summary::before{content:"› ";color:var(--ink-3)}.ins-seen[open] summary::before{content:"⌄ "}.ins-alert.seen{opacity:.75;margin-top:4px}
 .toast.web-update{bottom:auto;top:calc(env(safe-area-inset-top) + 56px);background:var(--accent);color:#fff;cursor:pointer}
 @media (pointer:coarse){[data-task],[data-session],[data-project],[data-menu]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}}
+/* diff on a phone: wrap long lines instead of relying on nested horizontal scroll; one line-number column */
+@media (max-width:760px){
+  pre.diff.dv-pre{max-height:60vh;overflow-x:hidden}
+  pre.diff.dv-pre .ln{white-space:pre-wrap}
+  pre.diff.dv-pre .ln .tx{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding-right:8px}
+  pre.diff.dv-pre .ln .no:first-child{display:none}
+  pre.diff.dv-pre .ln .no{width:calc(var(--w,3ch) + 6px);padding:0 3px}
+  .dv-bar{flex-wrap:wrap;gap:6px 10px}
+  .fdiff,.fdiff.file{min-width:0;max-width:100%;overflow:hidden}
+}
