@@ -1194,3 +1194,4 @@ pre.diff.dv-pre button.skip{display:block;width:100%;text-align:left;padding:2px
 .ins-signals .ins-tiles{margin-top:8px}
 .work-attachments .img-grid{flex:1 1 100%;width:100%;grid-template-columns:repeat(auto-fill,104px)}
 .detail .work-sec>h4,.detail .dcol-side>details>summary{margin-top:0}.detail .dcol-side .sec{margin-top:0}
+.ins-seen{margin-top:4px}.ins-seen summary{cursor:pointer;list-style:none}.ins-seen summary::before{content:"› ";color:var(--ink-3)}.ins-seen[open] summary::before{content:"⌄ "}.ins-alert.seen{opacity:.75;margin-top:4px}

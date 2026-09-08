@@ -172,7 +172,7 @@ def generate(days, model=None, wait=True):
     dig = digest(days)
     stamp = _stamp()
     rec = {"id": stamp, "created_at": time.strftime("%Y-%m-%d %H:%M"), "days": days, "model": model or "", "session_count": dig["total_sessions"], "digest_sessions": len(dig["sessions"]),
-           "signals": dig["per_agent"], "findings": dig["findings"], "rules": dig["rules"], "report": None, "error": "", "duration_s": 0}
+           "signals": dig["per_agent"], "findings": dig["findings"], "rules": dig["rules"], "stats": chart_stats(dig), "report": None, "error": "", "duration_s": 0}
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
     env["PATH"] = D.PATH_EXTRA + ":" + env.get("PATH", "")
     cmd = ["claude", "-p", PROMPT.format(days=days), "--output-format", "text", "--tools", "", "--permission-mode", "bypassPermissions"]
@@ -242,11 +242,68 @@ def due():
     return {"due": True, "reason": "已开始生成"}
 
 
+def chart_stats(dig):
+    """Numbers for the report's charts: tokens and sessions per agent and per project, from the digest."""
+    agents, projects = {}, {}
+    for x in dig["sessions"]:
+        a = agents.setdefault(x["agent"], {"sessions": 0, "tokens": 0, "turns": 0})
+        a["sessions"] += 1; a["tokens"] += x["tokens"]; a["turns"] += x["user_turns"]
+        pr = projects.setdefault(x["project"] or "（家目录）", {"sessions": 0, "tokens": 0})
+        pr["sessions"] += 1; pr["tokens"] += x["tokens"]
+    top = sorted(projects.items(), key=lambda kv: -kv[1]["tokens"])[:8]
+    return {"agents": agents, "projects": dict(top)}
+
+
+def _fmt_tok(n):
+    return f"{n / 1e9:.2f}B" if n >= 1e9 else f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}K" if n >= 1e3 else str(int(n))
+
+
+AGENT_COLOR = {"claude-code": "#c8693a", "codex": "#2f7d6b", "zcode": "#6b5bd6", "pi": "#5a7d2f"}
+
+
+def svg_bars(rows, fmt=str, width=560, color=None):
+    """Horizontal bars, one row per (label, value[, colour]); inline SVG, no scripts."""
+    if not rows:
+        return ""
+    mx = max(v for _, v, *_ in rows) or 1
+    h = 22 * len(rows) + 4
+    out = [f"<svg viewBox='0 0 {width} {h}' width='100%' height='{h}' role='img' style='font:12px -apple-system,sans-serif;display:block'>"]
+    for i, row in enumerate(rows):
+        label, v = row[0], row[1]
+        c = row[2] if len(row) > 2 else (color or "#5b6ee1")
+        y = 4 + i * 22; w = max(2, (width - 260) * v / mx)
+        out.append(f"<text x='0' y='{y + 14}' fill='#3a3a3c' font-weight='600'>{escape(str(label))[:24]}</text><rect x='150' y='{y + 3}' rx='4' width='{w:.1f}' height='14' fill='{c}'/><text x='{150 + w + 8:.1f}' y='{y + 14}' fill='#6e6e73'>{escape(fmt(v))}</text>")
+    out.append("</svg>")
+    return "".join(out)
+
+
+def charts_html(rec):
+    st = rec.get("stats") or {}
+    sig = rec.get("signals") or {}
+    parts = []
+    ag = st.get("agents") or {}
+    if ag:
+        rows = sorted(ag.items(), key=lambda kv: -kv[1]["tokens"])
+        parts.append("<section><h2>图表</h2><h3>每个 Agent 烧了多少</h3>" + svg_bars([(k, v["tokens"], AGENT_COLOR.get(k, "#5b6ee1")) for k, v in rows], _fmt_tok))
+        parts.append("<h3>每个 Agent 的会话数</h3>" + svg_bars([(k, v["sessions"], AGENT_COLOR.get(k, "#5b6ee1")) for k, v in rows], lambda v: f"{v} 个"))
+    pr = st.get("projects") or {}
+    if pr:
+        parts.append("<h3>token 花在哪些项目</h3>" + svg_bars([(k, v["tokens"]) for k, v in pr.items()], _fmt_tok, color="#8e8e93"))
+    if sig:
+        for key, title in (("correction", "用户纠错/催促"), ("asktail", "助手以问句收尾"), ("tool_errors", "工具报错")):
+            rows = [(k, c.get(key, 0), AGENT_COLOR.get(k, "#5b6ee1")) for k, c in sig.items() if c.get(key)]
+            if rows:
+                parts.append(f"<h3>{title}（按 Agent）</h3>" + svg_bars(rows, lambda v: f"{v} 次"))
+    if parts:
+        parts.append("</section>")
+    return "".join(parts)
+
+
 # ---------------------------------------------------------------- HTML: one self-contained page
 
 CSS = """body{font:15px/1.6 -apple-system,'PingFang SC','Helvetica Neue',sans-serif;color:#1d1d1f;background:#f6f6f4;margin:0}main{max-width:900px;margin:0 auto;padding:36px 24px 80px}
 h1{font-size:26px;margin:0 0 6px}.meta{color:#6e6e73;font-size:13px;margin-bottom:26px}.head{font-size:18px;color:#3a3a3c;margin:0 0 28px;padding:14px 18px;background:#fff;border:1px solid #e5e5ea;border-radius:12px}
-section{background:#fff;border:1px solid #e5e5ea;border-radius:12px;padding:18px 22px;margin-bottom:16px}section h2{font-size:17px;margin:0 0 6px}section>p{margin:0 0 10px;color:#3a3a3c}
+section{background:#fff;border:1px solid #e5e5ea;border-radius:12px;padding:18px 22px;margin-bottom:16px}section h2{font-size:17px;margin:0 0 6px}section h3{font-size:13px;color:#6e6e73;margin:14px 0 4px;font-weight:600}section>p{margin:0 0 10px;color:#3a3a3c}
 details{border-top:1px solid #f0f0f0;padding:8px 0}details summary{cursor:pointer;font-weight:600;list-style:none;display:flex;gap:10px;align-items:baseline}details summary::before{content:'›';color:#98989d;transition:transform .15s}details[open] summary::before{transform:rotate(90deg)}
 .metric{font:12px ui-monospace,Menlo,monospace;color:#6e6e73;margin-left:auto;white-space:nowrap}.pri{font-size:11px;padding:1px 7px;border-radius:5px;background:#eef2ff;color:#3b4fd8}.pri.高{background:#fde8e8;color:#b42318}
 details p{margin:8px 0 4px 18px;color:#3a3a3c}.ev{margin-left:18px;font:12px ui-monospace,Menlo,monospace;color:#98989d}.action{margin:6px 0 0 18px;padding:8px 12px;background:#f6f6f4;border-radius:8px;font-size:14px}
@@ -258,7 +315,7 @@ def render_html(rec):
     rep = rec["report"]
     parts = [f"<!doctype html><meta charset=utf-8><title>洞察 · {escape(rec['created_at'])}</title><style>{CSS}</style><main>",
              f"<h1>跨 Agent 洞察报告</h1><div class=meta>生成于 {escape(rec['created_at'])} · 最近 {rec['days']} 天 · {rec['session_count']} 个会话（摘要含 {rec.get('digest_sessions', 0)} 个）· 模型 {escape(rec.get('model') or '')} · 用时 {rec.get('duration_s', 0)} 秒</div>",
-             f"<p class=head>{escape(rep.get('headline', ''))}</p>"]
+             f"<p class=head>{escape(rep.get('headline', ''))}</p>", charts_html(rec)]
     for s in rep["sections"]:
         parts.append(f"<section><h2>{escape(s.get('title', ''))}</h2><p>{escape(s.get('summary', ''))}</p>")
         for it in s.get("items", []):

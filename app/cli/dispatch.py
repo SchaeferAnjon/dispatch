@@ -3289,6 +3289,33 @@ def insights_scan(days):
     return {"days": days, "per_agent": per_agent, "sessions": sessions[:12], "all_sessions": sessions, "samples": {k: v[-8:] for k, v in samples.items()}, "total_sessions": len(sessions)}
 
 
+INSIGHTS_CACHE = os.path.join(DISPATCH_DIR, "insights-cache.json")
+
+
+def insights_scan_cached(days):
+    """The scan reads every recent transcript (seconds); the app asks for it on every visit.
+    Keyed by the transcript index's mtime+size, so it is only recomputed when a session changed."""
+    try:
+        st = os.stat(INDEX_FILE); key = f"{days}:{int(st.st_mtime)}:{st.st_size}"
+    except OSError:
+        return insights_scan(days)
+    try:
+        c = json.load(open(INSIGHTS_CACHE))
+        if c.get("key") == key and c.get("days") == days:
+            return c["rep"]
+    except Exception:
+        pass
+    rep = insights_scan(days)
+    try:
+        os.makedirs(DISPATCH_DIR, exist_ok=True)
+        tmp = INSIGHTS_CACHE + ".tmp"
+        json.dump({"key": key, "days": days, "rep": rep}, open(tmp, "w"), ensure_ascii=False)
+        os.replace(tmp, INSIGHTS_CACHE)
+    except OSError:
+        pass
+    return rep
+
+
 def tool_error_count(path):
     """How many tool results the transcript marked as errors; a cheap substring scan."""
     try:
@@ -3363,7 +3390,7 @@ def cmd_insights(a):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import insights_report
         return insights_report.main(a)
-    rep = insights_scan(a.days)
+    rep = insights_scan_cached(a.days)
     rep["findings"] = insights_findings(rep)
     rep["rules"] = INSIGHT_RULES
     seen = insights_seen_load()

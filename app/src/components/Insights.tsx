@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Api, AgentStartInput } from "../api";
+import { isTauri, type Api, type AgentStartInput } from "../api";
 import type { InsightReport, InsightReportList, Insights } from "../types";
 
 interface Props {
@@ -11,6 +11,9 @@ interface Props {
   onDone: (m: string) => void; onError: (m: string) => void;
 }
 
+// Last answers, kept for the life of the page so reopening 统计 paints at once and refreshes behind.
+const memo: { signals: Map<number, Insights>; list: InsightReportList | null; reports: Map<string, InsightReport> } = { signals: new Map(), list: null, reports: new Map() };
+
 const KIND_LABEL: Record<string, string> = { correction: "纠错多", overflow: "上下文溢出", tool_errors: "工具报错", no_board: "没上板", long: "超长" };
 const CADENCE: [number, string][] = [[0, "不自动"], [7, "每 7 天"], [14, "每 14 天"], [30, "每 30 天"]];
 
@@ -21,29 +24,34 @@ const CADENCE: [number, string][] = [[0, "不自动"], [7, "每 7 天"], [14, "�
 // button that hands an agent the job of turning the findings into rule/skill changes.
 export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, onDone, onError }: Props) {
   const [days, setDays] = useState(14);
-  const [r, setR] = useState<Insights | null>(null);
+  const [r, setR] = useState<Insights | null>(() => memo.signals.get(14) ?? null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<"asktail" | "correction" | "rules" | null>(null);
   const [tick, setTick] = useState(0);
+  const [seenOpen, setSeenOpen] = useState(false);
 
   useEffect(() => {
-    let alive = true; setBusy(true);
-    api.insights(days).then((x) => { if (alive) setR(x); }).catch((e) => onError(String(e))).finally(() => alive && setBusy(false));
+    let alive = true;
+    const cached = memo.signals.get(days);
+    if (cached) setR(cached); else setBusy(true);
+    api.insights(days).then((x) => { if (x) memo.signals.set(days, x); if (alive) setR(x); }).catch((e) => onError(String(e))).finally(() => alive && setBusy(false));
     return () => { alive = false; };
   }, [api, days, tick]);
 
   // ---- the report
-  const [list, setList] = useState<InsightReportList | null>(null);
-  const [rep, setRep] = useState<InsightReport | null>(null);
+  const [list, setList] = useState<InsightReportList | null>(memo.list);
+  const [rep, setRep] = useState<InsightReport | null>(() => { const mine = memo.list?.reports.find((x) => x.source === "dispatch" && !x.error); return mine ? memo.reports.get(mine.id) ?? null : null; });
   const [repId, setRepId] = useState<string>("latest");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [history, setHistory] = useState(false);
   const refresh = useCallback(async () => {
     try {
-      const l = await api.insightReports(); setList(l);
+      const l = await api.insightReports(); memo.list = l; setList(l);
       const mine = l.reports.filter((x) => x.source === "dispatch" && !x.error);
       const want = repId === "latest" ? mine[0]?.id : repId;
-      setRep(want ? await api.insightReport(want) : null);
+      if (!want) { setRep(null); return; }
+      if (memo.reports.has(want)) setRep(memo.reports.get(want)!);
+      else { const x = await api.insightReport(want); if (x) memo.reports.set(want, x); setRep(x); }
     } catch (e) { onError(String(e)); }
   }, [api, repId, onError]);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -55,7 +63,11 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
   }, [list?.running, refresh]);
   const generate = async () => { try { await api.insightGenerate(days); onDone(`开始生成最近 ${days} 天的报告，一般 1–3 分钟`); await refresh(); } catch (e) { onError(String(e)); } };
   const schedule = async (every: number) => { try { await api.insightSchedule(every); onDone(every ? `每 ${every} 天自动生成一份` : "已关闭自动生成"); await refresh(); } catch (e) { onError(String(e)); } };
-  const openHtml = (html: string) => api.openPath(html).catch((e) => onError(String(e)));
+  // The desktop opens the file; the phone/browser gets the same page from the serve route.
+  const openHtml = (row: { id: string; html: string }) => {
+    if (isTauri) { api.openPath(row.html).catch((e) => onError(String(e))); return; }
+    window.open(`/insights/${encodeURIComponent(row.id)}.html`, "_blank", "noopener");
+  };
   const toggle = (k: string) => setExpanded((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const allOpen = rep?.report ? rep.report.sections.every((s) => expanded.has(s.key)) : false;
 
@@ -79,6 +91,7 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
   const ack = async () => { try { await api.insightsAck(days); setTick((t) => t + 1); onDone("这批洞察已标记为看过；新出现的会再提醒"); } catch (e) { onError(String(e)); } };
   const tot = (k: keyof NonNullable<Insights["per_agent"][string]>) => Object.values(r?.per_agent ?? {}).reduce((a, b) => a + ((b[k] as number) || 0), 0);
   const fresh = (r?.alerts ?? []).filter((a) => !a.seen);
+  const seen = (r?.alerts ?? []).filter((a) => a.seen);
   const canStart = !!(onDelegate || onStart);
   const running = list?.running;
   const rows = list?.reports ?? [];
@@ -91,7 +104,7 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
         <label className="ins-cadence muted small">自动<select value={list?.schedule.every_days ?? 0} onChange={(e) => void schedule(Number(e.target.value))}>{CADENCE.map(([d, l]) => <option key={d} value={d}>{l}</option>)}</select></label>
         <span className="views">{[7, 14, 30].map((d) => <button key={d} className={days === d ? "on" : ""} onClick={() => setDays(d)}>{d} 天</button>)}</span>
         <button className="btn sm" disabled={!!running} onClick={generate} title="让模型读最近这段时间所有 Agent 的会话摘要，写一份报告（后台，1–3 分钟）">{running ? `生成中 ${Math.max(0, Math.round((Date.now() / 1000 - running.started) / 60))} 分…` : rep ? "重新生成" : "生成报告"}</button>
-        {rep && <button className="btn sm" onClick={() => openHtml(rows.find((x) => x.id === rep.id)?.html ?? "")} title="在浏览器里整页打开这份报告">整页打开 ↗</button>}
+        {rep && <button className="btn sm" onClick={() => openHtml({ id: rep.id, html: rows.find((x) => x.id === rep.id)?.html ?? "" })} title="整页打开这份报告（手机上在新标签打开）">整页打开 ↗</button>}
         <button className="btn primary sm" disabled={!r || starting} onClick={improve} title={canStart ? "打开派活窗口：在选定的机器起一个 Claude Code，按报告的建议改规则/技能、把结论写进知识库" : "复制启动命令"}>{starting ? "正在派活…" : canStart ? "✦ 派 Agent 做改进" : "✦ 复制改进命令"}</button>
       </h4>
 
@@ -139,7 +152,7 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
                 <span className={`st sm ${x.source === "claude-code" ? "open" : "prog"}`}>{x.source === "claude-code" ? "Claude Code" : `全部 Agent · ${x.days} 天`}</span>
                 <span className="t">{x.error ? `失败：${x.error.slice(0, 80)}` : x.headline}</span>
                 {x.source === "dispatch" && !x.error && <button className="link sm" onClick={() => setRepId(x.id)}>在这里看</button>}
-                {!x.error && <button className="link sm" onClick={() => openHtml(x.html)}>整页打开 ↗</button>}
+                {!x.error && <button className="link sm" onClick={() => openHtml(x)}>整页打开 ↗</button>}
               </div>
             ))}
           </div>
@@ -186,7 +199,7 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
       {r && (
         <div className="ins-alerts">
           <div className="ins-alerts-head"><b>主动洞察</b><span className="muted small">按会话盯着的信号；新的会在工作台和系统通知里提醒。</span><span className="spacer" />{fresh.length > 0 && <button className="btn sm" onClick={ack}>都看过了（{fresh.length}）</button>}</div>
-          {fresh.length === 0 && <div className="muted small">没有新的告警。</div>}
+          {fresh.length === 0 && <div className="muted small">没有新的告警{seen.length ? "；已看过的在下面" : ""}。</div>}
           {fresh.slice(0, 8).map((a) => (
             <div key={a.id} className="ins-alert">
               <span className={`st sm ${a.kind === "correction" || a.kind === "tool_errors" ? "rev" : "prog"}`}>{KIND_LABEL[a.kind] ?? a.kind}</span>
@@ -194,6 +207,16 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
               {onOpenSession && <button className="link sm" onClick={() => onOpenSession(a.session_id)}>看会话</button>}
             </div>
           ))}
+          {seen.length > 0 && <details className="ins-seen" open={seenOpen} onToggle={(e) => setSeenOpen((e.target as HTMLDetailsElement).open)}>
+            <summary className="muted small">已看过的 {seen.length} 条</summary>
+            {seen.slice(0, 30).map((a) => (
+              <div key={a.id} className="ins-alert seen">
+                <span className={`st sm open`}>{KIND_LABEL[a.kind] ?? a.kind}</span>
+                <span className="t">{a.text}</span>
+                {onOpenSession && <button className="link sm" onClick={() => onOpenSession(a.session_id)}>看会话</button>}
+              </div>
+            ))}
+          </details>}
         </div>
       )}
     </section>

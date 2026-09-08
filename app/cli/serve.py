@@ -277,6 +277,15 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({"ok": True, "authed": self._authed()}))
         if not self._authed():
             return self._send(401, "<meta charset=utf-8><p style='font:16px system-ui;padding:24px'>需要令牌：在 Mac 上跑 <code>dispatch serve url</code>，用它给的完整链接打开一次。</p>", "text/html; charset=utf-8")
+        if u.path.startswith("/insights/"):
+            # The report pages, for the phone: the desktop opens the file, the browser gets it here.
+            rid = urllib.parse.unquote(u.path[len("/insights/"):]).removesuffix(".html")
+            sys.path.insert(0, HERE)
+            import insights_report
+            hit = next((r for r in insights_report.all_reports() if r["id"] == rid and r.get("html") and os.path.isfile(r["html"])), None)
+            if not hit:
+                return self._send(404, "<meta charset=utf-8><p style='font:16px system-ui;padding:24px'>没有这份报告</p>", "text/html; charset=utf-8")
+            return self._send(200, open(hit["html"], "rb").read(), "text/html; charset=utf-8")
         path = "/index.html" if u.path in ("", "/") else u.path
         full = os.path.realpath(os.path.join(DIST, path.lstrip("/")))
         if not full.startswith(os.path.realpath(DIST) + os.sep) or not os.path.isfile(full):
