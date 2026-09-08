@@ -26,6 +26,10 @@ sleep 1
 # rsync keeps the bundle identity stable so the Dock icon and permissions survive.
 rsync -a --delete "$SRC/" "$DST/"
 echo "已更新 ${DST} ($(date '+%H:%M:%S'))"
+# The phone's web UI (launchd daemon) serves from this bundle; restart it so it picks up the new files.
+if launchctl print "gui/$(id -u)/dev.schaefer.dispatch-serve" >/dev/null 2>&1; then
+  launchctl kickstart -k "gui/$(id -u)/dev.schaefer.dispatch-serve" && echo "已重启网页版（dispatch serve）"
+fi
 
 if [ "$LAUNCH" = 1 ]; then
   open "$DST"

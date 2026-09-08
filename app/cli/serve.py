@@ -21,6 +21,11 @@ BEADS_DIR = os.environ.get("BEADS_DIR", os.path.join(HOME, "tasks", ".beads"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 DISPATCH_PY = os.path.join(HERE, "dispatch.py")
 DIST = os.environ.get("DISPATCH_DIST") or os.path.join(os.path.dirname(HERE), "dist")
+STARTED = time.time()
+try:
+    SERVE_VERSION = open(os.path.join(HERE, "VERSION")).read().strip()
+except OSError:
+    SERVE_VERSION = ""
 ICON = os.path.join(os.path.dirname(HERE), "src-tauri", "icons", "icon.png")
 PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + os.path.join(HOME, ".local", "bin") + ":" + os.environ.get("PATH", "")
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2", ".webmanifest": "application/manifest+json"}
@@ -274,7 +279,8 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/icon.png" and os.path.exists(ICON):
             return self._send(200, open(ICON, "rb").read(), "image/png", {"Cache-Control": "max-age=86400"})
         if u.path == "/api/health":
-            return self._send(200, json.dumps({"ok": True, "authed": self._authed()}))
+            # `version` lets an open phone page notice the Mac updated and offer a refresh.
+            return self._send(200, json.dumps({"ok": True, "authed": self._authed(), "version": SERVE_VERSION, "started": STARTED}))
         if not self._authed():
             return self._send(401, "<meta charset=utf-8><p style='font:16px system-ui;padding:24px'>需要令牌：在 Mac 上跑 <code>dispatch serve url</code>，用它给的完整链接打开一次。</p>", "text/html; charset=utf-8")
         if u.path.startswith("/insights/"):

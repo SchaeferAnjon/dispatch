@@ -86,6 +86,24 @@ export default function App() {
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; err?: boolean } | null>(null);
+  // Web mode only: the Mac updated underneath this page (served version changed) → offer a refresh.
+  const [webUpdate, setWebUpdate] = useState("");
+  useEffect(() => {
+    if (!isServed) return;
+    let first = "";
+    const tick = async () => {
+      try {
+        const h = await (await fetch("/api/health", { cache: "no-store" })).json() as { version?: string };
+        if (!h.version) return;
+        if (!first) first = h.version; else if (h.version !== first) setWebUpdate(h.version);
+      } catch { /* offline; try again later */ }
+    };
+    void tick();
+    const t = window.setInterval(tick, 60_000);
+    const vis = () => { if (document.visibilityState === "visible") void tick(); };
+    document.addEventListener("visibilitychange", vis);
+    return () => { window.clearInterval(t); document.removeEventListener("visibilitychange", vis); };
+  }, []);
   const [view, changeView] = useState<View>("home");
   const [inboxTab, setInboxTab] = useState<keyof InboxItems | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -600,6 +618,7 @@ export default function App() {
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
+      {webUpdate && <button className="toast web-update" onClick={() => window.location.reload()}>网页版已更新到 v{webUpdate} · 点这里刷新</button>}
       <GlobalContextMenu issues={issues} sessions={sessionByKey} />
     </div></TaskActions></ItemMenus></ViewMenu></ProjectActions></ConversationActions></SessionActions>
   );

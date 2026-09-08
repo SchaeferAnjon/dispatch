@@ -1195,3 +1195,5 @@ pre.diff.dv-pre button.skip{display:block;width:100%;text-align:left;padding:2px
 .work-attachments .img-grid{flex:1 1 100%;width:100%;grid-template-columns:repeat(auto-fill,104px)}
 .detail .work-sec>h4,.detail .dcol-side>details>summary{margin-top:0}.detail .dcol-side .sec{margin-top:0}
 .ins-seen{margin-top:4px}.ins-seen summary{cursor:pointer;list-style:none}.ins-seen summary::before{content:"› ";color:var(--ink-3)}.ins-seen[open] summary::before{content:"⌄ "}.ins-alert.seen{opacity:.75;margin-top:4px}
+.toast.web-update{bottom:auto;top:calc(env(safe-area-inset-top) + 56px);background:var(--accent);color:#fff;cursor:pointer}
+@media (pointer:coarse){[data-task],[data-session],[data-project],[data-menu]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}}

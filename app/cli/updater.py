@@ -79,10 +79,25 @@ def apply(relaunch=True):
     subprocess.run(["xattr", "-dr", "com.apple.quarantine", new_app], capture_output=True)
     subprocess.run(["rsync", "-a", "--delete", new_app + "/", APP + "/"], check=True)
     shutil.rmtree(tmp, ignore_errors=True)
+    restart_serve()
     if relaunch:
         # Quit the running app and start the new one from a detached shell, after this process has answered.
         subprocess.Popen(["/bin/sh", "-c", f"sleep 1; osascript -e 'quit app \"Dispatch\"' >/dev/null 2>&1; sleep 1.5; open '{APP}'"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     return {"updated_to": info["latest"], "from": info["current"], "relaunching": relaunch}
+
+
+SERVE_LABEL = "dev.schaefer.dispatch-serve"
+
+
+def restart_serve():
+    """The phone's web UI is a launchd daemon reading this bundle; after an update it must
+    restart to serve the new files. Silent when the daemon is not installed."""
+    uid = os.getuid()
+    r = subprocess.run(["launchctl", "print", f"gui/{uid}/{SERVE_LABEL}"], capture_output=True)
+    if r.returncode != 0:
+        return False
+    subprocess.run(["launchctl", "kickstart", "-k", f"gui/{uid}/{SERVE_LABEL}"], capture_output=True)
+    return True
 
 
 def main(a):
