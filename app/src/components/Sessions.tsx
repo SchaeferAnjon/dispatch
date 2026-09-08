@@ -24,12 +24,15 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
   const host = hostId ?? "";
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [tab, setTab] = useState<"timeline" | "activity" | "files" | "tasks" | "attachments">("timeline");
+  const [tab, setTab] = useState<"timeline" | "activity" | "files" | "tasks" | "attachments" | "subagents">("timeline");
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Which kinds of turns to show. Tools off by default: the conversation is the point.
   const [kinds, setKinds] = useState<Record<"user" | "assistant" | "tool", boolean>>(() => { try { return { user: true, assistant: true, tool: false, ...JSON.parse(localStorage.getItem("dispatch-tl-kinds") || "{}") }; } catch { return { user: true, assistant: true, tool: false }; } });
   const flip = (k: "user" | "assistant" | "tool") => { const v = { ...kinds, [k]: !kinds[k] }; setKinds(v); try { localStorage.setItem("dispatch-tl-kinds", JSON.stringify(v)); } catch { /* ignore */ } };
+  // 只看结论: your messages plus the last reply of each turn, nothing in between.
+  const [brief, setBrief] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tl-brief") === "1"; } catch { return false; } });
+  const toggleBrief = () => { setBrief((b) => { try { localStorage.setItem("dispatch-tl-brief", b ? "0" : "1"); } catch { /* ignore */ } return !b; }); };
 
   const scroller = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -117,7 +120,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && <div className="l3 activity-text">{activityLabel(active)} · {active.activity}</div>}
                 {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}
-              </button><div className="sess-item-actions"><ConversationMenuButton a={asActivity(r)} /></div></div>
+              </button><div className="sess-item-actions touch-only"><ConversationMenuButton a={asActivity(r)} /></div></div>
             );
           }; return <>{named.map(item)}{blank.length > 0 && <details className="sess-blank"><summary className="muted small">空会话 · {blank.length}<span> · 没有标题也没有对话</span></summary>{blank.map(item)}</details>}</>; })()}
         </div>
@@ -165,25 +168,34 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                 <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>图片与产物 {detail.attachments?.length || 0}</button>
                 <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>文件 {detail.workspace?.files.length ?? detail.files.length}</button>
                 <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务与成果 {related.length + results.length}</button>
+                {m.subagents.length > 0 && <button className={tab === "subagents" ? "on" : ""} onClick={() => setTab("subagents")}>子 Agent {m.subagents.length}</button>}
                 {tab === "timeline" && (() => {
-                  const nU = detail.messages.filter((x) => x.role === "user").length;
-                  const nA = detail.messages.filter((x) => x.role === "assistant" && x.text.trim()).length;
                   const nT = detail.messages.reduce((s, x) => s + x.tools.length, 0);
                   return (
-                    <details className="kind-options"><summary>显示内容</summary><span className="kinds" title="点一下切换显示哪类内容">
-                      <button className={`chip${kinds.user ? " on" : ""}`} onClick={() => flip("user")}>你 <span className="mono muted">{nU}</span></button>
-                      <button className={`chip${kinds.assistant ? " on" : ""}`} onClick={() => flip("assistant")}>{a?.name ?? "Agent"} <span className="mono muted">{nA}</span></button>
-                      <button className={`chip${kinds.tool ? " on" : ""}`} onClick={() => flip("tool")}>工具调用 <span className="mono muted">{nT}</span></button>
-                    </span></details>
+                    <span className="kinds" title="怎么看这段对话">
+                      <button className={`chip${brief ? " on" : ""}`} onClick={toggleBrief} title="只显示你的问题和每一轮最后的回复">只看结论</button>
+                      <button className={`chip${kinds.tool ? " on" : ""}`} disabled={brief} onClick={() => flip("tool")} title="显示或隐藏工具调用">工具调用 <span className="mono muted">{nT}</span></button>
+                    </span>
                   );
                 })()}
               </div>
               {tab === 'timeline' && !atLatest && <button className="follow-latest" onClick={latest}>回到最新 ↓{current?.unread ? ' · 有未读回复' : ''}</button>}
               <div className="sess-body" tabIndex={0} aria-label="会话内容" ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>
                 {tab === "timeline" && (() => {
-                  const showTools = kinds.tool;
-                  const list = detail.messages.filter((x) => x.role === "gap" || (x.role === "user" && kinds.user) || (x.role === "assistant" && (x.text.trim() ? kinds.assistant : kinds.tool)) || (x.role === "tool" && kinds.tool));
-                  return list.map((x, i) => (
+                  const showTools = kinds.tool && !brief;
+                  let list = detail.messages.filter((x) => x.role === "gap" || (x.role === "user" && kinds.user) || (x.role === "assistant" && (x.text.trim() ? kinds.assistant : showTools)) || (x.role === "tool" && showTools));
+                  if (brief) {
+                    // Keep each user message and only the last assistant text before the next one.
+                    const keep: typeof list = [];
+                    let lastReply: (typeof list)[number] | null = null;
+                    for (const x of list) {
+                      if (x.role === "user") { if (lastReply) keep.push(lastReply); lastReply = null; keep.push(x); }
+                      else if (x.role === "assistant" && x.text.trim()) lastReply = x;
+                    }
+                    if (lastReply) keep.push(lastReply);
+                    list = keep;
+                  }
+                  return <div className="chat">{list.map((x, i) => (
                     <div key={i} className={`tl ${x.role}`}>
                       {x.role === "gap" ? <div className="muted">{x.text}</div> : (
                         <>
@@ -193,7 +205,17 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                         </>
                       )}
                     </div>
-                  ));
+                  ))}</div>;
+                })()}
+                {tab === "subagents" && (() => {
+                  // Who this conversation handed work to: sub-agents from the transcript, plus the
+                  // Agent/Task tool calls that dispatched them, in order.
+                  const calls = detail.messages.flatMap((x) => x.tools.filter((t) => /^(Agent|Task|agent|task)$/.test(t.name)).map((t) => ({ ts: x.ts, summary: t.summary })));
+                  return <div className="subagent-view">
+                    <p className="muted small">这段会话派出的子 Agent。每个子 Agent 是一段独立的对话，只把结果交回来。</p>
+                    {m.subagents.map((s) => <div key={s.agent_id} className="subagent-row"><span className="sub-type">{s.type}</span><div><div className="t">{s.description || "（无描述）"}</div><div className="muted small mono">{s.last_at ? fmtTime(new Date(s.last_at * 1000).toISOString()) : ""} · {(s.size / 1e3).toFixed(0)} KB · 深度 {s.depth}</div></div></div>)}
+                    {calls.length > 0 && <details><summary>派发调用 · {calls.length}</summary>{calls.map((c, i) => <div key={i} className="subagent-call"><span className="mono muted small">{c.ts ? fmtTime(c.ts) : ""}</span><span>{c.summary}</span></div>)}</details>}
+                  </div>;
                 })()}
                 {tab === "attachments" && <AttachmentList items={detail.attachments || []} />}
                 {tab === "activity" && <div className="activity-log">{[...(current?.events ?? [])].filter(e => e.kind !== 'result').reverse().slice(0,40).map(e => <div key={e.id} className={`activity-event ${e.kind}`}><span className="muted mono small">{new Date(e.ts*1000).toLocaleTimeString('zh-CN',{hour12:false})}</span><div><b>{e.kind === 'tool' ? e.tool : e.kind === 'result' ? '工具返回' : e.kind === 'error' ? '执行失败' : e.kind === 'user' ? '你的消息' : e.kind === 'reply' ? 'Agent 回复' : '进展'}</b><p>{e.text}</p></div></div>)}</div>}

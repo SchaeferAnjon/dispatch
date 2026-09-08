@@ -486,7 +486,7 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .home-tracked{border:1px solid var(--line);border-radius:14px;background:var(--win);padding:12px 16px 14px;box-shadow:var(--card-shadow)}
 .home-tracked h4{margin-bottom:8px}
 .session-modes{flex-wrap:wrap}
-.sess-item-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}@media(hover:hover){.sess-item .sess-item-actions{display:none}.sess-item:hover .sess-item-actions,.sess-item.sel .sess-item-actions,.sess-item:focus-within .sess-item-actions{display:flex}}
+.sess-item-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}@media(hover:hover){.sess-item-actions.touch-only{display:none}}
 .conversation-title .star,.sess-item .star{font-size:13px;padding:0 2px;cursor:default}
 .home-project>header .fold{width:22px;height:22px;border-radius:6px;color:var(--ink-3);font-size:18px;line-height:1;display:grid;place-items:center;transition:transform .12s;flex:none}
 .home-project>header .fold.open{transform:rotate(90deg)}
@@ -1113,3 +1113,14 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .setup-log{margin:0;width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;background:var(--panel-2);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}
 .setup-foot{display:flex;align-items:center;gap:12px;margin-top:18px}
 @media(max-width:760px){.setup{padding:14px}}
+
+/* Conversation as a chat: you on the right, the agent on the left; 只看结论 keeps only the turn endings. */
+.chat{display:flex;flex-direction:column;gap:10px}
+.chat .tl{max-width:min(80ch,88%)}
+.chat .tl.user{align-self:flex-end;border-left:0;border-right:2px solid var(--ink);padding:4px 10px 4px 0;text-align:left}
+.chat .tl.user .tl-h{justify-content:flex-end}
+.chat .tl.user .tl-t{background:var(--panel-2);border-radius:10px 2px 10px 10px;padding:8px 10px}
+.chat .tl.assistant{align-self:flex-start}
+.chat .tl.tool{align-self:flex-start;opacity:.8}
+.chat .tl.gap{align-self:center;border:0;font-size:11px}
+.subagent-view{padding:12px 16px;display:flex;flex-direction:column;gap:8px}.subagent-row{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--win)}.subagent-row .sub-type{font-size:11px;padding:2px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent-ink);white-space:nowrap}.subagent-row .t{font-size:13px}.subagent-call{display:flex;gap:10px;padding:4px 0;font-size:12.5px}

@@ -78,7 +78,7 @@ def open_original(d, data):
                     if json.loads(row['payload']).get('resume') == sid and old['state'] in ('starting', 'running') and time.time()-old['created'] < 240:
                         return old
             return enqueue(d, dict(request_id=data.get('request_id') or str(uuid.uuid4()),
-                                   agent=agent, cwd=directory(d, ref['cwd']), prompt='', resume=sid))
+                                   agent=agent, cwd=directory(d, ref['cwd']), prompt='', resume=sid, title=ref.get('title') or ''))
         checked(d, ['agent', 'focus', pane['pane_id']])
         table = d.ps_table()
         host = next((d.host_app_of(pid, table) for pid, (_, comm) in table.items() if os.path.basename(comm) == 'herdr'), None)
@@ -160,7 +160,9 @@ def worker(d, rid):
     p = json.loads(row['payload']); agent = p['agent']; start = time.time()
     try:
         before = {r.get('session_id') for r in d.load_index().values()}
-        tab = checked(d, ['tab', 'create', '--cwd', directory(d, p['cwd']), '--focus', '--label', 'Dispatch · '+(p['prompt'][:24] or '恢复会话')])
+        # The tab is named after the conversation, so a restored session reads as itself in Herdr.
+        label = (p.get('title') or '')[:32] or p['prompt'][:24] or '恢复会话'
+        tab = checked(d, ['tab', 'create', '--cwd', directory(d, p['cwd']), '--focus', '--label', label])
         pane = tab.get('root_pane', tab); pid = pane['pane_id']; tid = pane.get('tab_id')
         save(d, rid, pane_id=pid, tab_id=tid, message='已打开终端，正在连接 Agent…')
         sid = p['resume'] or (str(uuid.uuid4()) if agent == 'claude-code' else None)
