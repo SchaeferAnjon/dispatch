@@ -45,14 +45,25 @@ export function Card({ issue, progress, selected, onSelect, me, root, draggable,
 }
 
 const WEEK = 7 * 86_400_000;
-export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove, onAdd }: Common & { onMove: (id: string, to: Column) => void; onAdd: (col: Column) => void }) {
+export type BoardSort = "priority" | "updated" | "created";
+export const BOARD_SORTS: { key: BoardSort; label: string }[] = [{ key: "priority", label: "按优先级" }, { key: "updated", label: "按最近更新" }, { key: "created", label: "按创建时间" }];
+const cmpBy = (sort: BoardSort, col: Column) => (x: Issue, y: Issue) => {
+  if (col === "done") return (y.closed_at ?? y.updated_at).localeCompare(x.closed_at ?? x.updated_at);
+  if (sort === "updated") return y.updated_at.localeCompare(x.updated_at);
+  if (sort === "created") return y.created_at.localeCompare(x.created_at);
+  return x.priority - y.priority || y.updated_at.localeCompare(x.updated_at);
+};
+
+// Every column is grouped by project. Starred projects come first (the same order the
+// workbench uses), then the project with the most recent change. Groups fold, and the
+// fold state is remembered per column+project.
+export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove, onAdd, sort = "priority", starred = new Set<string>() }: Common & { onMove: (id: string, to: Column) => void; onAdd: (col: Column) => void; sort?: BoardSort; starred?: Set<string> }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<Column | null>(null);
   // The done column only shows the last week by default; the rest is a click away.
   const [allDone, setAllDone] = useState(false);
-  // Done groups fold by default; the fold state is remembered per project.
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem("dispatch-done-groups") || "{}"); } catch { return {}; } });
-  const toggleGroup = (name: string, open: boolean) => setOpenGroups((g) => { const next = { ...g, [name]: open }; try { localStorage.setItem("dispatch-done-groups", JSON.stringify(next)); } catch { /* ignore */ } return next; });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem("dispatch-board-groups") || "{}"); } catch { return {}; } });
+  const toggleGroup = (key: string, open: boolean) => setOpenGroups((g) => { const next = { ...g, [key]: open }; try { localStorage.setItem("dispatch-board-groups", JSON.stringify(next)); } catch { /* ignore */ } return next; });
   const recent = (i: Issue) => Date.now() - Date.parse(i.closed_at ?? i.updated_at) < WEEK;
   return (
     <div className="board">
@@ -60,6 +71,11 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
         const full = issues.filter((i) => columnOf(i) === c.key);
         const list = c.key === "done" && !allDone ? full.filter((i) => recent(i) || i.id === selected) : full;
         const hidden = full.length - list.length;
+        const sorted = [...list].sort(cmpBy(sort, c.key));
+        const groups = new Map<string, Issue[]>();
+        for (const i of sorted) { const k = projectOf(i) || "未分项目"; groups.set(k, [...(groups.get(k) ?? []), i]); }
+        const latest = (items: Issue[]) => Math.max(...items.map((i) => Date.parse(i.closed_at ?? i.updated_at)));
+        const ordered = [...groups.entries()].sort(([a, ia], [b, ib]) => Number(starred.has(b)) - Number(starred.has(a)) || (sort === "priority" && c.key !== "done" ? Math.min(...ia.map((i) => i.priority)) - Math.min(...ib.map((i) => i.priority)) : 0) || latest(ib) - latest(ia));
         return (
           <div key={c.key} className={`col${over === c.key ? " over" : ""}`}
             onDragOver={(e) => { e.preventDefault(); if (over !== c.key) setOver(c.key); }}
@@ -71,12 +87,19 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
               {c.key === "todo" && <button className="add" onClick={() => onAdd(c.key)} title="新任务">＋</button>}
             </div>
             <div className="cards">
-              {c.key === "done" && list.length > 0 && (() => { const sorted = [...list].sort((x, y) => (y.closed_at ?? y.updated_at).localeCompare(x.closed_at ?? x.updated_at)); const groups = new Map<string, Issue[]>(); for (const i of sorted) { const k = projectOf(i) || "未分项目"; groups.set(k, [...(groups.get(k) ?? []), i]); } return [...groups.entries()].map(([name, items]) => { const open = openGroups[name] ?? (items.some((i) => i.id === selected) || items.length <= 3); return <details key={name} className="done-group" open={open} onToggle={(e) => { const o = (e.target as HTMLDetailsElement).open; if (o !== open) toggleGroup(name, o); }}><summary className="done-group-h"><span className="proj" style={{ background: projectColor(name) }} />{name}<span className="muted mono small">{items.length}</span><span className="muted small fold-hint">{open ? "收起" : "展开"}</span></summary>{open && items.map((i) => <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} />)}</details>; }); })()}
-              {c.key !== "done" && list.map((i) => (
-                <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable
-                  onDragStart={(e) => { setDragId(i.id); e.dataTransfer.effectAllowed = "move"; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
-                  onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); setDragId(null); setOver(null); }} />
-              ))}
+              {ordered.map(([name, items]) => {
+                const key = `${c.key}:${name}`;
+                // Done groups start folded; the others start open. A group holding the selected task is always open.
+                const open = items.some((i) => i.id === selected) || (openGroups[key] ?? (c.key !== "done" || items.length <= 3));
+                return <details key={key} className="done-group" open={open} onToggle={(e) => { const o = (e.target as HTMLDetailsElement).open; if (o !== open) toggleGroup(key, o); }}>
+                  <summary className="done-group-h"><span className="proj" style={{ background: projectColor(name) }} />{starred.has(name) && <span className="star on small">★</span>}{name}<span className="muted mono small">{items.length}</span><span className="muted small fold-hint">{open ? "收起" : "展开"}</span></summary>
+                  {open && items.map((i) => (
+                    <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable={c.key !== "done"}
+                      onDragStart={(e) => { setDragId(i.id); e.dataTransfer.effectAllowed = "move"; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
+                      onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); setDragId(null); setOver(null); }} />
+                  ))}
+                </details>;
+              })}
               {c.key === "done" && (hidden > 0 || allDone) && full.length > 0 && <button className="link col-more" onClick={() => setAllDone(!allDone)}>{allDone ? "只看最近 7 天" : `还有 ${hidden} 项更早完成的 ›`}</button>}
             </div>
           </div>
@@ -86,14 +109,15 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
   );
 }
 
-export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
+export function TableView({ issues, selected, onSelect, me, rootOf, starred = new Set<string>() }: Common & { starred?: Set<string> }) {
   if (issues.length === 0) return <div className="empty">没有符合条件的任务</div>;
+  const rows = [...issues].sort((a, b) => Number(starred.has(projectOf(b))) - Number(starred.has(projectOf(a))));
   return (
     <div className="tw">
       <table>
         <thead><tr><th>ID</th><th>任务</th><th>源自</th><th>状态</th><th>负责</th><th>优先</th><th>项目</th><th>依赖</th><th>更新</th><th>操作</th></tr></thead>
         <tbody>
-          {issues.map((i) => {
+          {rows.map((i) => {
             const who = actorOf(i.assignee, me);
             const root = rootOf?.(i.id);
             return (

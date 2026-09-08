@@ -8,7 +8,7 @@ import { Detail } from "./components/Detail";
 import { NewSession, SessionActions } from "./components/SessionActions";
 import { NewTask } from "./components/NewTask";
 import { Sidebar, type Filters } from "./components/Sidebar";
-import { AgentsView, Board, TableView } from "./components/views";
+import { AgentsView, Board, BOARD_SORTS, TableView, type BoardSort } from "./components/views";
 import { PitfallsView } from "./components/Pitfalls";
 import { SessionsView } from "./components/Sessions";
 import { SkillsView } from "./components/Skills";
@@ -98,6 +98,8 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>({ project: null, mine: false, urgent: false, agent: null, blocked: false, review: false });
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  const [boardSort, setBoardSort] = useState<BoardSort>(() => { try { return (localStorage.getItem("dispatch-board-sort") as BoardSort) || "priority"; } catch { return "priority"; } });
+  const changeBoardSort = (s: BoardSort) => { setBoardSort(s); try { localStorage.setItem("dispatch-board-sort", s); } catch { /* ignore */ } };
   const [search, setSearch] = useState(false);
   const [delegate, setDelegate] = useState<{ host?: string; task?: string } | null>(null);
   const [sessionFocus, setSessionFocus] = useState<string | null>(null);
@@ -296,6 +298,8 @@ export default function App() {
   // task labels and outcomes together, archived ones set aside.
   const projectList = useMemo(() => rankProjects(projectGroups(projectRows, issuesF, outcomesF).filter((p) => p.name !== UNGROUPED_PROJECT), projectFlags), [projectRows, issuesF, outcomesF, projectFlags]);
   const projects = useMemo(() => projectList.active.map((p) => ({ name: p.name, count: p.items.length })), [projectList]);
+  // Starred projects lead everywhere: workbench, board groups, table.
+  const starredProjects = useMemo(() => new Set(projectList.active.filter((p) => isStarred(projectFlags, p.name)).map((p) => p.name)), [projectList, projectFlags]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -529,6 +533,7 @@ export default function App() {
             <span className="spacer" />
             {BOARD_VIEWS.includes(view) && (<>
               <label className="search board-search">🔍<input ref={searchRef} placeholder="筛任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="清除任务筛选" onClick={() => setQuery("")}>✕</button>}</label>
+              <select className="sess-agent" value={boardSort} onChange={(e) => changeBoardSort(e.target.value as BoardSort)} aria-label="任务排序" title="每一列里任务怎么排；项目分组里收藏的在前">{BOARD_SORTS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}</select>
               <button className="chip" onClick={() => setCreating(true)} title="任务通常由 Agent 自己建；这里手动建一条">＋ 新任务</button>
               <button className={`chip${hostIssues.some(isTrashed) ? "" : " zero"}`} onClick={()=>setView("trash")}>回收站 {hostIssues.filter(isTrashed).length}</button>
               <button className={`chip${hostIssues.some(isArchivedTask) ? "" : " zero"}`} onClick={()=>setView("archive")} title="归档过的已完成任务：不进已完成列，不计数">已归档 {hostIssues.filter(isArchivedTask).length}</button>
@@ -547,8 +552,8 @@ export default function App() {
             {view === "projects" && api && <ProjectHub archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onSummarize={summarizeSession} onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onFocus={focusSession} />}
-            {view === "board" && <Board progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
-            {view === "table" && <TableView issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
+            {view === "board" && <Board sort={boardSort} starred={starredProjects} progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
+            {view === "table" && <TableView starred={starredProjects} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(what.endsWith("。") ? what : `${what}已复制`)).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
             {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
