@@ -31,10 +31,17 @@ export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }
 export interface QuotaWindow { used_percent: number | null; resets_at: number | null; label: string }
 export interface Quota { agent: string; plan: string; windows: QuotaWindow[]; updated_at: number | null; source: string; note: string; host?: string; host_name?: string; remote?: boolean }
 export interface RuleTarget { agent: string; path: string; state: "synced" | "stale" | "absent" | "missing"; mode: "import" | "inline" }
-export interface InsightAgent { sessions: number; user_turns: number; approve: number; continue: number; correction: number; asktail: number; ends_on_question: number; long: number; overflow: number }
-export interface InsightSession { agent: string; session_id: string; cwd: string; last_ts: string; user_turns: number; approve: number; continue: number; correction: number; asktail: number; overflow: number; ends_on_question: boolean }
+export interface InsightAgent { sessions: number; user_turns: number; approve: number; continue: number; correction: number; asktail: number; ends_on_question: number; long: number; overflow: number; tool_errors: number; no_board: number }
+export interface InsightSession { agent: string; session_id: string; cwd: string; title?: string; last_ts: string; user_turns: number; approve: number; continue: number; correction: number; asktail: number; overflow: number; ends_on_question: boolean; tool_errors: number; no_board: boolean }
+export interface InsightRule { key: string; name: string; how: string }
+export interface InsightReportItem { title: string; detail?: string; metric?: string; action?: string; priority?: string; evidence?: string[] }
+export interface InsightReportSection { key: string; title: string; summary: string; items: InsightReportItem[] }
+export interface InsightReport { id: string; created_at: string; days: number; model: string; session_count: number; digest_sessions?: number; duration_s?: number; error: string; report: { headline: string; sections: InsightReportSection[] } | null; signals?: Record<string, InsightAgent> }
+export interface InsightReportRow { id: string; source: "dispatch" | "claude-code"; created_at: string; days: number | null; model: string; sessions: number; headline: string; path: string; html: string; error: string }
+export interface InsightReportList { running: { started: number; days: number } | null; schedule: { every_days: number; updated_at?: string }; reports: InsightReportRow[] }
+export interface InsightAlert { id: string; kind: string; session_id: string; agent: string; ts: string; text: string; seen: boolean }
 export interface InsightSample { agent: string; session_id: string; ts: string; assistant: string; user: string }
-export interface Insights { days: number; total_sessions: number; per_agent: Record<string, InsightAgent>; sessions: InsightSession[]; samples: { asktail: InsightSample[]; correction: InsightSample[]; overflow: InsightSample[] }; findings: string[]; prompt: string; command: string }
+export interface Insights { days: number; total_sessions: number; per_agent: Record<string, InsightAgent>; sessions: InsightSession[]; samples: { asktail: InsightSample[]; correction: InsightSample[]; overflow: InsightSample[] }; findings: string[]; rules: InsightRule[]; alerts: InsightAlert[]; prompt: string; command: string }
 export interface EnvVar { name: string; note: string; masked: string; length: number }
 export interface RulesStatus { hash: string; source: string; targets: RuleTarget[] }
 
@@ -142,6 +149,8 @@ export interface Session {
   state_source?: "hook" | "transcript";
   last_event?: string;
   herdr?: { pane_id: string; tab_id: string; title: string; status: string; focused: boolean };
+  // For a bare pid-… process no hook registered: the transcript it most likely writes.
+  probable_session_id?: string;
   scheduled?: boolean;
   title?: string;
   host?: string;

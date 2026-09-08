@@ -87,6 +87,63 @@ def open_original(d, data):
     raise Rejected('这个 Agent 暂不支持精确打开原会话，可在 Dispatch 查看记录。')
 
 
+def adopt(d, data):
+    """Take a session running in some other terminal (Warp, iTerm, Terminal, VS Code…) into
+    Herdr: stop the old process when it is idle, then resume the same transcript in a new
+    Herdr tab. Works for sessions the hooks registered and, best-effort, for bare `pid-…`
+    processes whose transcript we can guess from their working directory."""
+    key = data.get('session_id', '')
+    live = d.live_sessions(local_only=True)
+    s = next((x for x in live if x.get('session_id') == key or (key and x.get('session_id', '').startswith(key))), None)
+    if not s:
+        raise Rejected('这个会话现在没在本机运行；已结束的会话用「打开原会话」恢复即可。')
+    agent = s.get('agent')
+    if agent not in KINDS:
+        raise Rejected(f'{agent} 不能用命令行恢复，接不进 Herdr。')
+    if s.get('herdr'):
+        raise Rejected('它已经在 Herdr 里了。')
+    sid = s['session_id'] if not s['session_id'].startswith('pid-') else s.get('probable_session_id', '')
+    if not sid:
+        raise Rejected('没找到这个进程对应的会话记录（它还没写过一条消息，或者目录对不上）；等它说过话再试。')
+    if s.get('state') == 'working' and not data.get('force'):
+        raise Rejected('它正在跑，现在接管会打断它；等它停下来（状态变成「等你」）再接。')
+    d.refresh_index()
+    try:
+        ref = exact_ref(d, sid, agent)
+    except Rejected:
+        raise Rejected('它还没有会话记录（一句话都没说过），没什么可接的；直接在 Herdr 里新开一个吧。')
+    pid = s.get('agent_pid')
+    cwd = s.get('cwd') or ref.get('cwd', '')
+    stopped = False
+    if pid and not data.get('keep'):
+        # Two processes on one transcript interleave their writes; stop the old one first.
+        import signal
+        try:
+            os.kill(int(pid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            raise Rejected('那个进程属于别的用户，停不掉；让对方自己退出后再接。')
+        for _ in range(40):
+            if int(pid) not in d.ps_table():
+                stopped = True
+                break
+            time.sleep(0.25)
+        if not stopped:
+            raise Rejected('原进程 10 秒内没有退出，没有动它；在那个终端里退出 Agent 后再接一次。')
+        # Its hook record is stale now; the resumed process will register itself.
+        for path in (os.path.join(d.SESS_DIR, f'{agent}__{sid}.json'), os.path.join(d.SESS_DIR, f'{agent}__pid-{pid}.json')):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+    title = s.get('title') or ref.get('title') or ''
+    r = enqueue(d, dict(request_id=data.get('request_id') or str(uuid.uuid4()), agent=agent, cwd=directory(d, cwd), prompt='', resume=sid, title=title))
+    r = dict(r, adopted_from=s.get('source_app', ''), stopped_pid=pid if stopped else None, guessed=s['session_id'].startswith('pid-'),
+             message=f"已停掉 {s.get('source_app') or '原终端'} 里的进程，正在 Herdr 里恢复同一个会话…" if stopped else f"正在 Herdr 里恢复会话（{s.get('source_app') or '原终端'} 里那个还开着，记得关）…")
+    return r
+
+
 def connect(d):
     os.makedirs(d.DISPATCH_DIR, exist_ok=True)
     path = os.path.join(d.DISPATCH_DIR, 'session-launches.sqlite')
@@ -239,6 +296,7 @@ def command(d, a):
         data = json.loads(sys.stdin.read() or '{}')
         if a.op == 'browse': r = browse(d, data.get('path'))
         elif a.op == 'open': r = open_original(d, data)
+        elif a.op == 'adopt': r = adopt(d, data)
         elif a.op == 'start':
             if data.get('resume'): raise Rejected('恢复会话请使用打开原会话。')
             r = enqueue(d, data)

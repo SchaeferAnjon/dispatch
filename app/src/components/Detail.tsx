@@ -8,7 +8,7 @@ import { Markdown } from "./Markdown";
 import { TaskRelations } from "./ProjectHub";
 import { linkedSessions } from "../projectModel";
 import { FileHunks } from "./Sessions";
-import { InlineImage, MediaProvider } from "./Media";
+import { ImageGrid, MediaProvider } from "./Media";
 import { KINDS } from "./Delegate";
 
 interface Props { rows: Activity[]; onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
@@ -130,11 +130,13 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   return (
     <aside className="detail">
       <div className="dh">
+        <button className="btn sm detail-back" onClick={onClose} aria-label="返回">‹ 返回</button>
         <span className="id" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{issue.id}</span><span>·</span><span>{projectOf(issue) || "未分项目"}</span>
         <button className="btn ghost sm" onClick={() => { setEditProperties(v => !v); setClosing(false); }}>{editProperties ? "收起编辑" : "编辑属性"}</button>
         <button className="x" onClick={onClose} aria-label="关闭">✕</button>
       </div>
       <div className="dbody">
+       <div className="dcol dcol-main">
         {editTitle === null ? (
           <h3 onClick={() => { if (editProperties) setEditTitle(issue.title); }} title={editProperties ? "点击编辑标题" : undefined}>{issue.title}</h3>
         ) : (
@@ -257,6 +259,26 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
           )}
         </div>
 
+        <div className="sec">
+          <h4>活动</h4>
+          <div className="act">
+            {events.length === 0 && <p className="empty-p">还没有活动</p>}
+            {events.map((ev, i) => {
+              const a = actorOf(ev.actor, me);
+              return (
+                <div className="ev" key={i}>
+                  {a ? <Avatar actor={a} /> : <span className="av" style={{ background: "var(--line-2)", color: "var(--ink-2)" }}>·</span>}
+                  <div>
+                    <div className="l1"><b>{a?.name ?? "系统"}</b><span className="muted">{ev.kind === "comment" ? "留言" : ev.text}</span><span className="ts" title={fmtTime(ev.ts)}>{relTime(ev.ts)}</span></div>
+                    {ev.kind === "comment" ? <div className="note"><Markdown src={ev.text} className="compact" /></div> : ev.cmd ? <span className="cmd">{ev.cmd}</span> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+       </div>
+       <div className="dcol dcol-side">
         {related.length > 0 && (
           <details className="sec context-fold">
             <summary>相关的坑 <span className="muted">{related.length} 条 · 任务与项目背景</span></summary>
@@ -271,16 +293,16 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
           </details>
         )}
 
-        <details className="sec context-fold" open={work.length > 0}>
-          <summary>文件修改与产出 <span className="muted">{work.reduce((n, w) => n + w.files.length, 0)} 个文件 · {work.reduce((n, w) => n + w.attachments.length, 0)} 个产物</span></summary>
+        <section className="sec work-sec">
+          <h4>文件修改与产出 <span className="muted">{work.reduce((n, w) => n + w.files.length, 0)} 个文件 · {work.reduce((n, w) => n + w.attachments.length, 0)} 个产物 · 与会话页同一套记录</span></h4>
           {work.length === 0 ? <p className="empty-p" style={{ margin: 0 }}>关联的会话里没有记录到文件改动或产物。</p> : work.map((w) => (
             <div key={w.sid} className="work-block">
               <div className="work-head"><button className="link" onClick={() => onOpenSession(w.sid)}>{w.title} ↗</button></div>
-              {w.files.length > 0 && <div className="work-files">{w.files.map((f) => <details key={f.path} className="fdiff file work-file" data-menu="file" data-id={f.path}><summary title={f.path}><code>{f.path.replace(/^\/Users\/[^/]+/, "~").replace(/^(.{0,18}).*?([^/]+\/[^/]+)$/, (m, a, b) => (m.length > 44 ? `${a}…/${b}` : m))}</code><span className="muted small">{f.changes.length} 次</span></summary><FileHunks changes={f.changes} /></details>)}</div>}
-              {w.attachments.length > 0 && <MediaProvider api={api} session={{ agent: w.agent, session_id: w.sid, host: w.host }}><div className="work-attachments">{w.attachments.map((a) => a.mime.startsWith("image/") ? <InlineImage key={a.id} id={a.id} /> : <button key={a.id} className="chip" title={a.path || a.mime} onClick={() => (a.path ? api.openPath(a.path).catch(() => onOpenSession(w.sid)) : onOpenSession(w.sid))}>📄 {a.name}</button>)}</div></MediaProvider>}
+              {w.files.length > 0 && <div className="work-files">{w.files.map((f) => <details key={f.path} className="fdiff file work-file" data-menu="file" data-id={f.path} open={w.files.length <= 3}><summary title={f.path}><code>{f.path.replace(/^\/Users\/[^/]+/, "~").replace(/^(.{0,18}).*?([^/]+\/[^/]+)$/, (m, a, b) => (m.length > 44 ? `${a}…/${b}` : m))}</code><span className="muted small">{f.changes.length} 次</span></summary><FileHunks changes={f.changes} /></details>)}</div>}
+              {w.attachments.length > 0 && <MediaProvider api={api} session={{ agent: w.agent, session_id: w.sid, host: w.host }}><div className="work-attachments"><ImageGrid ids={w.attachments.filter((a) => a.mime.startsWith("image/")).map((a) => a.id)} max={6} />{w.attachments.filter((a) => !a.mime.startsWith("image/")).map((a) => <button key={a.id} className="chip" title={a.path || a.mime} onClick={() => (a.path ? api.openPath(a.path).catch(() => onOpenSession(w.sid)) : onOpenSession(w.sid))}>📄 {a.name}</button>)}</div></MediaProvider>}
             </div>
           ))}
-        </details>
+        </section>
 
         <details className="sec context-fold">
           <summary>对话中提到过 <span className="muted">{refs.length} 个会话 · 仅供参考，不代表归属</span></summary>
@@ -307,24 +329,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
           )}
         </details>
 
-        <div className="sec">
-          <h4>活动</h4>
-          <div className="act">
-            {events.length === 0 && <p className="empty-p">还没有活动</p>}
-            {events.map((ev, i) => {
-              const a = actorOf(ev.actor, me);
-              return (
-                <div className="ev" key={i}>
-                  {a ? <Avatar actor={a} /> : <span className="av" style={{ background: "var(--line-2)", color: "var(--ink-2)" }}>·</span>}
-                  <div>
-                    <div className="l1"><b>{a?.name ?? "系统"}</b><span className="muted">{ev.kind === "comment" ? "留言" : ev.text}</span><span className="ts" title={fmtTime(ev.ts)}>{relTime(ev.ts)}</span></div>
-                    {ev.kind === "comment" ? <div className="note"><Markdown src={ev.text} className="compact" /></div> : ev.cmd ? <span className="cmd">{ev.cmd}</span> : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+       </div>
       </div>
       <div className="compose">
         <textarea placeholder="留言给下一个接手的 Agent…（⌘⏎ 发送）" value={draft} disabled={busy} rows={1} onChange={(e) => setDraft(e.target.value)}

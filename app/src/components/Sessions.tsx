@@ -1,15 +1,15 @@
 import { linkedSessions } from "../projectModel";
-import { MediaProvider, AttachmentList, InlineImage } from "./Media";
+import { MediaProvider, AttachmentList, ImageGrid } from "./Media";
 import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
 import { actorOf, durSince, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
-import { lineDiff, withContext } from "../diff";
+import { PairDiff, PatchDiff } from "./Diff";
 import { canReadReply, activityLabel, isScriptSession, sessionLifecycle } from "../activity";
-import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef } from "../types";
+import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef, TimelineMsg } from "../types";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
-import { OpenSessionButton } from "./SessionActions";
+import { OpenSessionButton, AdoptButton } from "./SessionActions";
 import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 
@@ -17,14 +17,60 @@ interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
+// The conversation itself, one block per turn. Shared by the session page and the sub-agent viewer.
+export function ChatList({ list, name, showTools }: { list: TimelineMsg[]; name: string; showTools: boolean }) {
+  return <div className="chat">{list.map((x, i) => (
+    <div key={i} className={`tl ${x.role}`}>
+      {x.role === "gap" ? <div className="muted">{x.text}</div> : (
+        <>
+          <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
+          {x.images && x.images.length > 0 && <ImageGrid ids={x.images} />}
+          {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text">{x.text}</div>)}
+          {showTools && x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
+        </>
+      )}
+    </div>
+  ))}</div>;
+}
+
+// A sub-agent's own transcript, opened from the parent's 子 Agent tab. The prompt it was
+// given is its first "user" turn; its final report is the last assistant text.
+export function SubagentDialog({ api, parent, sub, onClose }: { api: Api; parent: SessionRef; sub: SessionRef["subagents"][number]; onClose: () => void }) {
+  const [d, setD] = useState<SessionDetail | null>(null);
+  const [err, setErr] = useState("");
+  const [tools, setTools] = useState(false);
+  const [tab, setTab] = useState<"chat" | "files">("chat");
+  const key = `${parent.agent}:${parent.session_id}/sub/${sub.agent_id}`;
+  useEffect(() => { let alive = true; api.sessionDetail(key).then((x) => { if (alive) setD(x); }).catch((e) => { if (alive) setErr(String(e)); }); return () => { alive = false; }; }, [api, key]);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }; window.addEventListener("keydown", k, true); return () => window.removeEventListener("keydown", k, true); }, [onClose]);
+  const nT = d?.messages.reduce((n, x) => n + x.tools.length, 0) ?? 0;
+  const list = d ? d.messages.filter((x) => x.role !== "tool" || tools).filter((x) => x.role !== "assistant" || x.text.trim() || tools) : [];
+  return <div className="overlay media-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="media-dialog subagent-dialog" role="dialog" aria-modal="true" aria-label="子 Agent 对话">
+      <header><span className="sub-type">{sub.type || "子 Agent"}</span><b>{sub.description || sub.agent_id}</b><span className="muted small mono">{(sub.size / 1e3).toFixed(0)} KB · 深度 {sub.depth}</span><span className="spacer" />
+        <span className="views xs"><button className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>对话</button><button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")} disabled={!d?.files.length}>文件 {d?.files.length ?? 0}</button></span>
+        <button className={`chip${tools ? " on" : ""}`} onClick={() => setTools(!tools)} title="显示或隐藏工具调用">工具调用 <span className="mono muted">{nT}</span></button>
+        <button className="btn sm" autoFocus onClick={onClose} aria-label="关闭">✕</button></header>
+      <MediaProvider api={api} session={{ agent: parent.agent, session_id: `${parent.session_id}/sub/${sub.agent_id}`, host: parent.host }}>
+        <div className="media-content subagent-body">
+          {err && <p className="err">{err}</p>}
+          {!d && !err && <div className="empty small">读子 Agent 的记录中…</div>}
+          {d && tab === "chat" && <ChatList list={list} name={sub.type || "子 Agent"} showTools={tools} />}
+          {d && tab === "files" && d.files.map((f) => <details key={f.path} className="fdiff" open={d.files.length <= 3}><summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {f.changes.length} 处</span></summary><FileHunks changes={f.changes} /></details>)}
+        </div>
+      </MediaProvider>
+    </div>
+  </div>;
+}
+
 // One file's recorded edits, as diffs. Shared by the session files tab and the task detail.
 export function FileHunks({ changes }: { changes: FileChange[] }) {
   return <>{changes.map((c, i) => (
     <div key={i} className="hunk">
       <div className="hunk-h muted small">{c.kind === "write" ? "写入整个文件" : c.kind === "patch" ? `${c.op ?? "修改"}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>
       {c.kind === "patch"
-        ? <pre className="diff">{c.new ? c.new.split("\n").map((ln, k) => <div key={k} className={`ln ${ln.startsWith("+") && !ln.startsWith("+++") ? "add" : ln.startsWith("-") && !ln.startsWith("---") ? "del" : "same"}`}>{ln}</div>) : <div className="skip">补丁内容没存下来</div>}</pre>
-        : <pre className="diff">{withContext(lineDiff(c.old, c.new)).map((ln, k) => ln.kind === "skip" ? <div key={k} className="skip">… {ln.count} 行未变 …</div> : <div key={k} className={`ln ${ln.kind}`}>{ln.kind === "add" ? "+" : ln.kind === "del" ? "-" : " "} {ln.text}</div>)}</pre>}
+        ? (c.new ? <PatchDiff text={c.new} /> : <pre className="diff"><div className="skip">补丁内容没存下来</div></pre>)
+        : <PairDiff oldText={c.old} newText={c.new} label={c.kind === "write" ? "行号 = 文件行号" : "行号相对本段"} />}
     </div>
   ))}</>;
 }
@@ -38,6 +84,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<"timeline" | "activity" | "files" | "tasks" | "attachments" | "subagents">("timeline");
+  const [subView, setSubView] = useState<SessionRef["subagents"][number] | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Which kinds of turns to show. Tools off by default: the conversation is the point.
@@ -171,6 +218,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   <div className="ttl">{m.title || "（无标题）"}</div>
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
+                {l && <AdoptButton session={l} compact />}
                 <OpenSessionButton session={m} />
                 {!NO_RESUME.has(m.agent) && <button className="btn sm desktop-session-action" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
                 <details className="session-actions-menu"><summary aria-label="会话操作">⋯</summary><div>
@@ -227,7 +275,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                       {x.role === "gap" ? <div className="muted">{x.text}</div> : (
                         <>
                           <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : a?.name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
-                          {x.images && x.images.length > 0 && <div className="tl-images">{x.images.map((id) => <InlineImage key={id} id={id} />)}</div>}
+                          {x.images && x.images.length > 0 && <ImageGrid ids={x.images} />}
                           {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text">{x.text}</div>)}
                           {showTools && x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
                         </>
@@ -241,7 +289,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   const calls = detail.messages.flatMap((x) => x.tools.filter((t) => /^(Agent|Task|agent|task)$/.test(t.name)).map((t) => ({ ts: x.ts, summary: t.summary })));
                   return <div className="subagent-view">
                     <p className="muted small">这段会话派出的子 Agent。每个子 Agent 是一段独立的对话，只把结果交回来。</p>
-                    {m.subagents.map((s) => <div key={s.agent_id} className="subagent-row"><span className="sub-type">{s.type}</span><div><div className="t">{s.description || "（无描述）"}</div><div className="muted small mono">{s.last_at ? fmtTime(new Date(s.last_at * 1000).toISOString()) : ""} · {(s.size / 1e3).toFixed(0)} KB · 深度 {s.depth}</div></div></div>)}
+                    {m.subagents.map((s) => <button key={s.agent_id} className="subagent-row opens" onClick={() => setSubView(s)} title="点开看这个子 Agent 的完整对话"><span className="sub-type">{s.type}</span><div><div className="t">{s.description || "（无描述）"}</div><div className="muted small mono">{s.last_at ? fmtTime(new Date(s.last_at * 1000).toISOString()) : ""} · {(s.size / 1e3).toFixed(0)} KB · 深度 {s.depth}</div></div><span className="muted">›</span></button>)}
                     {calls.length > 0 && <details><summary>派发调用 · {calls.length}</summary>{calls.map((c, i) => <div key={i} className="subagent-call"><span className="mono muted small">{c.ts ? fmtTime(c.ts) : ""}</span><span>{c.summary}</span></div>)}</details>}
                   </div>;
                 })()}
@@ -252,21 +300,14 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   const byFile = new Map<string, string>();
                   for (const chunk of detail.workspace.patch.split(/^(?=diff --git )/m)) { const m = /^diff --git a\/(.+?) b\//.exec(chunk); if (m) byFile.set(m[1], chunk); }
                   const stat = (t: string) => { let add = 0, del = 0; for (const ln of t.split('\n')) { if (ln.startsWith('+') && !ln.startsWith('+++')) add++; else if (ln.startsWith('-') && !ln.startsWith('---')) del++; } return { add, del }; };
-                  return <><div className="changed-files">{detail.workspace!.files.map(f => { const t = byFile.get(f.path); const s = t ? stat(t) : null; return <details key={f.path} data-menu="file" data-id={f.path} className="fdiff file"><summary><span className={`st sm ${f.untracked ? 'rev' : 'prog'}`}>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code>{s && <span className="mono small diffstat"><span className="add">+{s.add}</span> <span className="del">−{s.del}</span></span>}</summary>{t ? <pre className="diff">{t.split('\n').map((ln, k) => <div key={k} className={`ln ${ln.startsWith('+') && !ln.startsWith('+++') ? 'add' : ln.startsWith('-') && !ln.startsWith('---') ? 'del' : 'same'}`}>{ln}</div>)}</pre> : <p className="muted small">{f.untracked ? '新文件，git 还没有它的差异；打开文件查看。' : '这个文件的差异不在当前补丁里。'}</p>}</details>; })}</div>{detail.workspace!.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</>;
+                  return <><div className="changed-files">{detail.workspace!.files.map(f => { const t = byFile.get(f.path); const s = t ? stat(t) : null; return <details key={f.path} data-menu="file" data-id={f.path} className="fdiff file"><summary><span className={`st sm ${f.untracked ? 'rev' : 'prog'}`}>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code>{s && <span className="mono small diffstat"><span className="add">+{s.add}</span> <span className="del">−{s.del}</span></span>}</summary>{t ? <PatchDiff text={t} /> : <p className="muted small">{f.untracked ? '新文件，git 还没有它的差异；打开文件查看。' : '这个文件的差异不在当前补丁里。'}</p>}</details>; })}</div>{detail.workspace!.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</>;
                 })()}</section>}
                 {tab === "files" && <h3 className="recorded-files-title">会话中的文件操作 <span className="muted">{detail.files.length}</span></h3>}
                 {tab === "files" && detail.files.length === 0 && <p className="muted">未记录到直接编辑工具调用；通过终端修改的文件可在上方工作区查看。</p>}
                 {tab === "files" && detail.files.map((f) => (
                   <details key={f.path} className="fdiff" open={detail.files.length <= 3}>
                     <summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {f.changes.length} 处</span></summary>
-                    {f.changes.map((c, i) => (
-                      <div key={i} className="hunk">
-                        <div className="hunk-h muted small">{c.kind === "write" ? "写入整个文件" : c.kind === "patch" ? `${c.op ?? "修改"}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>
-                        {c.kind === "patch"
-                          ? <pre className="diff">{c.new ? c.new.split("\n").map((ln, k) => <div key={k} className={`ln ${ln.startsWith("+") && !ln.startsWith("+++") ? "add" : ln.startsWith("-") && !ln.startsWith("---") ? "del" : "same"}`}>{ln}</div>) : <div className="skip">补丁内容没存下来</div>}</pre>
-                          : <pre className="diff">{withContext(lineDiff(c.old, c.new)).map((ln, k) => ln.kind === "skip" ? <div key={k} className="skip">… {ln.count} 行未变 …</div> : <div key={k} className={`ln ${ln.kind}`}>{ln.kind === "add" ? "+" : ln.kind === "del" ? "-" : " "} {ln.text}</div>)}</pre>}
-                      </div>
-                    ))}
+                    <FileHunks changes={f.changes} />
                   </details>
                 ))}
                 {tab === "tasks" && <>
@@ -282,6 +323,6 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
           );
         })()}
       </div>
-    </div></MediaProvider>
+    </div>{subView && detail && <SubagentDialog api={api} parent={detail.meta} sub={subView} onClose={() => setSubView(null)} />}</MediaProvider>
   );
 }

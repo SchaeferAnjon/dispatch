@@ -73,6 +73,43 @@ export function OpenSessionButton({ session, compact = false }: { session: Targe
   </button>;
 }
 
+// A session running in some other terminal (Warp, iTerm, Terminal, VS Code…) can be taken
+// into Herdr: the CLI stops it once idle and resumes the same transcript in a new Herdr tab.
+// Only Herdr-hosted sessions get the tab title, working/idle judgement and phone replies.
+export const canAdopt = (s: { agent: string; host?: string; herdr?: unknown; source_app?: string; session_id: string; probable_session_id?: string; remote?: boolean }) =>
+  !s.remote && (!s.host || s.host === 'local') && !s.herdr && ['claude-code', 'codex', 'pi'].includes(s.agent) && s.source_app !== 'Herdr' && (!s.session_id.startsWith('pid-') || !!s.probable_session_id);
+
+export function AdoptButton({ session, compact = false, className = 'btn sm' }: { session: { agent: string; session_id: string; host?: string; herdr?: unknown; source_app?: string; state?: string; probable_session_id?: string; remote?: boolean }; compact?: boolean; className?: string }) {
+  const ctx = useContext(Context);
+  const [busy, setBusy] = useState(false);
+  const request = useRef<string | null>(null);
+  if (!canAdopt(session)) return null;
+  const working = session.state === 'working';
+  const adopt = async () => {
+    if (!ctx?.api || busy) return;
+    setBusy(true);
+    request.current ??= id();
+    try {
+      const r = await control<Launch & { stopped_pid?: number | null }>(ctx.api, 'local', 'adopt', { session_id: session.session_id, request_id: request.current });
+      ctx.notify(r.message);
+      if (r.request_id) {
+        for (let n = 0; n < 60; n++) {
+          await new Promise(resolve => window.setTimeout(resolve, 2000));
+          const s = await control<Launch>(ctx.api, 'local', 'status', { request_id: r.request_id });
+          if (!['starting', 'running'].includes(s.state)) { ctx.notify(s.state === 'ready' ? `已接到 Herdr：${s.message}` : s.message, s.state !== 'ready'); break; }
+        }
+      }
+      request.current = null;
+    } catch (e) { ctx.notify(String(e), true); }
+    finally { setBusy(false); }
+  };
+  const where = session.source_app && session.source_app !== '未登记' ? session.source_app : '别的终端';
+  return <button type="button" className={`${className} adopt-session${compact ? ' compact' : ''}`} disabled={busy || !ctx?.api || working} onClick={adopt}
+    title={working ? `它正在 ${where} 里跑，等它停下来再接` : `它现在在 ${where} 里。停掉那边的进程，在 Herdr 新标签里恢复同一个会话（有标题、能判断在跑/等你、手机端能回复）`}>
+    {busy ? '正在接…' : compact ? '接到 Herdr' : `从 ${where} 接到 Herdr`}
+  </button>;
+}
+
 export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCreated, onComputer }: { api: Api; hosts: Host[]; initialHost: string; initialCwd?: string; onClose: () => void; onCreated: (sid: string, host: string, agent: string) => void; onComputer: (host: string) => void }) {
   const [host, setHost] = useState(initialHost || 'local');
   const [agent, setAgent] = useState('claude-code');

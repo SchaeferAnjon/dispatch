@@ -1,5 +1,5 @@
 import { TaskMenuButton } from "./TaskActions";
-import { useState } from "react";
+import { AdoptButton } from "./SessionActions";import { useState } from "react";
 import { sessionStatus, sessionEvidence } from "../derive";
 import type { AgentPresence } from "../derive";
 import { COLUMNS, SOURCE_LABEL, projectColor, actorOf, columnOf, delegatedBy, delegatedTo, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
@@ -221,7 +221,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
                     <div className="agent-session-meta"><span>{s.state_source === "transcript" ? "实际会话记录" : s.source_kind === "unknown" ? "来源未识别" : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : "尚无活动上报"}</span></div>
                     {(() => { const own = a.current.find(i => linkedSessions(i).includes(s.session_id)); return own ? <button className="link small linked-task" onClick={() => onSelect(own.id)}><span className="mono">{own.id}</span> {own.title}</button> : null; })()}
                   </div>
-                  <div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button></div>
+                  <div className="agent-session-actions"><AdoptButton session={s} compact className="copy-btn" /><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button></div>
                 </div>
                 );
               }; return <>{activeList.map(row)}{activeList.length === 0 && older.length > 0 && <div className="muted small" style={{ padding: "4px 2px" }}>现在没有活跃会话</div>}{older.length > 0 && <details className="older-sessions"><summary>更早的会话 · {older.length}<span className="muted small"> · 一小时内没动静；完整历史在会话页</span></summary>{older.map(row)}</details>}</>; })()}

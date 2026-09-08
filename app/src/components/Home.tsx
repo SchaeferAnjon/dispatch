@@ -34,6 +34,7 @@ export function QuotaBar({ w }: { w: { label: string; used_percent: number | nul
 
 interface Props {
   insight?: string;
+  alertCount?: number;
   me: string;
   loaded: boolean;
   connectionError: boolean;
@@ -84,7 +85,7 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ insight, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone, onScreen, screenReady }: Props) {
+export function HomeView({ insight, alertCount, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone, onScreen, screenReady }: Props) {
   // The count chips narrow this page instead of leaving it.
   const [focus, setFocus] = useState<"" | "unread" | "waiting" | "blocked" | "running">("");
   // How the project cards are ordered; starred ones stay on top either way.
@@ -317,7 +318,7 @@ export function HomeView({ insight, me, loaded, connectionError, unavailable, ro
         {onScreen && <button className="link" disabled={!screenReady} onClick={onScreen} title={screenReady ? "复制屏幕链接：手机上看并操作这台电脑，登录用这台 Mac 的用户名和密码" : "还没配置屏幕访问：设置页有说明"}>看屏幕 ⧉</button>}
       </div>
 
-      {!focus && insight && <button className="home-insight" onClick={() => onView("stats")} title="最近 14 天跨 Agent 的复盘洞察 · 点开看全部"><span className="home-insight-tag">洞察</span><span className="t">{insight}</span><span className="muted small">统计页 ›</span></button>}
+      {!focus && insight && <button className="home-insight" onClick={() => onView("stats")} title="最近 14 天跨 Agent 的复盘洞察 · 点开看全部"><span className="home-insight-tag">洞察</span><span className="t">{insight}</span>{alertCount ? <span className="n" title="按会话盯着的新告警，统计页里看">{alertCount} 条新</span> : null}<span className="muted small">统计页 ›</span></button>}
       {focus && featured.length === 0 && (!ungrouped || !matches(ungrouped)) && <div className="home-quiet">{focus === "unread" ? "没有未读回复" : focus === "waiting" ? "没有会话在等你确认" : focus === "blocked" ? "没有被卡住的任务" : "没有会话在跑"}<button className="link" onClick={() => setFocus("")}>显示全部</button></div>}
       {!focus && trackedAll.length > 0 && (
         <section className="home-tracked">

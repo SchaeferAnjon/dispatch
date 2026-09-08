@@ -12,6 +12,8 @@ interface Props {
   hosts: Host[];
   initialHost?: string;
   initialTask?: string;
+  initialPrompt?: string;
+  initialLabel?: string;
   issues: Issue[];
   me: string;
   dirOfProject: (name: string) => string;
@@ -19,7 +21,7 @@ interface Props {
   onStart: (input: AgentStartInput) => Promise<AgentStartResult | null>;
 }
 
-export function Delegate({ hosts, initialHost, initialTask, issues, me, dirOfProject, onClose, onStart }: Props) {
+export function Delegate({ hosts, initialHost, initialTask, initialPrompt, initialLabel, issues, me, dirOfProject, onClose, onStart }: Props) {
   const online = hosts.filter((h) => h.online || h.local);
   const [hostId, setHostId] = useState(initialHost ?? (online.find((h) => h.local)?.id ?? online[0]?.id ?? ""));
   const host = hosts.find((h) => h.id === hostId);
@@ -28,7 +30,7 @@ export function Delegate({ hosts, initialHost, initialTask, issues, me, dirOfPro
   const task = issues.find((i) => i.id === taskId);
   const suggestedCwd = task ? dirOfProject(projectOf(task)) : "";
   const [cwd, setCwd] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<AgentStartResult | null>(null);
   const [err, setErr] = useState("");
@@ -38,7 +40,7 @@ export function Delegate({ hosts, initialHost, initialTask, issues, me, dirOfPro
     const text = (prompt.trim() || defaultPrompt).trim();
     if (!text || !host) return;
     setBusy(true); setErr("");
-    try { setRes(await onStart({ kind, host: host.local ? "" : host.id, cwd: (cwd.trim() || suggestedCwd) || undefined, task: taskId || undefined, prompt: text, label: task ? task.title.slice(0, 24) : text.slice(0, 24) })); }
+    try { setRes(await onStart({ kind, host: host.local ? "" : host.id, cwd: (cwd.trim() || suggestedCwd) || undefined, task: taskId || undefined, prompt: text, label: initialLabel || (task ? task.title.slice(0, 24) : text.slice(0, 24)) })); }
     catch (e) { setErr(String(e)); }
     finally { setBusy(false); }
   };
@@ -46,7 +48,7 @@ export function Delegate({ hosts, initialHost, initialTask, issues, me, dirOfPro
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog delegate" role="dialog" aria-label="派活">
-        <h3>派活{task ? ` · ${task.title}` : ""}</h3>
+        <h3>派活{task ? ` · ${task.title}` : initialLabel ? ` · ${initialLabel}` : ""}</h3>
         <p className="muted small">在所选电脑的 Herdr 里起一个 Agent，把任务记到它名下，并发第一句话。它会以自己的身份认领任务，完成后 dispatch done。</p>
         <div className="new-session-selects">
           <label>电脑<select value={hostId} onChange={(e) => setHostId(e.target.value)}>{hosts.map((h) => <option key={h.id} value={h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? " · 离线" : ""}</option>)}</select></label>

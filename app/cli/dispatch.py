@@ -7,12 +7,14 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch find <task-id>           sessions whose transcript mentions the task, with resume commands
   dispatch resume <session|task>    print (or --copy) the command that resumes a session
   dispatch focus <session|task>     jump to the Herdr tab running that session
+  dispatch adopt <session|pid-N>    take a session running in Warp/iTerm/Terminal into Herdr (stop when idle, resume there)
   dispatch skills list|show|enable|disable|open|path
   dispatch prime [--hook-json]      compact session-start digest: identity, this project's tasks, relevant wiki, who else is in this dir, your quota
   dispatch claim <task> [--force]   claim without stealing: refuses a task another agent is working on
   dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
   dispatch pit add|list|show        = wiki --kind pit
-  dispatch insights [--days N]      cross-agent /insights: signals, samples, an improvement task to hand to an agent
+  dispatch insights [--days N] [--alerts] [--ack]   cross-agent signal counts, samples, per-session alerts, an improvement task
+  dispatch insights report|list|show|open|schedule|due   the model-written /insights-style report (dated, scheduled, opens as a page)
   dispatch catalog [-q kw]          skills/plugins kept off by default; agents suggest one when it would help
   dispatch --host <id> <any subcommand>   run it on another Mac from hosts.json (ssh; stdin/stdout pass through)
   dispatch env list|get|set|unset|export|import   API keys & secrets (~/.config/dispatch/env, 0600; prime lists names only)
@@ -693,10 +695,20 @@ def live_sessions(local_only=False):
         seen.add(pid)
         seen_sids.add((r.get("agent"), r.get("session_id")))
         sessions.append(r)
+    idx = None
     for pid, (ppid, comm) in table.items():
         base = os.path.basename(comm).lstrip("-")
         if base in ("claude", "codex") and pid not in seen:
-            sessions.append({"agent": "claude-code" if base == "claude" else "codex", "session_id": f"pid-{pid}", "agent_pid": pid, "cwd": "", "project": "", "source_kind": "unknown", "source_app": "未登记", "state": "unknown", "alive": True, "registered": False, "started_at": 0, "last_at": 0})
+            # No hook wrote a record (another person's terminal, hooks not installed): still
+            # say where it runs and which transcript it most likely is, so it can be adopted.
+            cwd = pid_cwd(pid)
+            app = host_app_of(pid, table) or ""
+            idx = idx if idx is not None else (load_index() or {})
+            row = {"agent": "claude-code" if base == "claude" else "codex", "session_id": f"pid-{pid}", "agent_pid": pid, "cwd": cwd, "project": os.path.basename(cwd.rstrip("/")) if cwd else "", "source_kind": "terminal" if app else "unknown", "source_app": app or "未登记", "state": "unknown", "alive": True, "registered": False, "started_at": 0, "last_at": 0}
+            guess = probable_session(idx, row["agent"], cwd)
+            if guess:
+                row["probable_session_id"] = guess["session_id"]; row["title"] = guess.get("title", ""); row["last_at"] = guess.get("mtime", 0)
+            sessions.append(row)
     # Herdr knows tab titles and its own working/idle judgement; match by cwd.
     for a in herdr_agents():
         cands = [s for s in sessions if s.get("cwd") == a.get("cwd") and s["agent"].startswith(a.get("agent", "claude"))]
@@ -711,6 +723,25 @@ def live_sessions(local_only=False):
         sessions.extend(remote_sessions())
     sessions.sort(key=lambda s: (s.get("state") != "working", -(s.get("last_at") or 0)))
     return sessions
+
+
+def pid_cwd(pid):
+    """Working directory of a process (lsof; ~50 ms, only used for unregistered agents)."""
+    try:
+        r = subprocess.run(["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"], capture_output=True, text=True, timeout=3)
+        return next((l[1:] for l in r.stdout.splitlines() if l.startswith("n/")), "")
+    except Exception:
+        return ""
+
+
+def probable_session(idx, agent, cwd, within=6 * 3600):
+    """The transcript an unregistered live process is most likely writing: same agent and
+    directory, touched recently. A guess — callers say so."""
+    if not cwd:
+        return None
+    now = time.time()
+    cands = [e for e in idx.values() if e.get("agent") == agent and not e.get("subagent") and e.get("cwd") == cwd and now - (e.get("mtime") or 0) < within]
+    return max(cands, key=lambda e: e.get("mtime") or 0) if cands else None
 
 
 def cmd_sessions(a):
@@ -1484,7 +1515,7 @@ def read_session_detail(ref, limit=400):
                 continue
             if t not in ("user", "assistant"):
                 continue
-            if d.get("isSidechain"):
+            if d.get("isSidechain") and not ref.get("subagent_view"):
                 continue
             m = d.get("message") or {}
             content = m.get("content")
@@ -1573,6 +1604,20 @@ def cmd_seen(a):
     out(acknowledge(DISPATCH_DIR, a.key, a.reply), a.json, lambda _: print("已读"))
 
 
+def cmd_adopt(a):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import session_control
+    from session_reply import Rejected
+    try:
+        r = session_control.adopt(sys.modules[__name__], {"session_id": a.key, "keep": a.keep, "force": a.force})
+    except Rejected as e:
+        raise SystemExit(str(e))
+    def text(r):
+        print(r["message"])
+        print(f"进度：dispatch session-control status（request_id {r['request_id']}）；Herdr 标签起来后会话页会自动出现它")
+    out(r, a.json, text)
+
+
 def cmd_session_control(a):
     from session_control import command
     command(sys.modules[__name__], a)
@@ -1584,11 +1629,17 @@ def cmd_reply(a):
 
 
 def cmd_attachment(a):
-    from attachments import read, catalog, local_path
-    refs = resolve(load_index(), a.key)
-    if not refs: refs = resolve(refresh_index(), a.key)
+    from attachments import read, catalog, local_path, thumbs
+    if "/sub/" in a.key:
+        ref = subagent_ref(load_index(), a.key)
+        refs = [ref] if ref else []
+    else:
+        refs = resolve(load_index(), a.key)
+        if not refs: refs = resolve(refresh_index(), a.key)
     if not refs: raise ValueError("本机找不到这个会话")
     first = refs[0]
+    if a.ref == "--thumbs" or getattr(a, "thumbs", False):
+        return out(thumbs(first), True, None)
     for ref in refs:
         if (ref['agent'], ref['session_id']) != (first['agent'], first['session_id']): continue
         path = local_path(a.ref, ref.get('cwd',''))
@@ -1597,8 +1648,29 @@ def cmd_attachment(a):
     raise ValueError('文件未附加或链接在此会话中')
 
 
+def subagent_ref(idx, key):
+    """`<session-key>/sub/<agent-id>`: the transcript of one sub-agent a session dispatched,
+    presented as a session of its own (same agent kind and cwd, its description as title)."""
+    parent_key, aid = key.split("/sub/", 1)
+    refs = resolve(idx, parent_key) or resolve(refresh_index(), parent_key)
+    for r in refs:
+        for sub in subagents_of(r["path"]):
+            if sub["agent_id"] == aid or sub["agent_id"].startswith(aid):
+                return dict(r, path=sub["path"], session_id=f"{r['session_id']}/sub/{sub['agent_id']}", title=f"↳ {sub['type'] or '子 Agent'} · {sub['description'] or aid[:8]}",
+                            subagents=[], subagent_view=True, parent_session_id=r["session_id"], user_msgs=0, size=sub["size"], resume_cmd="")
+    return None
+
+
 def cmd_session(a):
     idx = load_index()
+    if "/sub/" in a.key:
+        ref = subagent_ref(idx, a.key)
+        if not ref:
+            print(f"找不到子 Agent {a.key}", file=sys.stderr); sys.exit(1)
+        d = read_session_detail(ref)
+        from attachments import catalog
+        d["attachments"] = catalog(ref)
+        return out(d, a.json, lambda d: print(f"{d['meta']['title']} · {len(d['messages'])} 条 · 改动文件 {len(d['files'])}"))
     refs = resolve(idx, a.key)
     if not refs: refs = resolve(refresh_index(), a.key)
     # Freeze the reply cursor before parsing the displayed content: a concurrently
@@ -3141,7 +3213,22 @@ _I_CONTINUE = re.compile(r"^\s*(继续|接着|go on|continue|然后呢|接下来
 _I_CORRECT = re.compile(r"(别问|不要问|不用问|直接做|直接改|不要再|别再|怎么还|怎么又|为什么没|为什么不|你没|没做|没改|不对|错了|不是这个|不是我要|我说的是|我说了|算了|废话|啰嗦|太长|简短|说重点|别停|不要停|为什么停|做完|全部做|一次做完|又一遍|已经说过|前面说了|你忘|不记得|你不会用|为什么不用)")
 _I_ASKTAIL = re.compile(r"(要不要|需不需要|需要我|要我|可以吗|好吗|行吗|哪种|哪个|请确认|请告诉我|请选择|你希望|你想|你定|你确认|等你|说一声|点头|shall i|should i|would you like|do you want|which (one|option)|let me know|继续吗|开始吗|\?\s*$|？\s*$)", re.I)
 _I_OVERFLOW = re.compile(r"(Prompt is too long|compaction failed|context window)", re.I)
+_I_BOARD = re.compile(r"\bdispatch\s+(begin|claim|log|done)\b")
 _I_LONG = 60
+_I_BOARD_MIN = 15          # a session this long should have a task on the board
+INSIGHTS_SEEN = os.path.join(DISPATCH_DIR, "insights-seen.json")
+
+# What each signal means and how it is detected — shown in the app so the numbers are not a black box.
+INSIGHT_RULES = [
+    {"key": "asktail", "name": "问句/选项收尾", "how": "助手一条消息的最后 260 字里有「要不要 / 需要我 / 请确认 / 哪个 / ？」这类确认句式，且下一条是用户消息。若用户没有用「好 / 可以 / 继续」之类短句回答，而是直接说了别的事，就算「没被回答」——说明这个问题多半不必问。"},
+    {"key": "correction", "name": "用户纠错/催促", "how": "用户消息（600 字以内）含「别问 / 直接做 / 怎么又 / 为什么没 / 不对 / 错了 / 说重点 / 别停 / 你忘 / 为什么不用」等词。每条都附上助手前一句作样本，由人判断属于哪类：没用工具、做过头、停太早、无效确认、忘记录。"},
+    {"key": "overflow", "name": "上下文溢出", "how": "助手输出里出现 Prompt is too long / compaction failed / context window。这类会话应更早拆成新会话。"},
+    {"key": "long", "name": "超长会话", "how": f"一个会话里用户发言 ≥ {_I_LONG} 轮。规则是一个任务一个会话，进度写到板上。"},
+    {"key": "ends_on_question", "name": "停在问句上", "how": "会话最后一条是助手的问句，用户没有再回——可能是多余的确认，也可能是真卡住。"},
+    {"key": "tool_errors", "name": "工具报错", "how": "转录里 tool_result 标了 is_error 的次数（命令失败、文件不存在、编辑没匹配到）。一个会话里超过 8 次通常是在原地打转。"},
+    {"key": "no_board", "name": "长会话没上板", "how": f"用户发言 ≥ {_I_BOARD_MIN} 轮，但整个会话没有跑过 dispatch begin / claim / log / done。任务没记到板上，其他 Agent 和手机端都看不到它。"},
+    {"key": "approve", "name": "纯确认回复", "how": "用户只回了「好 / 可以 / 继续 / 做吧」这类一两个字。多说明助手停下来等了一个本可不问的确认。"},
+]
 
 
 def insights_scan(days):
@@ -3150,7 +3237,7 @@ def insights_scan(days):
     cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT") if days else ""
     per_agent, sessions, samples = {}, [], {"asktail": [], "correction": [], "overflow": []}
     def bump(ag, k, n=1):
-        per_agent.setdefault(ag, {"sessions": 0, "user_turns": 0, "approve": 0, "continue": 0, "correction": 0, "asktail": 0, "ends_on_question": 0, "long": 0, "overflow": 0})[k] += n
+        per_agent.setdefault(ag, {"sessions": 0, "user_turns": 0, "approve": 0, "continue": 0, "correction": 0, "asktail": 0, "ends_on_question": 0, "long": 0, "overflow": 0, "tool_errors": 0, "no_board": 0})[k] += n
     for key, e in idx.items():
         if e.get("subagent") or not e.get("user_msgs"):
             continue
@@ -3167,7 +3254,7 @@ def insights_scan(days):
             continue
         ag = e["agent"]
         bump(ag, "sessions"); bump(ag, "user_turns", len(U))
-        row = {"agent": ag, "session_id": e["session_id"], "cwd": e.get("cwd", ""), "last_ts": (e.get("last_ts") or "")[:10], "user_turns": len(U), "approve": 0, "continue": 0, "correction": 0, "asktail": 0, "overflow": 0, "ends_on_question": False}
+        row = {"agent": ag, "session_id": e["session_id"], "cwd": e.get("cwd", ""), "title": (e.get("title") or "")[:60], "last_ts": (e.get("last_ts") or "")[:10], "last_at": e.get("last_ts") or "", "user_turns": len(U), "approve": 0, "continue": 0, "correction": 0, "asktail": 0, "overflow": 0, "ends_on_question": False, "tool_errors": 0, "no_board": False}
         for i, m in enumerate(msgs):
             t = m["text"].strip()
             if m["role"] == "user":
@@ -3192,9 +3279,58 @@ def insights_scan(days):
             row["ends_on_question"] = True; bump(ag, "ends_on_question")
         if len(U) >= _I_LONG:
             bump(ag, "long")
+        row["tool_errors"] = tool_error_count(key)
+        bump(ag, "tool_errors", row["tool_errors"])
+        used_board = any(_I_BOARD.search(t.get("summary", "")) for m in msgs for t in m.get("tools", []))
+        if len(U) >= _I_BOARD_MIN and not used_board:
+            row["no_board"] = True; bump(ag, "no_board")
         sessions.append(row)
-    sessions.sort(key=lambda r: -(r["correction"] * 3 + r["asktail"] + r["overflow"] * 3 + r["continue"]))
-    return {"days": days, "per_agent": per_agent, "sessions": sessions[:12], "samples": {k: v[-8:] for k, v in samples.items()}, "total_sessions": len(sessions)}
+    sessions.sort(key=lambda r: -(r["correction"] * 3 + r["asktail"] + r["overflow"] * 3 + r["continue"] + min(r["tool_errors"], 10) // 2 + (3 if r["no_board"] else 0)))
+    return {"days": days, "per_agent": per_agent, "sessions": sessions[:12], "all_sessions": sessions, "samples": {k: v[-8:] for k, v in samples.items()}, "total_sessions": len(sessions)}
+
+
+def tool_error_count(path):
+    """How many tool results the transcript marked as errors; a cheap substring scan."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return sum(line.count('"is_error":true') + line.count('"is_error": true') for line in f if "is_error" in line)
+    except OSError:
+        return 0
+
+
+def insights_alerts(rep):
+    """Session-level events worth telling a person about *now*, each with a stable id so the
+    app can notify once. This is the proactive half of /insights."""
+    out = []
+    for r in rep.get("all_sessions", rep["sessions"]):
+        sid, tag = r["session_id"], f"{r['agent']} {r['session_id'][:8]}"
+        name = r.get("title") or (r.get("cwd") or "").replace(HOME, "~")[-40:] or sid[:8]
+        if r["correction"] >= 3:
+            out.append({"id": f"corr:{sid}:{r['correction'] // 3}", "kind": "correction", "session_id": sid, "agent": r["agent"], "ts": r["last_at"], "text": f"「{name}」里你纠错/催促了 {r['correction']} 次——这个会话值得回看，看是哪类问题在重复。"})
+        if r["overflow"]:
+            out.append({"id": f"ovf:{sid}", "kind": "overflow", "session_id": sid, "agent": r["agent"], "ts": r["last_at"], "text": f"「{name}」撞到上下文上限 {r['overflow']} 次：让它把进度写到板上，开新会话续做。"})
+        if r["tool_errors"] >= 8:
+            out.append({"id": f"err:{sid}:{r['tool_errors'] // 8}", "kind": "tool_errors", "session_id": sid, "agent": r["agent"], "ts": r["last_at"], "text": f"「{name}」有 {r['tool_errors']} 次工具报错，可能在原地打转。"})
+        if r["no_board"]:
+            out.append({"id": f"board:{sid}:{r['user_turns'] // 15}", "kind": "no_board", "session_id": sid, "agent": r["agent"], "ts": r["last_at"], "text": f"「{name}」已经 {r['user_turns']} 轮却没有上任务板（没跑过 dispatch begin/log/done）。"})
+        if r["user_turns"] >= _I_LONG:
+            out.append({"id": f"long:{sid}:{r['user_turns'] // 30}", "kind": "long", "session_id": sid, "agent": r["agent"], "ts": r["last_at"], "text": f"「{name}」已经 {r['user_turns']} 轮：该拆新会话了。"})
+    out.sort(key=lambda x: x["ts"], reverse=True)
+    return out
+
+
+def insights_seen_load():
+    try:
+        return json.load(open(INSIGHTS_SEEN))
+    except Exception:
+        return {"seen": [], "acked_at": 0}
+
+
+def insights_seen_save(d):
+    os.makedirs(DISPATCH_DIR, exist_ok=True)
+    tmp = INSIGHTS_SEEN + ".tmp"
+    json.dump(d, open(tmp, "w"), ensure_ascii=False)
+    os.replace(tmp, INSIGHTS_SEEN)
 
 
 def insights_findings(rep):
@@ -3212,14 +3348,35 @@ def insights_findings(rep):
         out.append(f"{tot('long')} 个会话超过 {_I_LONG} 轮：一个任务一个会话，进度写板上。")
     if tot("ends_on_question"):
         out.append(f"{tot('ends_on_question')} 个会话停在助手的问句上（用户没再回）：可能是没必要的确认，也可能是真卡住了。")
+    if tot("tool_errors"):
+        worst = max(rep["sessions"], key=lambda r: r["tool_errors"], default=None)
+        out.append(f"工具报错 {tot('tool_errors')} 次" + (f"，最多的一个会话 {worst['tool_errors']} 次（{worst['agent']} {worst['session_id'][:8]}）" if worst and worst["tool_errors"] >= 8 else "") + "：连续报错说明在原地打转，该换思路或问人。")
+    if tot("no_board"):
+        out.append(f"{tot('no_board')} 个 ≥ {_I_BOARD_MIN} 轮的会话从没跑过 dispatch begin/log/done：工作没记到板上，其他 Agent 和手机端看不到。")
     if not out:
         out.append("这段时间没有明显的行为信号。")
     return out
 
 
 def cmd_insights(a):
+    if getattr(a, "op", None):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import insights_report
+        return insights_report.main(a)
     rep = insights_scan(a.days)
     rep["findings"] = insights_findings(rep)
+    rep["rules"] = INSIGHT_RULES
+    seen = insights_seen_load()
+    alerts = insights_alerts(rep)
+    rep["alerts"] = [dict(x, seen=x["id"] in seen["seen"]) for x in alerts]
+    rep.pop("all_sessions", None)
+    if getattr(a, "ack", False):
+        seen["seen"] = sorted(set(seen["seen"]) | {x["id"] for x in alerts})[-500:]
+        seen["acked_at"] = time.time()
+        insights_seen_save(seen)
+    if getattr(a, "alerts", False):
+        fresh = [x for x in rep["alerts"] if not x["seen"]]
+        return out(fresh, a.json, lambda xs: [print(f"- [{x['agent']} {x['session_id'][:8]}] {x['text']}") for x in xs] or (print("没有新的洞察告警") if not xs else None))
     top = ", ".join(f"{r['agent']} {r['session_id'][:8]}（纠错 {r['correction']}·问句 {r['asktail']}·{r['user_turns']} 轮）" for r in rep["sessions"][:5])
     prompt = (f"按最近 {a.days} 天的会话做一次跨 Agent 复盘并落地改进。1) `dispatch insights --days {a.days} --json` 拿信号统计和样本；最值得看的会话：{top}。"
               f"用 `dispatch session <id>` 读这些会话里纠错和问句附近的几段，判断每条是哪类问题（没用工具 / 做过头 / 停太早 / 无效确认 / 忘记录）。"
@@ -3236,9 +3393,14 @@ def cmd_insights(a):
         for f in rep["findings"]:
             print("- " + f)
         print("\n## 按 Agent")
-        print(f"{'agent':<11}{'会话':>5}{'轮':>6}{'确认':>5}{'继续':>5}{'纠错':>5}{'问句':>5}{'停问':>5}{'长':>4}{'溢出':>5}")
+        print(f"{'agent':<11}{'会话':>5}{'轮':>6}{'确认':>5}{'继续':>5}{'纠错':>5}{'问句':>5}{'停问':>5}{'长':>4}{'溢出':>5}{'报错':>5}{'没上板':>6}")
         for ag, c in rep["per_agent"].items():
-            print(f"{ag:<11}{c['sessions']:>5}{c['user_turns']:>6}{c['approve']:>5}{c['continue']:>5}{c['correction']:>5}{c['asktail']:>5}{c['ends_on_question']:>5}{c['long']:>4}{c['overflow']:>5}")
+            print(f"{ag:<11}{c['sessions']:>5}{c['user_turns']:>6}{c['approve']:>5}{c['continue']:>5}{c['correction']:>5}{c['asktail']:>5}{c['ends_on_question']:>5}{c['long']:>4}{c['overflow']:>5}{c['tool_errors']:>5}{c['no_board']:>6}")
+        if rep["alerts"]:
+            print("\n## 主动洞察（未确认的）")
+            for x in rep["alerts"]:
+                if not x["seen"]:
+                    print(f"- [{x['agent']} {x['session_id'][:8]}] {x['text']}")
         print("\n## 最值得回看的会话")
         for r in rep["sessions"][:8]:
             print(f"- {r['agent']} {r['session_id'][:12]} {r['last_ts']} · {r['user_turns']} 轮 · 纠错 {r['correction']} · 问句 {r['asktail']} · 溢出 {r['overflow']} · …{(r['cwd'] or '')[-30:]}")
@@ -3925,14 +4087,15 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser('task', help='recoverable task removal'); s.add_argument('op', choices=['trash', 'restore']); s.add_argument('task'); s.add_argument('--json', action='store_true'); s.set_defaults(fn=cmd_task)
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
-    s = sub.add_parser("attachment", help="read a file linked in a conversation"); s.add_argument("key"); s.add_argument("ref"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
+    s = sub.add_parser("attachment", help="read a file linked in a conversation; --thumbs returns every image as a small thumbnail in one call"); s.add_argument("key"); s.add_argument("ref", nargs="?", default=""); s.add_argument("--thumbs", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
     s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
     s = sub.add_parser("project", help="star / archive a project (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
     s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)
     s = sub.add_parser("session-preferences", help="classify a conversation without changing its transcript"); s.add_argument("key"); s.add_argument("changes"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_preferences)
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply"); s.add_argument("key"); s.add_argument("reply"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
-    s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status"]); s.set_defaults(fn=cmd_session_control)
+    s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status", "adopt"]); s.set_defaults(fn=cmd_session_control)
+    s = sub.add_parser("adopt", help="take a session running in another terminal (Warp/iTerm/Terminal/VS Code) into Herdr: stop it when idle, resume it in a new Herdr tab"); s.add_argument("key", help="session id, prefix, or pid-<n>"); s.add_argument("--keep", action="store_true", help="leave the old process running (the two will interleave writes)"); s.add_argument("--force", action="store_true", help="adopt even while it is working"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_adopt)
     s = sub.add_parser("reply", help="reply to an exact Agent session"); s.add_argument("op", choices=["status", "send"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
@@ -3977,7 +4140,7 @@ def main():
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs", "vaults", "topics", "get", "search", "import"]); s.add_argument("query", nargs="?", default=""); s.add_argument("--apply", action="store_true", help="import: 追加进 FACTS.md"); s.add_argument("--out", default="", help="import: 清单路径"); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
-    s = sub.add_parser("insights", help="cross-agent behaviour review: confirmations, corrections, early stops, overflow"); s.add_argument("--days", type=int, default=14); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
+    s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（用 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)

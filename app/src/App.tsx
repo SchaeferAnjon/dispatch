@@ -101,7 +101,7 @@ export default function App() {
   const [boardSort, setBoardSort] = useState<BoardSort>(() => { try { return (localStorage.getItem("dispatch-board-sort") as BoardSort) || "priority"; } catch { return "priority"; } });
   const changeBoardSort = (s: BoardSort) => { setBoardSort(s); try { localStorage.setItem("dispatch-board-sort", s); } catch { /* ignore */ } };
   const [search, setSearch] = useState(false);
-  const [delegate, setDelegate] = useState<{ host?: string; task?: string } | null>(null);
+  const [delegate, setDelegate] = useState<{ host?: string; task?: string; prompt?: string; label?: string } | null>(null);
   const [sessionFocus, setSessionFocus] = useState<string | null>(null);
   // The tour never opens on its own; the design should carry itself. `?` still has it.
   const [tour, setTour] = useState(false);
@@ -225,14 +225,34 @@ export default function App() {
 
 
   // One line of the cross-agent insights for the workbench; the full card lives on 统计.
+  // The proactive half: every few minutes ask for per-session alerts nobody has acknowledged;
+  // a brand-new one gets a system notification once (the CLI keeps the seen-set, so the
+  // reminder is shared across machines' apps of the same board).
   const [insight, setInsight] = useState<string>("");
+  const [alertCount, setAlertCount] = useState(0);
+  const notifiedAlerts = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!api) return;
     let alive = true;
-    const tick = async () => { try { const r = await api.insights(14); if (alive) setInsight(r?.findings?.[0] ?? ""); } catch { /* optional */ } };
-    const first = window.setTimeout(tick, 4_000);
-    const t = window.setInterval(tick, 30 * 60_000);
-    return () => { alive = false; window.clearTimeout(first); window.clearInterval(t); };
+    const summary = async () => { try { const r = await api.insights(14); if (alive) setInsight(r?.findings?.[0] ?? ""); } catch { /* optional */ } };
+    const alerts = async () => {
+      try {
+        const xs = await api.insightAlerts(3);
+        if (!alive) return;
+        setAlertCount(xs.length);
+        const unseen = xs.filter((x) => !notifiedAlerts.current.has(x.id));
+        if (unseen.length && notifiedAlerts.current.size > 0) void api.notify("洞察", unseen.length === 1 ? unseen[0].text : `${unseen.length} 条新的会话洞察，统计页可看`).catch(() => {});
+        xs.forEach((x) => notifiedAlerts.current.add(x.id));
+        if (notifiedAlerts.current.size === 0) notifiedAlerts.current.add("primed");
+      } catch { /* optional */ }
+    };
+    // The scheduled report: the CLI decides whether the cadence is due; we just ask hourly.
+    const due = () => api.insightDue().catch(() => {});
+    const first = window.setTimeout(() => { void summary(); void alerts(); void due(); }, 4_000);
+    const t = window.setInterval(summary, 30 * 60_000);
+    const t2 = window.setInterval(() => void alerts(), 10 * 60_000);
+    const t3 = window.setInterval(() => void due(), 60 * 60_000);
+    return () => { alive = false; window.clearTimeout(first); window.clearInterval(t); window.clearInterval(t2); window.clearInterval(t3); };
   }, [api]);
 
   // The Macs on the tailnet (this one + hosts.json), for the 机器 strip on the Agents view.
@@ -548,7 +568,7 @@ export default function App() {
           </div>
           {err && <div className="err">{err}</div>}
           <section className="view">
-            {view === "home" && api && <HomeView insight={insight} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
+            {view === "home" && api && <HomeView insight={insight} alertCount={alertCount} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
             {view === "projects" && api && <ProjectHub archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} />}
             {view === "inbox" && <InboxView onSummarize={summarizeSession} onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onFocus={focusSession} />}
@@ -558,7 +578,7 @@ export default function App() {
             {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
-            {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
+            {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "settings" && <SettingsView onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
@@ -576,7 +596,7 @@ export default function App() {
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
-      {delegate && api && <Delegate hosts={hosts} initialHost={delegate.host} initialTask={delegate.task} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} />}
+      {delegate && api && <Delegate hosts={hosts} initialHost={delegate.host} initialTask={delegate.task} initialPrompt={delegate.prompt} initialLabel={delegate.label} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} />}
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
       {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}

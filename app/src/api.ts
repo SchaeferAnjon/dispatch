@@ -1,4 +1,4 @@
-import type { ActivitySnapshot, Comment, GraphData, HistoryEntry, Host, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar, Insights } from "./types";
+import type { ActivitySnapshot, Comment, GraphData, HistoryEntry, Host, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar, Insights, InsightAlert, InsightReport, InsightReportList } from "./types";
 import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
@@ -45,6 +45,13 @@ export interface Api {
   rulesStatus(): Promise<RulesStatus>;
   rulesSync(): Promise<void>;
   insights(days: number): Promise<Insights | null>;
+  insightAlerts(days: number): Promise<InsightAlert[]>;
+  insightsAck(days: number): Promise<void>;
+  insightReports(): Promise<InsightReportList>;
+  insightReport(id: string): Promise<InsightReport | null>;
+  insightGenerate(days: number): Promise<void>;
+  insightSchedule(every: number): Promise<void>;
+  insightDue(): Promise<void>;
   envList(): Promise<EnvVar[]>;
   envGet(name: string): Promise<string>;
   envSet(name: string, value: string, note: string): Promise<void>;
@@ -141,6 +148,15 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "notify" | "tra
     rulesStatus: async () => parse<RulesStatus>(await call("rules_status"), { hash: "", source: "", targets: [] }),
     rulesSync: async () => void (await call("rules_sync")),
     insights: async (days) => parse<Insights | null>(await call("insights", { days }), null),
+    // The proactive half: per-session alerts nobody has acknowledged yet; ack marks the current set seen.
+    insightAlerts: async (days) => parse<InsightAlert[]>(await call("dispatch_on", { host: null, args: ["insights", "--days", String(days), "--alerts", "--json"], stdin: null }), []),
+    insightsAck: async (days) => { await call("dispatch_on", { host: null, args: ["insights", "--days", String(days), "--ack", "--alerts", "--json"], stdin: null }); },
+    // The model-written report: dated runs, a cadence, and Claude Code's own /insights files next to ours.
+    insightReports: async () => parse<InsightReportList>(await call("dispatch_on", { host: null, args: ["insights", "list", "--json"], stdin: null }), { running: null, schedule: { every_days: 0 }, reports: [] }),
+    insightReport: async (id) => parse<InsightReport | null>(await call("dispatch_on", { host: null, args: ["insights", "show", id || "latest", "--json"], stdin: null }), null),
+    insightGenerate: async (days) => { await call("dispatch_on", { host: null, args: ["insights", "report", "--days", String(days), "--json"], stdin: null }); },
+    insightSchedule: async (every) => { await call("dispatch_on", { host: null, args: ["insights", "schedule", "--every", String(every), "--json"], stdin: null }); },
+    insightDue: async () => { await call("dispatch_on", { host: null, args: ["insights", "due", "--json"], stdin: null }); },
     envList: async () => parse<EnvVar[]>(await call("env_list"), []),
     envGet: (name) => call("env_get", { name }),
     envSet: async (name, value, note) => void (await call("env_set", { name, value, note })),

@@ -11,6 +11,8 @@ from html.parser import HTMLParser
 from html import escape
 
 LIMIT = 20 * 1024 * 1024
+THUMB_DIR = os.path.expanduser('~/tasks/.dispatch/thumbs')
+THUMB_PX = 320
 EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.pdf', '.html', '.htm', '.md', '.txt', '.csv', '.json', '.mp4', '.webm', '.mp3', '.wav', '.docx', '.xlsx', '.pptx', '.zip'}
 
 
@@ -129,3 +131,53 @@ def read(ref, key):
     if mime == 'text/html' and asset.get('_real'): content = portable_html(content, Path(asset['_real']).parent)
     return {'name': asset['name'], 'path': asset['path'], 'mime': mime, 'size': len(data),
             'data': base64.b64encode(data).decode(), 'text': content}
+
+
+def _thumb_bytes(data, key):
+    """A ≤320 px JPEG of an image, made once with macOS `sips` and kept on disk. Falls back to
+    the original bytes when sips is unavailable or the image is already small."""
+    import subprocess, tempfile
+    os.makedirs(THUMB_DIR, exist_ok=True)
+    out = os.path.join(THUMB_DIR, key.replace(':', '_') + '.jpg')
+    if os.path.isfile(out):
+        return open(out, 'rb').read(), 'image/jpeg'
+    if len(data) < 40 * 1024:
+        return data, None
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+        f.write(data); src = f.name
+    try:
+        r = subprocess.run(['sips', '-s', 'format', 'jpeg', '-s', 'formatOptions', '70', '-Z', str(THUMB_PX), src, '--out', out], capture_output=True, timeout=15)
+        if r.returncode == 0 and os.path.isfile(out):
+            return open(out, 'rb').read(), 'image/jpeg'
+    except Exception:
+        pass
+    finally:
+        try: os.remove(src)
+        except OSError: pass
+    return data, None
+
+
+def thumbs(ref):
+    """Every image attached in a conversation, as small thumbnails, in one pass over the transcript.
+    The app calls this once per session instead of one process per picture."""
+    out = {}
+    for a in scan(ref):
+        try:
+            if a.get('_data'):
+                mime, encoded = a['_data'].split(';base64,', 1); mime = mime[5:]
+                if not mime.startswith('image/'): continue
+                data = base64.b64decode(encoded, validate=True)
+            else:
+                path = Path(a.get('_real', ''))
+                mime = mimetypes.guess_type(path.name)[0] or ''
+                if not mime.startswith('image/') or not path.is_file() or path.stat().st_size > LIMIT: continue
+                data = path.read_bytes()
+                if data.startswith(b'\xff\xd8\xff'): mime = 'image/jpeg'
+            if mime in ('image/svg+xml', 'image/gif'):
+                small, m2 = data, None
+            else:
+                small, m2 = _thumb_bytes(data, a['id'])
+            out[a['id']] = {'name': a['name'], 'mime': m2 or mime, 'size': len(data), 'data': base64.b64encode(small).decode()}
+        except Exception:
+            continue
+    return out
