@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Api } from "../api";
 import { actorOf, delegatedBy, delegatedTo, durSince, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
-import type { Activity, Comment, HistoryEntry, Issue, Session, SessionRef } from "../types";
+import type { Activity, Comment, FileChange, HistoryEntry, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
 
 import { TaskRelations } from "./ProjectHub";
 import { linkedSessions } from "../projectModel";
+import { FileHunks } from "./Sessions";
+import { InlineImage, MediaProvider } from "./Media";
 import { KINDS } from "./Delegate";
 
 interface Props { rows: Activity[]; onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
@@ -22,13 +24,13 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   const [refs, setRefs] = useState<SessionRef[]>([]);
   // What the task's conversations touched: edited files and produced artifacts, from the
   // sessions explicitly linked to it (else the ones that mention it most).
-  const [work, setWork] = useState<{ sid: string; title: string; files: { path: string; n: number }[]; attachments: { id: string; name: string; path: string; mime: string }[] }[]>([]);
+  const [work, setWork] = useState<{ sid: string; agent: string; host?: string; title: string; files: { path: string; changes: FileChange[] }[]; attachments: { id: string; name: string; path: string; mime: string }[] }[]>([]);
   useEffect(() => {
     if (!issue) return;
     const ids = linkedSessions(issue).length ? linkedSessions(issue) : refs.slice(0, 2).map((r) => r.session_id);
     if (!ids.length) { setWork([]); return; }
     let alive = true;
-    Promise.all(ids.map(async (sid) => { try { const d = await api.sessionDetail(sid); return { sid, title: d.meta.title || sid.slice(0, 8), files: d.files.map((f) => ({ path: f.path, n: f.changes.length })), attachments: (d.attachments || []).map((a) => ({ id: a.id, name: a.name, path: a.path, mime: a.mime })) }; } catch { return null; } }))
+    Promise.all(ids.map(async (sid) => { try { const d = await api.sessionDetail(sid); return { sid, agent: d.meta.agent, host: d.meta.host, title: d.meta.title || sid.slice(0, 8), files: d.files.map((f) => ({ path: f.path, changes: f.changes })), attachments: (d.attachments || []).map((a) => ({ id: a.id, name: a.name, path: a.path, mime: a.mime })) }; } catch { return null; } }))
       .then((rows) => { if (alive) setWork(rows.filter((r): r is NonNullable<typeof r> => !!r && (r.files.length > 0 || r.attachments.length > 0))); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -274,8 +276,8 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
           {work.length === 0 ? <p className="empty-p" style={{ margin: 0 }}>关联的会话里没有记录到文件改动或产物。</p> : work.map((w) => (
             <div key={w.sid} className="work-block">
               <div className="work-head"><button className="link" onClick={() => onOpenSession(w.sid)}>{w.title} ↗</button></div>
-              {w.files.length > 0 && <div className="work-files">{w.files.slice(0, 20).map((f) => <button key={f.path} className="work-file" title={f.path} onClick={() => api.openPath(f.path).catch(() => onOpenSession(w.sid))}><code>{f.path.replace(/^\/Users\/[^/]+/, "~")}</code><span className="muted small">{f.n} 次改动</span></button>)}{w.files.length > 20 && <span className="muted small">还有 {w.files.length - 20} 个，去会话页看</span>}</div>}
-              {w.attachments.length > 0 && <div className="work-attachments">{w.attachments.map((a) => <button key={a.id} className="chip" title={a.path || a.mime} onClick={() => (a.path ? api.openPath(a.path).catch(() => onOpenSession(w.sid)) : onOpenSession(w.sid))}>{a.mime.startsWith("image/") ? "🖼 " : "📄 "}{a.name}</button>)}</div>}
+              {w.files.length > 0 && <div className="work-files">{w.files.map((f) => <details key={f.path} className="fdiff file work-file" data-menu="file" data-id={f.path}><summary title={f.path}><code>{f.path.replace(/^\/Users\/[^/]+/, "~").replace(/^(.{0,18}).*?([^/]+\/[^/]+)$/, (m, a, b) => (m.length > 44 ? `${a}…/${b}` : m))}</code><span className="muted small">{f.changes.length} 次</span></summary><FileHunks changes={f.changes} /></details>)}</div>}
+              {w.attachments.length > 0 && <MediaProvider api={api} session={{ agent: w.agent, session_id: w.sid, host: w.host }}><div className="work-attachments">{w.attachments.map((a) => a.mime.startsWith("image/") ? <InlineImage key={a.id} id={a.id} /> : <button key={a.id} className="chip" title={a.path || a.mime} onClick={() => (a.path ? api.openPath(a.path).catch(() => onOpenSession(w.sid)) : onOpenSession(w.sid))}>📄 {a.name}</button>)}</div></MediaProvider>}
             </div>
           ))}
         </details>

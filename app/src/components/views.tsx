@@ -62,8 +62,9 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
   const [over, setOver] = useState<Column | null>(null);
   // The done column only shows the last week by default; the rest is a click away.
   const [allDone, setAllDone] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem("dispatch-board-groups") || "{}"); } catch { return {}; } });
-  const toggleGroup = (key: string, open: boolean) => setOpenGroups((g) => { const next = { ...g, [key]: open }; try { localStorage.setItem("dispatch-board-groups", JSON.stringify(next)); } catch { /* ignore */ } return next; });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem("dispatch-board-groups-v2") || "{}"); } catch { return {}; } });
+  const setGroups = (patch: Record<string, boolean>) => setOpenGroups((g) => { const next = { ...g, ...patch }; try { localStorage.setItem("dispatch-board-groups-v2", JSON.stringify(next)); } catch { /* ignore */ } return next; });
+  const toggleGroup = (key: string, open: boolean) => setGroups({ [key]: open });
   const recent = (i: Issue) => Date.now() - Date.parse(i.closed_at ?? i.updated_at) < WEEK;
   return (
     <div className="board">
@@ -84,14 +85,15 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
             <div className="col-h">
               <span className={`st ${c.cls}`}><i />{c.label}</span>
               <span className="cnt">{full.length}</span>
+              {ordered.length > 1 && (() => { const keys = ordered.map(([name]) => `${c.key}:${name}`); const allOpen = keys.every((k) => openGroups[k] ?? (c.key !== "done")); return <button className="link small col-fold" onClick={() => setGroups(Object.fromEntries(keys.map((k) => [k, !allOpen])))}>{allOpen ? "全部收起" : "全部展开"}</button>; })()}
               {c.key === "todo" && <button className="add" onClick={() => onAdd(c.key)} title="新任务">＋</button>}
             </div>
             <div className="cards">
               {ordered.map(([name, items]) => {
                 const key = `${c.key}:${name}`;
                 // Done groups start folded; the others start open. A group holding the selected task is always open.
-                const open = items.some((i) => i.id === selected) || (openGroups[key] ?? (c.key !== "done" || items.length <= 3));
-                return <details key={key} className="done-group" open={open} onToggle={(e) => { const o = (e.target as HTMLDetailsElement).open; if (o !== open) toggleGroup(key, o); }}>
+                const open = items.some((i) => i.id === selected) || (openGroups[key] ?? (c.key !== "done"));
+                return <details key={key} className="done-group" open={open} onClick={(e) => { if ((e.target as HTMLElement).closest("summary")) { e.preventDefault(); toggleGroup(key, !open); } }}>
                   <summary className="done-group-h"><span className="proj" style={{ background: projectColor(name) }} />{starred.has(name) && <span className="star on small">★</span>}{name}<span className="muted mono small">{items.length}</span><span className="muted small fold-hint">{open ? "收起" : "展开"}</span></summary>
                   {open && items.map((i) => (
                     <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable={c.key !== "done"}

@@ -6,7 +6,7 @@ import type { Api } from "../api";
 import { actorOf, durSince, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
 import { lineDiff, withContext } from "../diff";
 import { canReadReply, activityLabel, isScriptSession, sessionLifecycle } from "../activity";
-import type { Activity, Issue, Session, SessionDetail, SessionRef } from "../types";
+import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef } from "../types";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 import { OpenSessionButton } from "./SessionActions";
@@ -16,6 +16,18 @@ import { SessionReply } from "./SessionReply";
 interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
+
+// One file's recorded edits, as diffs. Shared by the session files tab and the task detail.
+export function FileHunks({ changes }: { changes: FileChange[] }) {
+  return <>{changes.map((c, i) => (
+    <div key={i} className="hunk">
+      <div className="hunk-h muted small">{c.kind === "write" ? "写入整个文件" : c.kind === "patch" ? `${c.op ?? "修改"}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>
+      {c.kind === "patch"
+        ? <pre className="diff">{c.new ? c.new.split("\n").map((ln, k) => <div key={k} className={`ln ${ln.startsWith("+") && !ln.startsWith("+++") ? "add" : ln.startsWith("-") && !ln.startsWith("---") ? "del" : "same"}`}>{ln}</div>) : <div className="skip">补丁内容没存下来</div>}</pre>
+        : <pre className="diff">{withContext(lineDiff(c.old, c.new)).map((ln, k) => ln.kind === "skip" ? <div key={k} className="skip">… {ln.count} 行未变 …</div> : <div key={k} className={`ln ${ln.kind}`}>{ln.kind === "add" ? "+" : ln.kind === "del" ? "-" : " "} {ln.text}</div>)}</pre>}
+    </div>
+  ))}</>;
+}
 
 export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
   const showScripts = false; // script-launched sessions live under 定时或脚本

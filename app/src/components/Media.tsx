@@ -60,5 +60,12 @@ export function InlineImage({ id }: { id: string }) {
 
 export function AttachmentList({ items }: { items: Attachment[] }) {
   const media = useMedia();
-  return <div className="attachment-list">{items.length === 0 ? <p className="muted">没有找到图片或链接的本地文件。</p> : items.map(a => <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">{a.mime.startsWith('image/') ? '▧' : a.mime === 'text/html' ? '‹/›' : '▤'}</span><span><b>{a.name}</b><small>{a.mime} · {a.exists ? '点击预览' : '原文件已不可用'}</small></span><span>›</span></button>)}</div>;
+  return <div className="attachment-list">{items.length === 0 ? <p className="muted">没有找到图片或链接的本地文件。</p> : items.map(a => a.mime.startsWith('image/') && a.exists ? <Thumb key={a.id} a={a} onOpen={() => media?.open(a.id)} /> : <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">{a.mime === 'text/html' ? '‹/›' : '▤'}</span><span><b>{a.name}</b><small>{a.mime} · {a.exists ? '点击预览' : '原文件已不可用'}</small></span><span>›</span></button>)}</div>;
+}
+
+function Thumb({ a, onOpen }: { a: Attachment; onOpen: () => void }) {
+  const media = useMedia();
+  const [src, setSrc] = useState('');
+  useEffect(() => { let alive = true; media?.read(a.id).then(v => { if (alive) setSrc(dataUrl(v)); }).catch(() => {}); return () => { alive = false; }; }, [a.id, media]);
+  return <button className="attachment-card thumb" onClick={onOpen} title={a.path || a.name}>{src ? <img src={src} alt={a.name} /> : <span className="attachment-icon">▧</span>}<span><b>{a.name}</b><small>{a.mime.replace('image/', '')}</small></span></button>;
 }

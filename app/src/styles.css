@@ -1141,3 +1141,7 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .overview-page{max-width:980px;margin:0 auto;padding:24px 28px 48px}.overview-grid.page{grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin:16px 0}.overview-grid.page .overview-card{padding:14px 16px;gap:6px}.overview-card em{font-style:normal;font-size:11.5px;color:var(--ink-3);margin-top:4px}.overview-howto{margin-top:20px;border:1px solid var(--line);border-radius:12px;padding:14px 18px;background:var(--win)}.overview-howto h4{margin:0 0 8px}.overview-howto ul{margin:0;padding-left:18px;line-height:1.7;color:var(--ink-2)}.overview-howto code{font-family:var(--mono);font-size:12px}
 .lead-mobile{display:none}@media(max-width:760px){.lead-mobile{display:inline}}
 .side-hosts .host-short{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.col-fold{margin-left:auto;font-size:11.5px}
+.attachment-card.thumb{flex-direction:column;align-items:stretch;padding:0;overflow:hidden}.attachment-card.thumb img{width:100%;height:140px;object-fit:cover;display:block;background:var(--panel-2)}.attachment-card.thumb>span{padding:8px 10px}
+.work-files .fdiff.file>summary{padding:6px 8px}.work-files .fdiff.file>summary code{font-size:12px}.work-files .hunk{padding:0 8px 8px}.work-files .diff{max-height:260px;font-size:11px}
+.work-files,.work-block{min-width:0;max-width:100%;overflow:hidden}.work-files .fdiff.file>summary{min-width:0}.work-files .diff{overflow:auto}
