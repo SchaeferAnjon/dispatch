@@ -14,7 +14,7 @@ const AGENTS: { id: string; label: string; cls: string }[] = [
 
 export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) {
   const [host, setHost] = useState("local");
-  useEffect(() => { if (hostId) setHost(hostId); }, [hostId]);
+  useEffect(() => { setHost(hostId || "local"); }, [hostId]);
   const blocked = hostReason(hosts, host);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -69,7 +69,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
 
   return (
     <div className="sk-wrap">
-      <HostPicker locked={!!hostId} hosts={hosts} value={host} onChange={setHost} />
+      <HostPicker locked fromSidebar={!!hostId} hosts={hosts} value={host} onChange={setHost} />
       {blocked && <div className="empty" style={{ gridColumn: "1 / -1" }}>{blocked}</div>}
       <div className="sk-side">
         <div className="sess-tools">

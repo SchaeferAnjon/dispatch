@@ -13,11 +13,12 @@ export function hostReason(hosts: Host[], id: string): string {
   return `${h.name} 离线（或它那边 Tailscale 没开）`;
 }
 
-// When the sidebar already narrows the app to one Mac, the picker just names it.
-export function HostPicker({ hosts, value, onChange, locked = false }: { hosts: Host[]; value: string; onChange: (id: string) => void; locked?: boolean }) {
+// The sidebar decides which Mac we are looking at; config pages follow it and only
+// name the target here. 全部 in the sidebar means this Mac.
+export function HostPicker({ hosts, value, onChange, locked = false, fromSidebar = false }: { hosts: Host[]; value: string; onChange: (id: string) => void; locked?: boolean; fromSidebar?: boolean }) {
   const items = [{ id: "local", name: hosts.find((h) => h.local)?.name || "本机", online: true }, ...hosts.filter((h) => !h.local).map((h) => ({ id: h.id, name: h.name, online: h.online }))];
   const reason = hostReason(hosts, value);
-  if (locked) { const name = items.find((h) => h.id === value)?.name || value; return <div className="hostpick"><span className="muted small">在哪台改</span><b className="small">{name}</b><span className="muted small">（跟随侧栏选择）</span>{reason && <span className="hostpick-why">⚠ {reason}</span>}</div>; }
+  if (locked) { const name = items.find((h) => h.id === value)?.name || value; return <div className="hostpick"><span className="muted small">改的是</span><b className="small">{name}</b><span className="muted small">{items.length > 1 ? (fromSidebar ? "· 要改另一台，在侧栏选它" : "· 侧栏选「全部」时改本机") : ""}</span>{reason && <span className="hostpick-why">⚠ {reason}</span>}</div>; }
   return (
     <div className="hostpick">
       <span className="muted small">在哪台改</span>

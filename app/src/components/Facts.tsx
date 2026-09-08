@@ -41,7 +41,7 @@ const GENERAL_TEMPLATE = `# 服务器与数据库
 // Resources use the existing facts document; project instructions live in Agent rules.
 export function FactsView({ api, hosts, onDone, onError, hostId = "" }: Props) {
   const [host, setHost] = useState("local");
-  useEffect(() => { if (hostId) setHost(hostId); }, [hostId]);
+  useEffect(() => { setHost(hostId || "local"); }, [hostId]);
   const [docs, setDocs] = useState<FactsDocMeta[]>([]);
   const [selected, setSelected] = useState("通用");
   const [doc, setDoc] = useState<FactsDoc | null>(null);
@@ -78,7 +78,7 @@ export function FactsView({ api, hosts, onDone, onError, hostId = "" }: Props) {
   };
 
   return <div className="instruction-center">
-    <div className="instruction-top"><HostPicker locked={!!hostId} hosts={hosts} value={host} onChange={(h) => { if (!busy && draft === null) setHost(h); }} /><span className="spacer" /><button className="btn sm" disabled={busy || draft !== null} onClick={() => { if (panel === "keys") setKeysRevision(n => n + 1); else { void loadDocs(); void load(); } }}>重新读取</button></div>
+    <div className="instruction-top"><HostPicker locked fromSidebar={!!hostId} hosts={hosts} value={host} onChange={(h) => { if (!busy && draft === null) setHost(h); }} /><span className="spacer" /><button className="btn sm" disabled={busy || draft !== null} onClick={() => { if (panel === "keys") setKeysRevision(n => n + 1); else { void loadDocs(); void load(); } }}>重新读取</button></div>
     {blocked || error ? <div className="err">{blocked || error}</div> : null}
     <div className="facts-mobile-tabs views" role="tablist" aria-label="常用资料分类"><button role="tab" disabled={draft!==null} aria-selected={panel === "keys"} onClick={() => setPanel("keys")}>密钥/API</button><button role="tab" disabled={draft!==null} aria-selected={panel === "docs"} onClick={() => setPanel("docs")}>服务器/数据库</button><button role="tab" disabled={draft!==null} aria-selected={panel === "vaults"} onClick={() => setPanel("vaults")}>Obsidian</button></div>
     <div className={`instruction-grid facts-grid mobile-${panel}`}>

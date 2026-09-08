@@ -11,11 +11,11 @@ const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(
 // value with `dispatch env get NAME` only when they need it.
 export function EnvView({ api, hosts, onDone, onError, hostId = "" }: Props) {
   const [host, setHost] = useState("local");
-  useEffect(() => { if (hostId) setHost(hostId); }, [hostId]);
+  useEffect(() => { setHost(hostId || "local"); }, [hostId]);
   const blocked = hostReason(hosts, host);
   return (
     <div className="pit-wrap">
-      <HostPicker locked={!!hostId} hosts={hosts} value={host} onChange={setHost} />
+      <HostPicker locked fromSidebar={!!hostId} hosts={hosts} value={host} onChange={setHost} />
       <EnvKeys api={api} host={host} blocked={blocked} onDone={onDone} onError={onError} />
     </div>
   );
