@@ -13,7 +13,7 @@ import { OpenSessionButton, AdoptButton } from "./SessionActions";
 import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 
-interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
+interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
@@ -75,13 +75,14 @@ export function FileHunks({ changes }: { changes: FileChange[] }) {
   ))}</>;
 }
 
-export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
   const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
   const [mode, setMode] = useState<"active" | "starred" | "archived" | "scheduled">("active");
   const host = hostId ?? "";
   const [sel, setSel] = useState<string | null>(initialId ?? null);
+  useEffect(() => { onSelected?.(sel); }, [sel]);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<"timeline" | "activity" | "files" | "tasks" | "attachments" | "subagents">("timeline");
   const [subView, setSubView] = useState<SessionRef["subagents"][number] | null>(null);

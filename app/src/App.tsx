@@ -39,6 +39,26 @@ const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "
 const BOARD_VIEWS: View[] = ["board", "table"];
 // ⌘1…⌘9 in sidebar order.
 const SHORTCUT_VIEWS: View[] = ["home", "projects", "inbox", "sessions", "board", "graph", "agents", "stats", "pitfalls"];
+
+// ---- Where you are lives in the URL hash: `#/board`, `#/sessions/<id>`, `#/projects/<name>`, `#/board/task/<id>`.
+// Reload restores it; the browser's back/forward (and the phone's back gesture) walk it instead of leaving the app.
+type Place = { view: View; selected: string | null; project: string | null; session: string | null };
+function placeToHash(p: Place): string {
+  const parts: string[] = [p.view];
+  if (p.view === "projects" && p.project) parts.push(p.project);
+  if (p.view === "sessions" && p.session) parts.push(p.session);
+  if (p.selected) parts.push("task", p.selected);
+  return "#/" + parts.map(encodeURIComponent).join("/");
+}
+function parseHash(h: string): Place | null {
+  const parts = h.replace(/^#\/?/, "").split("/").filter(Boolean).map((x) => { try { return decodeURIComponent(x); } catch { return x; } });
+  if (!parts.length || !(VIEWS as string[]).includes(parts[0])) return null;
+  const view = parts[0] as View;
+  const ti = parts.indexOf("task", 1);
+  const selected = ti > 0 && parts[ti + 1] ? parts[ti + 1] : null;
+  const arg = parts[1] && parts[1] !== "task" ? parts[1] : null;
+  return { view, selected, project: view === "projects" ? arg : null, session: view === "sessions" ? arg : null };
+}
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
 
 export default function App() {
@@ -104,10 +124,11 @@ export default function App() {
     document.addEventListener("visibilitychange", vis);
     return () => { window.clearInterval(t); document.removeEventListener("visibilitychange", vis); };
   }, []);
-  const [view, changeView] = useState<View>("home");
+  const initialPlace = useRef<Place | null>(parseHash(window.location.hash));
+  const [view, changeView] = useState<View>(initialPlace.current?.view ?? "home");
   const [inboxTab, setInboxTab] = useState<keyof InboxItems | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [projectSelection, setProjectSelection] = useState<string | null>(()=>new URLSearchParams(location.search).get("project"));
+  const [selected, setSelected] = useState<string | null>(initialPlace.current?.selected ?? null);
+  const [projectSelection, setProjectSelection] = useState<string | null>(()=>initialPlace.current?.project ?? new URLSearchParams(location.search).get("project"));
   const [backStack, setBackStack] = useState<{ view: View; selected: string | null }[]>([]);
   const navigateContext = (next: View) => { setBackStack((stack) => [...stack, { view, selected }]); changeView(next); setSelected(null); };
   const goBack = () => { const previous = backStack[backStack.length - 1]; if (previous) { changeView(previous.view); setSelected(previous.selected); setBackStack((stack) => stack.slice(0, -1)); } };
@@ -120,11 +141,29 @@ export default function App() {
   const changeBoardSort = (s: BoardSort) => { setBoardSort(s); try { localStorage.setItem("dispatch-board-sort", s); } catch { /* ignore */ } };
   const [search, setSearch] = useState(false);
   const [delegate, setDelegate] = useState<{ host?: string; task?: string; prompt?: string; label?: string } | null>(null);
-  const [sessionFocus, setSessionFocus] = useState<string | null>(null);
+  const [sessionFocus, setSessionFocus] = useState<string | null>(initialPlace.current?.session ?? null);
+  // The session the list currently shows (reported by SessionsView); only for the URL, so selecting one does not remount the view.
+  const [sessionShown, setSessionShown] = useState<string | null>(initialPlace.current?.session ?? null);
+  // Keep the hash in step with the place. After popstate the hash already equals the new place, so nothing is pushed twice.
+  useEffect(() => {
+    const here = placeToHash({ view, selected, project: projectSelection, session: view === "sessions" ? sessionShown : null });
+    if (window.location.hash === here) return;
+    if (window.location.hash && parseHash(window.location.hash)) window.history.pushState(null, "", here); else window.history.replaceState(null, "", here);
+  }, [view, selected, projectSelection, sessionShown]);
+  useEffect(() => {
+    const onPop = () => {
+      const p = parseHash(window.location.hash); if (!p) return;
+      changeView(p.view); setSelected(p.selected); setBackStack([]);
+      if (p.view === "projects") setProjectSelection(p.project);
+      if (p.view === "sessions") { setSessionFocus(p.session); setSessionShown(p.session); }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   // The tour never opens on its own; the design should carry itself. `?` still has it.
   const [tour, setTour] = useState(false);
   const closeTour = () => setTour(false);
-  const openSession = (id: string) => { setSessionFocus(id); navigateContext("sessions"); };
+  const openSession = (id: string) => { setSessionFocus(id); setSessionShown(id); navigateContext("sessions"); };
   const [version, setVersion] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   // Which Mac to look at: "" = all, else a host *name* (matches session.host_name and the host:<name> task label).
@@ -165,8 +204,8 @@ export default function App() {
         const inf = await a.info();
         setInfo(inf);
         const requestedView = new URLSearchParams(window.location.search).get("page") ?? inf.initial_view;
-        if ((VIEWS as string[]).includes(requestedView ?? "")) changeView(requestedView as View);
-        if (inf.initial_task && !inf.initial_task.startsWith("session:")) setSelected(inf.initial_task);
+        if (!initialPlace.current && (VIEWS as string[]).includes(requestedView ?? "")) changeView(requestedView as View);
+        if (!initialPlace.current && inf.initial_task && !inf.initial_task.startsWith("session:")) setSelected(inf.initial_task);
         // The first-run guide, until it is finished or skipped once.
         if (isTauri) { try { const st = JSON.parse((await a.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); if (!st.done && !requestedView) changeView("setup"); } catch { /* CLI too old */ } }
       } catch (e) { setErr(String(e)); }
@@ -593,7 +632,7 @@ export default function App() {
             {view === "board" && <Board sort={boardSort} starred={starredProjects} progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView starred={starredProjects} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(what.endsWith("。") ? what : `${what}已复制`)).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
-            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
+            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
