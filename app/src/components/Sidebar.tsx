@@ -80,8 +80,8 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
             <button key={a.actor.id} className="agent" onClick={() => { onAllTasks(); setView("table"); setFilters({ project: null, mine: false, urgent: false, blocked: false, review: false, agent: a.actor.id }); }} title={`只看 ${a.actor.name} 的任务`}>
               <Avatar actor={a.actor} online={a.online} />
               <div style={{ minWidth: 0 }}>
-                <div className="nm">{a.actor.name}{a.sessions.length > 0 && <small>{a.sessions.some((s) => s.state === "working") ? `${a.sessions.filter((s) => s.state === "working").length} 进行中` : "暂无执行"}</small>}</div>
-                <div className="cur">
+                <div className="nm">{a.actor.name}{a.sessions.length > 0 && <small>{a.sessions.some((s) => s.state === "working") ? `${a.sessions.filter((s) => s.state === "working").length} 进行中` : a.current[0] ? "认领了任务，会话空闲" : "会话空闲"}</small>}{a.sessions.length === 0 && a.current[0] && <small>认领了任务，没在跑</small>}</div>
+                <div className="cur" title={a.current[0] ? "它名下进行中的任务" : undefined}>
                   {a.current[0] ? <><span className="id">{a.current[0].id}</span> {a.current[0].title}</> : a.sessions.length ? a.bySource.map((b) => `${b.label} ${b.count}`).join(" · ") : a.online ? "空闲" : a.lastActive ? "离线" : "还没来过"}
                 </div>
               </div>

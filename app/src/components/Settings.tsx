@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
-
+import { isTauri } from "../api";
 type Theme = "light" | "dark" | "";
 interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
@@ -9,6 +9,8 @@ export interface UpdateInfo { current: string; latest: string; newer?: boolean; 
 // (`dispatch settings`), so both Macs agree.
 export function SettingsView({ settings, onSave, theme, onTheme, onPhone, onScreen, screenReady, hosts = [], onSetup, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
+  // The version line should not read "v…" forever: look it up once when the page opens.
+  useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   const [applying, setApplying] = useState(false);
   const [draft, setDraft] = useState<DispatchSettings>(settings);
   const [busy, setBusy] = useState(false);
@@ -59,8 +61,8 @@ export function SettingsView({ settings, onSave, theme, onTheme, onPhone, onScre
           <button className="btn sm" disabled={!screenReady} onClick={onScreen}>复制屏幕链接</button>
         </div>}
         {onCheckUpdate && <div className="settings-row">
-          <div><b>版本与更新</b><p>当前 v{update?.current ?? "…"}{update?.latest ? `，最新 v${update.latest}` : ""}{update?.newer ? "，有新版本" : update?.latest ? "，已是最新" : ""}。{update?.error ? update.error : "从 GitHub Release 下载并替换应用，完成后自动重启。"}</p></div>
-          <span className="setup-row">{update?.newer && !update.error ? <button className="btn sm primary" disabled={applying} onClick={async () => { setApplying(true); try { await onApplyUpdate?.(); } finally { setApplying(false); } }}>{applying ? "更新中…" : `更新到 v${update.latest}`}</button> : null}<button className="btn sm" disabled={checking} onClick={async () => { setChecking(true); try { await onCheckUpdate(); } finally { setChecking(false); } }}>{checking ? "检查中…" : "检查更新"}</button></span>
+          <div><b>版本与更新</b><p>当前 v{update?.current ?? "…"}{update?.latest ? `，最新 v${update.latest}` : ""}{update?.newer ? "，有新版本" : update?.latest ? "，已是最新" : ""}。{update?.error ? update.error : isTauri ? "从 GitHub Release 下载并替换应用，完成后自动重启。" : "网页版只能查看版本；更新在 Mac 上的 Dispatch.app 里做。"}</p></div>
+          <span className="setup-row">{update?.newer && !update.error && isTauri ? <button className="btn sm primary" disabled={applying} onClick={async () => { setApplying(true); try { await onApplyUpdate?.(); } finally { setApplying(false); } }}>{applying ? "更新中…" : `更新到 v${update.latest}`}</button> : null}<button className="btn sm" disabled={checking} onClick={async () => { setChecking(true); try { await onCheckUpdate(); } finally { setChecking(false); } }}>{checking ? "检查中…" : "检查更新"}</button></span>
         </div>}
         {onSetup && <div className="settings-row">
           <div><b>首次设置</b><p>装依赖、建或接入任务板、选 Agent、同步规则与技能。跳过过的可以从这里再打开，每一步都能重跑。</p></div>

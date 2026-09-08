@@ -108,7 +108,7 @@ export default function App() {
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
   // New releases: checked once a day after start-up; the title bar shows a chip when one exists.
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
-  const checkUpdate = useCallback(async () => { if (!api || !isTauri) return; try { const r = JSON.parse((await api.on("local", ["update", "check", "--json"])).replace(/^[^{]*/, "")) as UpdateInfo; setUpdate(r); } catch (e) { setUpdate({ current: "?", latest: "", url: "", error: String(e) }); } }, [api]);
+  const checkUpdate = useCallback(async () => { if (!api) return; try { const r = JSON.parse((await api.on("local", ["update", "check", "--json"])).replace(/^[^{]*/, "")) as UpdateInfo; setUpdate(r); } catch (e) { setUpdate({ current: "?", latest: "", url: "", error: String(e) }); } }, [api]);
   useEffect(() => { if (!api || !isTauri) return; const t = window.setTimeout(() => void checkUpdate(), 8_000); const d = window.setInterval(() => void checkUpdate(), 24 * 3600_000); return () => { window.clearTimeout(t); window.clearInterval(d); }; }, [api, checkUpdate]);
   const applyUpdate = async () => { if (!api) return; try { say("正在下载新版本…"); const r = JSON.parse((await api.on("local", ["update", "apply", "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(`已更新到 v${r.updated_to}，正在重启`); } catch (e) { say(String(e), true); } };
   const [presenceLoaded, setPresenceLoaded] = useState(false);
@@ -577,7 +577,7 @@ export default function App() {
         <div className="titlebar" data-tauri-drag-region>
           <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
           <div className="crumb" data-tauri-drag-region><b>首次设置</b></div>
-          <div className="tb-right"><button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button></div>
+          <div className="tb-right"><button className="btn ghost" onClick={nextTheme} title={theme === "dark" ? "主题：深色 · 点一下切浅色" : theme === "light" ? "主题：浅色 · 点一下跟随系统" : "主题：跟随系统 · 点一下切深色"} aria-label="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button></div>
         </div>
         <div className="body setup-body-wrap">
           <main className="main"><section className="view"><SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); } catch { setInitStatus({ ...initStatus, done: true }); } void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} /></section></main>
@@ -600,7 +600,7 @@ export default function App() {
         <div className="tb-right">
           <button className="btn ghost" onClick={() => setSearch(true)} title="搜项目、会话、任务">搜索 <kbd>⌘K</kbd></button>
           <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
-          <button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
+          <button className="btn ghost" onClick={nextTheme} title={theme === "dark" ? "主题：深色 · 点一下切浅色" : theme === "light" ? "主题：浅色 · 点一下跟随系统" : "主题：跟随系统 · 点一下切深色"} aria-label="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
           {quotaByAgent.map(({ agent: a, qs }) => (
             <button key={a.actor.id} className="home-quota" onClick={() => setView("quota")} title={`${a.actor.name} 的额度${hostFilter ? ` · ${hostFilter}` : ""} · 点开看详情`}>
               <Avatar actor={a.actor} online={a.online} size={16} />

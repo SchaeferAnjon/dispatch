@@ -128,7 +128,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
     if (s) return s;
     if (sort === "sessions") return b.sessions - a.sessions || b.lastActive - a.lastActive;
     if (sort === "open") return b.open - a.open || b.lastActive - a.lastActive;
-    if (sort === "name") return a.name.localeCompare(b.name, "zh");
+    if (sort === "name") return a.name.localeCompare(b.name, "en", { numeric: true, sensitivity: "base" });  // a–z first, then 中文
     return b.lastActive - a.lastActive || b.last - a.last;
   };
   const featured = ranked.active.filter((c) => (isStarred(flags, c.name) || c.live || now - c.last < 3 * DAY) && matches(c)).sort(orderBy);
@@ -318,6 +318,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
         {onScreen && <button className="link" disabled={!screenReady} onClick={onScreen} title={screenReady ? "复制屏幕链接：手机上看并操作这台电脑，登录用这台 Mac 的用户名和密码" : "还没配置屏幕访问：设置页有说明"}>看屏幕 ⧉</button>}
       </div>
 
+      {!focus && insight === undefined && <div className="home-insight placeholder" aria-hidden="true" />}
       {!focus && insight && <button className="home-insight" onClick={() => onView("stats")} title="最近 14 天跨 Agent 的复盘洞察 · 点开看全部"><span className="home-insight-tag">洞察</span><span className="t">{insight}</span>{alertCount ? <span className="n" title="按会话盯着的新告警，统计页里看">{alertCount} 条新</span> : null}<span className="muted small">统计页 ›</span></button>}
       {focus && featured.length === 0 && (!ungrouped || !matches(ungrouped)) && <div className="home-quiet">{focus === "unread" ? "没有未读回复" : focus === "waiting" ? "没有会话在等你确认" : focus === "blocked" ? "没有被卡住的任务" : "没有会话在跑"}<button className="link" onClick={() => setFocus("")}>显示全部</button></div>}
       {!focus && trackedAll.length > 0 && (

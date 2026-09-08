@@ -24,6 +24,8 @@ export function Markdown({ src, className, onRelativeLink }: { src: string; clas
     const raw = marked.parse(src ?? "", { async: false }) as string;
     const clean = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ["target"] });
     const dom = new DOMParser().parseFromString(clean, 'text/html');
+    // `root@1.2.3.4` is an ssh target, not an address: undo marked's mailto autolink for user@host forms.
+    for (const a of dom.querySelectorAll('a[href^="mailto:"]')) { const addr = a.getAttribute('href')!.slice(7); if (/^[^@]+@(\d{1,3}\.){3}\d{1,3}$/.test(addr) || !addr.includes('.')) a.replaceWith(dom.createTextNode(a.textContent || addr)); }
     if (media) for (const img of dom.querySelectorAll('img')) {
       const path = img.getAttribute('src') || '';
       if (path && !/^(https?:|data:|blob:)/i.test(path)) { img.dataset.attachment = path; img.removeAttribute('src'); img.alt = img.alt || '图片'; img.classList.add('local-image'); }

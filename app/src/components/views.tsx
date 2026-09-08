@@ -180,7 +180,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
             if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: "看它的屏幕并操作", act: () => onOpenUrl(h.vnc), hint: "用系统「屏幕共享」打开，能直接操作那台 Mac" });
             if (h.novnc_up && h.novnc.startsWith("https://") && !h.local) ways.push({ key: "novnc", label: "复制手机看屏幕链接 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "发到手机上打开（手机需连着 Tailscale），用这台 Mac 的用户名和登录密码" });
             if (h.local && onPhoneLink) ways.push({ key: "phone", label: "手机访问 ⧉", act: onPhoneLink, hint: "复制 Dispatch 网页版链接；手机连上 Tailscale 后用浏览器打开，可添加到主屏幕" });
-            if (h.local && h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: "看屏幕 ⧉", act: () => onCopyText(h.novnc, "链接已复制。另一个电脑使用当前电脑会无限套娃，在看屏幕之前请打开 Tailscale。"), hint: "另一个电脑使用当前电脑会无限套娃，在看屏幕之前请打开 Tailscale。" });
+            if (h.local && h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: "看屏幕 ⧉", act: () => onCopyText(h.novnc, "屏幕链接已复制。在手机或另一台电脑上打开（在这台上打开自己会套娃）；对方先连上 Tailscale。"), hint: "复制这台电脑的屏幕链接，给手机或另一台电脑用；在本机打开会套娃" });
             if (h.rustdesk) ways.push({ key: "rustdesk", label: h.rustdesk_id ? `RustDesk ${h.rustdesk_id} ⧉` : "RustDesk", act: () => (h.rustdesk_id ? onCopyText(h.rustdesk_id, "RustDesk ID") : onOpenUrl("rustdesk://")), hint: "不用虚拟网：手机 RustDesk 输这个 ID" });
             if (h.sunshine) ways.push({ key: "moonlight", label: "Moonlight 配对", act: () => onOpenUrl(h.sunshine_ui), hint: "打开 Sunshine 配对页；手机装 Moonlight，画质最高" });
             if (h.uu) ways.push({ key: "uu", label: "UU远程", act: () => onOpenUrl("/Applications"), hint: "已装网易UU远程；它没有接口，去它里面连" });
@@ -208,7 +208,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
             <Avatar actor={a.actor} online={a.online} size={30} />
             <div><div className="nm">{a.actor.name}</div><div className="sub">{a.actor.id}{a.lastActive ? ` · 最近写入 ${relTime(a.lastActive)}` : ""}</div></div>
             <span className={`st sm state ${a.sessions.length ? (working ? "prog" : "done") : a.online ? "done" : "open"}`}>
-              {a.sessions.length ? (working ? `${working} 个在跑` : `${a.sessions.filter((s) => s.state === "idle" && s.registered).length} 空闲 · ${a.sessions.filter((s) => s.state === "unknown" || !s.registered).length} 状态未知`) : isHuman ? "你" : a.online ? "在线" : "离线"}
+              {a.sessions.length ? (working ? `${working} 个在跑` : (() => { const idle = a.sessions.filter((s) => s.state === "idle" && s.registered).length, unk = a.sessions.length - idle; return [idle ? `${idle} 空闲` : "", unk ? `${unk} 个只见进程、看不到会话` : ""].filter(Boolean).join(" · ") || "空闲"; })()) : isHuman ? "你" : a.online ? "在线" : "离线"}
             </span>
           </div>
           {!isHuman && (

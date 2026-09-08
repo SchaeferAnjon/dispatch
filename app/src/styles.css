@@ -1217,3 +1217,16 @@ th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--ink)}t
 .ins-days-note{align-self:center}.ins-findings-fold>summary{cursor:pointer;padding:4px 0}
 .sess-filter-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
 .attachment-gone{grid-column:1/-1}.attachment-gone>summary{cursor:pointer;padding:6px 0}
+.home-insight.placeholder{visibility:hidden;min-height:38px}
+/* Host cards on the agents page: the machine's name stays on one line; the hint wraps instead. */
+.hosts-bar .host>b{white-space:nowrap}.hosts-bar .host{flex-wrap:wrap}
+/* Phone, inside a conversation: the screen is for the messages. Drop the page-title row, the path line,
+   and keep tabs on one scrolling line, so the header takes a quarter of the screen instead of a third. */
+@media(max-width:760px){
+  .main:has(.sess-wrap.has-selection) .toolbar.bare{display:none}
+  .sess-wrap.has-selection .sess-head{padding:8px 12px 4px;gap:8px}
+  .sess-wrap.has-selection .sess-head .sub{display:none}
+  .sess-wrap.has-selection .session-context>summary{padding:2px 12px;font-size:11px}
+  .sess-wrap.has-selection .session-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .sess-wrap.has-selection .session-tabs button{white-space:nowrap}
+}

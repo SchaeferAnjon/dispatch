@@ -143,7 +143,7 @@ def local_host_name():
     global _LOCAL_NAME
     if _LOCAL_NAME is None:
         try:
-            _LOCAL_NAME = subprocess.run(["scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2).stdout.strip() or os.uname().nodename
+            _LOCAL_NAME = subprocess.run(["/usr/sbin/scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2).stdout.strip() or os.uname().nodename
         except Exception:
             _LOCAL_NAME = os.uname().nodename
     return _LOCAL_NAME
@@ -2733,6 +2733,7 @@ def cmd_facts(a):
         for ident, vault in data.get('vaults', {}).items():
             path = Path(vault.get('path', ''))
             if not str(vault.get('path', '')).strip(): continue
+            if path.name == 'Obsidian Sandbox' and 'Application Support/obsidian' in str(path): continue  # Obsidian's own demo vault
             rows.append({'id': ident, 'name': path.name, 'path': str(path), 'exists': path.is_dir(), 'open': bool(vault.get('open'))})
         out(rows, a.json, lambda rs: print(json.dumps(rs, ensure_ascii=False)))
     elif a.op == "topics":

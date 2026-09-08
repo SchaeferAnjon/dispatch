@@ -27,7 +27,7 @@ try:
 except OSError:
     SERVE_VERSION = ""
 ICON = os.path.join(os.path.dirname(HERE), "src-tauri", "icons", "icon.png")
-PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + os.path.join(HOME, ".local", "bin") + ":" + os.environ.get("PATH", "")
+PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + os.path.join(HOME, ".local", "bin") + ":" + os.environ.get("PATH", "")
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2", ".webmanifest": "application/manifest+json"}
 
 

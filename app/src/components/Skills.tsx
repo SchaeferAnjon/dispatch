@@ -122,7 +122,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
           {!loaded && <div className="empty">读取技能池…</div>}
           {items.map((s) => (
             <button key={s.name} data-menu="skill" data-id={s.name} className={`sk-item${sel === s.name ? " sel" : ""}`} onClick={() => setSel(s.name)}>
-              <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={`不在共享技能池 ~/.cc-switch/skills 里，只装在这一处：${s.path}`}>池外</span>}<span className="spacer" />{total(s) > 0 && <span className="use mono" title={"调用次数（C=Claude Code，X=Codex）：" + Object.entries(s.usage ?? {}).map(([a, n]) => `${a} ${n} 次`).join("，") + (s.last_used ? `，最近 ${s.last_used}` : "")}>{Object.entries(s.usage ?? {}).map(([a, n]) => `${a === "claude-code" ? "C" : a === "codex" ? "X" : a[0].toUpperCase()}${n}`).join(" ")}</span>}</div>
+              <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={`不在共享技能池 ~/.cc-switch/skills 里，只装在这一处：${s.path}`}>只装在一处</span>}<span className="spacer" />{total(s) > 0 && <span className="use mono" title={"调用次数（C=Claude Code，X=Codex）：" + Object.entries(s.usage ?? {}).map(([a, n]) => `${a} ${n} 次`).join("，") + (s.last_used ? `，最近 ${s.last_used}` : "")}>{Object.entries(s.usage ?? {}).map(([a, n]) => `${a === "claude-code" ? "C" : a === "codex" ? "X" : a[0].toUpperCase()} ${n} 次`).join(" · ")}</span>}</div>
               <div className="l2">{s.description || <span className="muted">（没有描述）</span>}</div>
               <div className="l3">{AGENTS.map((a) => <span key={a.id} className={`mount ${a.cls}${s.agents[a.id] ? " on" : ""}`}>{a.label}</span>)}</div>
             </button>

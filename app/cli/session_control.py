@@ -40,7 +40,10 @@ def browse(d, path):
     except OSError:
         raise Rejected('无法读取这个文件夹，请检查电脑上的文件访问权限。')
     recent = sorted(d.load_index().values(), key=lambda x: x.get('mtime', 0), reverse=True)
-    paths = list(dict.fromkeys(x.get('cwd') for x in recent if x.get('cwd') and os.path.isdir(x['cwd'])))[:12]
+    # Temp and scratch directories are where agents work, not where you start a conversation.
+    noise = ('/private/tmp', '/tmp', '/var/folders', os.path.join(d.HOME, 'Documents/Codex'))
+    skip = lambda p: p.startswith(noise) or '/scratchpad' in p or '/.cache/' in p
+    paths = list(dict.fromkeys(x.get('cwd') for x in recent if x.get('cwd') and os.path.isdir(x['cwd']) and not skip(x['cwd'])))[:12]
     return dict(path=path, parent=os.path.dirname(path), children=children[:300], truncated=len(children)>300, recent=paths)
 
 
