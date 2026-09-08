@@ -37,6 +37,7 @@ type Theme = "light" | "dark" | "";
 const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站", archive: "已归档任务", setup: "首次设置", overview: "总览" };
 const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash", "archive", "setup", "overview"];
 const BOARD_VIEWS: View[] = ["board", "table"];
+const TASK_VIEWS: View[] = ["board", "table", "trash", "archive"];  // share the 看板/表格/回收站/已归档 switch
 // ⌘1…⌘9 in sidebar order.
 const SHORTCUT_VIEWS: View[] = ["home", "projects", "inbox", "sessions", "board", "graph", "agents", "stats", "pitfalls"];
 
@@ -375,6 +376,13 @@ export default function App() {
   // task labels and outcomes together, archived ones set aside.
   const projectList = useMemo(() => rankProjects(projectGroups(projectRows, issuesF, outcomesF).filter((p) => p.name !== UNGROUPED_PROJECT), projectFlags), [projectRows, issuesF, outcomesF, projectFlags]);
   const projects = useMemo(() => projectList.active.map((p) => ({ name: p.name, count: p.items.length })), [projectList]);
+  // The same rule the projects page uses: a directory becomes a project once it has tasks, outcomes, or a manual link.
+  const projectOptions = useMemo(() => {
+    const formal = new Set<string>(), other = new Set<string>();
+    for (const p of projectList.active) (p.items.length > 0 || p.results.length > 0 || p.sessions.some((a) => !!a.project_override) ? formal : other).add(p.name);
+    for (const n of formal) other.delete(n);
+    return { formal: [...formal].filter(Boolean), other: [...other].filter(Boolean) };
+  }, [projectList]);
   // Starred projects lead everywhere: workbench, board groups, table.
   const starredProjects = useMemo(() => new Set(projectList.active.filter((p) => isStarred(projectFlags, p.name)).map((p) => p.name)), [projectList, projectFlags]);
 
@@ -415,6 +423,7 @@ export default function App() {
 
   const counts = useMemo(() => ({
     total: issuesF.length,
+    open: issuesF.filter((i) => i.status !== "closed" && !isTrashed(i)).length,
     blocked: inbox.blocked.length,
     review: inbox.review.length,
     agents: agents.filter((a) => a.online).length,
@@ -519,6 +528,7 @@ export default function App() {
       { label: "已归档任务", onClick: () => setView("archive") },
       ...(archivable.length ? [{ label: `归档 30 天前完成的（${archivable.length}）`, onClick: () => void archiveOld() }] : []),
     ] : []),
+    ...(view === "trash" || view === "archive" ? [{ label: "返回看板", onClick: () => setView("board") }] : []),
     ...(view === "inbox" && inbox.unread.length > 0 ? [{ label: `全部标记已读（${inbox.unread.length}）`, onClick: async () => { for (const a of inbox.unread) if (a.reply_id) await markRead(a, a.reply_id); } }] : []),
     ...(view === "settings" ? [{ label: "检查更新", onClick: () => void checkUpdate() }] : []),
     { label: "新建会话", hint: "⌘N", onClick: () => setNewSession(true) },
@@ -597,14 +607,16 @@ export default function App() {
       <div className={`body${selected ? " with-detail" : ""}`}>
         <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} hosts={hosts} hostFilter={hostFilter} setHostFilter={(h) => { setHostFilter(h); setSelected(null); }} onAllTasks={allTasks} onOverview={() => setView("overview")} />
         <main className="main">
-          <div className={`toolbar${BOARD_VIEWS.includes(view) ? "" : " bare"}`}>
+          <div className={`toolbar${TASK_VIEWS.includes(view) ? "" : " bare"}`}>
             {backStack.length > 0 && <button className="btn sm mobile-context-back" onClick={goBack}>‹ 返回</button>}
             <h2>{VIEW_LABEL[view]}{BOARD_VIEWS.includes(view) && filters.project !== null && <span className="muted"> · {filters.project || "未分项目"}</span>}</h2>
             {hosts.length > 1 && <select className="mobile-host-filter" aria-label="选择机器" value={hostFilter} onChange={e => { setHostFilter(e.target.value); setSelected(null); }}><option value="">全部机器</option>{hosts.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}</select>}
-            {BOARD_VIEWS.includes(view) && (
+            {TASK_VIEWS.includes(view) && (
               <div className="views">
                 <button className={view === "board" ? "on" : ""} onClick={() => setView("board")}>看板</button>
                 <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>表格</button>
+                <button className={view === "trash" ? "on" : ""} onClick={() => setView("trash")} title="移到回收站的任务，可恢复">回收站{hostIssues.some(isTrashed) ? ` ${hostIssues.filter(isTrashed).length}` : ""}</button>
+                <button className={view === "archive" ? "on" : ""} onClick={() => setView("archive")} title="归档过的已完成任务：不进已完成列，不计数">已归档{hostIssues.some(isArchivedTask) ? ` ${hostIssues.filter(isArchivedTask).length}` : ""}</button>
               </div>
             )}
             <span className="spacer" />
@@ -612,8 +624,6 @@ export default function App() {
               <label className="search board-search">🔍<input ref={searchRef} placeholder="筛任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="清除任务筛选" onClick={() => setQuery("")}>✕</button>}</label>
               <select className="sess-agent" value={boardSort} onChange={(e) => changeBoardSort(e.target.value as BoardSort)} aria-label="任务排序" title="每一列里任务怎么排；项目分组里收藏的在前">{BOARD_SORTS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}</select>
               <button className="chip" onClick={() => setCreating(true)} title="任务通常由 Agent 自己建；这里手动建一条">＋ 新任务</button>
-              <button className={`chip${hostIssues.some(isTrashed) ? "" : " zero"}`} onClick={()=>setView("trash")}>回收站 {hostIssues.filter(isTrashed).length}</button>
-              <button className={`chip${hostIssues.some(isArchivedTask) ? "" : " zero"}`} onClick={()=>setView("archive")} title="归档过的已完成任务：不进已完成列，不计数">已归档 {hostIssues.filter(isArchivedTask).length}</button>
               {archivable.length > 0 && <button className="chip" onClick={() => void archiveOld()} title="把完成超过 30 天的任务收起来，已完成列和计数都会变小；随时可以取消归档">归档 30 天前完成的 {archivable.length}</button>}
               <button className="chip" disabled={!Object.values(filters).some(Boolean) && filters.project === null && !query} onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>清除筛选</button>
               <button className={`chip${filters.review ? " on" : ""}${counts.review ? "" : " zero"}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>Agent 复核 {counts.review}</button>
@@ -655,7 +665,7 @@ export default function App() {
       {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
       {delegate && api && <Delegate hosts={hosts} initialHost={delegate.host} initialTask={delegate.task} initialPrompt={delegate.prompt} initialLabel={delegate.label} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} />}
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
-      {creating && <NewTask projects={projects.map((p) => p.name).filter(Boolean)} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
+      {creating && <NewTask projects={projectOptions.formal} otherProjects={projectOptions.other} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
       {webUpdate && <button className="toast web-update" onClick={() => window.location.reload()}>网页版已更新到 v{webUpdate} · 点这里刷新</button>}
       <GlobalContextMenu issues={issues} sessions={sessionByKey} />

@@ -13,25 +13,25 @@ const TABS: { v: View; icon: string; label: string }[] = [
 const MORE: { v: View; icon: string; label: string }[] = [
   { v: "board", icon: "board", label: "全部任务" },
   { v: "agents", icon: "agent", label: "Agent 状态" },
-  { v: "trash", icon: "inbox", label: "回收站" },
   { v: "stats", icon: "chart", label: "统计与额度" },
   { v: "graph", icon: "graph", label: "脉络" },
   { v: "skills", icon: "skill", label: "技能" },
   { v: "rules", icon: "rule", label: "规则与资料" },
   { v: "pitfalls", icon: "pit", label: "知识库" },
   { v: "settings", icon: "gear", label: "设置" },
+  { v: "overview", icon: "home", label: "总览" },
 ];
 
 export function MobileNav({ view, setView, badge }: { view: View; setView: (v: View) => void; badge: number }) {
   const [more, setMore] = useState(false);
-  const inMore = view === "quota" || view === "table" || MORE.some((m) => m.v === view);
+  const inMore = view === "quota" || view === "table" || view === "trash" || view === "archive" || MORE.some((m) => m.v === view);
   return (
     <>
       {more && (
         <div className="m-sheet-bg" onClick={() => setMore(false)}>
           <div className="m-sheet" onClick={(e) => e.stopPropagation()}>
             {MORE.map((m) => (
-              <button key={m.v} className={(view === m.v || (view === "quota" && m.v === "stats") || (view === "table" && m.v === "board")) ? "on" : ""} onClick={() => { setView(m.v); setMore(false); }}><Icon name={m.icon} size={18} />{m.label}</button>
+              <button key={m.v} className={(view === m.v || (view === "quota" && m.v === "stats") || (["table", "trash", "archive"].includes(view) && m.v === "board")) ? "on" : ""} onClick={() => { setView(m.v); setMore(false); }}><Icon name={m.icon} size={18} />{m.label}</button>
             ))}
           </div>
         </div>
@@ -43,7 +43,7 @@ export function MobileNav({ view, setView, badge }: { view: View; setView: (v: V
             {t.v === "inbox" && badge > 0 && <i className="m-badge">{badge}</i>}
           </button>
         ))}
-        <button className={inMore || more ? "on" : ""} onClick={() => setMore(!more)}><Icon name="rule" size={20} />更多</button>
+        <button className={inMore || more ? "on" : ""} onClick={() => setMore(!more)}><Icon name="board" size={20} />更多</button>
       </nav>
     </>
   );

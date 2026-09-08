@@ -3,9 +3,9 @@ import type { NewIssue } from "../types";
 import { PROJECT_PREFIX } from "../derive";
 import { TYPE_LABEL } from "./ui";
 
-interface Props { projects: string[]; defaultProject: string | null; onCancel: () => void; onCreate: (input: NewIssue) => Promise<void> }
+interface Props { projects: string[]; otherProjects?: string[]; defaultProject: string | null; onCancel: () => void; onCreate: (input: NewIssue) => Promise<void> }
 
-export function NewTask({ projects, defaultProject, onCancel, onCreate }: Props) {
+export function NewTask({ projects, otherProjects = [], defaultProject, onCancel, onCreate }: Props) {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [type, setType] = useState("task");
@@ -31,7 +31,7 @@ export function NewTask({ projects, defaultProject, onCancel, onCreate }: Props)
         <div className="row">
           <label>类型<select value={type} onChange={(e) => setType(e.target.value)}>{Object.entries(TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
           <label>优先级<select value={priority} onChange={(e) => setPriority(Number(e.target.value))}>{[0, 1, 2, 3, 4].map((p) => <option key={p} value={p}>P{p}{p === 0 ? " 最急" : p === 4 ? " 最低" : ""}</option>)}</select></label>
-          <label>项目<select value={project} onChange={(e) => setProject(e.target.value)}><option value="">（不分）</option>{projects.map((p) => <option key={p} value={p}>{p}</option>)}<option value="__new">＋ 新项目…</option></select></label>
+          <label>项目<select value={project} onChange={(e) => setProject(e.target.value)}><option value="">（不分 · 会进「未归类」）</option><optgroup label="项目">{projects.map((p) => <option key={p} value={p}>{p}</option>)}</optgroup>{otherProjects.length > 0 && <optgroup label="只是有过会话的目录">{otherProjects.map((p) => <option key={p} value={p}>{p}</option>)}</optgroup>}<option value="__new">＋ 新项目…</option></select></label>
         </div>
         {project === "__new" && <label>新项目名<input value={newProject} onChange={(e) => setNewProject(e.target.value)} placeholder="例如 poker-trainer" /></label>}
         <label>验收标准（每行一条，可选）<textarea value={ac} onChange={(e) => setAc(e.target.value)} placeholder={"- 测试通过\n- 截图确认"} /></label>

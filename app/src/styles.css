@@ -1213,3 +1213,4 @@ pre.diff.dv-pre button.skip{display:block;width:100%;text-align:left;padding:2px
 /* Harness events in the conversation: one grey line, not a bubble. */
 .tl.system{padding:2px 0;border:0;background:none}.tl.system .tl-system{font-size:11.5px;padding:2px 8px;border-left:2px dashed var(--line);white-space:pre-wrap;word-break:break-word}
 .hunk-fold>summary{cursor:pointer;list-style:none}.hunk-fold>summary::before{content:'› ';color:var(--ink-3)}.hunk-fold[open]>summary::before{content:'⌄ '}
+th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--ink)}th.sortable.on{color:var(--ink);font-weight:600}

@@ -1297,7 +1297,9 @@ def cmd_stats(a):
             S["count"] += n; S["by"][ag] = S["by"].get(ag, 0) + n
         cwd = (e.get("cwd") or "").rstrip("/")
         if cwd and not e.get("subagent"):
-            P = projects.setdefault(cwd, {"name": os.path.basename(cwd) or cwd, "cwd": cwd, "tokens": 0, "msgs": 0, "sessions": 0, "by": {}})
+            # Same naming as the sessions list: the git root wins over the leaf folder; the home directory is "零散会话", not the user name.
+            pname = "零散会话" if cwd == HOME.rstrip("/") else (git_root_name(cwd) or os.path.basename(cwd) or cwd)
+            P = projects.setdefault(pname, {"name": pname, "cwd": cwd, "tokens": 0, "msgs": 0, "sessions": 0, "by": {}})
             tk = e.get("tokens") or {}
             tt = sum(v for k, v in tk.items() if k != "think")
             P["tokens"] += tt; P["sessions"] += 1; P["msgs"] += e.get("user_msgs", 0) + e.get("assistant_msgs", 0)

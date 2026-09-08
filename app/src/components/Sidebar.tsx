@@ -14,7 +14,7 @@ interface Props {
   info: Info | null;
   view: View;
   setView: (v: View) => void;
-  counts: { total: number; blocked: number; review: number; agents: number; inbox: number };
+  counts: { total: number; open: number; blocked: number; review: number; agents: number; inbox: number };
   projects: { name: string; count: number }[];
   agents: AgentPresence[];
   filters: Filters;
@@ -31,8 +31,8 @@ interface Props {
 // asking for you (等你 turns red).
 export function Sidebar({ info, view, setView, counts, projects, agents, filters, setFilters, onAllTasks, onOverview, hosts = [], hostFilter = "", setHostFilter }: Props) {
   const go = (v: View) => { setView(v); setFilters({ ...filters, blocked: false, review: false }); };
-  const item = (v: View, icon: string, label: string, right?: React.ReactNode, active?: boolean) => (
-    <a role="button" tabIndex={0} className={(active ?? view === v) ? "on" : ""} onClick={() => v === "board" ? onAllTasks() : go(v)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); v === "board" ? onAllTasks() : go(v); } }}>
+  const item = (v: View, icon: string, label: string, right?: React.ReactNode, active?: boolean, title?: string) => (
+    <a role="button" tabIndex={0} title={title} className={(active ?? view === v) ? "on" : ""} onClick={() => v === "board" ? onAllTasks() : go(v)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); v === "board" ? onAllTasks() : go(v); } }}>
       <span className="ic"><Icon name={icon} /></span>{label}{right}
     </a>
   );
@@ -55,14 +55,14 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
 
       <nav className="nav">
         {item("home", "home", "工作台")}
-        {item("projects", "project", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>)}
+        {item("projects", "project", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>, undefined, `${projects.filter((p) => p.name).length} 个项目和目录（有会话或任务的）`)}
         {item("inbox", "inbox", "等我", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
         {item("sessions", "chat", "会话")}
       </nav>
 
       <nav className="nav">
         <div className="h">任务</div>
-        {item("board", "board", "全部任务", <span className="n">{counts.total}</span>, taskView)}
+        {item("board", "board", "全部任务", <span className="n">{counts.open}</span>, taskView, `${counts.open} 项未完成，共 ${counts.total} 条任务`)}
         {item("graph", "graph", "脉络")}
         {filters.project !== null && taskView && (
           <a className="filter-row" onClick={() => setFilters({ ...filters, project: null })} title="点击清除筛选">
@@ -96,6 +96,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
         {item("rules", "rule", "规则与资料")}
         {item("pitfalls", "pit", "知识库")}
         {item("settings", "gear", "设置")}
+        {item("overview", "home", "总览", undefined, undefined, "每个页面是干什么的、怎么用；点左上角 Logo 也能到")}
       </nav>
     </aside>
   );

@@ -67,7 +67,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   const [busy, setBusy] = useState(false);
   // Dynamic workflow: a discussion round (each agent leaves one 【讨论】 comment) and a split into sub-tasks.
   const [wf, setWf] = useState<"" | "discuss" | "split">("");
-  const [wfKinds, setWfKinds] = useState<string[]>(["codex"]);
+  const [wfKinds, setWfKinds] = useState<string[]>(["claude", "codex"]);
   const [wfQuestion, setWfQuestion] = useState("");
   const [wfRows, setWfRows] = useState<{ kind: string; title: string; desc: string }[]>([{ kind: "codex", title: "", desc: "" }]);
   const [wfBusy, setWfBusy] = useState(false);
@@ -186,7 +186,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
               {[0, 1, 2, 3, 4].map((p) => <option key={p} value={p}>P{p}{p === 0 ? " 最急" : p === 4 ? " 最低" : ""}</option>)}
             </select>}
           </span>
-          {delegatedBy(issue) && (<><span className="k">派活</span><span className="v">{actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 {actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}</span></>)}
+          {delegatedBy(issue) && (<><span className="k">派活</span><span className="v">{delegatedBy(issue) === delegatedTo(issue) ? `${actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给另一个自己的会话` : `${actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 ${actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}`}</span></>)}
           <span className="k">类型</span><span className="v">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>
           <span className="k">项目</span><span className="v"><ProjectTag name={projectOf(issue)} /></span>
           {root && (<><span className="k">源自</span><span className="v"><span className="link" onClick={() => onSelect(root.id)} title={root.title}>{root.id}</span><span className="muted" style={{ fontSize: 12 }}>{root.title}</span></span></>)}

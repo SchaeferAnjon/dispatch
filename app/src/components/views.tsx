@@ -25,7 +25,7 @@ export function Card({ issue, progress, selected, onSelect, me, root, draggable,
         <span className="id" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{issue.id}</span>
         {issue.issue_type !== "task" && <span className="muted">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>}
       </div>
-      {delegatedBy(issue) && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>↪ {actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 {actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}</div>}
+      {delegatedBy(issue) && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>{delegatedBy(issue) === delegatedTo(issue) ? `↻ ${actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给另一个自己的会话` : `↪ ${actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 ${actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}`}</div>}
       {blocked && <div className="blk">⊘ 被 {issue.dependency_count ?? ""} 项依赖卡住</div>}
       {issue.status === "deferred" && <div className="blk deferred">⏸ 搁置 · 暂不安排</div>}
       {!blocked && (issue.dependency_count ?? 0) > 0 && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>↳ 依赖 {issue.dependency_count} 项</div>}
@@ -111,13 +111,23 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
   );
 }
 
+type SortKey = "id" | "title" | "status" | "assignee" | "priority" | "project" | "updated";
+const STATUS_ORDER: Record<string, number> = { in_progress: 0, blocked: 1, open: 2, deferred: 3, closed: 4 };
 export function TableView({ issues, selected, onSelect, me, rootOf, starred = new Set<string>() }: Common & { starred?: Set<string> }) {
+  // Click a header to sort by it; click again to flip. Starred projects float up only in the default order.
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
   if (issues.length === 0) return <div className="empty">没有符合条件的任务</div>;
-  const rows = [...issues].sort((a, b) => Number(starred.has(projectOf(b))) - Number(starred.has(projectOf(a))));
+  const val = (i: Issue, k: SortKey): string | number => k === "id" ? i.id : k === "title" ? i.title : k === "status" ? (STATUS_ORDER[i.status] ?? 9) : k === "assignee" ? (actorOf(i.assignee, me)?.name ?? i.assignee ?? "") : k === "priority" ? i.priority : k === "project" ? projectOf(i) : i.updated_at;
+  const rows = [...issues].sort((a, b) => {
+    if (!sort) return Number(starred.has(projectOf(b))) - Number(starred.has(projectOf(a)));
+    const x = val(a, sort.key), y = val(b, sort.key);
+    return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "zh")) * sort.dir;
+  });
+  const th = (k: SortKey, label: string) => <th className={`sortable${sort?.key === k ? " on" : ""}`} onClick={() => setSort(sort?.key === k ? (sort.dir === 1 ? { key: k, dir: -1 } : null) : { key: k, dir: 1 })} title="点击排序，再点反向，第三次恢复默认">{label}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}</th>;
   return (
     <div className="tw">
       <table>
-        <thead><tr><th>ID</th><th>任务</th><th>源自</th><th>状态</th><th>负责</th><th>优先</th><th>项目</th><th>依赖</th><th>更新</th><th>操作</th></tr></thead>
+        <thead><tr>{th("id", "ID")}{th("title", "任务")}<th>源自</th>{th("status", "状态")}{th("assignee", "负责")}{th("priority", "优先")}{th("project", "项目")}<th>依赖</th>{th("updated", "更新")}<th>操作</th></tr></thead>
         <tbody>
           {rows.map((i) => {
             const who = actorOf(i.assignee, me);
@@ -231,11 +241,15 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
           {(() => {
             // 派活关系: tasks this agent handed out, and tasks handed to it, still open.
             const open = issues.filter((i) => i.status !== "closed");
-            const out = open.filter((i) => actorOf(delegatedBy(i), me)?.id === a.actor.id);
-            const got = open.filter((i) => actorOf(delegatedTo(i), me)?.id === a.actor.id);
-            if (!out.length && !got.length) return null;
+            // A task an agent handed to another instance of itself is neither sent nor received; it shows once.
+            const self = (i: Issue) => actorOf(delegatedBy(i), me)?.id === actorOf(delegatedTo(i), me)?.id;
+            const out = open.filter((i) => actorOf(delegatedBy(i), me)?.id === a.actor.id && !self(i));
+            const got = open.filter((i) => actorOf(delegatedTo(i), me)?.id === a.actor.id && !self(i));
+            const own = open.filter((i) => actorOf(delegatedTo(i), me)?.id === a.actor.id && self(i));
+            if (!out.length && !got.length && !own.length) return null;
             return <div className="agent-delegations">
               {out.length > 0 && <div><span className="lbl">派出 {out.length}</span>{out.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>→ {actorOf(delegatedTo(i), me)?.name ?? delegatedTo(i)} · {i.title.slice(0, 28)}</button>)}</div>}
+              {own.length > 0 && <div><span className="lbl" title="这个 Agent 的一个会话派给了它自己的另一个会话">自派 {own.length}</span>{own.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>↻ {i.title.slice(0, 28)}</button>)}</div>}
               {got.length > 0 && <div><span className="lbl">接到 {got.length}</span>{got.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>← {actorOf(delegatedBy(i), me)?.name ?? delegatedBy(i)} · {i.title.slice(0, 28)}</button>)}</div>}
             </div>;
           })()}
