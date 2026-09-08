@@ -55,6 +55,7 @@
       "../cli/edit-guard.py": "cli/edit-guard.py",
       "../cli/init_wizard.py": "cli/init_wizard.py",
       "../cli/updater.py": "cli/updater.py",
+      "../cli/move.py": "cli/move.py",
       "../cli/VERSION": "cli/VERSION",
       "../cli/board-sync.sh": "cli/board-sync.sh",
       "../cli/statusline-tee.sh": "cli/statusline-tee.sh",
