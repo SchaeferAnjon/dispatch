@@ -49,16 +49,47 @@ const PAGES: { view: View; icon: string; title: string; body: string }[] = [
   { view: "settings", icon: "gear", title: "设置", body: "工作区根目录、外观、手机与屏幕访问、更新、接入另一台电脑。" },
 ];
 
-export function Overview({ onClose, onGo, onTour }: { onClose: () => void; onGo: (v: View) => void; onTour: () => void }) {
+export interface OverviewStats { projects: number; inbox: number; sessions: number; running: number; tasks: number; open: number; agentsOnline: number; agentsTotal: number; skills: number; wiki: number; hosts: number; rulesSynced: boolean | null; version: string }
+
+// A page, not a dialog: every section of Dispatch with what it is for and its live numbers.
+export function OverviewView({ stats, onGo, onTour, onSetup }: { stats: OverviewStats; onGo: (v: View) => void; onTour: () => void; onSetup?: () => void }) {
+  const live: Partial<Record<View, string>> = {
+    home: `${stats.running} 个会话在跑 · ${stats.open} 项未完成`,
+    projects: `${stats.projects} 个项目`,
+    inbox: stats.inbox ? `${stats.inbox} 项等你` : "暂时没有等你的事",
+    sessions: `${stats.sessions} 段会话`,
+    board: `${stats.tasks} 项任务 · ${stats.open} 项未完成`,
+    agents: `${stats.agentsOnline}/${stats.agentsTotal} 在线 · ${stats.hosts} 台机器`,
+    skills: `${stats.skills} 个技能`,
+    rules: stats.rulesSynced === null ? "" : stats.rulesSynced ? "共同规则已同步" : "共同规则有待同步",
+    pitfalls: `${stats.wiki} 条记录`,
+    settings: stats.version ? `v${stats.version}` : "",
+  };
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog overview" role="dialog" aria-label="页面总览" onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
-        <header><div><h3>Dispatch 有哪些页面</h3><p>项目 → 会话 → 任务 → 成果，是贯穿全部页面的一条线。点一项直接过去。</p></div><button className="btn ghost" aria-label="关闭" onClick={onClose}>✕</button></header>
-        <div className="overview-grid">
-          {PAGES.map((p) => <button key={p.view} className="overview-card" onClick={() => { onGo(p.view); onClose(); }}><b>{p.title}</b><span>{p.body}</span></button>)}
+    <div className="overview-page">
+      <header className="setup-head">
+        <div>
+          <h2>Dispatch 总览</h2>
+          <p>一条线贯穿所有页面：<b>项目</b>里发生<b>会话</b>，会话延伸出<b>任务</b>，任务汇成<b>成果</b>。Agent 在下面干活，你在上面看、回复、派活。每张卡是一个页面，点进去。</p>
         </div>
-        <div className="foot"><span className="muted small">任何地方右键都有该对象的操作；⌘K 搜索，⌘1–9 切页面。</span><span className="spacer" /><button className="btn" onClick={() => { onClose(); onTour(); }}>看一遍导览</button><button className="btn primary" onClick={onClose}>知道了</button></div>
+        <div className="setup-head-actions">
+          <button className="btn" onClick={onTour}>看一遍导览</button>
+          {onSetup && <button className="btn" onClick={onSetup}>首次设置</button>}
+        </div>
+      </header>
+      <div className="overview-grid page">
+        {PAGES.map((p) => <button key={p.view} className="overview-card" onClick={() => onGo(p.view)}><b>{p.title}</b><span>{p.body}</span>{live[p.view] && <em className="mono">{live[p.view]}</em>}</button>)}
       </div>
+      <section className="overview-howto">
+        <h4>怎么用</h4>
+        <ul>
+          <li><b>右键</b>任何东西：任务、会话、项目、技能、文件、机器，都有它自己的操作；空白处右键是本页的操作。</li>
+          <li><b>⌘K</b> 搜项目、会话、任务；<b>⌘1–9</b> 按侧栏顺序切页面；<b>⌘N</b> 新建会话；<b>⌘T</b> 新任务；<b>⌘R</b> 刷新。</li>
+          <li><b>手机</b>：设置或工作台里复制「手机访问」链接，连上 Tailscale 后用浏览器打开，可添加到主屏幕；「看屏幕」能看并操作这台电脑。</li>
+          <li><b>两台电脑</b>：第二台装好后在首次设置里「接入」第一台，任务板、规则、技能就是同一份；会话可以右键「迁移到另一台」接着做。</li>
+          <li><b>Agent 怎么知道这些</b>：每个新会话开头会收到 <code>dispatch prime</code> 注入的身份、当前项目任务和相关知识；它用 <code>dispatch begin / log / done</code> 记任务，用 <code>dispatch wiki</code> 记坑。</li>
+        </ul>
+      </section>
     </div>
   );
 }
