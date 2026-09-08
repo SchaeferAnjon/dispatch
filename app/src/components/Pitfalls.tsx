@@ -8,7 +8,9 @@ import { Markdown } from "./Markdown";
 interface Props { api: Api; projects: string[]; version: number; onSelectTask: (id: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
 
 const KINDS = Object.keys(WIKI_KINDS) as WikiKind[];
-type Filter = WikiKind | "all" | "plain";
+// The body row says what the text is, not the kind again (the badge above already does).
+const BODY_LABEL: Record<WikiKind, string> = { pit: "现象", win: "做法", retro: "做了", howto: "步骤" };
+type Filter = "useful" | WikiKind | "all" | "plain";
 
 // The wiki: every Agent's pits, wins, retros and howtos, stored as bd memories.
 // `dispatch prime` injects only the current project's entries at session start;
@@ -17,7 +19,8 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  // Retros are generated at every task close and outnumber everything; browse the hand-written kinds by default.
+  const [filter, setFilter] = useState<Filter>("useful");
   const [editing, setEditing] = useState<Pitfall | null>(null);
   const [adding, setAdding] = useState<WikiKind | null>(null);
 
@@ -36,7 +39,7 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
   }, [all]);
   const items = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return all.filter((p) => (filter === "all" ? !!p.kind : filter === "plain" ? !p.kind : p.kind === filter) && (!qq || p.raw.toLowerCase().includes(qq) || p.key.toLowerCase().includes(qq))).reverse();
+    return all.filter((p) => (filter === "all" ? !!p.kind : filter === "useful" ? !!p.kind && p.kind !== "retro" : filter === "plain" ? !p.kind : p.kind === filter) && (!qq || p.raw.toLowerCase().includes(qq) || p.key.toLowerCase().includes(qq))).reverse();
   }, [all, q, filter]);
 
   const save = async (key: string, value: string) => {
@@ -50,6 +53,7 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
     <div className="pit-wrap">
       <div className="pit-head">
         <label className="search" style={{ width: 280 }}>🔍<input placeholder="搜：关键词、项目、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+        <button className={`chip${filter === "useful" ? " on" : ""}`} onClick={() => setFilter("useful")} title="坑、做对、方法：手写的经验，不含自动复盘">常用 {counts.all - counts.retro}</button>
         <button className={`chip${filter === "all" ? " on" : ""}`} onClick={() => setFilter("all")}>全部 {counts.all}</button>
         {KINDS.map((k) => <button key={k} className={`chip${filter === k ? " on" : ""}`} onClick={() => setFilter(k)}>{WIKI_KINDS[k].label} {counts[k]}</button>)}
         {counts.plain > 0 && <button className={`chip${filter === "plain" ? " on" : ""}`} onClick={() => setFilter("plain")}>其他记忆 {counts.plain}</button>}
@@ -70,10 +74,9 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
               {p.project && <span className="tag"><span className="proj" style={{ background: projectColor(p.project) }} />{p.project}</span>}
               {p.task && <button className="link mono" onClick={() => onSelectTask(p.task)}>{p.task}</button>}
               <span className="spacer" />
-              {p.kind && <button className="btn ghost sm" onClick={() => setEditing(p)}>编辑</button>}
-              <button className="btn ghost sm danger" onClick={() => forget(p.key)}>删除</button>
+              <span className="pit-actions">{p.kind && <button className="btn ghost sm" onClick={() => setEditing(p)}>编辑</button>}<button className="btn ghost sm danger" onClick={() => forget(p.key)}>删除</button></span>
             </div>
-            <div className="pit-row"><span className={`lbl ${p.kind === "pit" ? "trap" : p.kind ?? "plain"}`}>{p.kind ? (p.kind === "retro" ? "做了" : WIKI_KINDS[p.kind].label) : "记忆"}</span><Markdown src={p.text} className="compact" /></div>
+            <div className="pit-row"><span className={`lbl ${p.kind === "pit" ? "trap" : p.kind ?? "plain"}`}>{p.kind ? BODY_LABEL[p.kind] : "记忆"}</span><Markdown src={p.text} className="compact" /></div>
             {p.kind && WIKI_KINDS[p.kind].fields.map((f) => p.fields[f.label] ? (
               <div key={f.name} className="pit-row"><span className={`lbl ${f.name === "fix" || f.name === "good" ? "fix" : f.name === "bad" ? "trap" : "plain"}`}>{f.label.replace(/[【】]/g, "")}</span><Markdown src={p.fields[f.label]} className="compact" /></div>
             ) : null)}

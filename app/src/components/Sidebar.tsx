@@ -89,7 +89,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
         <div className="h">知识</div>
         {item("skills", "skill", "技能")}
         {item("rules", "rule", "规则与资料")}
-        {item("pitfalls", "pit", "踩坑")}
+        {item("pitfalls", "pit", "知识库")}
         {item("settings", "gear", "设置")}
       </nav>
     </aside>

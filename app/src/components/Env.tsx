@@ -3,18 +3,19 @@ import type { Api } from "../api";
 import type { EnvVar, Host } from "../types";
 import { HostPicker, hostReason } from "./HostPicker";
 
-interface Props { api: Api; hosts: Host[]; onDone: (m: string) => void; onError: (m: string) => void }
+interface Props { api: Api; hosts: Host[]; hostId?: string; onDone: (m: string) => void; onError: (m: string) => void }
 const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 
 // API keys and other secrets live in one 0600 file (~/.config/dispatch/env), never in
 // the board or the wiki. Agents learn the *names* from `dispatch prime` and fetch a
 // value with `dispatch env get NAME` only when they need it.
-export function EnvView({ api, hosts, onDone, onError }: Props) {
+export function EnvView({ api, hosts, onDone, onError, hostId = "" }: Props) {
   const [host, setHost] = useState("local");
+  useEffect(() => { if (hostId) setHost(hostId); }, [hostId]);
   const blocked = hostReason(hosts, host);
   return (
     <div className="pit-wrap">
-      <HostPicker hosts={hosts} value={host} onChange={setHost} />
+      <HostPicker locked={!!hostId} hosts={hosts} value={host} onChange={setHost} />
       <EnvKeys api={api} host={host} blocked={blocked} onDone={onDone} onError={onError} />
     </div>
   );

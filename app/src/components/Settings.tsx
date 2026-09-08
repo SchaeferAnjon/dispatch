@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void> }
+type Theme = "light" | "dark" | "";
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; onPhone?: () => void; hosts?: { name: string; online: boolean; local: boolean; ip: string }[] }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, onPhone, hosts = [] }: Props) {
   const [draft, setDraft] = useState<DispatchSettings>(settings);
   const [busy, setBusy] = useState(false);
   useEffect(() => { setDraft(settings); }, [settings]);
@@ -31,6 +32,21 @@ export function SettingsView({ settings, onSave }: Props) {
           <div><b>默认展开前几个项目</b><p>其余项目折叠成一行摘要，点一下展开。有等你回复或等待确认的项目总是展开。</p></div>
           <span className="settings-num"><input type="number" min={0} max={50} value={draft.home_expanded} onChange={(e) => num("home_expanded", e.target.value, 50)} /> 个</span>
         </label>
+      </section>
+      <section className="settings-card">
+        <h3>这台电脑</h3>
+        <label className="settings-row">
+          <div><b>外观</b><p>只影响这台电脑上的 Dispatch 窗口。</p></div>
+          <select value={theme} onChange={(e) => onTheme(e.target.value as Theme)} aria-label="外观"><option value="">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
+        </label>
+        {onPhone && <div className="settings-row">
+          <div><b>手机访问</b><p>复制 dispatch serve 的链接；手机连上 Tailscale 后用浏览器打开，可以添加到主屏幕。</p></div>
+          <button className="btn sm" onClick={onPhone}>复制链接</button>
+        </div>}
+        {hosts.length > 0 && <div className="settings-row">
+          <div><b>机器</b><p>来自 ~/tasks/.dispatch/hosts.json；侧栏可按机器筛选。</p></div>
+          <span className="small">{hosts.map((h) => <span key={h.name} className="host-chip" title={h.ip}>{h.online ? "● " : "○ "}{h.name}{h.local ? "（本机）" : ""}</span>)}</span>
+        </div>}
       </section>
       <div className="settings-actions">
         <button className="btn primary" disabled={!dirty || busy} onClick={() => void save()}>{busy ? "保存中…" : "保存"}</button>

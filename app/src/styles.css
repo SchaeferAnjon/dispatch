@@ -423,7 +423,7 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .conv .l3{display:flex;align-items:center;gap:6px}
 .conv .l3 .link{color:var(--accent-ink)}
 .graph-wrap{display:flex;flex-direction:column;height:100%;min-height:0}
-.graph-tools{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden}
+.graph-tools{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;row-gap:6px}.graph-tools .views{flex-wrap:wrap;row-gap:4px;min-width:0}
 .graph-legend{display:flex;gap:16px;padding:6px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .graph-legend .lg{display:inline-block;width:22px;height:0;border-top:2px solid var(--ink-3);margin-right:6px;vertical-align:middle}
 .graph-legend .lg.discovered{border-top-style:dashed;border-top-color:var(--s-done)}
@@ -617,8 +617,8 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .pit-top{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3)}
 .pit-top .key{color:var(--ink-2)}
 .pit-top .link{color:var(--accent-ink);cursor:pointer;font-size:12px}
-.pit-row{display:grid;grid-template-columns:36px 1fr;gap:8px;align-items:start;line-height:1.5}
-.pit-row .lbl{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;text-align:center;margin-top:2px}
+.pit-row{display:grid;grid-template-columns:minmax(44px,max-content) 1fr;gap:8px;align-items:start;line-height:1.5}
+.pit-row .lbl{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;text-align:center;margin-top:2px;white-space:nowrap}.pit-actions{display:flex;gap:4px}@media(hover:hover){.pit .pit-actions{visibility:hidden}.pit:hover .pit-actions,.pit:focus-within .pit-actions{visibility:visible}}
 .pit-row .lbl.trap{color:var(--s-block);background:var(--s-block-bg)}
 .pit-row .lbl.fix{color:var(--s-done);background:var(--s-done-bg)}
 .rel-pits{display:flex;flex-direction:column;gap:6px}
@@ -1086,3 +1086,12 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .conversation-overview-detail small{color:var(--ink-3)}
 
 .conversation-menu{width:min(330px,calc(100vw - 16px))}.conversation-menu p{padding:0 12px;line-height:1.6}.conversation-menu form{padding:12px}.conversation-menu input{width:100%;box-sizing:border-box;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:var(--paper)}
+
+/* Counts that are zero stay quiet: nothing there needs a hand. */
+.chip.zero:not(.on),.views button.zero:not(.on),.home-count.zero:not(.on){opacity:.45}
+.project-quiet{margin-top:18px}.project-quiet h4{margin:0 0 6px}.project-quiet .home-rest-item .star{font-size:13px}
+.inbox-bulk{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 8px}
+.conversation-row.compact{padding:10px 14px;gap:6px}.conversation-row.compact .conversation-main{padding:0;gap:10px}.conversation-row.compact .conversation-actions{margin-top:0}.conversation-row.compact .conversation-preview{-webkit-line-clamp:1;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}.conversation-row.compact .conversation-meta{margin-top:2px}
+.col-more{padding:8px;text-align:center}
+.sess-agent{border:1px solid var(--line);background:var(--win);border-radius:6px;padding:3px 6px;font-size:12px;color:var(--ink);max-width:120px}.sess-blank{padding:6px 10px}.sess-blank summary{cursor:pointer}
+.home-insight{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--win);color:var(--ink-2);font-size:12.5px;cursor:pointer}.home-insight:hover{border-color:var(--line-2)}.home-insight .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.home-insight-tag{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--panel-2);color:var(--ink-3);flex:none}

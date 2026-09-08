@@ -159,7 +159,7 @@ export function StatsView({ api, me, host, hostName, onDone, onError, onStart }:
           <button className={metric === "msgs" ? "on" : ""} onClick={() => setMetric("msgs")}>按消息</button>
         </div>
         <span className="spacer" />
-        {hostName && <span className="muted small">只看 {hostName}</span>}
+        {hostName && <span className="chip on" title="侧栏选了这台机器，统计只算它">只看 {hostName}</span>}
         {busy && <span className="muted small">统计中…</span>}
       </div>
 

@@ -99,17 +99,15 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
             <button className={mode === "starred" ? "on" : ""} onClick={() => setMode("starred")} title="收藏的会话：长期追踪，不会自动归档">★ 追踪中 {counts.starred}</button>
             <button className={mode === "archived" ? "on" : ""} onClick={() => setMode("archived")} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>已归档 {counts.archived}</button>
             {counts.scheduled > 0 && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="定时任务产生的会话">定时 {counts.scheduled}</button>}
-            {scriptCount > 0 && <button className={`chip${showScripts ? " on" : ""}`} onClick={() => setShowScripts(!showScripts)} title="由脚本、定时任务或其他 Agent 通过 SDK 启动的会话，默认不列出">子 Agent / SDK {scriptCount}</button>}
-          </div>
-          <div className="views" style={{ marginTop: 6 }}>
-            {[["", "全部"], ["claude-code", "Claude"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <button key={v} className={agent === v ? "on" : ""} onClick={() => setAgent(v)}>{l}</button>)}
-            <span className="spacer" /><span className="muted mono small">{items.length}</span>
+            <select className="sess-agent" aria-label="按 Agent 筛选" value={agent} onChange={(e) => setAgent(e.target.value)} title="按 Agent 筛选">{[["", "全部 Agent"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            {scriptCount > 0 && <button className={`chip${showScripts ? " on" : ""}`} onClick={() => setShowScripts(!showScripts)} title="由脚本、定时任务或其他 Agent 通过 SDK 启动的会话，默认不列出">SDK {scriptCount}</button>}
+            <span className="muted mono small" title="当前筛选下的会话数">{items.length} 条</span>
           </div>
         </div>
         <div className="sess-items">
           {!loaded && <div className="empty">索引中…（首次要读完全部历史）</div>}
           {loaded && items.length === 0 && <div className="empty">{mode === "archived" ? `没有归档的会话（${archiveDays} 天没有活动的会自动归到这里）` : mode === "starred" ? "还没有收藏的会话。右键一条会话，选「收藏：长期追踪」。" : "没有匹配的会话"}</div>}
-          {items.map((r) => {
+          {(() => { const isBlank = (r: SessionRef) => !r.title && r.user_msgs === 0 && !activities.some((a) => a.session_id === r.session_id && a.state === "working" && !a.stale); const named = items.filter((r) => !isBlank(r)); const blank = items.filter(isBlank); const item = (r: SessionRef) => {
             const a = actorOf(r.agent, me);
             const l = liveOf(r.session_id);
             const active = activities.find(a => a.session_id === r.session_id);
@@ -121,7 +119,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                 {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}
               </button><div className="sess-item-actions"><ConversationMenuButton a={asActivity(r)} /></div></div>
             );
-          })}
+          }; return <>{named.map(item)}{blank.length > 0 && <details className="sess-blank"><summary className="muted small">空会话 · {blank.length}<span> · 没有标题也没有对话</span></summary>{blank.map(item)}</details>}</>; })()}
         </div>
       </div>
 

@@ -131,7 +131,7 @@ export function GraphView({ api, me, version, selected, onSelect }: Props) {
               const a = actorOf(n.assignee, me);
               const outs = (down.get(n.id) ?? []).length, ins = (up.get(n.id) ?? []).length;
               return (
-                <g key={n.id} transform={`translate(${x},${y})`} className={`node${selected === n.id ? " sel" : ""}${dim(n.id) ? " dim" : ""}`}
+                <g key={n.id} data-task={n.id} transform={`translate(${x},${y})`} className={`node${selected === n.id ? " sel" : ""}${dim(n.id) ? " dim" : ""}`}
                   onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)} onClick={() => onSelect(n.id)} role="button" tabIndex={0}>
                   <rect width={W} height={H} rx={9} className="node-bg" />
                   <rect x={0} y={0} width={4} height={H} rx={2} className={`node-stripe ${st.cls}`} />

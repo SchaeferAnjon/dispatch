@@ -43,13 +43,19 @@ export function Card({ issue, progress, selected, onSelect, me, root, draggable,
   );
 }
 
+const WEEK = 7 * 86_400_000;
 export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove, onAdd }: Common & { onMove: (id: string, to: Column) => void; onAdd: (col: Column) => void }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<Column | null>(null);
+  // The done column only shows the last week by default; the rest is a click away.
+  const [allDone, setAllDone] = useState(false);
+  const recent = (i: Issue) => Date.now() - Date.parse(i.closed_at ?? i.updated_at) < WEEK;
   return (
     <div className="board">
       {COLUMNS.map((c) => {
-        const list = issues.filter((i) => columnOf(i) === c.key);
+        const full = issues.filter((i) => columnOf(i) === c.key);
+        const list = c.key === "done" && !allDone ? full.filter((i) => recent(i) || i.id === selected) : full;
+        const hidden = full.length - list.length;
         return (
           <div key={c.key} className={`col${over === c.key ? " over" : ""}`}
             onDragOver={(e) => { e.preventDefault(); if (over !== c.key) setOver(c.key); }}
@@ -57,7 +63,7 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
             onDrop={(e) => { e.preventDefault(); setOver(null); if (dragId) onMove(dragId, c.key); setDragId(null); }}>
             <div className="col-h">
               <span className={`st ${c.cls}`}><i />{c.label}</span>
-              <span className="cnt">{list.length}</span>
+              <span className="cnt">{full.length}</span>
               {c.key === "todo" && <button className="add" onClick={() => onAdd(c.key)} title="新任务">＋</button>}
             </div>
             <div className="cards">
@@ -66,6 +72,7 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
                   onDragStart={(e) => { setDragId(i.id); e.dataTransfer.effectAllowed = "move"; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
                   onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); setDragId(null); setOver(null); }} />
               ))}
+              {c.key === "done" && (hidden > 0 || allDone) && full.length > 0 && <button className="link col-more" onClick={() => setAllDone(!allDone)}>{allDone ? "只看最近 7 天" : `还有 ${hidden} 项更早完成的 ›`}</button>}
             </div>
           </div>
         );

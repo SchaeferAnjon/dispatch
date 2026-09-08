@@ -4,7 +4,7 @@ import type { Host, Skill } from "../types";
 import { HostPicker, hostReason } from "./HostPicker";
 import { Markdown, splitFrontmatter } from "./Markdown";
 
-interface Props { api: Api; hosts: Host[]; onDone: (m: string) => void; onError: (m: string) => void }
+interface Props { api: Api; hosts: Host[]; hostId?: string; onDone: (m: string) => void; onError: (m: string) => void }
 const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 
 const AGENTS: { id: string; label: string; cls: string }[] = [
@@ -12,8 +12,9 @@ const AGENTS: { id: string; label: string; cls: string }[] = [
   { id: "codex", label: "Codex", cls: "codex" },
 ];
 
-export function SkillsView({ api, hosts, onDone, onError }: Props) {
+export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) {
   const [host, setHost] = useState("local");
+  useEffect(() => { if (hostId) setHost(hostId); }, [hostId]);
   const blocked = hostReason(hosts, host);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -51,6 +52,7 @@ export function SkillsView({ api, hosts, onDone, onError }: Props) {
     const rows = skills.filter((s) => (!only || s.agents[only]) && (!qq || s.name.toLowerCase().includes(qq) || s.description.toLowerCase().includes(qq)));
     return byUse ? [...rows].sort((a, b) => total(b) - total(a) || a.name.localeCompare(b.name)) : rows;
   }, [skills, q, only, byUse]);
+  useEffect(() => { if (sel === null && items.length > 0) setSel(items[0].name); }, [items, sel]);
   const cur = skills.find((s) => s.name === sel) ?? null;
   const counts = AGENTS.map((a) => ({ ...a, n: skills.filter((s) => s.agents[a.id]).length }));
 
@@ -67,7 +69,7 @@ export function SkillsView({ api, hosts, onDone, onError }: Props) {
 
   return (
     <div className="sk-wrap">
-      <HostPicker hosts={hosts} value={host} onChange={setHost} />
+      <HostPicker locked={!!hostId} hosts={hosts} value={host} onChange={setHost} />
       {blocked && <div className="empty" style={{ gridColumn: "1 / -1" }}>{blocked}</div>}
       <div className="sk-side">
         <div className="sess-tools">
@@ -85,7 +87,7 @@ export function SkillsView({ api, hosts, onDone, onError }: Props) {
           {!loaded && <div className="empty">读取技能池…</div>}
           {items.map((s) => (
             <button key={s.name} className={`sk-item${sel === s.name ? " sel" : ""}`} onClick={() => setSel(s.name)}>
-              <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={s.path}>池外</span>}<span className="spacer" />{total(s) > 0 && <span className="use mono" title={Object.entries(s.usage ?? {}).map(([a, n]) => `${a} ${n} 次`).join("，") + (s.last_used ? `，最近 ${s.last_used}` : "")}>{Object.entries(s.usage ?? {}).map(([a, n]) => `${a === "claude-code" ? "C" : a === "codex" ? "X" : a[0].toUpperCase()}${n}`).join(" ")}</span>}</div>
+              <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={`不在共享技能池 ~/.cc-switch/skills 里，只装在这一处：${s.path}`}>池外</span>}<span className="spacer" />{total(s) > 0 && <span className="use mono" title={"调用次数（C=Claude Code，X=Codex）：" + Object.entries(s.usage ?? {}).map(([a, n]) => `${a} ${n} 次`).join("，") + (s.last_used ? `，最近 ${s.last_used}` : "")}>{Object.entries(s.usage ?? {}).map(([a, n]) => `${a === "claude-code" ? "C" : a === "codex" ? "X" : a[0].toUpperCase()}${n}`).join(" ")}</span>}</div>
               <div className="l2">{s.description || <span className="muted">（没有描述）</span>}</div>
               <div className="l3">{AGENTS.map((a) => <span key={a.id} className={`mount ${a.cls}${s.agents[a.id] ? " on" : ""}`}>{a.label}</span>)}</div>
             </button>
