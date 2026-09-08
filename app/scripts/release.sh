@@ -13,6 +13,7 @@ import json, re, sys
 v = sys.argv[1]
 for p in ("package.json", "src-tauri/tauri.conf.json"):
     d = json.load(open(p)); d["version"] = v; json.dump(d, open(p, "w"), ensure_ascii=False, indent=2); open(p, "a").write("\n")
+open("cli/VERSION", "w").write(v + "\n")
 s = open("src-tauri/Cargo.toml").read()
 open("src-tauri/Cargo.toml", "w").write(re.sub(r'^version = "[^"]+"', f'version = "{v}"', s, count=1, flags=re.M))
 PY
@@ -39,7 +40,7 @@ cat > "$NOTES" <<MD
 ## 变更
 $(git log --pretty='- %s' "$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD" | grep -vE '^- (chore|docs): ' | head -40)
 MD
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock 2>/dev/null || true
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock cli/VERSION 2>/dev/null || true
 git commit -q -m "chore: release v${V}" || true
 git tag -f "v${V}"
 git push -q origin main --tags

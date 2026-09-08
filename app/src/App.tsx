@@ -21,6 +21,7 @@ import { SearchPalette } from "./components/Search";
 import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, parseProjectFlags, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
 import { SetupView, type InitStatus } from "./components/Setup";
+import type { UpdateInfo } from "./components/Settings";
 import { Delegate } from "./components/Delegate";
 import { Avatar } from "./components/ui";
 import { isOutcome, knownProjects, linkedSessions, projectGroups, sourceTasks, projectConversations } from "./projectModel";
@@ -76,6 +77,11 @@ export default function App() {
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [api]);
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
+  // New releases: checked once a day after start-up; the title bar shows a chip when one exists.
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const checkUpdate = useCallback(async () => { if (!api || !isTauri) return; try { const r = JSON.parse((await api.on("local", ["update", "check", "--json"])).replace(/^[^{]*/, "")) as UpdateInfo; setUpdate(r); } catch (e) { setUpdate({ current: "?", latest: "", url: "", error: String(e) }); } }, [api]);
+  useEffect(() => { if (!api || !isTauri) return; const t = window.setTimeout(() => void checkUpdate(), 8_000); const d = window.setInterval(() => void checkUpdate(), 24 * 3600_000); return () => { window.clearTimeout(t); window.clearInterval(d); }; }, [api, checkUpdate]);
+  const applyUpdate = async () => { if (!api) return; try { say("正在下载新版本…"); const r = JSON.parse((await api.on("local", ["update", "apply", "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(`已更新到 v${r.updated_to}，正在重启`); } catch (e) { say(String(e), true); } };
   const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
@@ -449,6 +455,7 @@ export default function App() {
               {qs[0].windows.map((w) => { const p = w.used_percent ?? 0; return <span key={w.label} className={`q${p >= 90 ? " crit" : p >= 70 ? " warn" : ""}`}><span className="ql">{w.label}</span><span className="qbar"><i style={{ width: `${Math.min(100, p)}%` }} /></span><span className="mono">{w.used_percent === null ? "—" : `${Math.round(p)}%`}</span></span>; })}
             </button>
           ))}
+          {update?.newer && !update.error && <button className="btn ghost update-chip" onClick={() => setView("settings")} title={`有新版本 v${update.latest}，点开设置更新`}>↑ v{update.latest}</button>}
           <button className="btn ghost status" onClick={() => setView("agents")} title="查看 Agent 状态"><span className="pulse" />{counts.agents} 在线 · {runningSessions} 进行中 ›</button>
           <button className="btn ghost" onClick={() => setNewSession(true)} title="新建会话（⌘N）">＋ 会话</button>
         </div>
@@ -494,7 +501,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}

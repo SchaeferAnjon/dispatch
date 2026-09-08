@@ -54,6 +54,8 @@
       "../cli/presence.py": "cli/presence.py",
       "../cli/edit-guard.py": "cli/edit-guard.py",
       "../cli/init_wizard.py": "cli/init_wizard.py",
+      "../cli/updater.py": "cli/updater.py",
+      "../cli/VERSION": "cli/VERSION",
       "../cli/board-sync.sh": "cli/board-sync.sh",
       "../cli/statusline-tee.sh": "cli/statusline-tee.sh",
       "../../agent/skills/task-board/": "agent/skills/task-board/",

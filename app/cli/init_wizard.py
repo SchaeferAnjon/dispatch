@@ -270,11 +270,11 @@ def remotesapi_up():
         return False
 
 
-def enable_remotesapi():
+def enable_remotesapi(force=False):
     """Let other Macs pull/push this board over HTTP on :3309. `bd dolt start` launches
     dolt with flags only and ignores config.yaml, so the hub runs dolt itself from a
     LaunchAgent that reads the config; bd just connects to the port."""
-    if remotesapi_enabled() and remotesapi_up():
+    if remotesapi_enabled() and remotesapi_up() and not force:
         return False
     try:
         cfg = open(DOLT_CONFIG).read()
@@ -325,20 +325,61 @@ def ensure_sync_user():
     return SYNC_USER, pw
 
 
+BOARD_CONFIG = """# Dispatch global board — Beads shared-server mode (one Dolt server for the machine)
+dolt:
+    mode: server
+    shared-server: true
+    host: 127.0.0.1
+    port: {port}
+    user: root
+    database: task
+    auto-commit: "on"
+no-git-ops: true
+"""
+
+
+def write_board_config(remote=""):
+    """`bd init --shared-server` creates the database but, on a fresh Mac, leaves no
+    config.yaml behind (it treats the workspace as embedded). Write the workspace files
+    ourselves; they are what makes bd see the shared server."""
+    import uuid
+    os.makedirs(D.BEADS_DIR, exist_ok=True)
+    cfg = BOARD_CONFIG.format(port=dolt_port())
+    if remote:
+        cfg += f'sync:\n    remote: "{remote}"\n'
+    open(os.path.join(D.BEADS_DIR, "config.yaml"), "w").write(cfg)
+    meta = os.path.join(D.BEADS_DIR, "metadata.json")
+    if not os.path.exists(meta):
+        json.dump({"database": "dolt", "backend": "dolt", "dolt_mode": "server", "dolt_database": "task", "project_id": str(uuid.uuid4())}, open(meta, "w"), indent=2)
+    code, o, _ = run([which("bd") or "bd", "version"], timeout=20)
+    m = re.search(r"(\d+\.\d+\.\d+)", o)
+    if m:
+        open(os.path.join(D.BEADS_DIR, ".local_version"), "w").write(m.group(1) + "\n")
+    os.chmod(D.BEADS_DIR, 0o700)
+
+
+def board_works():
+    code, o, e = run([which("bd") or "bd", "list", "--json"], timeout=60, env={"BEADS_DIR": D.BEADS_DIR})
+    return code == 0 and "[" in o, (e or o).strip()[-300:]
+
+
 def board_first():
     """This Mac starts the board and becomes the hub other Macs join."""
     if not (which("bd") and which("dolt")):
         raise RuntimeError("先装 Beads 和 Dolt（上一步）")
     os.makedirs(D.BEADS_DIR, exist_ok=True)
     root = os.path.dirname(D.BEADS_DIR)
-    if not os.path.exists(os.path.join(D.BEADS_DIR, "config.yaml")):
+    if not os.path.exists(os.path.join(SHARED, "dolt", "task")):
+        # Let bd create the shared server layout and the `task` database (it starts its own server for that).
         code, o, e = run([which("bd"), "init", "--shared-server", "--prefix", "task", "--non-interactive", "--quiet"], timeout=300, env={"BEADS_DIR": D.BEADS_DIR}, cwd=root)
-        if code != 0:
-            raise RuntimeError(f"bd init 失败：{(e or o).strip()[-600:]}")
-    install_dolt_launchd()
-    if not wait_server():
-        raise RuntimeError("Dolt 服务没起来，看 ~/.beads/shared-server/launchd.log")
-    enable_remotesapi()
+        if code != 0 or not os.path.exists(os.path.join(SHARED, "dolt", "task")):
+            raise RuntimeError(f"bd init 没建出数据库：{(e or o).strip()[-600:]}")
+    write_board_config()
+    # From here on dolt runs from config.yaml (so remotesapi works); bd only connects to the port.
+    enable_remotesapi(force=True)
+    ok, why = board_works()
+    if not ok:
+        raise RuntimeError(f"任务板建好了但 bd 连不上：{why}")
     user, pw = ensure_sync_user()
     save_state(board_mode="first", hub=None)
     return {"dir": D.BEADS_DIR, "root": root, "remote_for_others": f"http://{D.tailscale_ip() or lan_ip()}:{REMOTESAPI_PORT}/task", "sync_user": user}
@@ -394,8 +435,13 @@ def board_join(target):
         install_dolt_launchd(env={"DOLT_REMOTE_USER": hub["sync_user"], "DOLT_REMOTE_PASSWORD": hub["sync_password"]})
         wait_server()
         code, o, e = run([which("bd"), "init", "--shared-server", "--prefix", "task", "--remote", hub["remote"], "--non-interactive", "--quiet"], timeout=600, env=env, cwd=os.path.dirname(D.BEADS_DIR))
-        if code != 0:
+        if code != 0 or not os.path.exists(os.path.join(SHARED, "dolt", "task")):
             raise RuntimeError(f"从 {hub['name']} 克隆任务板失败：{(e or o).strip()[-600:]}")
+        if not os.path.exists(os.path.join(D.BEADS_DIR, "config.yaml")):
+            write_board_config(remote=hub["remote"])
+        ok, why = board_works()
+        if not ok:
+            raise RuntimeError(f"任务板克隆了但 bd 连不上：{why}")
     else:
         install_dolt_launchd(env={"DOLT_REMOTE_USER": hub["sync_user"], "DOLT_REMOTE_PASSWORD": hub["sync_password"]})
         wait_server()
@@ -500,11 +546,40 @@ def install_claude_hooks():
     return {"path": CLAUDE_SETTINGS}
 
 
+HERDR_SOCK = os.path.join(D.HOME, ".config", "herdr", "herdr.sock")
+HERDR_MAIN_SOCK = os.path.join(D.HOME, ".config", "herdr", "sessions", "main", "herdr.sock")
+
+
+def herdr_running():
+    return os.path.exists(HERDR_SOCK) or os.path.exists(HERDR_MAIN_SOCK)
+
+
+def ensure_herdr():
+    """A Herdr that is always there to hand work to: `main` session inside tmux, kept
+    alive by a LaunchAgent in the GUI login session (agents need the keychain login)."""
+    if os.path.exists(HERDR_SOCK):
+        return {"mode": "window", "note": "Herdr 窗口已在跑"}
+    herdr, tmux = which("herdr"), which("tmux")
+    if not (herdr and tmux):
+        raise RuntimeError("先装 Herdr 和 tmux（第一步）")
+    cmd = f"{tmux} has-session -t herdr 2>/dev/null || {tmux} new -d -s herdr -x 220 -y 60 \"{herdr} --session main\""
+    write_plist("dev.schaefer.herdr", ["/bin/sh", "-c", cmd], interval=120, log="/tmp/herdr-launchd.log")
+    for _ in range(20):
+        if os.path.exists(HERDR_MAIN_SOCK):
+            break
+        time.sleep(0.5)
+    return {"mode": "headless", "running": os.path.exists(HERDR_MAIN_SOCK), "note": "Herdr 在后台 tmux 里常驻（session main）"}
+
+
 def agents_setup(selected):
     save_state(agents=selected)
     done = {}
     if "claude-code" in selected:
         done["claude-code"] = install_claude_hooks()
+    try:
+        done["herdr"] = ensure_herdr()
+    except Exception as e:
+        done["herdr"] = {"error": str(e)}
     return {"agents": selected, "installed": done}
 
 
@@ -682,7 +757,7 @@ def status():
         {"id": "deps", "title": "装依赖", "ok": not missing_required, "detail": ("缺 " + "、".join(missing_required)) if missing_required else "都在", "deps": deps},
         {"id": "cli", "title": "终端命令", "ok": cli["exists"] and bool(cli["target"]), "detail": cli["link"].replace(D.HOME, "~") + (" 已就绪" if cli["exists"] else " 还没有"), "cli": cli},
         {"id": "board", "title": "任务板", "ok": board["exists"] and board["server_up"], "detail": ("已接入 " + board["hub"]["name"]) if board.get("hub") else ("已建立，这台是枢纽" if board["exists"] else "还没有任务板"), "board": board},
-        {"id": "agents", "title": "Agent", "ok": bool(st.get("agents")), "detail": "、".join(AGENT_HOMES[a][0] for a in st.get("agents", []) if a in AGENT_HOMES) or "还没选", "agents": agents},
+        {"id": "agents", "title": "Agent", "ok": bool(st.get("agents")) and herdr_running(), "detail": ("、".join(AGENT_HOMES[a][0] for a in st.get("agents", []) if a in AGENT_HOMES) or "还没选") + ("" if herdr_running() else " · Herdr 没在跑"), "agents": agents, "herdr": herdr_running()},
         {"id": "rules", "title": "规则与技能", "ok": rules["have_rules"] and all(t["state"] == "synced" for t in rules["targets"] if os.path.isdir(os.path.dirname(t["path"]))), "detail": ("已同步" if rules["have_rules"] else "还没有共同规则"), "rules": rules},
         {"id": "review", "title": "审查优化", "ok": bool(st.get("reviewed")), "detail": "已派 Agent 审查" if st.get("reviewed") else "可选：派一个 Agent 审查规则和技能", "optional": True},
     ]
