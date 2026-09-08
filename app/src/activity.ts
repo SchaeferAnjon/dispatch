@@ -56,15 +56,20 @@ export function conversationSummary(a: Activity): string {
 export const UNGROUPED_PROJECT = '零散会话';
 
 // The one rule for which project a conversation belongs to. Precedence: what the
-// user set by hand; a home-directory chat belongs to nothing; anything under
-// ~/Projects/<x>/… is <x>; a path segment that names a project already on the
-// board (case-insensitive) wins over the leaf folder; otherwise the leaf folder.
-export function resolveProject(a: { cwd: string; project: string; project_override?: string }, known: Iterable<string> = []): string {
+// user set by hand; a home-directory chat belongs to nothing; anything under a
+// workspace root (~/Projects/<x>/… is <x>; roots come from settings); a path
+// segment that names a project already on the board (case-insensitive) wins over
+// the leaf folder; otherwise the index's guess (the git repo root) or the leaf folder.
+export const DEFAULT_ROOTS = ['~/Projects'];
+export function resolveProject(a: { cwd: string; project: string; project_override?: string }, known: Iterable<string> = [], roots: string[] = DEFAULT_ROOTS): string {
   if (a.project_override) return a.project_override;
   const cwd = (a.cwd || '').replace(/\/+$/, '');
   if (!cwd || /^\/(?:Users|home)\/[^/]+$/.test(cwd)) return UNGROUPED_PROJECT;
-  const workspace = cwd.match(/^\/(?:Users|home)\/[^/]+\/Projects\/([^/]+)/)?.[1];
-  if (workspace) return workspace;
+  const home = cwd.match(/^\/(?:Users|home)\/[^/]+/)?.[0] ?? '';
+  for (const r of roots) {
+    const root = (r.startsWith('~') ? home + r.slice(1) : r).replace(/\/+$/, '');
+    if (root && cwd.startsWith(root + '/')) { const name = cwd.slice(root.length + 1).split('/')[0]; if (name) return name; }
+  }
   const names = new Map<string, string>();
   for (const n of known) if (n) names.set(n.toLowerCase(), n);
   const parts = cwd.split('/').filter(Boolean);

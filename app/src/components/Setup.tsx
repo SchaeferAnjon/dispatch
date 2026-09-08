@@ -77,7 +77,8 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
             </div>
             {boardMode === "join" && <div className="setup-join">
               <input placeholder="那台电脑的 ssh 地址，如 name@100.x.y.z" value={hub} onChange={(e) => setHub(e.target.value)} />
-              <p className="muted small">前提：那台电脑已经跑过首次设置，打开了「远程登录」（系统设置 → 通用 → 共享），并且这台能免密 ssh 过去（终端里 <code>ssh-copy-id 地址</code> 一次即可）。</p>
+              <p className="muted small">前提：那台电脑已经跑过首次设置，打开了「远程登录」（系统设置 → 通用 → 共享），并且这台能免密 ssh 过去（终端里 <code>ssh-copy-id 地址</code> 一次即可）。不想自己敲命令，可以让本机的 Agent 代劳，它会在终端里做完并接入。</p>
+              <button className="btn" disabled={!!busy || !hub.trim()} onClick={() => void run("helper", ["ssh", hub.trim()], "已交给本机 Agent，去会话页看进度")}>让本机 Agent 帮我打通并接入</button>
             </div>}
             <button className="btn primary" disabled={!!busy || (boardMode === "join" && !hub.trim())} onClick={() => void run("board", boardMode === "first" ? ["first"] : ["join", hub.trim()], boardMode === "first" ? "任务板已建立" : "已接入任务板")}>{busy === "board" ? "处理中…" : boardMode === "first" ? "新建任务板" : "接入"}</button>
           </>}
@@ -129,6 +130,7 @@ function summarize(id: string, r: Record<string, unknown>): string {
     if (id === "board") { return r.remote_for_others ? `其他电脑接入时用：${r.remote_for_others}` : r.hub ? `已接入 ${(r.hub as { name: string }).name}` : JSON.stringify(r); }
     if (id === "rules") { const s = r.sync as { targets?: { agent: string; state: string }[]; results?: { agent: string; action: string }[] } | undefined; const rows = s?.results ?? s?.targets; return `来源：${r.seed_label ?? r.seed}` + (rows ? "\n" + rows.map((t) => `${t.agent}: ${"action" in t ? t.action : (t as { state: string }).state}`).join("，") : ""); }
     if (id === "agents") { const inst = Object.keys((r.installed as Record<string, unknown>) ?? {}); return `已选：${((r.agents as string[]) ?? []).join("、")}` + (inst.length ? `\n已装 hook：${inst.join("、")}` : ""); }
+    if (id === "helper") { return r.started ? "Agent 已在 Herdr 里开始处理，会话页能看到它；需要输密码时它会提醒" : `没起成：${r.error}\n可以把这段发给任意 Agent：\n${r.prompt}`; }
     if (id === "review") { return r.started ? "Agent 已在 Herdr 里开始审查，会话页能看到它" : `没起成：${r.error}\n提示词已在上面「复制提示词」`; }
     return JSON.stringify(r, null, 1).slice(0, 600);
   } catch { return ""; }

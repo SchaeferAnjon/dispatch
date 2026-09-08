@@ -1106,7 +1106,7 @@ def ref_of(path, e, task_id=None):
     if e['agent'] == 'codex':
         from activity import codex_titles, user_text
         e = dict(e, title=codex_titles(HOME).get(e['session_id']) or user_text(e.get('title', '')))
-    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode") else []}
+    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": git_root_name(e["cwd"]) or os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode") else []}
 
 
 _KNOWN_IDS = None
@@ -2927,7 +2927,7 @@ def project_flags_load():
 
 # ---------------------------------------------------------------- settings (shared, one bd memory)
 SETTINGS_KEY = "dispatch-settings"
-SETTING_DEFAULTS = {"session_archive_days": 30, "home_expanded": 2, "sdk_sessions_scheduled": 1}
+SETTING_DEFAULTS = {"session_archive_days": 30, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"]}
 
 
 def settings_parse(raw):
@@ -2935,7 +2935,12 @@ def settings_parse(raw):
         d = json.loads(raw) if raw else {}
     except ValueError:
         return {}
-    return {k: v for k, v in d.items() if isinstance(d, dict) and k in SETTING_DEFAULTS and isinstance(v, (int, float)) and v >= 0} if isinstance(d, dict) else {}
+    if not isinstance(d, dict):
+        return {}
+    out = {k: v for k, v in d.items() if k in SETTING_DEFAULTS and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
+    if isinstance(d.get("workspace_roots"), list):
+        out["workspace_roots"] = [x.strip() for x in d["workspace_roots"] if isinstance(x, str) and x.strip()]
+    return out
 
 
 def settings_load():
@@ -2955,17 +2960,20 @@ def cmd_settings(a):
         print(f"没有这个设置：{a.key}；可用：{', '.join(SETTING_DEFAULTS)}", file=sys.stderr)
         sys.exit(2)
     if a.key and a.value is not None:
-        try:
-            val = int(a.value)
-            if val < 0:
-                raise ValueError
-        except ValueError:
-            print("值必须是非负整数", file=sys.stderr)
-            sys.exit(2)
+        if a.key == "workspace_roots":
+            val = [x.strip() for x in a.value.split(",") if x.strip()]
+        else:
+            try:
+                val = int(a.value)
+                if val < 0:
+                    raise ValueError
+            except ValueError:
+                print("值必须是非负整数", file=sys.stderr)
+                sys.exit(2)
         cur[a.key] = val
         wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
     shown = {a.key: cur[a.key]} if a.key else cur
-    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话"}
+    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目"}
     out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes[k]}）") for k, v in x.items()])
 
 
@@ -3374,12 +3382,36 @@ def project_names():
     return names
 
 
+def git_root_name(cwd):
+    """The folder that holds .git, walking up from cwd but never past $HOME; '' if none."""
+    d = os.path.normpath(cwd or "")
+    while d and d not in ("/", HOME) and d.startswith(HOME):
+        if os.path.isdir(os.path.join(d, ".git")) or os.path.isfile(os.path.join(d, ".git")):
+            return os.path.basename(d)
+        d = os.path.dirname(d)
+    return ""
+
+
+def workspace_project(cwd, roots=None):
+    """~/Projects/<x>/… is <x> for every root in settings; '' when cwd is not under one."""
+    cwd = os.path.normpath(cwd or "")
+    for r in (roots if roots is not None else settings_load().get("workspace_roots") or []):
+        root = os.path.normpath(os.path.expanduser(r))
+        if cwd.startswith(root + os.sep):
+            return cwd[len(root) + 1:].split(os.sep)[0]
+    return ""
+
+
 def project_of_cwd(cwd, names):
+    # Same precedence as the app: workspace root, a known project name on the path, the git repo root.
+    ws = workspace_project(cwd)
+    if ws:
+        return ws
     parts = [x.lower() for x in os.path.normpath(cwd).split(os.sep) if x]
     for part in reversed(parts):
         if part in names:
             return names[part]
-    return ""
+    return git_root_name(cwd)
 
 
 def neighbours(cwd, self_id=""):

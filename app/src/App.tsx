@@ -248,7 +248,7 @@ export default function App() {
   const archiveDays = settings.session_archive_days;
   const saveSettings = async (next: DispatchSettings) => { if (!api) return; try { await api.remember(SETTINGS_KEY, serializeSettings(next)); setSettings(next); say("设置已保存"); } catch (e) { say(String(e), true); } };
   const known = useMemo(() => knownProjects(issues, activity.sessions), [issues, activity]);
-  const normalise = useCallback(<T extends { cwd: string; project: string; project_override?: string; scheduled?: boolean; path?: string; entrypoint?: string }>(x: T): T => ({ ...x, project: resolveProject(x, known), scheduled: x.scheduled ?? (settings.sdk_sessions_scheduled && isScriptSession(x) ? true : undefined) }), [known, settings.sdk_sessions_scheduled]);
+  const normalise = useCallback(<T extends { cwd: string; project: string; project_override?: string; scheduled?: boolean; path?: string; entrypoint?: string }>(x: T): T => ({ ...x, project: resolveProject(x, known, settings.workspace_roots), scheduled: x.scheduled ?? (settings.sdk_sessions_scheduled && isScriptSession(x) ? true : undefined) }), [known, settings.sdk_sessions_scheduled, settings.workspace_roots]);
   const activityRows = useMemo(() => activity.sessions.filter((a) => !isSubagentSession(a)).map(normalise), [activity, normalise]);
   const observedPresence = useMemo(() => mergeActivity(presence, activityRows), [presence, activityRows]);
   const presenceF = useMemo(() => hostFilter ? { ...observedPresence, sessions: observedPresence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : observedPresence, [observedPresence, hostFilter, localName]);
@@ -309,7 +309,7 @@ export default function App() {
     return () => { alive = false; };
   }, [api, view, visible, issuesF]);
 
-  const inArchivedProject = useCallback((x: { cwd: string; project: string; project_override?: string }) => isArchived(projectFlags, resolveProject(x, known)), [projectFlags, known]);
+  const inArchivedProject = useCallback((x: { cwd: string; project: string; project_override?: string }) => isArchived(projectFlags, resolveProject(x, known, settings.workspace_roots)), [projectFlags, known, settings.workspace_roots]);
   const inbox = useMemo<InboxItems>(() => ({
     unread: activityF.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)),
     waiting: presenceF.sessions.filter((s) => needsAttention(s) && !s.scheduled && !inArchivedProject(s)).sort((a, b) => b.last_at - a.last_at),

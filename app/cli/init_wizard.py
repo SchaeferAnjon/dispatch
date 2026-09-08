@@ -618,6 +618,37 @@ def review_prompt():
             f"4) 结束时用一段话总结改了什么、为什么；不要问「要不要」，值得改的直接改。")
 
 
+HELPER_PROMPTS = {
+    "ssh": lambda target: (f"帮我把这台电脑到 {target} 的免密 ssh 打通，然后接入它的 Dispatch 任务板。步骤：\n"
+                           f"1) 本机没有 ~/.ssh/id_ed25519 就 ssh-keygen -t ed25519 -N '' 生成；\n"
+                           f"2) ssh-copy-id {target}（会要对方的登录密码，提示我来输；如果连不上，告诉我去那台电脑 系统设置→通用→共享 打开「远程登录」）；\n"
+                           f"3) 验证 ssh -o BatchMode=yes {target} echo ok；\n"
+                           f"4) 通了就跑 `dispatch init run board join {target} --json`，把结果用一句话告诉我。"),
+    "brew": lambda _: "帮我在这台 Mac 上装 Homebrew（官方脚本，需要我输管理员密码时提醒我），装完跑 `dispatch init run deps --json` 把 dolt、beads、herdr、tmux 装上，最后用一句话告诉我结果。",
+}
+
+
+def helper_start(topic, arg="", agent="claude"):
+    """Hand a setup chore to the agent on this Mac; it can type, wait for passwords and retry."""
+    make = HELPER_PROMPTS.get(topic)
+    if not make:
+        raise RuntimeError(f"没有这种帮手：{topic}")
+    prompt = make(arg)
+    err = ""
+    for attempt in range(2):
+        try:
+            code, o, e = run([sys.executable, bundled_cli(), "agent", "start", agent, "--cwd", D.HOME, "--label", f"首次设置：{topic}", "--prompt", prompt, "--no-wait", "--json"], timeout=180)
+            if code == 0 and "{" in o:
+                return {"started": True, "result": json.loads(o[o.find("{"):]), "prompt": prompt}
+            err = (e or o).strip()[-400:]
+        except Exception as ex:
+            err = str(ex)
+        if "agent_pane_busy" not in err:
+            break
+        time.sleep(5)
+    return {"started": False, "error": err, "prompt": prompt}
+
+
 def review_start(agent="claude"):
     prompt = review_prompt()
     cwd = os.path.dirname(D.RULES_FILE)
@@ -759,6 +790,8 @@ def main(a):
                 res = rules_setup()
             elif step == "review":
                 res = review_start(args[0] if args else "claude"); save_state(reviewed=True)
+            elif step == "helper":
+                res = helper_start(args[0] if args else "", args[1] if len(args) > 1 else "", "claude" if "claude-code" in (load_state().get("agents") or ["claude-code"]) else "codex")
             else:
                 raise RuntimeError(f"未知步骤 {step}")
         else:

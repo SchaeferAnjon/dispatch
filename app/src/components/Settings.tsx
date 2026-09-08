@@ -27,6 +27,14 @@ export function SettingsView({ settings, onSave, theme, onTheme, onPhone, hosts 
         </label>
       </section>
       <section className="settings-card">
+        <h3>项目</h3>
+        <label className="settings-row">
+          <div><b>工作区根目录</b><p>这些文件夹的直接子文件夹各算一个项目（例如 ~/Projects/kanban 下的会话都归 kanban）。其它位置按 git 仓库根目录归项目，没有仓库就按所在文件夹。一行一个。</p></div>
+          <textarea className="settings-text" rows={3} value={draft.workspace_roots.join("\n")} onChange={(e) => setDraft({ ...draft, workspace_roots: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} placeholder="~/Projects" />
+        </label>
+        <p className="muted small" style={{ margin: "0 0 8px" }}>有任务、有成果、或手动关联过的才算正式项目；其余只是「目录」，在项目页底部的「其他目录与未归类」里。</p>
+      </section>
+      <section className="settings-card">
         <h3>工作台</h3>
         <label className="settings-row">
           <div><b>默认展开前几个项目</b><p>其余项目折叠成一行摘要，点一下展开。有等你回复或等待确认的项目总是展开。</p></div>
