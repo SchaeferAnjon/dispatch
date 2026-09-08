@@ -46,7 +46,11 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
   const save = async (key: string, value: string) => {
     try { await api.remember(key, value); onDone("已记录。同项目的 Agent 下次会话启动会看到"); setAdding(null); setEditing(null); await load(); } catch (e) { onError(String(e)); }
   };
+  // Two clicks to delete: the button is revealed on hover, one slip should not lose a note.
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const forget = async (key: string) => {
+    if (pendingDelete !== key) { setPendingDelete(key); window.setTimeout(() => setPendingDelete((k) => (k === key ? null : k)), 4000); return; }
+    setPendingDelete(null);
     try { await api.forget(key); onDone("已删除"); await load(); } catch (e) { onError(String(e)); }
   };
   useItemMenu("wiki", (key) => {
@@ -66,7 +70,7 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
     { label: "记一个坑", onClick: () => setAdding("pit") },
     { label: "记一件做对的事", onClick: () => setAdding("win") },
     { label: "记一个方法", onClick: () => setAdding("howto") },
-    { label: "刷新", onClick: () => void load() },
+    { label: "重新读取知识库", onClick: () => void load() },
   ], []);
 
   return (
@@ -94,7 +98,7 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
               {p.project && <span className="tag"><span className="proj" style={{ background: projectColor(p.project) }} />{p.project}</span>}
               {p.task && <button className="link mono" onClick={() => onSelectTask(p.task)}>{p.task}</button>}
               <span className="spacer" />
-              <span className="pit-actions">{p.kind && <button className="btn ghost sm" onClick={() => setEditing(p)}>编辑</button>}<button className="btn ghost sm danger" onClick={() => forget(p.key)}>删除</button></span>
+              <span className="pit-actions">{p.kind && <button className="btn ghost sm" title={`编辑 ${p.key}`} onClick={() => setEditing(p)}>编辑</button>}<button className={`btn ghost sm danger${pendingDelete === p.key ? " confirm" : ""}`} title={`删除 ${p.key}`} onClick={() => forget(p.key)}>{pendingDelete === p.key ? "再点一次确认删除" : "删除"}</button></span>
             </div>
             <div className="pit-row"><span className={`lbl ${p.kind === "pit" ? "trap" : p.kind ?? "plain"}`}>{p.kind ? BODY_LABEL[p.kind] : "记忆"}</span><Markdown src={p.text} className="compact" /></div>
             {p.kind && WIKI_KINDS[p.kind].fields.map((f) => p.fields[f.label] ? (

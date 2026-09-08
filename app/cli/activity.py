@@ -262,6 +262,13 @@ def acknowledge(directory, key, reply_id):
     return {'ok': True}
 
 
+def unacknowledge(directory, key):
+    """Forget the read receipt so the latest reply shows as unread again (the menu's 标为未读)."""
+    with closing(connect(directory)) as db, db:
+        db.execute('DELETE FROM read_replies WHERE key=?', (key,))
+    return {'ok': True, 'unread': True}
+
+
 def set_preferences(directory, key, changes):
     if not isinstance(key, str) or ':' not in key or len(key) > 250: raise ValueError('无效的会话标识')
     if not isinstance(changes, dict) or set(changes) - {'scheduled', 'project_override', 'starred', 'archived', 'summary', 'summary_at', 'summary_version', 'summary_by'}: raise ValueError('无效的分类字段')

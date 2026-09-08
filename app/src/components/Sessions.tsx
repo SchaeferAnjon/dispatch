@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
 import { ago, actorOf, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
 import { PairDiff, PatchDiff } from "./Diff";
-import { canReadReply, activityLabel, isScriptSession, sessionLifecycle } from "../activity";
+import { canReadReply, activityLabel, isScriptSession, sessionLifecycle , activityLine } from "../activity";
 import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef, TimelineMsg } from "../types";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
@@ -182,26 +182,28 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
             <button className={mode === "starred" ? "on" : ""} onClick={() => setMode("starred")} title="收藏的会话：长期追踪，不会自动归档">★ 追踪中 {counts.starred}</button>
             <button className={mode === "archived" ? "on" : ""} onClick={() => setMode("archived")} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>已归档 {counts.archived}</button>
             {(counts.scheduled > 0 || scriptCount > 0) && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="不是你在终端里开的：定时任务、脚本或别的 Agent 通过程序接口启动的会话">定时或脚本 {Math.max(counts.scheduled, scriptCount)}</button>}
+          </div>
+          <div className="sess-filter-row">
             <select className="sess-agent" aria-label="按 Agent 筛选" value={agent} onChange={(e) => setAgent(e.target.value)} title="按 Agent 筛选">{[["", "全部 Agent"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            <span className="muted mono small" title="当前筛选下的会话数">{items.length} 条</span>
+            <span className="muted small" title="当前筛选下的会话数">{items.length} 条</span>
           </div>
         </div>
         <div className="sess-items">
           {!loaded && <div className="empty">索引中…（首次要读完全部历史）</div>}
           {loaded && items.length === 0 && <div className="empty">{mode === "archived" ? `没有归档的会话（${archiveDays} 天没有活动的会自动归到这里）` : mode === "starred" ? "还没有收藏的会话。右键一条会话，选「收藏：长期追踪」。" : "没有匹配的会话"}</div>}
-          {(() => { const isBlank = (r: SessionRef) => !r.title && r.user_msgs === 0 && !activities.some((a) => a.session_id === r.session_id && a.state === "working" && !a.stale); const named = items.filter((r) => !isBlank(r)); const blank = items.filter(isBlank); const item = (r: SessionRef) => {
+          {(() => { const isBlank = (r: SessionRef) => !r.title && r.user_msgs <= 1 && !r.starred && !activities.some((a) => a.session_id === r.session_id && (a.unread || (a.state === "working" && !a.stale))); const named = items.filter((r) => !isBlank(r)); const blank = items.filter(isBlank); const item = (r: SessionRef) => {
             const a = actorOf(r.agent, me);
             const l = liveOf(r.session_id);
             const active = activities.find(a => a.session_id === r.session_id);
             return (
               <div key={r.session_id} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${sel === r.session_id ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
                 <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title="追踪中">★</span>}<span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
-                <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">· {ENTRY[r.entrypoint] ?? r.entrypoint ?? ""} · {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
-                {active && <div className="l3 activity-text">{activityLabel(active)} · {active.activity}</div>}
+                <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}{r.remote && <span className="host-chip">{r.host_name}</span>}<span className="muted">{(ENTRY[r.entrypoint] ?? r.entrypoint) ? `· ${ENTRY[r.entrypoint] ?? r.entrypoint} ` : ""}· {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
+                {active && activityLine(active) && <div className="l3 activity-text">{activityLine(active)}</div>}
                 {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}
               </button><div className="sess-item-actions touch-only"><ConversationMenuButton a={asActivity(r)} /></div></div>
             );
-          }; return <>{named.map(item)}{blank.length > 0 && <details className="sess-blank"><summary className="muted small">空会话 · {blank.length}<span> · 没有标题也没有对话</span></summary>{blank.map(item)}</details>}</>; })()}
+          }; return <>{named.map(item)}{blank.length > 0 && <details className="sess-blank"><summary className="muted small">零散会话 · {blank.length}<span> · 没有标题、最多一句话</span></summary>{blank.map(item)}</details>}</>; })()}
         </div>
       </div>
 

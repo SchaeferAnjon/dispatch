@@ -101,7 +101,10 @@ export function ImageGrid({ ids, max = 8 }: { ids: string[]; max?: number }) {
 
 export function AttachmentList({ items }: { items: Attachment[] }) {
   const media = useMedia();
-  return <div className="attachment-list">{items.length === 0 ? <p className="muted">没有找到图片或链接的本地文件。</p> : items.map(a => a.mime.startsWith('image/') && a.exists ? <Thumb key={a.id} a={a} onOpen={() => media?.open(a.id, items.filter(x => x.mime.startsWith('image/') && x.exists).map(x => x.id))} /> : <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">{a.mime === 'text/html' ? '‹/›' : '▤'}</span><span><b>{a.name}</b><small>{a.mime} · {a.exists ? '点击预览' : '原文件已不可用'}</small></span><span>›</span></button>)}</div>;
+  // Files that are gone (cleaned temp screenshots, mostly) collapse into one line instead of one dead card each.
+  const gone = items.filter(a => !a.exists);
+  const here = items.filter(a => a.exists);
+  return <div className="attachment-list">{items.length === 0 ? <p className="muted">没有找到图片或链接的本地文件。</p> : <>{here.map(a => a.mime.startsWith('image/') ? <Thumb key={a.id} a={a} onOpen={() => media?.open(a.id, here.filter(x => x.mime.startsWith('image/')).map(x => x.id))} /> : <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">{a.mime === 'text/html' ? '‹/›' : '▤'}</span><span><b>{a.name}</b><small>{a.mime} · 点击预览</small></span><span>›</span></button>)}{gone.length > 0 && <details className="attachment-gone"><summary className="muted small">{gone.length} 个文件的原文件已不可用（临时截图被清理了）</summary>{gone.map(a => <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">▤</span><span><b>{a.name}</b><small>{a.mime} · 点开看原因</small></span><span>›</span></button>)}</details>}</>}</div>;
 }
 
 function Thumb({ a, onOpen }: { a: Attachment; onOpen: () => void }) {

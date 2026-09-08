@@ -46,8 +46,12 @@ function EnvKeyList({ api, host, blocked, onDone, onError, compact }: KeysProps)
   const copy = async (name: string) => {
     try { await api.copy((await api.on(host, ["env", "get", name])).trimEnd()); onDone(`${name} 已复制`); } catch (e) { onError(String(e)); }
   };
+  // Deleting a key is not undoable (the value is gone): ask for a second click.
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const remove = async (name: string) => {
     if (busy) return;
+    if (pendingDelete !== name) { setPendingDelete(name); window.setTimeout(() => setPendingDelete((k) => (k === name ? null : k)), 4000); return; }
+    setPendingDelete(null);
     setBusy(true);
     try { await api.on(host, ["env", "unset", name]); setShown({}); onDone(`${name} 已删除`); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
@@ -84,7 +88,7 @@ function EnvKeyList({ api, host, blocked, onDone, onError, compact }: KeysProps)
               <button className="btn ghost sm" disabled={busy} aria-label={`编辑 ${v.name}`} onClick={() => setEditing({ name: v.name, note: v.note, isNew: false })}>编辑</button>
               <details className="env-more"><summary aria-label={`更多操作 ${v.name}`}>更多</summary><div>
                 <button className="btn ghost sm" disabled={busy} onClick={() => void api.copy(`dispatch env get ${v.name}`).then(() => onDone("取用命令已复制")).catch(e => onError(String(e)))}>复制取用命令</button>
-                <button className="btn ghost sm danger" disabled={busy} onClick={() => remove(v.name)}>删除密钥</button>
+                <button className="btn ghost sm danger" disabled={busy} onClick={() => remove(v.name)}>{pendingDelete === v.name ? "再点一次确认删除（值找不回来）" : "删除密钥"}</button>
               </div></details>
             </div>
           </article>

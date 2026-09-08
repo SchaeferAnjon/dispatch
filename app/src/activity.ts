@@ -83,6 +83,13 @@ export function activityLabel(a: Activity) {
   if (a.state === 'working') return '进行中';
   return a.unread ? '未读回复' : '本轮结束';
 }
+/** One line for a list row: only what adds information. A finished, read turn says nothing; a stale
+ *  "still working" record never claims to be processing your message. */
+export function activityLine(a: Activity): string {
+  if (a.stale) return a.state === 'working' ? '记录已停止更新（最后在处理时中断）' : '';
+  if (a.state === 'working') return a.activity ? `进行中 · ${a.activity}` : '进行中';
+  return a.unread ? '未读回复' : '';
+}
 export function canReadReply(a: Activity | undefined, reply: string | undefined, atLatest: boolean, visible: boolean, timeline: boolean) {
   return Boolean(a?.unread && reply && a.reply_id === reply && atLatest && visible && timeline);
 }

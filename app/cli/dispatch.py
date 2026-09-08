@@ -1608,7 +1608,9 @@ def cmd_session_preferences(a):
 
 
 def cmd_seen(a):
-    from activity import acknowledge
+    from activity import acknowledge, unacknowledge
+    if a.reply == "unread":  # the same transport, reversed: drop the receipt
+        return out(unacknowledge(DISPATCH_DIR, a.key), a.json, lambda _: print("已标为未读"))
     out(acknowledge(DISPATCH_DIR, a.key, a.reply), a.json, lambda _: print("已读"))
 
 
@@ -4128,7 +4130,7 @@ def main():
     s = sub.add_parser("project", help="star / archive a project (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
     s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)
     s = sub.add_parser("session-preferences", help="classify a conversation without changing its transcript"); s.add_argument("key"); s.add_argument("changes"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_preferences)
-    s = sub.add_parser("seen", help="acknowledge exactly one observed reply"); s.add_argument("key"); s.add_argument("reply"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
+    s = sub.add_parser("seen", help="acknowledge exactly one observed reply; reply=unread drops the receipt"); s.add_argument("key"); s.add_argument("reply", help="reply id, or `unread` to mark the session unread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
     s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status", "adopt"]); s.set_defaults(fn=cmd_session_control)
     s = sub.add_parser("adopt", help="take a session running in another terminal (Warp/iTerm/Terminal/VS Code) into Herdr: stop it when idle, resume it in a new Herdr tab"); s.add_argument("key", help="session id, prefix, or pid-<n>"); s.add_argument("--keep", action="store_true", help="leave the old process running (the two will interleave writes)"); s.add_argument("--force", action="store_true", help="adopt even while it is working"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_adopt)
     s = sub.add_parser("reply", help="reply to an exact Agent session"); s.add_argument("op", choices=["status", "send"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)

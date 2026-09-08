@@ -102,7 +102,8 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
       <h4>洞察<span className="muted">{rep ? `报告生成于 ${rep.created_at} · 最近 ${rep.days} 天 · ${rep.session_count} 个会话` : "还没有报告"}</span>
         <span className="spacer" />
         <label className="ins-cadence muted small">自动<select value={list?.schedule.every_days ?? 0} onChange={(e) => void schedule(Number(e.target.value))}>{CADENCE.map(([d, l]) => <option key={d} value={d}>{l}</option>)}</select></label>
-        <span className="views">{[7, 14, 30].map((d) => <button key={d} className={days === d ? "on" : ""} onClick={() => setDays(d)}>{d} 天</button>)}</span>
+        <span className="views" title="信号统计的时间范围；「重新生成」也按这个范围写报告">{[7, 14, 30].map((d) => <button key={d} className={days === d ? "on" : ""} onClick={() => setDays(d)}>{d} 天</button>)}</span>
+        {rep && rep.days !== days && <span className="muted small ins-days-note">当前报告是 {rep.days} 天的；「重新生成」会按 {days} 天写</span>}
         <button className="btn sm" disabled={!!running} onClick={generate} title="让模型读最近这段时间所有 Agent 的会话摘要，写一份报告（后台，1–3 分钟）">{running ? `生成中 ${Math.max(0, Math.round((Date.now() / 1000 - running.started) / 60))} 分…` : rep ? "重新生成" : "生成报告"}</button>
         {rep && <button className="btn sm" onClick={() => openHtml({ id: rep.id, html: rows.find((x) => x.id === rep.id)?.html ?? "" })} title="整页打开这份报告（手机上在新标签打开）">整页打开 ↗</button>}
         <button className="btn primary sm" disabled={!r || starting} onClick={improve} title={canStart ? "打开派活窗口：在选定的机器起一个 Claude Code，按报告的建议改规则/技能、把结论写进知识库" : "复制启动命令"}>{starting ? "正在派活…" : canStart ? "✦ 派 Agent 做改进" : "✦ 复制改进命令"}</button>
@@ -160,7 +161,7 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
       )}
 
       <details className="ins-signals" open={!rep}>
-        <summary>信号统计 <span className="muted small">正则从会话记录里数出来的线索，是报告的输入 · {r?.total_sessions ?? 0} 个会话{busy && r ? " · 更新中…" : ""}</span><span className="spacer" /><button className={`link sm${open === "rules" ? " on" : ""}`} onClick={(e) => { e.preventDefault(); setOpen(open === "rules" ? null : "rules"); }}>{open === "rules" ? "收起规则" : "怎么算的？"}</button></summary>
+        <summary>信号统计 <span className="muted small">正则从会话记录里数出来的线索，是报告的输入 · 最近 {days} 天 · {r ? `${r.total_sessions} 个会话` : "统计中…"}{busy && r ? " · 更新中…" : ""}</span><span className="spacer" /><button className={`link sm${open === "rules" ? " on" : ""}`} onClick={(e) => { e.preventDefault(); setOpen(open === "rules" ? null : "rules"); }}>{open === "rules" ? "收起规则" : "怎么算的？"}</button></summary>
         {busy && !r && <div className="empty small">读会话中…</div>}
         {open === "rules" && r && (
           <div className="ins-rules">
@@ -178,7 +179,7 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
               <div className="tile"><b>{tot("tool_errors")}</b><span>工具报错</span><small>命令失败 / 编辑没匹配到</small></div>
               <div className="tile"><b>{tot("no_board")}</b><span>长会话没上板</span><small>≥15 轮却没 dispatch begin</small></div>
             </div>
-            <ul className="ins-findings">{r.findings.map((f, i) => <li key={i}>{f}</li>)}</ul>
+            {r.findings.length > 0 && <details className="ins-findings-fold"><summary className="muted small">这些数字怎么读 · {r.findings.length} 条</summary><ul className="ins-findings">{r.findings.map((f, i) => <li key={i}>{f}</li>)}</ul></details>}
             {(open === "asktail" || open === "correction") && (
               <div className="ins-samples">
                 {r.samples[open].length === 0 && <div className="empty small">没有样本</div>}

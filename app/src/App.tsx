@@ -82,6 +82,14 @@ export default function App() {
       setActivity(old => ({ ...old, sessions: old.sessions.map(x => activityKey(x) === activityKey(a) && x.reply_id === reply ? { ...x, unread: false } : x) }));
     } catch { setToast({text: "标记已读失败，请重试", err: true}); }
   }, [api]);
+  const markUnread = useCallback(async (a: Activity) => {
+    if (!api) return;
+    try {
+      await api.sessionSeen(a.host ?? 'local', a.key, "unread");
+      acknowledged.current.delete(activityKey(a));
+      setActivity(old => ({ ...old, sessions: old.sessions.map(x => activityKey(x) === activityKey(a) && x.reply_id ? { ...x, unread: true } : x) }));
+    } catch { setToast({text: "标为未读失败，请重试", err: true}); }
+  }, [api]);
   useEffect(() => {
     if (!api) return;
     let stopped = false; let timer = 0;
@@ -413,13 +421,14 @@ export default function App() {
   }, [api, view, visible, issuesF]);
 
   const inArchivedProject = useCallback((x: { cwd: string; project: string; project_override?: string }) => isArchived(projectFlags, resolveProject(x, known, settings.workspace_roots)), [projectFlags, known, settings.workspace_roots]);
-  const inbox = useMemo<InboxItems>(() => ({
-    unread: activityF.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)),
+  const inbox = useMemo<InboxItems>(() => { const unread = activityF.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)); return {
+    unread,
     waiting: presenceF.sessions.filter((s) => needsAttention(s) && !s.scheduled && !inArchivedProject(s)).sort((a, b) => b.last_at - a.last_at),
-    idle: presenceF.sessions.filter((s) => s.alive && s.state === "idle" && !needsAttention(s) && !s.scheduled),
+    // A session already listed under 未读回复 is not also "idle": one row per session.
+    idle: presenceF.sessions.filter((s) => s.alive && s.state === "idle" && !needsAttention(s) && !s.scheduled && !unread.some((a) => a.session_id === s.session_id)),
     review: issuesF.filter((i) => needsReview(i)).sort((a, b) => (b.closed_at ?? b.updated_at).localeCompare(a.closed_at ?? a.updated_at)),
     blocked: issuesF.filter((i) => i.status === "blocked"),
-  }), [issuesF, presenceF, activityF, inArchivedProject]);
+  }; }, [issuesF, presenceF, activityF, inArchivedProject]);
 
   const counts = useMemo(() => ({
     total: issuesF.length,
@@ -579,7 +588,7 @@ export default function App() {
   }
 
   return (
-    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?{...r,...c}:r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?{...x,...c}:x)}));say(c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), onSummarize: summarizeSession, hosts, onMove: async (a, hostId, hostName) => { say(`正在把会话和项目目录搬到 ${hostName}…`); try { const r = JSON.parse((await api!.on("local", ["move", a.session_id, "--to", hostId, "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(`已迁移到 ${hostName}：${r.remote_cwd}，那边会话页能看到它继续；这里的原会话可以关了`); } catch (e) { say(String(e), true); } } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectRows.find((a) => conversationProject(a) === n)); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
+    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?{...r,...c}:r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?{...x,...c}:x)}));say(c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onUnread: markUnread, onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), onSummarize: summarizeSession, hosts, onMove: async (a, hostId, hostName) => { say(`正在把会话和项目目录搬到 ${hostName}…`); try { const r = JSON.parse((await api!.on("local", ["move", a.session_id, "--to", hostId, "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(`已迁移到 ${hostName}：${r.remote_cwd}，那边会话页能看到它继续；这里的原会话可以关了`); } catch (e) { say(String(e), true); } } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectRows.find((a) => conversationProject(a) === n)); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b className="lead-mobile">Dispatch</b></div>
         <div className="crumb" data-tauri-drag-region>
