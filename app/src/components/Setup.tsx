@@ -17,6 +17,7 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
   const [boardMode, setBoardMode] = useState<"first" | "join">("first");
   const [hub, setHub] = useState("");
   const [hubPassword, setHubPassword] = useState("");
+  const [rejoin, setRejoin] = useState(false);
   const [picked, setPicked] = useState<string[] | null>(null);
   const [log, setLog] = useState<Record<string, string>>({});
   const [reviewer, setReviewer] = useState<string>("");
@@ -72,7 +73,18 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
         </Card>
 
         <Card n={3} s={step("board")} busy={busy === "board"}>
-          {board?.exists ? <p className="muted">{board.hub ? `已接入 ${board.hub.name}（${board.hub.ssh}），每 2 分钟双向同步。` : "任务板在这台电脑上；别的电脑接入时填这台的地址。"}</p> : <>
+          {board?.exists ? <>
+            <p className="muted">{board.hub ? `已接入 ${board.hub.name}（${board.hub.ssh}），每 2 分钟双向同步。` : "任务板在这台电脑上；别的电脑接入时填这台的地址。"}</p>
+            {!board.hub && <details className="setup-rejoin" open={rejoin} onToggle={(e) => setRejoin((e.target as HTMLDetailsElement).open)}>
+              <summary className="link">改为接入另一台电脑的任务板…</summary>
+              <div className="setup-join">
+                <input placeholder="那台电脑的 ssh 地址，如 name@100.x.y.z" value={hub} onChange={(e) => setHub(e.target.value)} />
+                <input type="password" placeholder="那台电脑的登录密码（只用一次，不保存；已能免密可留空）" value={hubPassword} onChange={(e) => setHubPassword(e.target.value)} autoComplete="off" />
+                <p className="muted small">本机现有的任务板会停掉并改名保留（~/tasks/.beads.retired-日期），不会删除；之后这台用那台的板。那台电脑要开着「远程登录」。</p>
+                <button className="btn primary" disabled={!!busy || !hub.trim()} onClick={async () => { if (hubPassword) { setBusy("board"); try { const r = parse<{ error?: string }>(await api.on("local", ["init", "run", "ssh-key", hub.trim(), "--json"], hubPassword)); if (r.error) { onError(r.error); setLog((l) => ({ ...l, board: r.error! })); return; } setHubPassword(""); } catch (e) { onError(String(e)); return; } finally { setBusy(""); } } void run("board", ["join", hub.trim(), "replace"], "已改为接入那台电脑的任务板"); }}>{busy === "board" ? "处理中…" : "停掉本机的板，接入"}</button>
+              </div>
+            </details>}
+          </> : <>
             <div className="setup-choice">
               <label className={boardMode === "first" ? "on" : ""}><input type="radio" name="board" checked={boardMode === "first"} onChange={() => setBoardMode("first")} /><b>只有这一台，或这是第一台</b><span>在这里新建任务板，这台成为其他电脑接入的枢纽</span></label>
               <label className={boardMode === "join" ? "on" : ""}><input type="radio" name="board" checked={boardMode === "join"} onChange={() => setBoardMode("join")} /><b>已有一台电脑装了 Dispatch</b><span>接入它的任务板，两边同一份任务</span></label>

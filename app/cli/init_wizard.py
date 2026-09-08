@@ -469,10 +469,48 @@ def hub_info():
             "rules_dir": os.path.dirname(D.RULES_FILE), "pool": D.POOL, "dispatch": "$HOME/.local/bin/dispatch"}
 
 
-def board_join(target):
-    """Join the board of `target` (user@host that already runs Dispatch)."""
+def board_retire():
+    """Put the local board aside (never deleted) so this Mac can join another one instead:
+    stop the servers, move ~/tasks/.beads and the dolt data to timestamped backups."""
+    import shutil
+    stamp = time.strftime("%Y%m%d-%H%M")
+    uid = os.getuid()
+    for label in ("dev.schaefer.dolt-server", "dev.schaefer.beads-dolt", "dev.schaefer.beads-sync"):
+        subprocess.run(["launchctl", "bootout", f"gui/{uid}/{label}"], capture_output=True)
+        try:
+            os.remove(os.path.join(LAUNCH_DIR, f"{label}.plist"))
+        except FileNotFoundError:
+            pass
+    run([which("bd") or "bd", "dolt", "stop"], timeout=60)
+    subprocess.run(["pkill", "-f", "dolt sql-server"], capture_output=True)
+    time.sleep(1)
+    moved = []
+    if os.path.exists(D.BEADS_DIR):
+        dst = D.BEADS_DIR + f".retired-{stamp}"
+        shutil.move(D.BEADS_DIR, dst); moved.append(dst)
+    data = os.path.join(SHARED, "dolt", "task")
+    if os.path.exists(data):
+        dst = data + f".retired-{stamp}"
+        shutil.move(data, dst); moved.append(dst)
+    for f in ("dolt-server.lock", "dolt-server.pid", "dolt-server.port"):
+        try:
+            os.remove(os.path.join(SHARED, f))
+        except FileNotFoundError:
+            pass
+    save_state(board_mode="", hub=None)
+    return moved
+
+
+def board_join(target, replace=False):
+    """Join the board of `target` (user@host that already runs Dispatch). With replace, a
+    board this Mac already has is retired first (kept as a backup, never deleted)."""
     if not (which("bd") and which("dolt")):
         raise RuntimeError("先装 Beads 和 Dolt（上一步）")
+    retired = []
+    if os.path.exists(os.path.join(D.BEADS_DIR, "config.yaml")):
+        if not replace:
+            raise RuntimeError("这台已经有任务板了；要改为接入另一台，勾选「替换本机任务板」再试（本机的板会留备份）")
+        retired = board_retire()
     ok, why = ssh_target_ok(target)
     if not ok:
         raise RuntimeError(f"ssh 连不上 {target}：{why or '要先在那台电脑打开「远程登录」，并把这台的公钥加过去（ssh-copy-id）'}")
@@ -520,7 +558,7 @@ def board_join(target):
             open(ak, "a").write(("\n" if cur and not cur.endswith("\n") else "") + hub["pubkey"] + "\n")
             os.chmod(ak, 0o600)
     save_state(board_mode="join", hub={"name": hub["name"], "ssh": hub_entry["ssh"], "remote": hub["remote"]})
-    return {"hub": hub_entry, "me": my_entry, "remote": hub["remote"]}
+    return {"hub": hub_entry, "me": my_entry, "remote": hub["remote"], "retired": retired}
 
 
 def add_host(entry):
@@ -924,7 +962,7 @@ def main(a):
             elif step == "cli":
                 res = cli_link()
             elif step == "board":
-                res = board_first() if (args[:1] or ["first"])[0] == "first" else board_join(args[1])
+                res = board_first() if (args[:1] or ["first"])[0] == "first" else board_join(args[1], replace="replace" in args[2:])
             elif step == "agents":
                 res = agents_setup(args)
             elif step == "rules":
