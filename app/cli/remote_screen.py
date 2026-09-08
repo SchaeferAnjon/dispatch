@@ -33,7 +33,7 @@ def endpoint_from_config(config, local_ip=""):
             if (proxy.scheme == "http" and proxy.hostname in {"127.0.0.1", "localhost", local_ip}
                     and proxy.port == 6080 and proxy.path in ("", "/")):
                 origin = "https://" + endpoint.hostname + (f":{port}" if port != 443 else "")
-                return origin + "/vnc.html?autoconnect=1&resize=scale"
+                return origin + "/vnc.html?autoconnect=1&resize=scale&show_dot=1"
         except (ValueError, TypeError, AttributeError):
             continue
     return ""

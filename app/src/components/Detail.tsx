@@ -174,7 +174,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
           )}
         </div>}
 
-        <section className="sec"><h4>来自哪次会话 <span className="muted small">建这个任务的对话，以及后来参与过的对话；Agent 用 dispatch begin 建任务时会自动记，漏了可以手动指定</span></h4><TaskRelations issue={issue} rows={rows} api={api} onOpen={onOpenSession} onSaved={()=>onDone("会话归属已保存")}/></section>
+        <section className="sec sec-origin"><h4>来自哪次会话</h4><TaskRelations issue={issue} rows={rows} api={api} onOpen={onOpenSession} onSaved={()=>onDone("会话归属已保存")}/></section>
         {(() => {
           const discussion = comments.filter((c) => c.text.trimStart().startsWith("【讨论】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
           const subtasks = (issue.dependents ?? []).filter((d) => !d.dependency_type || d.dependency_type === "parent-child");

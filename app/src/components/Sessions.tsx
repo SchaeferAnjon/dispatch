@@ -18,7 +18,7 @@ interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
 export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onDone, onError, initialId, hostId }: Props) {
-  const [showScripts, setShowScripts] = useState(false);
+  const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
   const [mode, setMode] = useState<"active" | "starred" | "archived" | "scheduled">("active");
@@ -83,7 +83,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
       const old = all.get(a.session_id);
       all.set(a.session_id, old ? { ...old, last_at: a.last_at, scheduled: old.scheduled || a.scheduled, starred: old.starred || a.starred, archived: old.archived || a.archived } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
     }
-    const inMode = (r: SessionRef) => { if (!showScripts && isScriptSession(r)) return false; if (mode === "scheduled") return !!r.scheduled; if (r.scheduled) return false; const life = archivedProjects.has(r.project_override || r.project) ? "archived" : sessionLifecycle(r, archiveDays); return mode === "archived" ? life === "archived" : mode === "starred" ? life === "starred" : life !== "archived"; };
+    const inMode = (r: SessionRef) => { if (mode === "scheduled") return !!r.scheduled || isScriptSession(r); if (!showScripts && isScriptSession(r)) return false; if (r.scheduled) return false; const life = archivedProjects.has(r.project_override || r.project) ? "archived" : sessionLifecycle(r, archiveDays); return mode === "archived" ? life === "archived" : mode === "starred" ? life === "starred" : life !== "archived"; };
     return [...all.values()].sort((a,b) => Number(!!b.starred) - Number(!!a.starred) || b.last_at - a.last_at).filter((r) => inMode(r) && (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
   }, [refs, showScripts, activities, q, agent, host, mode, archiveDays, archivedProjects]);
   // The menu wants the conversation shape; a catalog row becomes one with the same identity.
@@ -117,9 +117,8 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
             <button className={mode === "active" ? "on" : ""} onClick={() => setMode("active")}>最近</button>
             <button className={mode === "starred" ? "on" : ""} onClick={() => setMode("starred")} title="收藏的会话：长期追踪，不会自动归档">★ 追踪中 {counts.starred}</button>
             <button className={mode === "archived" ? "on" : ""} onClick={() => setMode("archived")} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>已归档 {counts.archived}</button>
-            {counts.scheduled > 0 && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="定时任务产生的会话">定时 {counts.scheduled}</button>}
+            {(counts.scheduled > 0 || scriptCount > 0) && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="不是你在终端里开的：定时任务、脚本或别的 Agent 通过程序接口启动的会话">定时或脚本 {Math.max(counts.scheduled, scriptCount)}</button>}
             <select className="sess-agent" aria-label="按 Agent 筛选" value={agent} onChange={(e) => setAgent(e.target.value)} title="按 Agent 筛选">{[["", "全部 Agent"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            {scriptCount > 0 && <button className={`chip${showScripts ? " on" : ""}`} onClick={() => setShowScripts(!showScripts)} title="不是你在终端里开的：由脚本、定时任务或别的 Agent 通过程序接口（SDK）启动的会话，默认不列出；点一下显示">脚本启动的 {scriptCount}</button>}
             <span className="muted mono small" title="当前筛选下的会话数">{items.length} 条</span>
           </div>
         </div>

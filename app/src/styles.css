@@ -1132,3 +1132,5 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .skill-files{margin-top:16px}.skill-files summary{cursor:pointer}.skill-files button{display:block;padding:2px 0}.skill-files button.on{font-weight:600}
 .trend .tb .col i.none{height:2px;background:var(--line-2);opacity:.9}.trend .tb.zero:hover .col i.none{background:var(--ink-3)}
 .setup-rejoin{width:100%}.setup-rejoin>summary{cursor:pointer;list-style:none}.setup-rejoin>summary::-webkit-details-marker{display:none}.setup-rejoin .setup-join{margin-top:8px}
+.setup-peers{display:block;font-size:12.5px;margin-bottom:6px}.setup-peers select{margin-left:6px;max-width:100%}
+.done-group{display:flex;flex-direction:column;gap:8px;margin-bottom:6px}.done-group-h{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);padding:2px 4px;position:sticky;top:0;background:var(--panel);z-index:1}.done-group-h .proj{width:8px;height:8px;border-radius:2px;display:inline-block}

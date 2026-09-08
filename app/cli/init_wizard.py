@@ -385,6 +385,28 @@ def board_first():
     return {"dir": D.BEADS_DIR, "root": root, "remote_for_others": f"http://{D.tailscale_ip() or lan_ip()}:{REMOTESAPI_PORT}/task", "sync_user": user}
 
 
+def peers():
+    """Other machines on this Tailscale network, so joining is a pick instead of typing an IP."""
+    ts = which("tailscale")
+    if not ts:
+        return {"available": False, "peers": []}
+    code, o, e = run([ts, "status", "--json"], timeout=15)
+    if code != 0:
+        return {"available": True, "peers": [], "error": (e or o).strip()[-200:]}
+    try:
+        st = json.loads(o)
+    except ValueError:
+        return {"available": True, "peers": []}
+    rows = []
+    for p in (st.get("Peer") or {}).values():
+        ips = [ip for ip in (p.get("TailscaleIPs") or []) if "." in ip]
+        if not ips:
+            continue
+        rows.append({"name": p.get("HostName") or p.get("DNSName", "").split(".")[0], "ip": ips[0], "online": bool(p.get("Online")), "os": p.get("OS", "")})
+    rows.sort(key=lambda r: (not r["online"], r["name"]))
+    return {"available": True, "self": {"name": (st.get("Self") or {}).get("HostName", ""), "ip": next((ip for ip in (st.get("Self") or {}).get("TailscaleIPs", []) if "." in ip), "")}, "peers": rows}
+
+
 def ssh_key_setup(target, password):
     """Passwordless ssh to `target` without the user touching a terminal: make a key if
     there is none, run ssh-copy-id on a pty and type the password for it, then verify.
@@ -945,6 +967,8 @@ def main(a):
             wizard(); return
         if op == "status":
             res = status()
+        elif op == "peers":
+            res = peers()
         elif op == "hub-info":
             res = hub_info()
         elif op == "add-host":

@@ -67,8 +67,8 @@ export function SettingsView({ settings, onSave, theme, onTheme, onPhone, onScre
           <button className="btn sm" onClick={onSetup}>打开首次设置</button>
         </div>}
         {hosts.length > 0 && <div className="settings-row">
-          <div><b>机器</b><p>来自 ~/tasks/.dispatch/hosts.json；侧栏可按机器筛选。</p></div>
-          <span className="small">{hosts.map((h) => <span key={h.name} className="host-chip" title={h.ip}>{h.online ? "● " : "○ "}{h.name}{h.local ? "（本机）" : ""}</span>)}</span>
+          <div><b>机器</b><p>来自 ~/tasks/.dispatch/hosts.json；侧栏可按机器筛选。要加一台：在那台电脑上装 Dispatch，走首次设置时选「接入」并填这台的地址；或者在这台上「接入另一台」。</p></div>
+          <span className="setup-row">{onSetup && <button className="btn sm" onClick={onSetup}>接入另一台电脑…</button>}{hosts.map((h) => <span key={h.name} className="host-chip" title={h.ip}>{h.online ? "● " : "○ "}{h.name}{h.local ? "（本机）" : ""}</span>)}</span>
         </div>}
       </section>
       <div className="settings-actions">

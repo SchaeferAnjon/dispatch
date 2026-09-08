@@ -18,6 +18,11 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
   const [hub, setHub] = useState("");
   const [hubPassword, setHubPassword] = useState("");
   const [rejoin, setRejoin] = useState(false);
+  const [peers, setPeers] = useState<{ name: string; ip: string; online: boolean; os: string }[] | null>(null);
+  const loadPeers = async () => { try { const r = parse<{ peers: { name: string; ip: string; online: boolean; os: string }[] }>(await api.on("local", ["init", "peers", "--json"])); setPeers(r.peers ?? []); } catch { setPeers([]); } };
+  useEffect(() => { if ((boardMode === "join" || rejoin) && peers === null) void loadPeers(); }, [boardMode, rejoin, peers]);
+  const pickPeer = (ip: string) => { if (!ip) return; const user = hub.includes("@") ? hub.split("@")[0] : ""; setHub(`${user}@${ip}`); };
+  const PeerPicker = () => peers && peers.length > 0 ? <label className="setup-peers">从 Tailscale 里选：<select value="" onChange={(e) => pickPeer(e.target.value)}><option value="">— 选一台，再在前面补上用户名 —</option>{peers.map((p) => <option key={p.ip} value={p.ip} disabled={!p.online}>{p.name} · {p.ip}{p.online ? "" : "（离线）"}</option>)}</select></label> : peers && peers.length === 0 ? <span className="muted small">Tailscale 里没看到别的机器；手动填地址也行。</span> : null;
   const [picked, setPicked] = useState<string[] | null>(null);
   const [log, setLog] = useState<Record<string, string>>({});
   const [reviewer, setReviewer] = useState<string>("");
@@ -78,7 +83,8 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
             {!board.hub && <details className="setup-rejoin" open={rejoin} onToggle={(e) => setRejoin((e.target as HTMLDetailsElement).open)}>
               <summary className="link">改为接入另一台电脑的任务板…</summary>
               <div className="setup-join">
-                <input placeholder="那台电脑的 ssh 地址，如 name@100.x.y.z" value={hub} onChange={(e) => setHub(e.target.value)} />
+                <PeerPicker />
+                <input placeholder="那台电脑的 ssh 地址，如 name@100.x.y.z（name 是那台电脑的登录用户名）" value={hub} onChange={(e) => setHub(e.target.value)} />
                 <input type="password" placeholder="那台电脑的登录密码（只用一次，不保存；已能免密可留空）" value={hubPassword} onChange={(e) => setHubPassword(e.target.value)} autoComplete="off" />
                 <p className="muted small">本机现有的任务板会停掉并改名保留（~/tasks/.beads.retired-日期），不会删除；之后这台用那台的板。那台电脑要开着「远程登录」。</p>
                 <button className="btn primary" disabled={!!busy || !hub.trim()} onClick={async () => { if (hubPassword) { setBusy("board"); try { const r = parse<{ error?: string }>(await api.on("local", ["init", "run", "ssh-key", hub.trim(), "--json"], hubPassword)); if (r.error) { onError(r.error); setLog((l) => ({ ...l, board: r.error! })); return; } setHubPassword(""); } catch (e) { onError(String(e)); return; } finally { setBusy(""); } } void run("board", ["join", hub.trim(), "replace"], "已改为接入那台电脑的任务板"); }}>{busy === "board" ? "处理中…" : "停掉本机的板，接入"}</button>
@@ -90,7 +96,8 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
               <label className={boardMode === "join" ? "on" : ""}><input type="radio" name="board" checked={boardMode === "join"} onChange={() => setBoardMode("join")} /><b>已有一台电脑装了 Dispatch</b><span>接入它的任务板，两边同一份任务</span></label>
             </div>
             {boardMode === "join" && <div className="setup-join">
-              <input placeholder="那台电脑的 ssh 地址，如 name@100.x.y.z" value={hub} onChange={(e) => setHub(e.target.value)} />
+              <PeerPicker />
+              <input placeholder="那台电脑的 ssh 地址，如 name@100.x.y.z（name 是那台电脑的登录用户名）" value={hub} onChange={(e) => setHub(e.target.value)} />
               <input type="password" placeholder="那台电脑的登录密码（只用一次，不保存；已能免密可留空）" value={hubPassword} onChange={(e) => setHubPassword(e.target.value)} autoComplete="off" />
               <p className="muted small">前提：那台电脑已经跑过首次设置，并打开了「远程登录」（系统设置 → 通用 → 共享）。填上密码，Dispatch 会把这台的公钥放过去，之后两边免密互访；不想给密码也可以交给本机 Agent 在终端里做。</p>
               <button className="btn" disabled={!!busy || !hub.trim()} onClick={() => void run("helper", ["ssh", hub.trim()], "已交给本机 Agent，去会话页看进度")}>让本机 Agent 代劳</button>

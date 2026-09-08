@@ -12,7 +12,7 @@ def serve_config(proxy="http://127.0.0.1:6080", port=443):
 class SecureScreenEndpoint(unittest.TestCase):
     def test_loopback_proxy_uses_https_and_alternate_port(self):
         self.assertEqual(endpoint_from_config(serve_config(port=8443)),
-                         "https://mac.example.ts.net:8443/vnc.html?autoconnect=1&resize=scale")
+                         "https://mac.example.ts.net:8443/vnc.html?autoconnect=1&resize=scale&show_dot=1")
 
     def test_existing_tailnet_binding_supported_during_upgrade(self):
         config = serve_config("http://100.64.0.1:6080")

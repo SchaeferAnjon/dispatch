@@ -2,7 +2,7 @@ import { TaskMenuButton } from "./TaskActions";
 import { useState } from "react";
 import { sessionStatus, sessionEvidence } from "../derive";
 import type { AgentPresence } from "../derive";
-import { COLUMNS, SOURCE_LABEL, actorOf, columnOf, delegatedBy, delegatedTo, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
+import { COLUMNS, SOURCE_LABEL, projectColor, actorOf, columnOf, delegatedBy, delegatedTo, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
 import type { Column, Host, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 import { linkedSessions } from "../projectModel";
@@ -68,7 +68,8 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
               {c.key === "todo" && <button className="add" onClick={() => onAdd(c.key)} title="新任务">＋</button>}
             </div>
             <div className="cards">
-              {list.map((i) => (
+              {c.key === "done" && list.length > 0 && (() => { const sorted = [...list].sort((x, y) => (y.closed_at ?? y.updated_at).localeCompare(x.closed_at ?? x.updated_at)); const groups = new Map<string, Issue[]>(); for (const i of sorted) { const k = projectOf(i) || "未分项目"; groups.set(k, [...(groups.get(k) ?? []), i]); } return [...groups.entries()].map(([name, items]) => <div key={name} className="done-group"><div className="done-group-h"><span className="proj" style={{ background: projectColor(name) }} />{name}<span className="muted mono small">{items.length}</span></div>{items.map((i) => <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} />)}</div>); })()}
+              {c.key !== "done" && list.map((i) => (
                 <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable
                   onDragStart={(e) => { setDragId(i.id); e.dataTransfer.effectAllowed = "move"; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
                   onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); setDragId(null); setOver(null); }} />
