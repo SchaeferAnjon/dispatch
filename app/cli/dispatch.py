@@ -487,6 +487,30 @@ def dismiss_startup_dialogs(host, pane, tries=3):
     return pressed
 
 
+def wait_interactive(host, pane, timeout=90):
+    """Until the agent can take a prompt: first runs self-update, then may show a trust
+    dialog, and Herdr's `interactive_ready` flips true only once the input box is up.
+    Answers known dialogs along the way. Returns (ready, keys pressed)."""
+    deadline = time.time() + timeout
+    pressed, quiet = [], 0
+    while time.time() < deadline:
+        hit = dismiss_startup_dialogs(host, pane, tries=1)
+        if hit:
+            pressed += hit
+            quiet = 0
+            continue
+        info = herdr(host, ["agent", "get", pane])
+        ag = (info.get("result") or {}).get("agent", {}) if isinstance(info, dict) else {}
+        if ag.get("interactive_ready") or ag.get("agent_status") in ("idle", "ready"):
+            quiet += 1
+            if quiet >= 2:  # two clean reads in a row: no dialog popped up after ready
+                return True, pressed
+        else:
+            quiet = 0
+        time.sleep(1.5)
+    return False, pressed
+
+
 def cmd_agent(a):
     host = herdr_target_host(a.host)
     where = host["name"] if host else local_host_name()
@@ -544,12 +568,15 @@ def cmd_agent(a):
             sh(["bd", "comments", "add", a.task, note], env={"BEADS_ACTOR": me})
         res = {"host": where, "pane_id": pane, "tab_id": tab_id, "name": name, "kind": kind, "actor": actor, "cwd": cwd, "status": started.get("agent_status"), "task": a.task or "", "output": ""}
         if a.prompt:
-            # Ready per Herdr is not yet ready for input; and prompts to an unfocused tab are dropped.
-            time.sleep(2)
+            # Prompts to an unfocused tab are dropped, and a prompt typed before the agent's
+            # input box exists (self-update, trust dialogs) is swallowed: wait for both.
             if tab_id:
                 herdr(host, ["tab", "focus", tab_id])
-            if dismiss_startup_dialogs(host, pane):
+            ready, pressed = wait_interactive(host, pane)
+            if pressed:
                 res["dismissed"] = True
+            if not ready:
+                res["warning"] = "等了 90 秒 Agent 还没准备好接收输入；提示词已尝试发送，看输出确认"
             pargs = ["agent", "prompt", pane, a.prompt]
             if a.wait:
                 pargs += ["--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(a.timeout)]
