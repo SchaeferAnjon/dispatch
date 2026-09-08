@@ -685,8 +685,10 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .sec p.empty-p{color:var(--ink-3);font-style:italic}
 .sec p:hover{background:var(--panel)}
 .sec textarea.edit{width:100%;min-height:90px;border:1px solid var(--accent);border-radius:6px;padding:6px 8px;background:var(--win);resize:vertical}
-.sec ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:4px}
-.sec li{display:flex;gap:8px;align-items:flex-start;user-select:text}
+/* Only the checklists the section renders itself (acceptance items); Markdown lists inside .md keep their own layout. */
+.sec ul.checks{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.sec ul.checks li{display:flex;gap:8px;align-items:flex-start;user-select:text}
+.md ul,.md ol{list-style:revert}.md li{display:list-item}
 .box{width:14px;height:14px;border:1.5px solid var(--line-2);border-radius:4px;flex:none;margin-top:3px;display:grid;place-items:center;font-size:10px;color:#fff;cursor:pointer}
 .box.on{background:var(--s-done);border-color:var(--s-done)}
 .act{display:flex;flex-direction:column;gap:10px}
@@ -1207,3 +1209,6 @@ pre.diff.dv-pre button.skip{display:block;width:100%;text-align:left;padding:2px
   .dv-bar{flex-wrap:wrap;gap:6px 10px}
   .fdiff,.fdiff.file{min-width:0;max-width:100%;overflow:hidden}
 }
+
+/* Harness events in the conversation: one grey line, not a bubble. */
+.tl.system{padding:2px 0;border:0;background:none}.tl.system .tl-system{font-size:11.5px;padding:2px 8px;border-left:2px dashed var(--line);white-space:pre-wrap;word-break:break-word}

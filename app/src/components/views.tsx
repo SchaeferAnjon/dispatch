@@ -1,8 +1,8 @@
 import { TaskMenuButton } from "./TaskActions";
 import { AdoptButton } from "./SessionActions";import { useState } from "react";
-import { sessionStatus, sessionEvidence } from "../derive";
+import { ago, sessionStatus, sessionEvidence } from "../derive";
 import type { AgentPresence } from "../derive";
-import { COLUMNS, SOURCE_LABEL, projectColor, actorOf, columnOf, delegatedBy, delegatedTo, durSince, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
+import { COLUMNS, SOURCE_LABEL, projectColor, actorOf, columnOf, delegatedBy, delegatedTo, isReviewed, parseAcceptance, projectOf, relTime } from "../derive";
 import type { Column, Host, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 import { linkedSessions } from "../projectModel";
@@ -218,7 +218,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
                   <span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span>
                   <div className="agent-session-main">
                     <div className="agent-session-title"><span className="proj-name">{s.herdr?.title || r?.title || s.project || "未关联会话记录"}</span><span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{sessionStatus(s)}</span></div>
-                    <div className="agent-session-meta"><span>{s.state_source === "transcript" ? "实际会话记录" : s.source_kind === "unknown" ? "来源未识别" : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : "尚无活动上报"}</span></div>
+                    <div className="agent-session-meta"><span>{s.state_source === "transcript" ? "实际会话记录" : s.source_kind === "unknown" ? "来源未识别" : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${ago(s.last_at)}活动` : "尚无活动上报"}</span></div>
                     {(() => { const own = a.current.find(i => linkedSessions(i).includes(s.session_id)); return own ? <button className="link small linked-task" onClick={() => onSelect(own.id)}><span className="mono">{own.id}</span> {own.title}</button> : null; })()}
                   </div>
                   <div className="agent-session-actions"><AdoptButton session={s} compact className="copy-btn" /><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button></div>
@@ -242,7 +242,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
 
         </div>
       );})}
-      {scheduled.length > 0 && <details className="offline-agents"><summary>定时会话 · {scheduled.length}<span className="muted small"> · 不计入在跑、未读和通知</span></summary><div className="sessions">{scheduled.map((s) => <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className={`sess ${s.state}`}><span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span><div className="agent-session-main"><div className="agent-session-title"><span className="proj-name">{s.herdr?.title || s.title || s.project || s.cwd}</span><span className={`st sm ${s.state === "working" ? "prog" : "open"}`}>{sessionStatus(s)}</span></div><div className="agent-session-meta"><span>{actorOf(s.agent, "")?.name}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${durSince(s.last_at)}前活动` : ""}</span></div></div><div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button></div></div>)}</div></details>}
+      {scheduled.length > 0 && <details className="offline-agents"><summary>定时会话 · {scheduled.length}<span className="muted small"> · 不计入在跑、未读和通知</span></summary><div className="sessions">{scheduled.map((s) => <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className={`sess ${s.state}`}><span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span><div className="agent-session-main"><div className="agent-session-title"><span className="proj-name">{s.herdr?.title || s.title || s.project || s.cwd}</span><span className={`st sm ${s.state === "working" ? "prog" : "open"}`}>{sessionStatus(s)}</span></div><div className="agent-session-meta"><span>{actorOf(s.agent, "")?.name}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${ago(s.last_at)}活动` : ""}</span></div></div><div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button></div></div>)}</div></details>}
       <details className="offline-agents"><summary>未检测到活动的 Agent · {agents.filter(a => !a.online && !a.current.length).length}</summary><div>{agents.filter(a => !a.online && !a.current.length).map(a => <span key={a.actor.id}>{a.actor.name}</span>)}</div></details>
     </div>
   );

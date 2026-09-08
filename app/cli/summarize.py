@@ -11,9 +11,10 @@ import json, os, subprocess, sys, time, urllib.request
 import dispatch as D
 
 PROVIDERS = [
-    # env key, provider id, base url, default model
+    # env key, provider id, base url, default model — first available wins unless SUMMARY_MODEL says otherwise.
+    # 智谱 first: the user's GLM key is the one meant for this kind of housekeeping (see dispatch facts).
+    ("ZHIPU_API_KEY", "zhipu", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3-flash"),
     ("DEEPSEEK_API_KEY", "deepseek", "https://api.deepseek.com/v1", "deepseek-chat"),
-    ("ZHIPU_API_KEY", "zhipu", "https://open.bigmodel.cn/api/paas/v4", "glm-4.5-flash"),
     ("KIMI_API_KEY", "kimi", "https://api.moonshot.cn/v1", "moonshot-v1-8k"),
     ("MINIMAX_API_KEY", "minimax", "https://api.minimax.chat/v1", "MiniMax-Text-01"),
     ("OPENAI_API_KEY", "openai", "https://api.openai.com/v1", "gpt-4.1-mini"),
@@ -63,7 +64,11 @@ def transcript_excerpt(key, limit=12000):
 
 
 def chat(p, system, user, timeout=90):
-    body = json.dumps({"model": p["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "temperature": 0.2, "max_tokens": 400}).encode()
+    req_body = {"model": p["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "temperature": 0.2, "max_tokens": 400}
+    if p["id"] == "zhipu" and p["model"].startswith("glm-5"):
+        # GLM-5 always reasons and spends max_tokens on it; ask for as little as it allows.
+        req_body["reasoning_effort"] = "low"; req_body["max_tokens"] = 1200
+    body = json.dumps(req_body).encode()
     req = urllib.request.Request(p["base"].rstrip("/") + "/chat/completions", data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {p['key']}"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         d = json.load(r)

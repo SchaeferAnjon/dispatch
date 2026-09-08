@@ -1,6 +1,6 @@
 import { conversationProject } from "../activity";
 import { useState } from "react";
-import { parseAcceptance, sessionStatus, actorOf, durSince, projectOf, relTime } from "../derive";
+import { ago, parseAcceptance, sessionStatus, actorOf, projectOf, relTime } from "../derive";
 import { ConversationRows } from "./Workspace";
 import type { Activity, Issue, Session } from "../types";
 import { Avatar, Pri, ProjectTag } from "./ui";
@@ -35,7 +35,7 @@ export function InboxView({ onSummarize, onRead, onOpen, initialTab, items, me, 
                 <Avatar actor={a} />
                 <div className="ib-main">
                   <div className="t"><span className="st sm">{sessionStatus(s)}</span> {s.herdr?.title || s.title || s.project || s.cwd || s.session_id}</div>
-                  <div className="muted small">{a?.name} · {s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}{s.project ? ` · ${s.project}` : ""} · 最近活动 {durSince(s.last_at)}前{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
+                  <div className="muted small">{a?.name} · {s.source_app}{s.remote && <span className="host-chip">{s.host_name}</span>}{s.project ? ` · ${s.project}` : ""} · 最近活动 {ago(s.last_at)}{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
                 </div>
                 <button className="btn sm" onClick={() => s.session_id.startsWith('pid-') ? onFocus(s.session_id) : onOpen(s.session_id)}>查看并回复</button>
               </div>

@@ -34,13 +34,27 @@ def patch_files(text):
     return list(dict.fromkeys(re.findall(r'\*\*\* (?:Update|Add|Delete) File: ([^\n\r]+)', text.replace('\\n', '\n'))))
 
 
+# Text that arrives in the transcript with role=user but was written by the harness, not the
+# person: hook output, background-task completions, slash-command echoes, IDE context. It must
+# not become a title, count as a turn, or make the Agent's answer to it an unread reply.
+SYNTHETIC_TAGS = ('recommended_plugins', 'in-app-browser-context', 'environment_context', 'system-reminder', 'task-notification')
+SYNTHETIC_PREFIXES = ('# AGENTS.md instructions', '<local-command', '<command-name>', '<command-message>', '<bash-input>', '<bash-stdout>', '<bash-stderr>',
+                      '<task-notification', '<ide_', '<environment_context>', '<system-reminder>', 'Base directory for this skill:', '<skill>',
+                      'The TodoWrite', '# In app browser', '# Files mentioned', '# Applications mentioned')
+
+
 def user_text(text):
     # Desktop envelopes are not user messages and must not clear unread replies.
-    for tag in ('recommended_plugins', 'in-app-browser-context', 'environment_context', 'system-reminder'):
+    for tag in SYNTHETIC_TAGS:
         text = re.sub(r'<' + tag + r'\b[^>]*>[\s\S]*?</' + tag + r'>', '', text)
     text = text.strip()
-    if text.startswith(('# AGENTS.md instructions', '<local-command', '<command-name>', '<bash-input>', 'Base directory for this skill:', '<skill>')): return ''
+    if text.startswith(SYNTHETIC_PREFIXES): return ''
     return text.removeprefix('## My request:').strip()
+
+
+def is_synthetic_user(text):
+    """Non-empty user-role text that user_text() throws away entirely."""
+    return bool((text or '').strip()) and not user_text(text)
 
 
 @lru_cache(maxsize=1)
@@ -139,8 +153,13 @@ def observe(state, d):
             elif b.get('type') == 'tool_result': results.append((b.get('tool_use_id', ''), {'error': b.get('is_error', False)}))
         # Claude's assistant text without a tool call completes a response; hooks can override busy state.
         finished = role == 'assistant' and bool(text.strip()) and not tools
+    raw_user = text if role == 'user' else ''
     if role == 'user': text = user_text(text)
     if not ts: return
+    if role == 'user' and raw_user.strip() and not text.strip():
+        # A harness event (hook, background task, command echo). Remember when, so the reply it
+        # provokes is not counted as an answer the person is waiting for.
+        state['synthetic_at'] = max(ts, state.get('synthetic_at', 0))
     events = state.setdefault('events', [])
     def event(kind, summary, **extra):
         eid = hashlib.sha256((str(ts)+kind+summary).encode()).hexdigest()[:20]
@@ -157,7 +176,11 @@ def observe(state, d):
         event('reply' if finished else 'message', text)
         digest = hashlib.sha256(text.encode()).hexdigest()[:20]
         # task_complete may repeat the same final message; don't create another unread reply.
-        if finished and (digest != state.get('reply_digest') or state.get('user_at', 0) > state.get('reply_at', 0)):
+        # The person's last message was already answered and what came since was a harness event:
+        # this reply answers the machine, not them — keep the existing reply_id so nothing turns unread.
+        answered = state.get('reply_at', 0) >= state.get('user_at', 0) and state.get('reply_id')
+        synthetic_turn = answered and state.get('synthetic_at', 0) > state.get('user_at', 0)
+        if finished and not synthetic_turn and (digest != state.get('reply_digest') or state.get('user_at', 0) > state.get('reply_at', 0)):
             state.update(reply_id=f'{ts}:{digest}', reply_at=ts, reply_digest=digest, reply_preview=text[:280])
         state['activity'] = '已回复' if finished else '正在回复'
         state['state'] = 'idle' if finished else 'working'

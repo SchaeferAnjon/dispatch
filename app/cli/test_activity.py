@@ -106,6 +106,22 @@ class ActivityTests(unittest.TestCase):
         self.assertFalse(self.row()['unread'])
         self.assertEqual(self.row()['state'], 'working')
 
+    def test_reply_to_harness_event_is_not_unread(self):
+        # user asks → agent answers → user reads it → a background-task notice arrives → agent comments on it.
+        self.append(record('user', '帮我看看', self.t), record('assistant', '看完了', self.t+1))
+        a = self.row(); self.assertTrue(a['unread'])
+        acknowledge(self.store, a['key'], a['reply_id'])
+        self.assertFalse(self.row()['unread'])
+        self.append(record('user', '<task-notification>\n<task-id>abc</task-id>\n<summary>Background command done</summary>\n</task-notification>', self.t+2),
+                    record('assistant', '那条后台命令跑完了，没有新情况。', self.t+3))
+        r = self.row()
+        self.assertFalse(r['unread'])
+        self.assertEqual(r['state'], 'idle')
+        self.assertNotEqual(r.get('title', ''), '<task-notification>')
+        # but a real question afterwards is answered → unread again
+        self.append(record('user', '再看一下', self.t+4), record('assistant', '看了', self.t+5))
+        self.assertTrue(self.row()['unread'])
+
     def test_commentary_not_unread_final(self):
         self.append(record('assistant', '正在查', self.t, 'commentary'))
         self.assertFalse(self.row()['unread'])

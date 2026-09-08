@@ -87,6 +87,12 @@ export function projectColor(name: string): string {
   return PALETTE[h % PALETTE.length];
 }
 
+/** durSince with the "前" suffix, except "刚刚" which already is a point in time. Use this instead of `${durSince(x)}前`. */
+export function ago(epochSec: number): string {
+  const d = durSince(epochSec);
+  return !d || d === "刚刚" ? d : `${d}前`;
+}
+
 export function relTime(iso?: string): string {
   if (!iso) return "";
   const d = Date.now() - new Date(iso).getTime();
@@ -313,5 +319,5 @@ export function sessionStatus(s: Session): string {
 }
 export function sessionEvidence(s: Session): string {
   const source = s.state_source === "transcript" ? "实际会话记录" : s.state_source === "hook" || s.last_event ? `事件上报${s.last_event ? ` · ${s.last_event}` : ""}` : s.registered ? "会话检测" : "仅检测到进程，未接入执行状态";
-  return `${source} · ${s.last_at ? `最后活动 ${durSince(s.last_at)}前` : "无活动时间"}`;
+  return `${source} · ${s.last_at ? `最后活动 ${ago(s.last_at)}` : "无活动时间"}`;
 }

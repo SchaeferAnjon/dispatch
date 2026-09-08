@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { actorOf, durSince, parseAcceptance, projectColor, relTime, sessionStatus } from "../derive";
+import { ago, actorOf, parseAcceptance, projectColor, relTime, sessionStatus } from "../derive";
 import { UNGROUPED_PROJECT, activityKey, conversationProject, conversationSummary, sessionLifecycle } from "../activity";
 import { projectGroups } from "../projectModel";
 import { isStarred, rankProjects, type ProjectFlags } from "../projectFlags";
@@ -166,7 +166,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
           <span className="proj" style={{ background: projectColor(c.name) }} />
           <button className="name" onClick={() => onProject(c.name)}>{c.name}</button>
           {c.name !== UNGROUPED && <button className={`star${isStarred(flags, c.name) ? " on" : ""}`} onClick={() => onFlag(c.name, { starred: !isStarred(flags, c.name) })} title={isStarred(flags, c.name) ? "取消收藏" : "收藏：置顶，近期重点关注"} aria-label={isStarred(flags, c.name) ? `取消收藏 ${c.name}` : `收藏 ${c.name}`}>{isStarred(flags, c.name) ? "★" : "☆"}</button>}
-          {open ? <span className="counts muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.blocked ? ` · ${c.blocked} 项被卡住` : ""}{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span> : <button className="digest" onClick={() => toggle(c.name, open)}>{digest ? <span className={c.waiting.length + c.unread.length ? "hot" : ""}>{digest}</span> : <span className="muted">{c.latest ? `最近：${c.latest.title}` : "没有会话"}</span>}<span className="muted small"> · {c.lastActive ? `${durSince(c.lastActive)}前` : ""}</span></button>}
+          {open ? <span className="counts muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.blocked ? ` · ${c.blocked} 项被卡住` : ""}{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span> : <button className="digest" onClick={() => toggle(c.name, open)}>{digest ? <span className={c.waiting.length + c.unread.length ? "hot" : ""}>{digest}</span> : <span className="muted">{c.latest ? `最近：${c.latest.title}` : "没有会话"}</span>}<span className="muted small"> · {c.lastActive ? `${ago(c.lastActive)}` : ""}</span></button>}
           <span className="spacer" />
           <button className="btn sm" onClick={() => onNew(c.latest)}>新建会话</button>
           <button className="link" onClick={() => onProject(c.name)}>进入项目 ›</button>
@@ -183,7 +183,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
                   <Avatar actor={who} size={22} />
                   <span className="st sm block">{sessionStatus(s)}</span>
                   <span className="t">{s.herdr?.title || s.title || s.cwd}</span>
-                  <span className="meta muted small">{who?.name}{s.remote ? ` · ${s.host_name}` : ""} · {durSince(s.last_at)}前</span>
+                  <span className="meta muted small">{who?.name}{s.remote ? ` · ${s.host_name}` : ""} · {ago(s.last_at)}</span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); openSession(s.session_id); }}>查看并回复</button>
                 </div>
               );
@@ -195,7 +195,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
                   <Avatar actor={who} size={22} />
                   <span className="st sm rev">未读回复</span>
                   <span className="t">{a.title}<span className="sub">{conversationSummary(a)}</span></span>
-                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {durSince(a.last_at)}前</span>
+                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); onOpen(a.session_id); }}>查看并回复</button>
                 </div>
               );
@@ -213,7 +213,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
                   <Avatar actor={who} size={22} />
                   <span className="st sm prog">进行中</span>
                   <span className="t">{a.title}{a.activity && <span className="sub">正在做：{a.activity}</span>}</span>
-                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {durSince(a.last_at)}前</span>
+                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
                 </div>
               );
             })}
@@ -230,7 +230,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
                   <Avatar actor={who} size={22} />
                   <span className="star on" title="追踪中">★</span>
                   <span className="t">{a.title}<span className="sub">{conversationSummary(a)}</span></span>
-                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {durSince(a.last_at)}前</span>
+                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
                 </div>
               );
             })}
@@ -279,7 +279,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
             <div data-session={activityKey(c.latest)} className="home-row opens" role="button" tabIndex={0} onClick={() => onOpen(c.latest!.session_id)} onKeyDown={(e) => e.key === "Enter" && onOpen(c.latest!.session_id)}>
               <Avatar actor={actorOf(c.latest.agent, me)} size={22} />
               <span className="t">{c.latest.title}<span className="sub">{conversationSummary(c.latest)}</span></span>
-              <span className="meta muted small">{durSince(c.latest.last_at)}前</span>
+              <span className="meta muted small">{ago(c.latest.last_at)}</span>
             </div>
           </div>
         )}
@@ -332,7 +332,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
                   <Avatar actor={who} size={22} />
                   <span className={`st sm ${live ? "prog" : a.unread ? "rev" : "open"}`}>{live ? "进行中" : a.unread ? "未读回复" : "追踪中"}</span>
                   <span className="t">{a.title}<span className="sub">{live && a.activity ? `正在做：${a.activity}` : conversationSummary(a)}</span></span>
-                  <span className="meta muted small">{conversationProject(a)} · {who?.name} · {durSince(a.last_at)}前</span>
+                  <span className="meta muted small">{conversationProject(a)} · {who?.name} · {ago(a.last_at)}</span>
                 </div>
               );
             })}

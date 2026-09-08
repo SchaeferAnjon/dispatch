@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Api } from "../api";
-import { actorOf, delegatedBy, delegatedTo, durSince, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
+import { ago, actorOf, delegatedBy, delegatedTo, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
 import type { Activity, Comment, FileChange, HistoryEntry, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
@@ -221,7 +221,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
         {issue.status === "closed" && <section className="sec review-evidence">
           <h4>交付与验证 <span className="muted">{isReviewed(issue) ? "已记录复核通过" : needsReview(issue) ? "等待 Agent 复核" : "已完成 · 无需你点击审核"}</span></h4>
           <p className="review-gap">{ac.length ? `${ac.filter((a) => a.done).length}/${ac.length} 项已勾选 · ${ac.filter((a) => !a.done).length} 项仍待核对` : "尚未填写验收标准"}</p>
-          {ac.some((a) => !a.done) && <details open><summary>待核对的验收项</summary><ul>{ac.filter((a) => !a.done).map((a, n) => <li key={n}>{a.text}</li>)}</ul></details>}
+          {ac.some((a) => !a.done) && <details open><summary>待核对的验收项</summary><ul className="checks">{ac.filter((a) => !a.done).map((a, n) => <li key={n}>{a.text}</li>)}</ul></details>}
           <details><summary>查看记录依据 · {comments.length} 条进展 / 留言 · {refs.length} 个关联会话</summary>
             <p className="muted small">以下是原始记录，测试结果需要结合完成说明和会话核对。</p>
             {comments.length ? [...comments].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 3).map((c) => <div key={c.id} className="evidence-note"><b>{c.author} · {fmtTime(c.created_at)}</b><Markdown src={c.text} className="compact" /></div>) : <p>没有进展记录</p>}
@@ -251,7 +251,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
         <div className="sec">
           <h4>验收标准{editAc === null && <button className="btn ghost sm" onClick={() => setEditAc(issue.acceptance_criteria ?? "")}>{ac.length ? "编辑" : "添加"}</button>}</h4>
           {editAc === null ? (
-            ac.length ? <ul>{ac.map((a, i) => <li key={i}><span className={`box${a.done ? " on" : ""}`} onClick={() => toggleAc(i)} role="checkbox" aria-checked={a.done}>{a.done ? "✓" : ""}</span><span>{a.text}</span></li>)}</ul> : <p className="empty-p" style={{ margin: 0 }}>没有验收标准</p>
+            ac.length ? <ul className="checks">{ac.map((a, i) => <li key={i}><span className={`box${a.done ? " on" : ""}`} onClick={() => toggleAc(i)} role="checkbox" aria-checked={a.done}>{a.done ? "✓" : ""}</span><span>{a.text}</span></li>)}</ul> : <p className="empty-p" style={{ margin: 0 }}>没有验收标准</p>
           ) : (
             <textarea className="edit" value={editAc} autoFocus placeholder={"- [ ] 一行一条\n- [x] 已完成的打 x"} onChange={(e) => setEditAc(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") setEditAc(null); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.target as HTMLTextAreaElement).blur(); }}
@@ -318,7 +318,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
                     <Avatar actor={a} />
                     <div className="info">
                       <div>{r.project || r.cwd || "（未知目录）"} <span className="muted">· {r.mentions} 次提到</span>{l ? <span className="muted"> · {l.source_app}{l.state === "working" ? " · 在跑" : " · 开着"}</span> : null}</div>
-                      <div className="l2">{r.session_id} · {r.last_at ? `最近 ${durSince(r.last_at)}前` : ""}</div>
+                      <div className="l2">{r.session_id} · {r.last_at ? `最近 ${ago(r.last_at)}` : ""}</div>
                     </div>
                     <button className="btn sm" onClick={() => onOpenSession(r.session_id)}>查看记录</button>
                     <button className="copy-btn" onClick={() => copyResume(r.resume_cmd)} title={r.resume_cmd}>{"复制恢复命令"}</button>

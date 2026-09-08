@@ -1537,6 +1537,12 @@ def read_session_detail(ref, limit=400):
                 if images:
                     # The "[Image: original …]" caption only describes the picture; show the picture.
                     txt = re.sub(r"\[Image:[^\]]*\]", "", txt).strip()
+                from activity import is_synthetic_user
+                if is_synthetic_user(txt) and not images:
+                    # Hook output / background-task notice: shown as a system event, never as "you said".
+                    m2 = re.search(r"<summary>([\s\S]*?)</summary>", txt)
+                    msgs.append({"ts": ts, "role": "user", "synthetic": True, "text": (m2.group(1).strip() if m2 else txt.strip())[:600], "tools": []})
+                    continue
                 if txt.strip() or images:
                     msgs.append({"ts": ts, "role": "user", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": [], **({"images": images} if images else {})})
             else:

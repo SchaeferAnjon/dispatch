@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { conversationProject, conversationSummary, sessionLifecycle } from "../activity";
-import { actorOf, durSince, projectColor, projectOf, relTime, statusLabel } from "../derive";
+import { ago, actorOf, projectColor, projectOf, relTime, statusLabel } from "../derive";
 import type { Activity, Issue } from "../types";
 import { Avatar } from "./ui";
 
@@ -69,7 +69,7 @@ export function SearchPalette({ archiveDays, projects, rows, issues, me, onProje
                   const idx = hits.indexOf(h);
                   const cls = `palette-row${idx === cursor ? " on" : ""}`;
                   if (h.kind === "project") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><span className="proj" style={{ background: projectColor(h.name) }} /><b>{h.name}</b><span className="muted small">进入项目</span></div>;
-                  if (h.kind === "session") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><Avatar actor={actorOf(h.a.agent, me)} size={20} /><span className="t"><b>{h.a.starred && "★ "}{h.a.title}</b><span className="sub">{conversationSummary(h.a)}</span></span><span className="muted small right">{sessionLifecycle(h.a, archiveDays) === "archived" && <span className="st sm open">已归档</span>} {conversationProject(h.a)} · {durSince(h.a.last_at)}前</span></div>;
+                  if (h.kind === "session") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><Avatar actor={actorOf(h.a.agent, me)} size={20} /><span className="t"><b>{h.a.starred && "★ "}{h.a.title}</b><span className="sub">{conversationSummary(h.a)}</span></span><span className="muted small right">{sessionLifecycle(h.a, archiveDays) === "archived" && <span className="st sm open">已归档</span>} {conversationProject(h.a)} · {ago(h.a.last_at)}</span></div>;
                   const st = statusLabel(h.i);
                   return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><span className={`st sm ${st.cls}`}>{st.text}</span><span className="t"><b>{h.i.title}</b></span><span className="muted small right mono">{h.i.id} · {relTime(h.i.updated_at)}</span></div>;
                 })}

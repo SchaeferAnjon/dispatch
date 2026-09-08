@@ -3,7 +3,7 @@ import { MediaProvider, AttachmentList, ImageGrid } from "./Media";
 import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
-import { actorOf, durSince, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
+import { ago, actorOf, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
 import { PairDiff, PatchDiff } from "./Diff";
 import { canReadReply, activityLabel, isScriptSession, sessionLifecycle } from "../activity";
 import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef, TimelineMsg } from "../types";
@@ -20,8 +20,8 @@ const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk
 // The conversation itself, one block per turn. Shared by the session page and the sub-agent viewer.
 export function ChatList({ list, name, showTools }: { list: TimelineMsg[]; name: string; showTools: boolean }) {
   return <div className="chat">{list.map((x, i) => (
-    <div key={i} className={`tl ${x.role}`}>
-      {x.role === "gap" ? <div className="muted">{x.text}</div> : (
+    <div key={i} className={`tl ${x.synthetic ? "system" : x.role}`}>
+      {x.role === "gap" ? <div className="muted">{x.text}</div> : x.synthetic ? <div className="muted small tl-system" title="不是你发的：Claude Code 的后台任务 / hook 通知，Agent 看到后可能会接一句">系统事件 · {x.text}</div> : (
         <>
           <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
           {x.images && x.images.length > 0 && <ImageGrid ids={x.images} />}
@@ -225,12 +225,12 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)}>复制恢复命令</button>}
                 </div></details>
               </div>
-              {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? '更新中断，保留上次记录' : current ? activityLabel(current) : '历史记录'}</strong><span>{current?.activity}</span></div><span className="muted small">{current ? (durSince(current.last_at) === "刚刚" ? "刚刚" : `${durSince(current.last_at)}前`) : ''}</span></div>}
+              {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? '更新中断，保留上次记录' : current ? activityLabel(current) : '历史记录'}</strong><span>{current?.activity}</span></div><span className="muted small">{current ? (ago(current.last_at)) : ''}</span></div>}
               <details className="session-context" key={m.session_id}>
                 <summary>{m.user_msgs} 轮对话 · {m.subagents.length} 个子 Agent<span>会话信息</span></summary>
                 <div className="sess-meta kv">
                 <b>开始</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>
-                <b>最近</b><span className="mono">{m.last_ts ? `${fmtTime(m.last_ts)}（${durSince(m.last_at)}前）` : "?"}</span>
+                <b>最近</b><span className="mono">{m.last_ts ? `${fmtTime(m.last_ts)}（${ago(m.last_at)}）` : "?"}</span>
                 <b>来源</b><span>{ENTRY[m.entrypoint] ?? m.entrypoint ?? "?"}{l ? ` · ${l.source_app}` : ""}{m.remote && <span className="host-chip">{m.host_name}</span>}</span>
                 <b>对话</b><span>{m.user_msgs} 轮 · {m.assistant_msgs} 次回复 · {(m.size / 1e6).toFixed(1)} MB</span>
                 <b>工具</b><span className="mono small">{Object.entries(detail.tool_counts).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</span>
@@ -258,7 +258,8 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
               <div className="sess-body" tabIndex={0} aria-label="会话内容" ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>
                 {tab === "timeline" && (() => {
                   const showTools = kinds.tool && !brief;
-                  let list = detail.messages.filter((x) => x.role === "gap" || (x.role === "user" && kinds.user) || (x.role === "assistant" && (x.text.trim() ? kinds.assistant : showTools)) || (x.role === "tool" && showTools));
+                  // Harness events (hook output, background-task notices) sit at tool level: visible with tool calls, never in 只看结论.
+                  let list = detail.messages.filter((x) => x.role === "gap" || (x.role === "user" && (x.synthetic ? showTools : kinds.user)) || (x.role === "assistant" && (x.text.trim() ? kinds.assistant : showTools)) || (x.role === "tool" && showTools));
                   if (brief) {
                     // Keep each user message and only the last assistant text before the next one.
                     const keep: typeof list = [];
@@ -271,8 +272,8 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                     list = keep;
                   }
                   return <div className="chat">{list.map((x, i) => (
-                    <div key={i} className={`tl ${x.role}`}>
-                      {x.role === "gap" ? <div className="muted">{x.text}</div> : (
+                    <div key={i} className={`tl ${x.synthetic ? "system" : x.role}`}>
+                      {x.role === "gap" ? <div className="muted">{x.text}</div> : x.synthetic ? <div className="muted small tl-system" title="不是你发的：Claude Code 的后台任务 / hook 通知，Agent 看到后可能会接一句">系统事件 · {x.text}</div> : (
                         <>
                           <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : a?.name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
                           {x.images && x.images.length > 0 && <ImageGrid ids={x.images} />}

@@ -73,7 +73,7 @@ export interface SessionRef {
   host_name?: string;
   remote?: boolean;
 }
-export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; text: string; tools: { name: string; summary: string; id?: string }[]; images?: string[] }
+export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; synthetic?: boolean; text: string; tools: { name: string; summary: string; id?: string }[]; images?: string[] }
 export interface FileChange { kind: "edit" | "write" | "patch"; old: string; new: string; ts: string; op?: string; add?: number; del?: number }
 export interface SessionDetail { attachments?: import("./components/Media").Attachment[]; activity_version?: string; reply_id?: string; workspace?: { root: string; files: { path: string; untracked: boolean }[]; patch: string; truncated?: boolean; unavailable?: string }; meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
 export interface Memory { key: string; value: string }
