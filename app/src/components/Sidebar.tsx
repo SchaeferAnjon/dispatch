@@ -5,6 +5,9 @@ import { Avatar } from "./ui";
 import { Icon } from "./icons";
 import appIcon from "../assets/icon.png";
 
+// "Apple的Mac mini" → "Apple": the first word is enough on a narrow switch; the title carries the rest.
+const shortHost = (name: string) => (name.length > 6 ? (name.split(/的|\s+|'s/)[0] || name).slice(0, 8) : name);
+
 export interface Filters { project: string | null; mine: boolean; urgent: boolean; agent: string | null; blocked: boolean; review: boolean }
 
 interface Props {
@@ -46,7 +49,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       {hosts.length > 1 && setHostFilter && (
         <div className="hostsw side-hosts" title="看哪台机器：任务、会话、额度、统计都只看它；「全部」合并两台" onClick={(e) => e.stopPropagation()}>
           <button className={hostFilter === "" ? "on" : ""} onClick={() => setHostFilter("")}>全部</button>
-          {hosts.map((h) => <button key={h.id} className={hostFilter === h.name ? "on" : ""} onClick={() => setHostFilter(h.name)} title={h.online ? (h.local ? "这台电脑" : "在线") : "离线"}><span className={`dot${h.online ? " on" : ""}`} />{h.name}</button>)}
+          {hosts.map((h) => <button key={h.id} className={hostFilter === h.name ? "on" : ""} onClick={() => setHostFilter(h.name)} title={`${h.name} · ${h.online ? (h.local ? "这台电脑" : "在线") : "离线"}`}><span className={`dot${h.online ? " on" : ""}`} /><span className="host-short">{shortHost(h.name)}</span></button>)}
         </div>
       )}
 
