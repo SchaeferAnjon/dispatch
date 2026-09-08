@@ -1,6 +1,6 @@
 [package]
 name = "dispatch"
-version = "0.1.0"
+version = "0.6.0"
 description = "Dispatch 调度台 — 所有 Agent 共用的任务板（Beads 前端）"
 authors = ["Schaefer"]
 edition = "2021"

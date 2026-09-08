@@ -43,7 +43,7 @@ DEPS = [
     ("dolt", "dolt", "dolt", "任务板的数据库（带版本历史，能在两台电脑之间同步）", True),
     ("bd", "bd", "beads", "任务板本身（Beads），Agent 用它记任务", True),
     ("herdr", "herdr", "herdr", "终端里的 Agent 多路复用器，Dispatch 用它派活给 Agent", True),
-    ("tmux", "tmux", "tmux", "让 Herdr 在后台常驻", True),
+    ("tmux", "tmux", "tmux", "让 Herdr 在后台常驻，Dispatch 随时能把活派给 Agent（不用先开终端）", True),
     ("tailscale", "tailscale", None, "两台电脑不在同一 Wi‑Fi 时互相访问；只有一台电脑可以不装", False),
 ]
 
@@ -532,6 +532,9 @@ STARTER_RULES = """# 全局规则（这台电脑上所有 Agent · 唯一来源 
 """
 
 
+SEED_LABEL = {"existing": "已有的 ~/.agents/rules/GLOBAL.md", "starter": "精简模板", "imported": "从已有的 Agent 规则文件导入", "copied": "从枢纽复制"}
+
+
 def rules_status():
     st = load_state()
     have_rules = os.path.exists(D.RULES_FILE)
@@ -539,7 +542,7 @@ def rules_status():
     targets = []
     if have_rules:
         h = D.rules_hash(D.rules_text())
-        for ag in D.RULE_TARGETS:
+        for ag in D.rule_agents_installed():
             state, p, _ = D.target_state(ag, h)
             targets.append({"agent": ag, "state": state, "path": p})
     task_board = os.path.join(D.POOL, "task-board")
@@ -574,7 +577,9 @@ def rules_setup(mode=None, target=None):
         if r.returncode != 0:
             raise RuntimeError(f"从枢纽复制技能池失败：{r.stderr.strip()[-300:]}")
         seed = f"copied:{target}"
-    elif not os.path.exists(D.RULES_FILE):
+    elif os.path.exists(D.RULES_FILE):
+        seed = "existing"
+    else:
         # Import what the user already wrote for one agent, else the starter.
         for cand in (os.path.join(D.HOME, ".claude", "CLAUDE.md"), os.path.join(D.HOME, ".codex", "AGENTS.md"), os.path.join(D.HOME, ".pi", "agent", "AGENTS.md")):
             if os.path.exists(cand) and os.path.getsize(cand) > 200 and D.RULES_BEGIN not in open(cand).read():
@@ -599,7 +604,7 @@ def rules_setup(mode=None, target=None):
             c, oo, ee = run([sys.executable, bundled_cli(), "skills", "enable", "task-board", "--agent", ag], timeout=60)
             mounted.append({"agent": ag, "ok": c == 0, "msg": (oo or ee).strip().splitlines()[:1]})
     save_state(rules_seed=seed)
-    return {"seed": seed, "rules": D.RULES_FILE, "pool": D.POOL, "sync": synced, "mounted": mounted}
+    return {"seed": seed, "seed_label": SEED_LABEL.get(seed.split(":")[0], seed) + ((" " + seed.split(":", 1)[1].replace(D.HOME, "~")) if ":" in seed else ""), "rules": D.RULES_FILE, "pool": D.POOL, "sync": synced, "mounted": mounted}
 
 
 # ---------------------------------------------------------------- review
@@ -616,13 +621,20 @@ def review_prompt():
 def review_start(agent="claude"):
     prompt = review_prompt()
     cwd = os.path.dirname(D.RULES_FILE)
-    try:
-        code, o, e = run([sys.executable, bundled_cli(), "agent", "start", agent, "--cwd", cwd, "--label", "首次设置：审查规则与技能", "--prompt", prompt, "--no-wait", "--json"], timeout=120)
-        if code == 0 and "{" in o:
-            return {"started": True, "result": json.loads(o[o.find("{"):]), "prompt": prompt}
-        return {"started": False, "error": (e or o).strip()[-400:], "prompt": prompt}
-    except Exception as ex:
-        return {"started": False, "error": str(ex), "prompt": prompt}
+    err = ""
+    # Herdr sometimes reports the fresh tab's shell as busy for a while; one more go before giving up.
+    for attempt in range(2):
+        try:
+            code, o, e = run([sys.executable, bundled_cli(), "agent", "start", agent, "--cwd", cwd, "--label", "首次设置：审查规则与技能", "--prompt", prompt, "--no-wait", "--json"], timeout=180)
+            if code == 0 and "{" in o:
+                return {"started": True, "result": json.loads(o[o.find("{"):]), "prompt": prompt}
+            err = (e or o).strip()[-400:]
+        except Exception as ex:
+            err = str(ex)
+        if "agent_pane_busy" not in err:
+            break
+        time.sleep(5)
+    return {"started": False, "error": err, "prompt": prompt}
 
 
 # ---------------------------------------------------------------- status / finish
@@ -705,7 +717,7 @@ def wizard():
     chosen = ask("  用哪些？逗号分隔 id", ",".join(a["id"] for a in found))
     r = agents_setup([x.strip() for x in chosen.split(",") if x.strip()])
     print("  ✓ " + ("Claude Code 的 hooks 已装" if "claude-code" in r["installed"] else "已记录"))
-    print("5/6 规则与技能"); r = rules_setup(); print(f"  ✓ 规则来源：{r['seed']}；已同步到各 Agent")
+    print("5/6 规则与技能"); r = rules_setup(); print(f"  ✓ 规则来源：{SEED_LABEL.get(r['seed'].split(':')[0], r['seed'])}；已同步到各 Agent")
     print("6/6 审查优化（可选）")
     if ask("  现在派一个 Agent 审查规则和技能？(y/n)", "n").lower().startswith("y"):
         r = review_start("claude" if "claude-code" in (load_state().get("agents") or []) else "codex")

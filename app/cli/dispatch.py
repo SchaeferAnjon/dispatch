@@ -2372,13 +2372,17 @@ RULES_BEGIN = "<!-- BEGIN DISPATCH GLOBAL RULES"
 RULES_END = "<!-- END DISPATCH GLOBAL RULES -->"
 # Where each agent reads machine-wide instructions. Claude Code can @import a
 # file; the others get the content inlined inside the managed block.
+# "home" is the agent's config dir: an agent that is not installed gets no file written.
 RULE_TARGETS = {
-    "claude": {"path": os.path.join(HOME, ".claude", "CLAUDE.md"), "mode": "import"},
-    "codex": {"path": os.path.join(HOME, ".codex", "AGENTS.md"), "mode": "inline"},
-    "zcode": {"path": os.path.join(HOME, ".zcode", "AGENTS.md"), "mode": "inline"},
+    "claude": {"path": os.path.join(HOME, ".claude", "CLAUDE.md"), "mode": "import", "home": os.path.join(HOME, ".claude")},
+    "codex": {"path": os.path.join(HOME, ".codex", "AGENTS.md"), "mode": "inline", "home": os.path.join(HOME, ".codex")},
+    "zcode": {"path": os.path.join(HOME, ".zcode", "AGENTS.md"), "mode": "inline", "home": os.path.join(HOME, ".zcode")},
     # pi loads ~/.pi/agent/AGENTS.md as its global context file (plus AGENTS.md up from cwd).
-    "pi": {"path": os.path.join(HOME, ".pi", "agent", "AGENTS.md"), "mode": "inline"},
+    "pi": {"path": os.path.join(HOME, ".pi", "agent", "AGENTS.md"), "mode": "inline", "home": os.path.join(HOME, ".pi")},
+    "gemini": {"path": os.path.join(HOME, ".gemini", "GEMINI.md"), "mode": "inline", "home": os.path.join(HOME, ".gemini")},
+    "opencode": {"path": os.path.join(HOME, ".config", "opencode", "AGENTS.md"), "mode": "inline", "home": os.path.join(HOME, ".config", "opencode")},
 }
+rule_agents_installed = lambda: [ag for ag, t in RULE_TARGETS.items() if os.path.isdir(t["home"])]
 
 
 # ---------------------------------------------------------------- facts: 常用信息（服务器/域名/数据库/API 名字、常说的话）
@@ -2728,7 +2732,7 @@ def cmd_rules(a):
     h = rules_hash(text)
     if a.op == "status":
         rows = []
-        for ag in RULE_TARGETS:
+        for ag in rule_agents_installed():
             st, p, _ = target_state(ag, h)
             rows.append({"agent": ag, "path": p, "state": st, "mode": RULE_TARGETS[ag]["mode"]})
         out({"hash": h, "source": RULES_FILE, "targets": rows}, a.json, lambda o: [print(f"{r['agent']:<8} {r['state']:<8} {r['path']}") for r in o["targets"]])
@@ -2738,7 +2742,7 @@ def cmd_rules(a):
             print(f"规则文件为空：{RULES_FILE}", file=sys.stderr)
             sys.exit(1)
         results = []
-        for ag in RULE_TARGETS:
+        for ag in rule_agents_installed():
             st, p, s = target_state(ag, h)
             if st == "synced" and not a.force:
                 results.append({"agent": ag, "path": p, "action": "unchanged"})

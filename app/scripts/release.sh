@@ -19,15 +19,15 @@ PY
 [ "$BUILD" = 1 ] && npm run tauri build
 APP="src-tauri/target/release/bundle/macos/Dispatch.app"
 [ -d "$APP" ] || { echo "构建产物不存在：$APP"; exit 1; }
-OUT="src-tauri/target/release/bundle/Dispatch-$V-macos-$ARCH_LABEL.zip"
+OUT="src-tauri/target/release/bundle/Dispatch-${V}-macos-${ARCH_LABEL}.zip"
 rm -f "$OUT"
 # ditto keeps the bundle's resource forks and symlinks; Finder can unzip it.
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT"
 NOTES="$(mktemp)"
 cat > "$NOTES" <<MD
-## 安装（macOS · $ARCH_LABEL）
+## 安装（macOS · ${ARCH_LABEL}）
 
-1. 下载下面的 \`Dispatch-$V-macos-$ARCH_LABEL.zip\`，双击解压，把 **Dispatch.app** 拖进「应用程序」。
+1. 下载下面的 \`Dispatch-${V}-macos-${ARCH_LABEL}.zip\`，双击解压，把 **Dispatch.app** 拖进「应用程序」。
 2. 这个包没有 Apple 签名，第一次打开会被拦。任选一种：
    - 打开「终端」，粘贴：\`xattr -dr com.apple.quarantine /Applications/Dispatch.app\`，再打开应用；
    - 或者先双击一次被拦，去 系统设置 → 隐私与安全性 → 最下面点「仍要打开」。
@@ -40,9 +40,9 @@ cat > "$NOTES" <<MD
 $(git log --pretty='- %s' "$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD" | grep -vE '^- (chore|docs): ' | head -40)
 MD
 git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock 2>/dev/null || true
-git commit -q -m "chore: release v$V" || true
-git tag -f "v$V"
+git commit -q -m "chore: release v${V}" || true
+git tag -f "v${V}"
 git push -q origin main --tags
-gh release create "v$V" "$OUT" --title "Dispatch v$V" --notes-file "$NOTES" --latest
+gh release create "v${V}" "$OUT" --title "Dispatch v${V}" --notes-file "$NOTES" --latest
 rm -f "$NOTES"
-echo "已发布 v$V：$(gh release view "v$V" --json url -q .url)"
+echo "已发布 v${V}：$(gh release view "v${V}" --json url -q .url)"

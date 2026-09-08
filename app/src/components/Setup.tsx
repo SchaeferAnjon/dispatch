@@ -127,7 +127,8 @@ function summarize(id: string, r: Record<string, unknown>): string {
   try {
     if (id === "deps") { const f = (r.failed as { name: string; error: string; command?: string }[]) ?? []; return [...((r.installed as string[]) ?? []).map((n) => `✓ ${n}`), ...f.map((x) => `✗ ${x.name}：${x.error}${x.command ? `\n  终端里跑：${x.command}` : ""}`)].join("\n"); }
     if (id === "board") { return r.remote_for_others ? `其他电脑接入时用：${r.remote_for_others}` : r.hub ? `已接入 ${(r.hub as { name: string }).name}` : JSON.stringify(r); }
-    if (id === "rules") { const s = r.sync as { targets?: { agent: string; state: string }[] } | undefined; return `来源：${r.seed}` + (s?.targets ? "\n" + s.targets.map((t) => `${t.agent}: ${t.state}`).join("，") : ""); }
+    if (id === "rules") { const s = r.sync as { targets?: { agent: string; state: string }[]; results?: { agent: string; action: string }[] } | undefined; const rows = s?.results ?? s?.targets; return `来源：${r.seed_label ?? r.seed}` + (rows ? "\n" + rows.map((t) => `${t.agent}: ${"action" in t ? t.action : (t as { state: string }).state}`).join("，") : ""); }
+    if (id === "agents") { const inst = Object.keys((r.installed as Record<string, unknown>) ?? {}); return `已选：${((r.agents as string[]) ?? []).join("、")}` + (inst.length ? `\n已装 hook：${inst.join("、")}` : ""); }
     if (id === "review") { return r.started ? "Agent 已在 Herdr 里开始审查，会话页能看到它" : `没起成：${r.error}\n提示词已在上面「复制提示词」`; }
     return JSON.stringify(r, null, 1).slice(0, 600);
   } catch { return ""; }
