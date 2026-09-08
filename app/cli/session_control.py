@@ -230,7 +230,8 @@ def worker(d, rid):
         sid = p['resume'] or (str(uuid.uuid4()) if agent == 'claude-code' else None)
         if sid:
             save(d, rid, expected_session_id=sid)
-        extra = (['--session', p['resume']] if agent == 'pi' else ['--resume', p['resume']]) if p['resume'] else (['--session-id', sid] if sid else [])
+        # Each CLI resumes differently: Claude `--resume <id>`, pi `--session <id>`, Codex a `resume <id>` subcommand.
+        extra = ({'pi': ['--session', p['resume']], 'codex': ['resume', p['resume']]}.get(agent, ['--resume', p['resume']])) if p['resume'] else (['--session-id', sid] if sid else [])
         # Herdr refuses agent arguments it cannot encode for the pane's shell (a newline in a
         # multi-line prompt is the usual case). Such prompts are sent after start instead.
         prompt_later = bool(p['prompt']) and unsafe_argument(p['prompt'])
