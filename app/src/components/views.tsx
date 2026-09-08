@@ -122,8 +122,8 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
       ...(h.online ? [{ label: "派活：在这台起一个 Agent", onClick: () => onDelegate(h) }] : []),
       { label: "复制 ssh 地址", onClick: () => onCopyText(h.ssh, "ssh 地址") },
       { label: "复制 IP", onClick: () => onCopyText(h.ip, "IP") },
-      ...(h.novnc_up && h.novnc.startsWith("https://") ? [{ label: "复制手机看屏幕链接", onClick: () => onCopyText(h.novnc, "手机看屏幕的链接") }] : []),
-      ...(h.screen_sharing && !h.local ? [{ label: "看它的屏幕", onClick: () => onOpenUrl(h.vnc) }] : []),
+      ...(h.screen_sharing && !h.local ? [{ label: "看它的屏幕并操作", onClick: () => onOpenUrl(h.vnc) }] : []),
+      ...(h.novnc_up && h.novnc.startsWith("https://") ? [{ label: "复制手机看屏幕链接（手机用）", onClick: () => onCopyText(h.novnc, "手机看屏幕的链接") }] : []),
     ] };
   }, [hosts, onDelegate, onCopyText, onOpenUrl]);
   useViewMenuExtras(hosts.filter((h) => h.online).map((h) => ({ label: `在 ${h.name} 派活`, onClick: () => onDelegate(h) })), [hosts]);
@@ -134,8 +134,12 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
           {hosts.map((h) => {
             const OVERLAY: Record<string, string> = { tailscale: "Tailscale", netbird: "Netbird", zerotier: "ZeroTier" };
             const ways: { key: string; label: string; act: () => void; hint: string }[] = [];
-            if (h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: "手机看屏幕 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "复制 HTTPS 屏幕链接；手机连接 Tailscale 后用浏览器打开，使用这台 Mac 的用户名和登录密码" });
-            if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: "看它的屏幕", act: () => onOpenUrl(h.vnc), hint: "用系统「屏幕共享」打开" });
+            // From this Mac the natural thing is to open the other Mac's screen and drive it
+            // (system Screen Sharing). The noVNC page is for the phone: a link to copy, never
+            // to open here (opening your own screen inside itself just mirrors forever).
+            if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: "看它的屏幕并操作", act: () => onOpenUrl(h.vnc), hint: "用系统「屏幕共享」打开，能直接操作那台 Mac" });
+            if (h.novnc_up && h.novnc.startsWith("https://") && !h.local) ways.push({ key: "novnc", label: "复制手机看屏幕链接 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "发到手机上打开（手机需连着 Tailscale），用这台 Mac 的用户名和登录密码" });
+            if (h.local && h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: "复制本机的手机看屏幕链接 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "只给手机用；不要在这台电脑上打开，会看到无限套娃" });
             if (h.rustdesk) ways.push({ key: "rustdesk", label: h.rustdesk_id ? `RustDesk ${h.rustdesk_id} ⧉` : "RustDesk", act: () => (h.rustdesk_id ? onCopyText(h.rustdesk_id, "RustDesk ID") : onOpenUrl("rustdesk://")), hint: "不用虚拟网：手机 RustDesk 输这个 ID" });
             if (h.sunshine) ways.push({ key: "moonlight", label: "Moonlight 配对", act: () => onOpenUrl(h.sunshine_ui), hint: "打开 Sunshine 配对页；手机装 Moonlight，画质最高" });
             if (h.uu) ways.push({ key: "uu", label: "UU远程", act: () => onOpenUrl("/Applications"), hint: "已装网易UU远程；它没有接口，去它里面连" });
