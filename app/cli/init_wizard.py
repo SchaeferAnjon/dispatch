@@ -684,13 +684,31 @@ def rules_setup(mode=None, target=None):
 
 # ---------------------------------------------------------------- review
 
+# Which agents can be handed the review: those with a CLI Herdr can drive.
+REVIEW_KINDS = {"claude-code": "claude", "codex": "codex", "pi": "pi", "gemini": "gemini", "opencode": "opencode"}
+
+
+def review_agents():
+    picked = load_state().get("agents") or []
+    return [{"id": a, "kind": REVIEW_KINDS[a], "name": AGENT_HOMES[a][0]} for a in AGENT_HOMES if a in REVIEW_KINDS and (a in picked or os.path.isdir(AGENT_HOMES[a][1]))]
+
+
 def review_prompt():
     agents = [AGENT_HOMES[a][0] for a in (load_state().get("agents") or []) if a in AGENT_HOMES]
-    return (f"这台电脑（{D.local_host_name()}）刚装好 Dispatch。请审查并优化 Agent 的全局规则和技能：\n"
-            f"1) 读 {D.RULES_FILE}：找重复、矛盾、过期、写死的路径、一次性任务混进全局规则的地方；给出逐条修改建议并直接改，改完跑 `dispatch rules sync`。\n"
-            f"2) 跑 `dispatch skills list --json` 看技能池（{D.POOL}）：描述不清、触发条件重叠、和规则冲突的技能各给一条修改建议，改 SKILL.md。\n"
-            f"3) 用到的 Agent：{'、'.join(agents) or '未选择'}。规则要对它们都成立；Claude Code 走 @import，其余内联。\n"
-            f"4) 结束时用一段话总结改了什么、为什么；不要问「要不要」，值得改的直接改。")
+    return (f"这台电脑（{D.local_host_name()}）刚装好 Dispatch。请审查并精简这里所有 Agent 共用的指令体系，然后直接改好。\n\n"
+            f"范围：全局规则 {D.RULES_FILE}（它被同步到每个 Agent 的入口文件：`dispatch rules status`），技能池 {D.POOL}（`dispatch skills list --json`），以及各 Agent 入口文件里托管块之外的内容。用到的 Agent：{'、'.join(agents) or '未选择'}。\n\n"
+            "判断原则：\n"
+            "- 先做减法。为老模型补判断、补规划、补「别停下来」写的规则，删掉或弱化；当前模型不需要被手把手。\n"
+            "- 给目标和边界，不写逐步菜谱。保留架构约束、兼容要求、安全边界、产品行为和有意义的验收标准；删掉「第一步必须…第二步必须…」，除非顺序本身是业务或安全约束。\n"
+            "- 上下文按任务取。不要要求每次先通读仓库、全部文档或加载所有技能。\n"
+            "- 全局与项目不重复：项目级文件只留「只有这个项目才需要知道」的内容（架构取舍的原因、不能随意改的实现、特殊目录和接口、项目特有的构建/测试/发布方式）。\n"
+            "- 安全可逆的操作自主推进（读代码、改代码、本地构建、跑测试、修自己引入的失败、已授权的 commit/push）；只在不可逆、外发、或缺信息会改变产品决策时停下。\n"
+            "- 任务推进到真正完成，但不要把这条扩写成一套固定流程。\n"
+            "- 测试范围和改动风险匹配，删掉「一律跑完整套件」。\n"
+            "- 技能少而准：合并覆盖同一任务的，收窄过宽的 description，删掉老模型辅助型技能；根 SKILL.md 只说何时用、怎么选，细节按需展开到子文件。\n"
+            "- 每条规则至少有一个保留理由：模型确实常做错、项目行为和行业常规不同、违反代价明显、用户稳定偏好、或体现重要设计决策。普通工程常识不写成规则。\n"
+            "- 规则冲突时先弄清真实意图，只留一条，不要再加规则去修补规则。\n\n"
+            "做法：先列审计结果（建议删除/修改/保留的条目和理由、全局与项目的重复、技能的删并缩短建议、最可能限制发挥的地方），然后按结果直接改文件，改完跑 `dispatch rules sync`，最后用一段话说清改了什么、为什么。不要问「要不要」，也不要新增一套冗长的专用规则。")
 
 
 HELPER_PROMPTS = {
@@ -759,7 +777,7 @@ def status():
         {"id": "board", "title": "任务板", "ok": board["exists"] and board["server_up"], "detail": ("已接入 " + board["hub"]["name"]) if board.get("hub") else ("已建立，这台是枢纽" if board["exists"] else "还没有任务板"), "board": board},
         {"id": "agents", "title": "Agent", "ok": bool(st.get("agents")) and herdr_running(), "detail": ("、".join(AGENT_HOMES[a][0] for a in st.get("agents", []) if a in AGENT_HOMES) or "还没选") + ("" if herdr_running() else " · Herdr 没在跑"), "agents": agents, "herdr": herdr_running()},
         {"id": "rules", "title": "规则与技能", "ok": rules["have_rules"] and all(t["state"] == "synced" for t in rules["targets"] if os.path.isdir(os.path.dirname(t["path"]))), "detail": ("已同步" if rules["have_rules"] else "还没有共同规则"), "rules": rules},
-        {"id": "review", "title": "审查优化", "ok": bool(st.get("reviewed")), "detail": "已派 Agent 审查" if st.get("reviewed") else "可选：派一个 Agent 审查规则和技能", "optional": True},
+        {"id": "review", "title": "审查优化", "ok": bool(st.get("reviewed")), "detail": "已派 Agent 审查" if st.get("reviewed") else "可选：派一个 Agent 审查规则和技能", "optional": True, "agents": review_agents()},
     ]
     return {"done": bool(st.get("done")), "skipped": bool(st.get("skipped")), "machine": machine(), "steps": steps, "state": st,
             "all_ok": all(s["ok"] or s.get("optional") for s in steps)}
@@ -864,7 +882,7 @@ def main(a):
             elif step == "rules":
                 res = rules_setup()
             elif step == "review":
-                res = review_start(args[0] if args else "claude"); save_state(reviewed=True)
+                res = review_start(args[0] if args else (review_agents() or [{"kind": "claude"}])[0]["kind"]); save_state(reviewed=True)
             elif step == "helper":
                 res = helper_start(args[0] if args else "", args[1] if len(args) > 1 else "", "claude" if "claude-code" in (load_state().get("agents") or ["claude-code"]) else "codex")
             else:

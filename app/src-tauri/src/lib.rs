@@ -808,6 +808,17 @@ pub fn run() {
             start_watcher(app.handle().clone());
             start_indexer();
             build_tray(app)?;
+            // The red close button hides the window; the app keeps running in the menu bar.
+            // 退出 lives in the tray menu (and ⌘Q).
+            if let Some(w) = app.get_webview_window("main") {
+                let win = w.clone();
+                w.on_window_event(move |ev| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = ev {
+                        api.prevent_close();
+                        let _ = win.hide();
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -817,6 +828,16 @@ pub fn run() {
             skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, dispatch_on, tray_update,
             rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Clicking the Dock icon brings the hidden window back.
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }
+        });
 }

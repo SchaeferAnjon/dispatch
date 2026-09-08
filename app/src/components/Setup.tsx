@@ -7,7 +7,7 @@ import type { Api } from "../api";
 
 interface Dep { name: string; found: boolean; path: string; formula: string | null; why: string; required: boolean; installable: boolean }
 interface AgentRow { id: string; name: string; found: boolean; home: string; hooks: boolean | null; rules: boolean }
-interface Step { id: string; title: string; ok: boolean; detail: string; optional?: boolean; deps?: Dep[]; cli?: { link: string; exists: boolean; target: string; in_app: boolean }; board?: { exists: boolean; server_up: boolean; hub?: { name: string; ssh: string } | null; mode: string }; agents?: AgentRow[]; rules?: { have_rules: boolean; targets: { agent: string; state: string; path: string }[]; seeded_from: string } }
+interface Step { id: string; title: string; ok: boolean; detail: string; optional?: boolean; deps?: Dep[]; reviewers?: { id: string; kind: string; name: string }[]; cli?: { link: string; exists: boolean; target: string; in_app: boolean }; board?: { exists: boolean; server_up: boolean; hub?: { name: string; ssh: string } | null; mode: string }; agents?: AgentRow[]; rules?: { have_rules: boolean; targets: { agent: string; state: string; path: string }[]; seeded_from: string } }
 export interface InitStatus { done: boolean; skipped: boolean; all_ok: boolean; machine: { name: string; user: string; tailscale_ip: string; lan_ip: string }; steps: Step[]; state: Record<string, unknown> }
 
 const parse = <T,>(s: string): T => { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); };
@@ -18,6 +18,7 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
   const [hub, setHub] = useState("");
   const [picked, setPicked] = useState<string[] | null>(null);
   const [log, setLog] = useState<Record<string, string>>({});
+  const [reviewer, setReviewer] = useState<string>("");
   const step = (id: string) => status.steps.find((s) => s.id === id)!;
   const refresh = async () => { try { onStatus(parse<InitStatus>(await api.on("local", ["init", "status", "--json"]))); } catch (e) { onError(String(e)); } };
   const run = async (id: string, args: string[], label: string) => {
@@ -100,9 +101,10 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
         </Card>
 
         <Card n={6} s={step("review")} busy={busy === "review"}>
-          <p className="muted">派一个 Agent 读一遍规则和技能：找重复、矛盾、过期的条目，直接改好并同步。一台电脑也值得做一次。</p>
+          <p className="muted">派一个 Agent 审查这台电脑上所有 Agent 共用的规则和技能：先做减法（删掉为老模型补的行为规则、逐步菜谱、和全局重复的内容），保留架构约束、安全边界和项目知识，然后直接改好并同步。一台电脑也值得做一次。</p>
           <div className="setup-row">
-            <button className="btn primary" disabled={!!busy} onClick={() => void run("review", [picked?.includes("claude-code") ? "claude" : "codex"], "已派 Agent 审查")}>{busy === "review" ? "启动中…" : "派 Agent 审查并优化"}</button>
+            {(() => { const list = ((step("review") as unknown as { agents?: { id: string; kind: string; name: string }[] }).agents) ?? []; const cur = reviewer || list[0]?.kind || ""; return list.length > 0 ? <select className="sess-agent" value={cur} onChange={(e) => setReviewer(e.target.value)} aria-label="用哪个 Agent 审查">{list.map((a) => <option key={a.kind} value={a.kind}>{a.name}</option>)}</select> : <span className="muted small">没有检测到带命令行的 Agent（Claude Code / Codex / pi / Gemini CLI / OpenCode）</span>; })()}
+            <button className="btn primary" disabled={!!busy} onClick={() => { const list = ((step("review") as unknown as { agents?: { kind: string }[] }).agents) ?? []; void run("review", [reviewer || list[0]?.kind || "claude"], "已派 Agent 审查"); }}>{busy === "review" ? "启动中…" : "派它审查并优化"}</button>
             <button className="btn" onClick={async () => { try { const r = parse<{ prompt: string }>(await api.on("local", ["init", "run", "review", "--json"])); await api.copy(r.prompt); onNotify("审查提示词已复制，发给任意 Agent 即可"); } catch (e) { onError(String(e)); } }}>复制提示词</button>
           </div>
           {log.review && <pre className="setup-log">{log.review}</pre>}
