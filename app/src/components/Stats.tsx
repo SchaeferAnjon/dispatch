@@ -33,8 +33,8 @@ function RankList({ title, items, unit = "次", empty }: { title: string; items:
       <h4>{title}<span className="muted">{items.length}</span></h4>
       {items.length === 0 && <div className="empty small">{empty}</div>}
       {items.slice(0, 12).map((it) => (
-        <div key={it.name} className="rk">
-          <span className="nm mono" title={it.name}>{it.name}</span>
+        <div key={it.name} className="rk" title={`${it.name} · ${it.count.toLocaleString()} ${unit}` + (Object.keys(it.by).length ? "\n" + AGENTS.filter((a) => it.by[a]).map((a) => `${a} ${it.by[a].toLocaleString()}`).join(" · ") : "")}>
+          <span className="nm mono">{it.name}</span>
           <span className="bar"><span className="stk" style={{ width: `${(it.count / max) * 100}%` }}>{AGENTS.filter((a) => it.by[a]).map((a) => <i key={a} style={{ width: `${(it.by[a] / it.count) * 100}%`, background: COLOR[a] }} title={`${a} ${it.by[a]}`} />)}</span></span>
           <span className="n mono">{it.count.toLocaleString()} {unit}</span>
         </div>
@@ -114,13 +114,14 @@ function Trend({ days, metric, n }: { days: StatsDay[]; metric: "tokens" | "msgs
   return (
     <div className="trend">
       {list.map((x) => (
-        <div key={x.key} className="tb" title={`${x.key} · ${metric === "tokens" ? fmtTok(x.v) + " token" : x.v + " 条消息"}`}>
+        <div key={x.key} className={`tb${x.v ? "" : " zero"}`} title={`${x.key} · ${x.v ? (metric === "tokens" ? fmtTok(x.v) + " token" : x.v + " 条消息") : "没有活动"}` + (metric === "tokens" && x.v ? "\n" + AGENTS.filter((a) => x.by[a]).map((a) => `${a} ${fmtTok(x.by[a])}`).join(" · ") : "")}>
           <div className="col">
             {metric === "tokens"
-              ? AGENTS.filter((a) => x.by[a]).map((a) => <i key={a} style={{ height: `${(x.by[a] / max) * 100}%`, background: COLOR[a] }} />)
+              ? AGENTS.filter((a) => x.by[a]).map((a) => <i key={a} style={{ height: `${(x.by[a] / max) * 100}%`, background: COLOR[a] }} title={`${x.key} · ${a} ${fmtTok(x.by[a])} token`} />)
               : x.v > 0 && <i style={{ height: `${(x.v / max) * 100}%`, background: "var(--accent)" }} />}
+            {!x.v && <i className="none" title={`${x.key} · 没有活动`} />}
           </div>
-          <span className="lb muted">{n <= 14 || x.key.endsWith("01") ? x.label : ""}</span>
+          <span className="lb muted">{n <= 14 || x.key.endsWith("01") || list.indexOf(x) % 5 === 0 || list.indexOf(x) === list.length - 1 ? x.label : ""}</span>
         </div>
       ))}
     </div>

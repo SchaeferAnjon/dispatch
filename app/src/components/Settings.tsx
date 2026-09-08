@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; onPhone?: () => void; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, onPhone, hosts = [], onSetup, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, onPhone, onScreen, screenReady, hosts = [], onSetup, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
   const [draft, setDraft] = useState<DispatchSettings>(settings);
@@ -53,6 +53,10 @@ export function SettingsView({ settings, onSave, theme, onTheme, onPhone, hosts 
         {onPhone && <div className="settings-row">
           <div><b>手机访问</b><p>复制 dispatch serve 的链接；手机连上 Tailscale 后用浏览器打开，可以添加到主屏幕。</p></div>
           <button className="btn sm" onClick={onPhone}>复制链接</button>
+        </div>}
+        {onScreen && <div className="settings-row">
+          <div><b>屏幕访问</b><p>{screenReady ? "手机连上 Tailscale 后，用浏览器打开这个链接就能看到并操作这台电脑的屏幕（noVNC），登录用这台 Mac 的用户名和密码。" : "还没配置：先打开 系统设置 → 通用 → 共享 → 屏幕共享，再在 Agent 状态页按提示跑一次 novnc-setup；配好后这里能复制链接。"}</p></div>
+          <button className="btn sm" disabled={!screenReady} onClick={onScreen}>复制屏幕链接</button>
         </div>}
         {onCheckUpdate && <div className="settings-row">
           <div><b>版本与更新</b><p>当前 v{update?.current ?? "…"}{update?.latest ? `，最新 v${update.latest}` : ""}{update?.newer ? "，有新版本" : update?.latest ? "，已是最新" : ""}。{update?.error ? update.error : "从 GitHub Release 下载并替换应用，完成后自动重启。"}</p></div>

@@ -114,7 +114,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   return (
     <aside className="detail">
       <div className="dh">
-        <span className="id">{issue.id}</span><span>·</span><span>{projectOf(issue) || "未分项目"}</span>
+        <span className="id" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{issue.id}</span><span>·</span><span>{projectOf(issue) || "未分项目"}</span>
         <button className="btn ghost sm" onClick={() => { setEditProperties(v => !v); setClosing(false); }}>{editProperties ? "收起编辑" : "编辑属性"}</button>
         <button className="x" onClick={onClose} aria-label="关闭">✕</button>
       </div>

@@ -408,7 +408,7 @@ export default function App() {
   const dirOfProject = useCallback((name: string) => { const p = projectGroups(projectRows, issuesF, outcomesF).find((g) => g.name === name); const a = p?.sessions.find((x) => x.cwd && !/^\/(?:Users|home)\/[^/]+\/?$/.test(x.cwd)); return a?.cwd ?? ""; }, [projectRows, issuesF, outcomesF]);
   const startAgent = async (i: AgentStartInput) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; };
 
-  const phoneLink = isTauri && api ? async () => { try { await api.copy((await api.on("local", ["serve", "url"])).trim()); say("手机访问链接已复制"); } catch (e) { say(String(e), true); } } : undefined;
+  const phoneLink = isTauri && api ? async () => { try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say(/100\.\d+\.\d+\.\d+/.test(url) ? "手机访问链接已复制。打开前手机先连上 Tailscale，再用浏览器打开，可添加到主屏幕" : "手机访问链接已复制。手机和电脑要在同一个网络里"); } catch (e) { say(String(e), true); } } : undefined;
 
   // Every conversation a row can stand for, by activity key, for the global right-click.
   const sessionByKey = useMemo(() => {
@@ -527,7 +527,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView onScreen={() => { const h = hosts.find((x) => x.local); if (h?.novnc) void api?.copy(h.novnc).then(() => say("屏幕链接已复制。打开前手机先连上 Tailscale；登录用这台 Mac 的用户名和密码")); }} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}

@@ -18,8 +18,9 @@ export function StatusPill({ issue, sm }: { issue: Issue; sm?: boolean }) {
   return <span className={`st ${s.cls}${sm ? " sm" : ""}`}>{sm ? null : <i />}{s.text}</span>;
 }
 
+const PRI_TEXT: Record<number, string> = { 0: "P0 最高：马上做，阻塞别人", 1: "P1 高：本周内", 2: "P2 普通（默认）", 3: "P3 低：有空再做", 4: "P4 想法：先记着" };
 export function Pri({ p }: { p: number }) {
-  return <span className={`pri p${p}`}>P{p}</span>;
+  return <span className={`pri p${p}`} title={`优先级 ${PRI_TEXT[p] ?? `P${p}`}；bd update <id> -p 0–4 可改`}>P{p}</span>;
 }
 
 export function ProjectTag({ name }: { name: string }) {

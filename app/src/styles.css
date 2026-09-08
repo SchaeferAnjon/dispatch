@@ -1130,3 +1130,4 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .update-chip{color:var(--accent-ink);background:var(--accent-soft)}
 .setup-shell .body.setup-body-wrap{grid-template-columns:1fr}.setup-shell .titlebar{grid-template-columns:232px minmax(0,1fr) auto}
 .skill-files{margin-top:16px}.skill-files summary{cursor:pointer}.skill-files button{display:block;padding:2px 0}.skill-files button.on{font-weight:600}
+.trend .tb .col i.none{height:2px;background:var(--line-2);opacity:.9}.trend .tb.zero:hover .col i.none{background:var(--ink-3)}

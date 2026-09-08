@@ -22,7 +22,7 @@ export function Card({ issue, progress, selected, onSelect, me, root, draggable,
       <div className="meta">
         <Pri p={issue.priority} />
         <ProjectTag name={projectOf(issue)} />
-        <span className="id">{issue.id}</span>
+        <span className="id" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{issue.id}</span>
         {issue.issue_type !== "task" && <span className="muted">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>}
       </div>
       {delegatedBy(issue) && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>↪ {actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 {actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}</div>}
@@ -94,7 +94,7 @@ export function TableView({ issues, selected, onSelect, me, rootOf }: Common) {
             const root = rootOf?.(i.id);
             return (
               <tr data-task={i.id} key={i.id} className={selected === i.id ? "sel" : ""} onClick={() => onSelect(i.id)}>
-                <td className="mono">{i.id}</td>
+                <td className="mono" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{i.id}</td>
                 <td className="t">{i.title}</td>
                 <td>{root ? <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={root.title}><span className="mono">{root.id}</span></button> : <span className="muted">—</span>}</td>
                 <td><StatusPill issue={i} sm /></td>
