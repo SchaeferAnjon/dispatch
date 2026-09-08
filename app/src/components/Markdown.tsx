@@ -17,7 +17,7 @@ export function splitFrontmatter(src: string): { meta: [string, string][]; body:
   return { meta, body: src.slice(m[0].length) };
 }
 
-export function Markdown({ src, className }: { src: string; className?: string }) {
+export function Markdown({ src, className, onRelativeLink }: { src: string; className?: string; onRelativeLink?: (href: string) => void }) {
   const media = useMedia();
   const root = useRef<HTMLDivElement>(null);
   const html = useMemo(() => {
@@ -48,6 +48,7 @@ export function Markdown({ src, className }: { src: string; className?: string }
     if (img && media) { media.open(img.dataset.attachment!); return; }
     const link = (e.target as HTMLElement).closest('a');
     const href = link?.getAttribute('href') || '';
+    if (onRelativeLink && href && !/^(https?:|mailto:|#|\/)/i.test(href)) { e.preventDefault(); onRelativeLink(href); return; }
     if (media && href && !/^(https?:|mailto:|#)/i.test(href)) { e.preventDefault(); media.open(href); return; }
     // Links open in the system browser, never inside the app webview.
     const a = (e.target as HTMLElement).closest("a");

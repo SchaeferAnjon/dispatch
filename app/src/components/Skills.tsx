@@ -22,6 +22,9 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
   const [only, setOnly] = useState<string>("");
   const [sel, setSel] = useState<string | null>(null);
   const [content, setContent] = useState<string>("");
+  // Which file of the skill folder is open: SKILL.md, or something it links to (detail-04.md, references/x.md).
+  const [file, setFile] = useState<string>("SKILL.md");
+  const [files, setFiles] = useState<string[]>([]);
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [byUse, setByUse] = useState(true);
@@ -39,13 +42,17 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
 
   const load = async () => { if (blocked) { setSkills([]); setLoaded(true); return; } try { setSkills(parseJson<Skill[]>(await api.on(host, ["skills", "list", "--json"]), [])); setLoaded(true); } catch (e) { onError(String(e)); } };
   useEffect(() => { setSel(null); load(); }, [api, host, blocked]);
+  useEffect(() => { setFile("SKILL.md"); }, [sel]);
   useEffect(() => {
     if (!sel) return;
     let alive = true;
-    setDraft(null);
-    api.on(host, ["skills", "show", sel]).then((c) => { if (alive) setContent(c); }).catch((e) => onError(String(e)));
+    setDraft(null); setContent("");
+    api.on(host, ["skills", "show", sel, "--file", file]).then((c) => { if (alive) setContent(c); }).catch((e) => onError(String(e)));
+    api.on(host, ["skills", "show", sel, "--json"]).then((j) => { if (alive) setFiles(parseJson<{ files?: string[] }>(j, {}).files ?? []); }).catch(() => {});
     return () => { alive = false; };
-  }, [sel, api]);
+  }, [sel, file, api]);
+  // A relative link inside the markdown stays inside the skill folder.
+  const follow = (href: string) => { const clean = href.split("#")[0]; if (!clean) return; const base = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : ""; const parts = (base + clean).split("/").filter((p) => p && p !== "."); const out: string[] = []; for (const p of parts) { if (p === "..") out.pop(); else out.push(p); } setFile(out.join("/") || "SKILL.md"); };
 
   const items = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -64,7 +71,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
   const save = async () => {
     if (!sel || draft === null) return;
     setBusy(true);
-    try { await api.on(host, ["skills", "write", sel], draft); setContent(draft); setDraft(null); onDone("SKILL.md 已保存（旧版本留在 .md.bak）"); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
+    try { await api.on(host, ["skills", "write", sel, "--file", file], draft); setContent(draft); setDraft(null); onDone(`${file} 已保存（旧版本留在 .bak）`); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
 
   return (
@@ -101,9 +108,10 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
             <div className="sess-head">
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="ttl mono">{cur.name}</div>
-                <div className="sub mono">{cur.path.replace(/^\/Users\/[^/]+/, "~")}/SKILL.md</div>
+                <div className="sub mono">{cur.path.replace(/^\/Users\/[^/]+/, "~")}/{file !== "SKILL.md" ? <><button className="link mono" onClick={() => setFile("SKILL.md")}>SKILL.md</button> › {file}</> : "SKILL.md"}</div>
               </div>
-              {host === "local" && <button className="btn sm" onClick={() => api.skillOpen(cur.name)}>用编辑器打开</button>}
+              {host === "local" && <button className="btn sm" onClick={() => api.on(host, ["skills", "open", cur.name, "--file", file, "--reveal"]).catch((e) => onError(String(e)))} title="在访达里显示这个文件所在的技能目录">在访达中打开</button>}
+              {host === "local" && <button className="btn sm" onClick={() => api.on(host, ["skills", "open", cur.name, "--file", file]).catch((e) => onError(String(e)))}>用编辑器打开</button>}
               {draft === null ? <button className="btn primary sm" onClick={() => setDraft(content)}>在这里改</button> : (
                 <>
                   <button className="btn ghost sm" onClick={() => setDraft(null)}>放弃</button>
@@ -129,7 +137,8 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
                 return (
                   <>
                     {meta.length > 0 && <div className="fm">{meta.map(([k, v]) => <><b key={k + "k"}>{k}</b><span key={k + "v"}>{v}</span></>)}</div>}
-                    <Markdown src={body} />
+                    <Markdown src={body} onRelativeLink={follow} />
+                    {files.length > 1 && <details className="skill-files"><summary className="muted small">这个技能的文件 · {files.length}</summary>{files.map((f) => <button key={f} className={`link mono small${f === file ? " on" : ""}`} onClick={() => setFile(f)}>{f}</button>)}</details>}
                   </>
                 );
               })() : (

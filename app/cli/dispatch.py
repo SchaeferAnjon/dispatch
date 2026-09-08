@@ -1976,25 +1976,37 @@ def cmd_skills(a):
     if not r:
         print(f"没有叫 {a.name} 的技能。`dispatch skills list` 看看有哪些", file=sys.stderr)
         sys.exit(1)
+    # A skill is a folder: SKILL.md plus whatever it links to (detail-*.md, references/…).
+    # --file picks one of those; it must stay inside the skill folder.
+    def skill_file(rel):
+        rel = (rel or "SKILL.md").lstrip("/")
+        full = os.path.realpath(os.path.join(r["path"], rel))
+        if not full.startswith(os.path.realpath(r["path"]) + os.sep) and full != os.path.realpath(os.path.join(r["path"], "SKILL.md")):
+            print(f"{rel} 不在技能目录里", file=sys.stderr)
+            sys.exit(2)
+        return full
     if a.op == "path":
-        print(os.path.join(r["path"], "SKILL.md"))
+        print(skill_file(a.file))
     elif a.op == "show":
         if a.json:
-            print(json.dumps(r, ensure_ascii=False, indent=2))
+            files = sorted(os.path.relpath(os.path.join(dp, fn), r["path"]) for dp, _, fns in os.walk(r["path"]) for fn in fns if fn.endswith((".md", ".txt", ".py", ".sh", ".json", ".yaml", ".yml")) and not fn.endswith(".bak") and "/." not in dp[len(r["path"]):])
+            print(json.dumps({**r, "files": files}, ensure_ascii=False, indent=2))
         else:
-            print(open(os.path.join(r["path"], "SKILL.md"), encoding="utf-8").read())
+            print(open(skill_file(a.file), encoding="utf-8").read())
     elif a.op == "open":
-        subprocess.run(["open", os.path.join(r["path"], "SKILL.md")])
+        subprocess.run(["open", "-R", skill_file(a.file)] if a.reveal else ["open", skill_file(a.file)])
     elif a.op == "write":
         new = sys.stdin.read()
         if not new.strip():
             print("stdin 为空，不写", file=sys.stderr)
             sys.exit(2)
-        f = os.path.join(r["path"], "SKILL.md")
+        f = skill_file(a.file)
         import shutil
-        shutil.copy2(f, f + ".bak")
+        if os.path.exists(f):
+            shutil.copy2(f, f + ".bak")
+        os.makedirs(os.path.dirname(f), exist_ok=True)
         open(f, "w", encoding="utf-8").write(new)
-        print(f"{a.name} 已保存（旧版 SKILL.md.bak）")
+        print(f"{a.name}/{os.path.relpath(f, r['path'])} 已保存（旧版 .bak）")
     elif a.op in ("enable", "disable"):
         agents = list(AGENT_SKILL_DIRS) if a.agent in (None, "all") else [a.agent]
         for ag in agents:
@@ -3896,7 +3908,7 @@ def main():
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
-    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write"]); s.add_argument("name", nargs="?"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
+    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write"]); s.add_argument("name", nargs="?"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
