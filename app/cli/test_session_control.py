@@ -89,7 +89,10 @@ class SessionControl(unittest.TestCase):
         r=c.status(self.d,self.data['request_id'])
         self.assertEqual(r['state'],'ready')
         a=next(a for a in calls if a[:2]==['agent','start'])
-        self.assertEqual(a[-2:],['--',self.data['prompt']])
+        # The fixture prompt spans lines: Herdr cannot pass that as an agent argument, so it
+        # must NOT be in the start args and must arrive verbatim through `agent prompt`.
+        self.assertNotIn(self.data['prompt'],a)
+        self.assertEqual(next(a for a in calls if a[:2]==['agent','prompt'])[3],self.data['prompt'])
         self.assertEqual(a[a.index('--session-id')+1],r['session_id'])
         self.assertEqual(next(a for a in calls if a[:2]==['tab','create'])[3],os.path.realpath(self.temp.name))
 

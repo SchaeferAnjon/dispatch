@@ -148,6 +148,11 @@ def enqueue(d, data):
     return result
 
 
+def unsafe_argument(text):
+    """True when Herdr would reject the text as a command-line argument (control characters)."""
+    return any(ch in text for ch in '\n\r\t\x00')
+
+
 def worker(d, rid):
     with closing(connect(d)) as db, db:
         db.execute('BEGIN IMMEDIATE')
@@ -169,9 +174,13 @@ def worker(d, rid):
         if sid:
             save(d, rid, expected_session_id=sid)
         extra = (['--session', p['resume']] if agent == 'pi' else ['--resume', p['resume']]) if p['resume'] else (['--session-id', sid] if sid else [])
-        if p['prompt']:
+        # Herdr refuses agent arguments it cannot encode for the pane's shell (a newline in a
+        # multi-line prompt is the usual case). Such prompts are sent after start instead.
+        prompt_later = bool(p['prompt']) and unsafe_argument(p['prompt'])
+        if p['prompt'] and not prompt_later:
             extra += ['--', p['prompt']]
-        args = ['agent', 'start', 'dispatch-'+hashlib.sha256(rid.encode()).hexdigest()[:10], '--kind', KINDS[agent], '--pane', pid, '--timeout', '60000', '--', *extra]
+        name = 'dispatch-'+hashlib.sha256(rid.encode()).hexdigest()[:10]
+        args = ['agent', 'start', name, '--kind', KINDS[agent], '--pane', pid, '--timeout', '60000', '--', *extra]
         for attempt in range(6):
             try:
                 checked(d, args, timeout=75)
@@ -180,6 +189,8 @@ def worker(d, rid):
                 if 'shell' not in str(e).lower() and 'busy' not in str(e).lower() or attempt == 5:
                     raise
                 time.sleep(1)
+        if prompt_later:
+            checked(d, ['agent', 'prompt', name, p['prompt']], timeout=30)
         # A launch is finished only when its actual transcript is visible.
         # Claude has an assigned UUID; other agents require an unambiguous new
         # transcript with the exact first message, never a cwd-only match.
