@@ -82,8 +82,13 @@ def scan(ref):
                 if m.get('role', row.get('type')) not in ('user', 'assistant'): continue
                 content = m.get('content') or []
                 if isinstance(content, str): text(content, ts); continue
+                blocks = []
                 for b in content:
                     if not isinstance(b, dict): continue
+                    blocks.append(b)
+                    if b.get('type') == 'tool_result' and isinstance(b.get('content'), list):
+                        blocks.extend(x for x in b['content'] if isinstance(x, dict))
+                for b in blocks:
                     if b.get('type') in ('text', 'input_text', 'output_text'): text(b.get('text', ''), ts)
                     if b.get('type') in ('image', 'input_image', 'image_url'):
                         src = b.get('source') or {}

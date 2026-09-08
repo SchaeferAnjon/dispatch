@@ -1331,6 +1331,25 @@ def cmd_list(a):
     out(refs, a.json, text)
 
 
+def _block_images(content):
+    """Attachment ids for the pictures in a message (pasted, or returned by a tool), matching attachments.scan()."""
+    import hashlib
+    ids = []
+    blocks = []
+    for b in content if isinstance(content, list) else []:
+        if not isinstance(b, dict):
+            continue
+        blocks.append(b)
+        if b.get("type") == "tool_result" and isinstance(b.get("content"), list):
+            blocks.extend(x for x in b["content"] if isinstance(x, dict))
+    for b in blocks:
+        if b.get("type") == "image" and (b.get("source") or {}).get("type") == "base64":
+            src = b["source"]
+            url = f"data:{src.get('media_type', 'image/png')};base64,{src.get('data', '')}"
+            ids.append("embedded:" + hashlib.sha256(url.encode()).hexdigest()[:24])
+    return ids
+
+
 def _block_text(content):
     if isinstance(content, str):
         return content
@@ -1375,6 +1394,7 @@ def read_session_detail(ref, limit=400):
     if ref["agent"] == "zcode":
         return read_zcode_detail(ref, limit)
     msgs, files, tool_names = [], {}, {}
+    seen_tool_images = []
     path = ref["path"]
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -1444,13 +1464,23 @@ def read_session_detail(ref, limit=400):
             ts = d.get("timestamp", "")
             if t == "user":
                 if isinstance(content, list) and content and isinstance(content[0], dict) and content[0].get("type") == "tool_result":
+                    seen_tool_images = _block_images(content)  # a picture the agent looked at; shown with the caption turn that follows
                     continue  # tool results are noise for the timeline
                 txt = _block_text(content)
+                if re.fullmatch(r"\s*(\[Image:[^\]]*\]\s*)+", txt) and not _block_images(content):
+                    if seen_tool_images:
+                        msgs.append({"ts": ts, "role": "tool", "text": "查看了图片", "tools": [], "images": seen_tool_images})
+                    seen_tool_images = []
+                    continue
                 # Slash-command echoes and caveats are injected by the CLI, not typed by the user.
                 if txt.lstrip().startswith(("<local-command", "<command-name>", "<command-message>", "<system-reminder>")):
                     continue
-                if txt.strip():
-                    msgs.append({"ts": ts, "role": "user", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": []})
+                images = _block_images(content)
+                if images:
+                    # The "[Image: original …]" caption only describes the picture; show the picture.
+                    txt = re.sub(r"\[Image:[^\]]*\]", "", txt).strip()
+                if txt.strip() or images:
+                    msgs.append({"ts": ts, "role": "user", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": [], **({"images": images} if images else {})})
             else:
                 txt = _block_text(content)
                 tools = []
@@ -2382,7 +2412,7 @@ RULE_TARGETS = {
     "gemini": {"path": os.path.join(HOME, ".gemini", "GEMINI.md"), "mode": "inline", "home": os.path.join(HOME, ".gemini")},
     "opencode": {"path": os.path.join(HOME, ".config", "opencode", "AGENTS.md"), "mode": "inline", "home": os.path.join(HOME, ".config", "opencode")},
 }
-rule_agents_installed = lambda: [ag for ag, t in RULE_TARGETS.items() if os.path.isdir(t["home"])]
+rule_agents_installed = lambda: [ag for ag, t in RULE_TARGETS.items() if not t.get("home") or os.path.isdir(t["home"])]
 
 
 # ---------------------------------------------------------------- facts: 常用信息（服务器/域名/数据库/API 名字、常说的话）

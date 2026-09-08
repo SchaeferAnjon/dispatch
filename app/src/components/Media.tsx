@@ -48,6 +48,16 @@ export function MediaProvider({ api, session, children }: { api: Api; session?: 
     </div></div>}</Context.Provider>;
 }
 
+// A picture inside a conversation turn: thumbnail now, the full viewer on click.
+export function InlineImage({ id }: { id: string }) {
+  const media = useMedia();
+  const [src, setSrc] = useState('');
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { let alive = true; setSrc(''); setFailed(false); media?.read(id).then(v => { if (alive) setSrc(dataUrl(v)); }).catch(() => { if (alive) setFailed(true); }); return () => { alive = false; }; }, [id, media]);
+  if (failed) return <span className="muted small">图片无法读取</span>;
+  return <button className="inline-image" onClick={() => media?.open(id)} title="点开看大图">{src ? <img src={src} alt="会话图片" /> : <span className="muted small">图片载入中…</span>}</button>;
+}
+
 export function AttachmentList({ items }: { items: Attachment[] }) {
   const media = useMedia();
   return <div className="attachment-list">{items.length === 0 ? <p className="muted">没有找到图片或链接的本地文件。</p> : items.map(a => <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">{a.mime.startsWith('image/') ? '▧' : a.mime === 'text/html' ? '‹/›' : '▤'}</span><span><b>{a.name}</b><small>{a.mime} · {a.exists ? '点击预览' : '原文件已不可用'}</small></span><span>›</span></button>)}</div>;

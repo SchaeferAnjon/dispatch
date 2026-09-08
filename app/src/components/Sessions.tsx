@@ -1,5 +1,5 @@
 import { linkedSessions } from "../projectModel";
-import { MediaProvider, AttachmentList } from "./Media";
+import { MediaProvider, AttachmentList, InlineImage } from "./Media";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
 import { actorOf, durSince, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
@@ -200,6 +200,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                       {x.role === "gap" ? <div className="muted">{x.text}</div> : (
                         <>
                           <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : a?.name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
+                          {x.images && x.images.length > 0 && <div className="tl-images">{x.images.map((id) => <InlineImage key={id} id={id} />)}</div>}
                           {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text">{x.text}</div>)}
                           {showTools && x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
                         </>
