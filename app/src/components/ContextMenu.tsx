@@ -131,7 +131,39 @@ export function GlobalContextMenu({ issues, sessions }: { issues: Issue[]; sessi
       openView(anchor);
     };
     document.addEventListener('contextmenu', handler);
-    return () => document.removeEventListener('contextmenu', handler);
+    // Touch screens have no right button: a still press of ~500 ms on a row or card opens the
+    // same menu. iOS does not send `contextmenu` for that, so synthesize one at the finger.
+    let timer = 0, start: { x: number; y: number; target: EventTarget | null } | null = null, fired = false;
+    const cancel = () => { window.clearTimeout(timer); timer = 0; start = null; };
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return cancel();
+      const t = e.target as HTMLElement | null;
+      if (!t || typeof t.closest !== 'function' || t.closest('input,textarea,select,button,a,[contenteditable="true"],.task-menu-shade,.overlay,.dialog')) return;
+      if (!t.closest('[data-task],[data-session],[data-project],[data-menu]')) return;
+      const touch = e.touches[0];
+      start = { x: touch.clientX, y: touch.clientY, target: t };
+      fired = false;
+      timer = window.setTimeout(() => {
+        if (!start) return;
+        fired = true;
+        (start.target as HTMLElement).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: start.x, clientY: start.y }));
+        if (navigator.vibrate) navigator.vibrate(10);
+        cancel();
+      }, 500);
+    };
+    const onMove = (e: TouchEvent) => { if (start && (Math.abs(e.touches[0].clientX - start.x) > 10 || Math.abs(e.touches[0].clientY - start.y) > 10)) cancel(); };
+    const onEnd = (e: TouchEvent) => { if (fired) { e.preventDefault(); fired = false; } cancel(); };
+    const swallowClick = (e: MouseEvent) => { if (fired) { e.preventDefault(); e.stopPropagation(); fired = false; } };
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: true });
+    document.addEventListener('touchend', onEnd);
+    document.addEventListener('touchcancel', cancel);
+    document.addEventListener('click', swallowClick, true);
+    return () => {
+      document.removeEventListener('contextmenu', handler);
+      document.removeEventListener('touchstart', onStart); document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd); document.removeEventListener('touchcancel', cancel); document.removeEventListener('click', swallowClick, true);
+    };
   }, []);
   return null;
 }
