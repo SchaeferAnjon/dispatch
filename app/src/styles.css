@@ -1128,3 +1128,4 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .tl-images{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}.inline-image{border:1px solid var(--line);border-radius:8px;padding:0;background:var(--win);cursor:zoom-in;overflow:hidden;max-width:100%}.inline-image img{display:block;max-height:240px;max-width:min(420px,100%);object-fit:contain}.inline-image span{display:block;padding:8px 10px}
 .settings-text{width:260px;max-width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);font-family:var(--mono);font-size:12px}
 .update-chip{color:var(--accent-ink);background:var(--accent-soft)}
+.setup-shell .body.setup-body-wrap{grid-template-columns:1fr}.setup-shell .titlebar{grid-template-columns:232px minmax(0,1fr) auto}

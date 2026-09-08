@@ -435,6 +435,24 @@ export default function App() {
     try { const cmd = await api.resumeCmd(agent, sessionId, cwd); await api.copy(cmd); say("恢复命令已复制，去终端粘贴回车"); } catch (e) { say(String(e), true); }
   };
 
+  // Until first-run setup is finished, the app is a blank shell around the guide: no board,
+  // no agents, no quota — nothing that would be read from a machine that is not set up yet.
+  if (isTauri && initStatus && !initStatus.done && api) {
+    return (
+      <div className="app setup-shell">
+        <div className="titlebar" data-tauri-drag-region>
+          <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
+          <div className="crumb" data-tauri-drag-region><b>首次设置</b></div>
+          <div className="tb-right"><button className="btn ghost" onClick={nextTheme} title="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button></div>
+        </div>
+        <div className="body setup-body-wrap">
+          <main className="main"><section className="view"><SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); } catch { setInitStatus({ ...initStatus, done: true }); } void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} /></section></main>
+        </div>
+        {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
+      </div>
+    );
+  }
+
   return (
     <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?{...r,...c}:r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?{...x,...c}:x)}));say(c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd) }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectRows.find((a) => conversationProject(a) === n)); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
       <div className="titlebar" data-tauri-drag-region>
