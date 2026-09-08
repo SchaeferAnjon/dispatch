@@ -105,7 +105,7 @@ export default function App() {
   const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ text: string; err?: boolean } | null>(null);
+  const [toast, setToast] = useState<{ text: string; err?: boolean; undo?: () => void } | null>(null);
   // Web mode only: the Mac updated underneath this page (served version changed) → offer a refresh.
   const [webUpdate, setWebUpdate] = useState("");
   useEffect(() => {
@@ -176,10 +176,10 @@ export default function App() {
 
   const me = info?.actor ?? "user";
 
-  const say = useCallback((text: string, isErr = false) => {
-    setToast({ text, err: isErr });
+  const say = useCallback((text: string, isErr = false, undo?: () => void) => {
+    setToast({ text, err: isErr, undo });
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), isErr ? 6000 : 1800);
+    toastTimer.current = window.setTimeout(() => setToast(null), isErr ? 6000 : undo ? 5000 : 1800);
   }, []);
 
   const reload = useCallback(async (a?: Api) => {
@@ -530,7 +530,7 @@ export default function App() {
   ];
 
   // The noVNC page asks for a login: it is this Mac's account, which is the part new users miss.
-  const screenLink = async () => { const h = hosts.find((x) => x.local); if (!h?.novnc || !api) { say("还没配置屏幕访问，设置页有说明", true); return; } try { await api.copy(h.novnc); say(`屏幕链接已复制。手机先连上 Tailscale 再打开；页面要登录时，输入这台 Mac 的用户名（${h.ssh?.includes("@") ? h.ssh.split("@")[0] : "登录这台电脑用的那个"}）和开机密码`); } catch (e) { say(String(e), true); } };
+  const screenLink = async () => { const h = hosts.find((x) => x.local); if (!h?.novnc || !api) { say("还没配置屏幕访问，设置页有说明", true); return; } if (!isTauri && window.matchMedia("(max-width: 760px)").matches) { window.open(h.novnc, "_blank"); return; } try { await api.copy(h.novnc); say(`屏幕链接已复制。手机先连上 Tailscale 再打开；页面要登录时，输入这台 Mac 的用户名（${h.ssh?.includes("@") ? h.ssh.split("@")[0] : "登录这台电脑用的那个"}）和开机密码`); } catch (e) { say(String(e), true); } };
 
   // A model-written summary, stored with the session's preferences; the row updates in place.
   const summarizeSession = async (a: Activity) => {
@@ -563,7 +563,7 @@ export default function App() {
         <div className="body setup-body-wrap">
           <main className="main"><section className="view"><SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); } catch { setInitStatus({ ...initStatus, done: true }); } void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} /></section></main>
         </div>
-        {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
+        {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}{toast.undo && <button className="link" onClick={() => { const u = toast.undo; setToast(null); u?.(); }}>撤销</button>}</div>}
       </div>
     );
   }

@@ -65,14 +65,18 @@ export function SubagentDialog({ api, parent, sub, onClose }: { api: Api; parent
 
 // One file's recorded edits, as diffs. Shared by the session files tab and the task detail.
 export function FileHunks({ changes }: { changes: FileChange[] }) {
-  return <>{changes.map((c, i) => (
-    <div key={i} className="hunk">
-      <div className="hunk-h muted small">{c.kind === "write" ? "写入整个文件" : c.kind === "patch" ? `${c.op ?? "修改"}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>
-      {c.kind === "patch"
-        ? (c.new ? <PatchDiff text={c.new} /> : <pre className="diff"><div className="skip">补丁内容没存下来</div></pre>)
-        : <PairDiff oldText={c.old} newText={c.new} label={c.kind === "write" ? "行号 = 文件行号" : "行号相对本段"} />}
-    </div>
-  ))}</>;
+  return <>{changes.map((c, i) => {
+    const lines = (c.new || "").split("\n").length;
+    // A whole-file write of a long file is a wall of green; fold it and say how long it is.
+    const fold = c.kind === "write" && lines > 40;
+    const head = <div className="hunk-h muted small">{c.kind === "write" ? `写入整个文件 · ${lines} 行` : c.kind === "patch" ? `${c.op ?? "修改"}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>;
+    const body = c.kind === "patch"
+      ? (c.new ? <PatchDiff text={c.new} /> : <pre className="diff"><div className="skip">补丁内容没存下来</div></pre>)
+      : <PairDiff oldText={c.old} newText={c.new} label={c.kind === "write" ? "行号 = 文件行号" : "行号相对本段"} />;
+    return fold
+      ? <details key={i} className="hunk hunk-fold"><summary>{head}</summary>{body}</details>
+      : <div key={i} className="hunk">{head}{body}</div>;
+  })}</>;
 }
 
 export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
@@ -242,7 +246,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                 <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>对话</button>
                 {current && <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")}>实时活动</button>}
                 <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>图片与产物 {detail.attachments?.length || 0}</button>
-                <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>文件 {detail.workspace?.files.length ?? detail.files.length}</button>
+                <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")} title="这段会话改过的文件；目录里其他改动折在下面">文件 {detail.files.length}</button>
                 <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务与成果 {related.length + results.length}</button>
                 {m.subagents.length > 0 && <button className={tab === "subagents" ? "on" : ""} onClick={() => setTab("subagents")}>子 Agent {m.subagents.length}</button>}
                 {tab === "timeline" && (() => {
@@ -297,21 +301,21 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                 })()}
                 {tab === "attachments" && <AttachmentList items={detail.attachments || []} />}
                 {tab === "activity" && <div className="activity-log">{[...(current?.events ?? [])].filter(e => e.kind !== 'result').reverse().slice(0,40).map(e => <div key={e.id} className={`activity-event ${e.kind}`}><span className="muted mono small">{new Date(e.ts*1000).toLocaleTimeString('zh-CN',{hour12:false})}</span><div><b>{e.kind === 'tool' ? e.tool : e.kind === 'result' ? '工具返回' : e.kind === 'error' ? '执行失败' : e.kind === 'user' ? '你的消息' : e.kind === 'reply' ? 'Agent 回复' : '进展'}</b><p>{e.text}</p></div></div>)}</div>}
-                {tab === "files" && detail.workspace && <section className="workspace-diff"><h3>工作区当前改动 <span className="muted">{detail.workspace.files.length}</span></h3><p className="muted small">{detail.workspace.root} · 包含暂存和未暂存内容；同目录其他会话的修改也会显示。</p>{detail.workspace.unavailable ? <p className="muted">当前目录无法读取 Git 改动</p> : detail.workspace.files.length === 0 ? <p className="muted">工作区没有未提交改动</p> : (() => {
-                  // One unified diff for the whole workspace, split per file so each path opens its own hunk.
-                  const byFile = new Map<string, string>();
-                  for (const chunk of detail.workspace.patch.split(/^(?=diff --git )/m)) { const m = /^diff --git a\/(.+?) b\//.exec(chunk); if (m) byFile.set(m[1], chunk); }
-                  const stat = (t: string) => { let add = 0, del = 0; for (const ln of t.split('\n')) { if (ln.startsWith('+') && !ln.startsWith('+++')) add++; else if (ln.startsWith('-') && !ln.startsWith('---')) del++; } return { add, del }; };
-                  return <><div className="changed-files">{detail.workspace!.files.map(f => { const t = byFile.get(f.path); const s = t ? stat(t) : null; return <details key={f.path} data-menu="file" data-id={f.path} className="fdiff file"><summary><span className={`st sm ${f.untracked ? 'rev' : 'prog'}`}>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code>{s && <span className="mono small diffstat"><span className="add">+{s.add}</span> <span className="del">−{s.del}</span></span>}</summary>{t ? <PatchDiff text={t} /> : <p className="muted small">{f.untracked ? '新文件，git 还没有它的差异；打开文件查看。' : '这个文件的差异不在当前补丁里。'}</p>}</details>; })}</div>{detail.workspace!.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</>;
-                })()}</section>}
-                {tab === "files" && <h3 className="recorded-files-title">会话中的文件操作 <span className="muted">{detail.files.length}</span></h3>}
-                {tab === "files" && detail.files.length === 0 && <p className="muted">未记录到直接编辑工具调用；通过终端修改的文件可在上方工作区查看。</p>}
+                {tab === "files" && <h3 className="recorded-files-title">这段会话改过的文件 <span className="muted">{detail.files.length}</span></h3>}
+                {tab === "files" && detail.files.length === 0 && <p className="muted">没有记录到编辑类工具调用；用终端命令改的文件看下方「目录里现在的 git 改动」。</p>}
                 {tab === "files" && detail.files.map((f) => (
                   <details key={f.path} className="fdiff" open={detail.files.length <= 3}>
                     <summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {f.changes.length} 处</span></summary>
                     <FileHunks changes={f.changes} />
                   </details>
                 ))}
+                {tab === "files" && detail.workspace && <details className="workspace-diff sec context-fold"><summary>目录里现在的 git 改动 <span className="muted">{detail.workspace.files.length} 个文件 · 同目录所有会话（不只这一段）</span></summary><p className="muted small">{detail.workspace.root} · 包含暂存和未暂存内容。</p>{detail.workspace.unavailable ? <p className="muted">当前目录无法读取 Git 改动</p> : detail.workspace.files.length === 0 ? <p className="muted">工作区没有未提交改动</p> : (() => {
+                  // One unified diff for the whole workspace, split per file so each path opens its own hunk.
+                  const byFile = new Map<string, string>();
+                  for (const chunk of detail.workspace.patch.split(/^(?=diff --git )/m)) { const m = /^diff --git a\/(.+?) b\//.exec(chunk); if (m) byFile.set(m[1], chunk); }
+                  const stat = (t: string) => { let add = 0, del = 0; for (const ln of t.split('\n')) { if (ln.startsWith('+') && !ln.startsWith('+++')) add++; else if (ln.startsWith('-') && !ln.startsWith('---')) del++; } return { add, del }; };
+                  return <><div className="changed-files">{detail.workspace!.files.map(f => { const t = byFile.get(f.path); const s = t ? stat(t) : null; return <details key={f.path} data-menu="file" data-id={f.path} className="fdiff file"><summary><span className={`st sm ${f.untracked ? 'rev' : 'prog'}`}>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code>{s && <span className="mono small diffstat"><span className="add">+{s.add}</span> <span className="del">−{s.del}</span></span>}</summary>{t ? <PatchDiff text={t} /> : <p className="muted small">{f.untracked ? '新文件，git 还没有它的差异；打开文件查看。' : '这个文件的差异不在当前补丁里。'}</p>}</details>; })}</div>{detail.workspace!.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</>;
+                })()}</details>}
                 {tab === "tasks" && <>
                   <h3 className="recorded-files-title">这个会话关联的任务</h3>
                   {related.length === 0 && <p className="muted">没有明确关联的任务，可在项目的“待归属任务”中指定</p>}

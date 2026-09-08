@@ -11,7 +11,7 @@ import { FileHunks } from "./Sessions";
 import { ImageGrid, MediaProvider } from "./Media";
 import { KINDS } from "./Delegate";
 
-interface Props { rows: Activity[]; onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string) => void }
+interface Props { rows: Activity[]; onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string, undo?: () => void) => void }
 
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
@@ -27,7 +27,9 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   const [work, setWork] = useState<{ sid: string; agent: string; host?: string; title: string; files: { path: string; changes: FileChange[] }[]; attachments: { id: string; name: string; path: string; mime: string }[] }[]>([]);
   useEffect(() => {
     if (!issue) return;
-    const ids = linkedSessions(issue).length ? linkedSessions(issue) : refs.slice(0, 2).map((r) => r.session_id);
+    // Only sessions the task is explicitly linked to (session: / session-origin: labels). Sessions that merely
+    // mention the id are listed below as "对话中提到过" and never contribute files or images here.
+    const ids = linkedSessions(issue);
     if (!ids.length) { setWork([]); return; }
     let alive = true;
     Promise.all(ids.map(async (sid) => { try { const d = await api.sessionDetail(sid); return { sid, agent: d.meta.agent, host: d.meta.host, title: d.meta.title || sid.slice(0, 8), files: d.files.map((f) => ({ path: f.path, changes: f.changes })), attachments: (d.attachments || []).map((a) => ({ id: a.id, name: a.name, path: a.path, mime: a.mime })) }; } catch { return null; } }))
@@ -69,6 +71,16 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   const [wfQuestion, setWfQuestion] = useState("");
   const [wfRows, setWfRows] = useState<{ kind: string; title: string; desc: string }[]>([{ kind: "codex", title: "", desc: "" }]);
   const [wfBusy, setWfBusy] = useState(false);
+  const [allPits, setAllPits] = useState(false);
+  // Esc leaves edit mode first, then the page — unless you are typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || (e.target as HTMLElement)?.closest("input, textarea, select, [role=dialog]")) return;
+      if (editProperties) setEditProperties(false); else onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editProperties, onClose]);
   const refreshAfterWorkflow = async () => { try { const [i, c] = await Promise.all([api.show(id), api.comments(id)]); setIssue(i); setComments(c); } catch { /* next stamp reloads */ } };
   const runDiscuss = async () => {
     if (!wfKinds.length) return;
@@ -120,12 +132,17 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   const events = eventsFrom(history, comments, audit);
 
   const proj = projectOf(issue);
-  const related = pits.filter((p) => p.task === id || (proj && p.project === proj));
+  const related = pits.filter((p) => p.task === id || (proj && p.project === proj)).sort((a, b) => Number(b.task === id) - Number(a.task === id));
+  const shownPits = allPits ? related : related.slice(0, 3);
 
-  const toggleAc = (idx: number) => act("验收项已更新", async () => {
+  const toggleAc = (idx: number) => {
+    const before = serializeAcceptance(ac);
     const next = ac.map((a, i) => (i === idx ? { ...a, done: !a.done } : a));
-    await api.update(id, { acceptance: serializeAcceptance(next) });
-  });
+    setBusy(true);
+    api.update(id, { acceptance: serializeAcceptance(next) })
+      .then(() => onDone(next[idx].done ? "已勾上验收项" : "已取消勾选", () => { void api.update(id, { acceptance: before }).then(() => onDone("已撤销")).catch((e) => onError(String(e))); }))
+      .catch((e) => onError(String(e))).finally(() => setBusy(false));
+  };
 
   return (
     <aside className="detail">
@@ -133,7 +150,7 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
         <button className="btn sm detail-back" onClick={onClose} aria-label="返回">‹ 返回</button>
         <span className="id" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{issue.id}</span><span>·</span><span>{projectOf(issue) || "未分项目"}</span>
         <button className="btn ghost sm" onClick={() => { setEditProperties(v => !v); setClosing(false); }}>{editProperties ? "收起编辑" : "编辑属性"}</button>
-        <button className="x" onClick={onClose} aria-label="关闭">✕</button>
+
       </div>
       <div className="dbody">
        <div className="dcol dcol-main">
@@ -281,21 +298,22 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
        <div className="dcol dcol-side">
         {related.length > 0 && (
           <details className="sec context-fold">
-            <summary>相关的坑 <span className="muted">{related.length} 条 · 任务与项目背景</span></summary>
+            <summary>相关的坑 <span className="muted">{related.length} 条 · {related.some((p) => p.task === id) ? "这条任务和" : ""}项目 {proj} 的经验</span></summary>
             <div className="rel-pits">
-              {related.map((p) => (
+              {shownPits.map((p) => (
                 <div key={p.key} className="rel-pit">
                   <div className="l1"><span className="lbl trap">坑</span><span>{p.trap}</span></div>
                   {p.fix && <div className="l1"><span className="lbl fix">解法</span><span>{p.fix}</span></div>}
                 </div>
               ))}
+              {related.length > shownPits.length && <button className="link sm" onClick={() => setAllPits(true)}>还有 {related.length - shownPits.length} 条，展开</button>}
             </div>
           </details>
         )}
 
         <section className="sec work-sec">
-          <h4>文件修改与产出 <span className="muted">{work.reduce((n, w) => n + w.files.length, 0)} 个文件 · {work.reduce((n, w) => n + w.attachments.length, 0)} 个产物 · 与会话页同一套记录</span></h4>
-          {work.length === 0 ? <p className="empty-p" style={{ margin: 0 }}>关联的会话里没有记录到文件改动或产物。</p> : work.map((w) => (
+          <h4>文件修改与产出 <span className="muted">{work.reduce((n, w) => n + w.files.length, 0)} 个文件 · {work.reduce((n, w) => n + w.attachments.length, 0)} 个产物 · 来自明确关联的会话</span></h4>
+          {work.length === 0 ? <p className="empty-p" style={{ margin: 0 }}>{issue && linkedSessions(issue).length ? "关联的会话里没有记录到文件改动或产物。" : "还没有关联会话，所以这里是空的。上方「来自哪次会话」可以指定；下面「对话中提到过」的会话只是线索。"}</p> : work.map((w) => (
             <div key={w.sid} className="work-block">
               <div className="work-head"><button className="link" onClick={() => onOpenSession(w.sid)}>{w.title} ↗</button></div>
               {w.files.length > 0 && <div className="work-files">{w.files.map((f) => <details key={f.path} className="fdiff file work-file" data-menu="file" data-id={f.path} open={w.files.length <= 3}><summary title={f.path}><code>{f.path.replace(/^\/Users\/[^/]+/, "~").replace(/^(.{0,18}).*?([^/]+\/[^/]+)$/, (m, a, b) => (m.length > 44 ? `${a}…/${b}` : m))}</code><span className="muted small">{f.changes.length} 次</span></summary><FileHunks changes={f.changes} /></details>)}</div>}
