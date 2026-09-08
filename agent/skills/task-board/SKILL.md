@@ -1,87 +1,27 @@
 ---
 name: task-board
-description: Dispatch 任务板与知识库的完整用法（dispatch/bd 命令、状态约定、跨机同步）。要建任务、认领、记坑、查 wiki 细节时读。
-
+description: "操作 Dispatch 任务、知识库、配置或跨 Agent 会话时用。"
 ---
 
-# Dispatch：任务板 + 知识库
+# task-board
 
-一块板管所有项目，数据库 `~/tasks/.beads`（Dolt shared-server，127.0.0.1:3308）。`BEADS_DIR` 已在 fish / Claude / Codex 配置里指向它。用户看桌面端 Dispatch（`/Applications/Dispatch.app`，源码 `~/Projects/kanban`），Agent 用 CLI `dispatch`（`--json` 给机器读）。会话启动 hook 已注入 `dispatch prime`（身份 + 当前项目的任务 + 相关知识库），**不要再手动 `bd prime` / `bd list --all` 拉全板进上下文**。
+中央板 `~/tasks/.beads`；优先使用已注入的 prime，身份以当前会话配置为准。
 
-## 身份
-`BEADS_ACTOR`：Claude Code=`claude-code`，Codex=`codex`，pi=`pi`（扩展 `~/.pi/agent/extensions/dispatch.ts` 设置），人=`schaefer`。ZCode 没有环境变量入口，每条写命令带 `--actor zcode` 和 `BEADS_DIR=$HOME/tasks/.beads` 前缀。身份决定看板上"谁在干什么"，别用别人的。`bd where` 应显示 `~/tasks/.beads`，前缀 `task`。
-
-## 流程（用户先随口描述，任务由你建）
 ```bash
-# 1. 明白要干什么 → 建 + 认领，对话里提到任务 ID。板上已有相关任务则 bd update <id> --claim
-dispatch begin "标题" -P <项目> -d "背景+要做什么" -a "- [ ] 验收项一
-- [ ] 验收项二"
-# 2. 关键进展、决定（= 过程记录，取代 process.md）；--tick "验收项一" 勾掉
-dispatch log <id> "做到哪了 / 决定了什么"
-# 3. 收尾。没亲手核验不加 --verified（完成与核验分别记录，不自动等用户审核）；--retro 自动写一条复盘进知识库
-dispatch done <id> --reason "做了什么；跑过哪些验证" [--verified] \
-  --retro "做了X【技术】用了什么【做对】哪里对【做错】哪里错" [--next "没做完的一件" "另一件"]
+dispatch begin "标题" -P 项目 -d "目标与背景" -a "- [ ] 验收项"
+dispatch claim TASK_ID
+dispatch log TASK_ID "关键进展"
+dispatch done TASK_ID --reason "交付与验证" --verified
+dispatch wiki search "关键词"
+dispatch wiki add --kind pit "现象" --fix "解法" -P 项目
+dispatch facts get "主题"
 ```
-项目名 = 仓库目录名（kanban、bookmark、HIWI…），标签 `project:<名>`；Dispatch 左栏按它分组，`dispatch prime` 按它筛。
 
-状态：`open` 待做 → `in_progress`（`--claim`）进行中 → `closed` 已完成。复核独立：`review-requested` + `reviewer:<agent>` 表示明确请求互审；`reviewed` 表示已有复核通过记录。`blocked` 有未完成依赖（`bd ready` 自动隐藏）。
+`--verified` 只表示亲手验证；未完成的任务不关闭。收尾顺手 `--retro "【技术】…【做对】…【做错】…"`，一两句即可，它会进知识库。`bd show ID --json` 查看任务；`bd update ID` 修改字段（JSON 返回数组）；不用会打开编辑器的 `bd edit`。
+规则同步用 `dispatch rules status|sync`；技能挂载用 `dispatch skills list --json` 和 `enable|disable NAME --agent claude|codex`。其他参数查对应 `--help`。
 
-## 知识库（`dispatch wiki`，存 bd memory）
-| 类型 | 何时记 | 命令 |
-|---|---|---|
-| 坑 `pit` | 返工、卡住几分钟以上、文档/直觉是错的 | `dispatch wiki add --kind pit "现象+原因" --fix "解法" -P <项目> --task <id>` |
-| 做对 `win` | 被验证有效、希望别人照做的做法 | `dispatch wiki add --kind win "做法" --why "为什么对" [-P <项目>]` |
-| 复盘 `retro` | 任务收尾 | `dispatch done … --retro "…"`（key 自动 `retro-<task>`） |
-| 方法 `howto` | 可复用的步骤 / 命令 | `dispatch wiki add --kind howto "…"` |
-
-动手前 `dispatch wiki search <词>`；`dispatch wiki list [--kind pit] [-P 项目]`；`dispatch wiki show <key>`。记「下次怎么不掉进去」，不记「做了什么」。带 `-P` 的条目只注入该项目的会话；不带的是通用条目，每个会话都看到——通用的要少而精。Dispatch「知识库」视图可看、改、删。
-
-## 环境变量 / API Key（`dispatch env`）
-密钥统一存 `~/.config/dispatch/env`（0600），不进板、不进 wiki、不进 commit。`dispatch prime` 只列名字和用途；需要时 `dispatch env get NAME`；用户给新 Key 时 `dispatch env set NAME VALUE --note "用途"`（或 `--stdin`）；`dispatch env list`；shell 里 `eval "$(dispatch env export)"`（fish 新终端已自动加载）。
-
-## 派活给别的 Agent / 模型（`dispatch agent`，底层是 Herdr）
-要让另一个模型干一件独立的事（比如让 Codex 跑测试、让另一台 Mac 上的 Claude 处理一个目录），不要自己 spawn 子进程，用这几条：
-```bash
-dispatch agent list [--host mini]                                   # 本机 / Mac mini 的 Herdr 里有哪些 Agent 在跑
-dispatch agent start codex --cwd ~/Projects/x --task <id> -p "把测试修好，改完 dispatch log"   # 新标签起一个 Agent，认领任务，发首条提示词，等它做完把输出读回来
-dispatch agent start claude --host mini --model claude-sonnet-5 -p "…"                    # 跨机器：在 Mac mini 的无头 Herdr 会话里起
-dispatch agent ask <pane|名字|标题|任务ID> "接着把文档补上"          # 给已有 Agent 发一句，默认等它做完并读回输出
-dispatch agent read <目标> --lines 80 / wait <目标> / keys <目标> enter / close <目标>
-```
-kind 可选 claude、codex、opencode、gemini 等（Herdr 支持的都行）；`--extra "--effort high"` 透传给 Agent 命令行。`start --task` 会以对应身份（claude→claude-code、codex）认领任务并留一条"谁派给谁"的评论。输出里若出现"stalled"，多半是对方在等一个对话框（信任目录、审查 hooks），用 `keys <目标> enter` 或 `t` 回应。对方做完后照常 `dispatch done`；你负责汇总验证。
-
-## 讨论后分工（动态工作流，`dispatch discuss` / `dispatch split`）
-**只在用户当前对话里明确要求「让几个 Agent 讨论」时才用，不要自己发起**——每个参与者都是一整个新会话的 token。派活（`dispatch agent start`）不受此限。
-一件事拿不准怎么拆、想让几个模型先各说一次再分工：
-```bash
-dispatch discuss <id> --with codex,claude [-q "想让他们决定什么"] [--rounds 2] [--close]   # 依次起每个 Agent（自动模式），各读任务和前面的【讨论】发言，只留一条 dispatch log "【讨论】…" 就停；结束打印全部发言
-dispatch split <id> --to codex:"子任务标题|说明" --to claude:"…" [--no-start]           # 你拍板：按讨论建子任务（parent-child），打 delegated-by/to 标签，起对应 Agent 开始做；父任务留【分工】记录
-```
-派给别人的 Agent 会以自动模式启动（Codex `--dangerously-bypass-approvals-and-sandbox`，Claude `--dangerously-skip-permissions`），启动对话框（信任 hooks / 目录）会被自动应答。子任务各自 `dispatch done`，父任务由发起者收尾。界面：任务详情「讨论与分工」块，Agent 状态页看派出/接到。
-
-## 其他常用
-```bash
-bd list --status in_progress                 # 谁在做什么；dispatch prime 里的「同目录在跑」是同一目录的活跃会话
-dispatch claim <id> [--force]                # 认领守卫：别人正在做的不给抢
-# 文件级互斥：hook ~/tasks/.dispatch/edit-guard.py（Claude Edit/Write、Codex apply_patch）——别的会话 30 分钟内改过的文件第一次会被拒并说明，重试放行；登记在 ~/tasks/.dispatch/edits/，prime 的「同目录在跑」会列出对方正在改的文件
-dispatch quota                               # 各 Agent 额度；prime 里有你自己的，≥80% 省 token，≥95% 只收尾换 Agent
-dispatch project <名> --star|--unstar|--archive|--unarchive   # 项目收藏（工作台置顶）/ 归档（做完暂时不用，从工作台和项目列表隐藏）；dispatch projects 列出；两台 Mac 共享，用户在界面上也能点
-dispatch settings [键 [值]]                  # 共享设置（界面「设置」页同源）：session_archive_days 普通会话 N 天无活动自动归档（默认 30，收藏的不归档）；home_expanded 工作台默认展开数；sdk_sessions_scheduled SDK 起的会话自动当定时会话。prime 会列出本项目追踪中的会话，相关的活先看它们的记录
-dispatch session-preferences <agent>:<sid> '{"starred":true}'   # 会话级开关：starred 追踪中 / archived 归档 / scheduled 定时 / project_override 归属项目（用户一般在界面右键点）
-bd show <id> --json  /  bd ready --json  /  bd blocked
-bd create "bug" -l project:xxx -t bug -p 1 --deps discovered-from:<当前id> --json
-dispatch sessions | find <task> | resume <task> --copy | focus <task>   # 会话：谁在跑、哪个会话提过这个任务、恢复命令、跳过去
-dispatch skills list|enable|disable <名> --agent claude|codex           # 技能池 ~/.cc-switch/skills；Claude 读 ~/.claude/skills，Codex 和 pi 读 ~/.agents/skills（都是软链）
-dispatch catalog [-q 词] [--kind skill|plugin]  # 默认不注入的能力：未挂载技能、已禁用插件；有用时建议用户，同意再启用
-dispatch rules show|status|sync              # 全局规则唯一来源 ~/.agents/rules/GLOBAL.md
-dispatch insights [--days 14] [--copy]       # 跨 Agent 复盘：确认/纠错/溢出信号 + 样本 + 一条改进任务的启动命令（Dispatch 统计页顶部同款）
-```
-规则：跨会话的任务 / 待办 / 阻塞一律进板，TodoWrite 只做当前回合清单；不要 `bd edit`（会开编辑器）；`bd update --json` 返回数组；没真正完成不 close，`--reason` 写清交付内容、验证结果和限制。
-
-## Dispatch 应用
-源码 `~/Projects/kanban/app`（Tauri 2 + React；Rust 只包 `bd --json` 和 `dispatch` CLI，逻辑都在 `app/cli/dispatch.py`）。改完跑 `dispatch-update`（构建 → 同步到 /Applications → 重开）。会话检测靠 hook `~/tasks/.dispatch/presence.py`，不要删那个目录。`Dolt server unreachable` → `bd dolt start`（LaunchAgent 每 2 分钟自动拉起）。旧嵌入式数据在 `~/tasks/.beads.embedded`。
-- 跨机器同步：mini 是枢纽，它的 Dolt 由 `~/Library/LaunchAgents/dev.schaefer.dolt-server.plist` 直接跑（config.yaml 开了 remotesapi :3309；`bd dolt start` 不读 config.yaml，别用它起）。MacBook 每 2 分钟跑 `app/cli/board-sync.sh`（`CALL DOLT_PULL/DOLT_PUSH('--user','sync',…)`；密码在 `dispatch env` 和 beads-dolt LaunchAgent 环境里；`bd dolt push` 不带 --user，别用）。两边 `dolt.auto-commit: on`，`metadata.json` 的 project_id 必须一致。
-
-### Agent 互审（与用户确认分开）
-完成后需要独立检查时：`dispatch done <id> --reason "交付与验证" --verified --review-by claude-code`。这只登记复核请求，不自动启动 Agent，也不计入用户的「等你」红点。
-另一位 Agent 检查后：`dispatch review <id> --verdict pass --reason "检查范围、结果、测试或文件依据"`；有问题用 `--verdict changes`，原任务重新打开。使用自己的真实 `BEADS_ACTOR`，执行者不能登记自己的互审通过；结论先写入任务活动记录，再更新复核标签。
+只有相应任务需要时读取以下参考，维护 Dispatch 应用的细节不适用于普通任务：
+- [环境变量 / API Key（`dispatch env`）](detail-04.md)
+- [派活给别的 Agent / 模型（`dispatch agent`，底层是 Herdr）](detail-05.md)
+- [讨论后分工（动态工作流，`dispatch discuss` / `dispatch split`）](detail-06.md)
+- [Dispatch 应用](detail-08.md)

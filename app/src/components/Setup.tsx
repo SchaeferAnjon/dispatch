@@ -16,6 +16,7 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
   const [busy, setBusy] = useState<string>("");
   const [boardMode, setBoardMode] = useState<"first" | "join">("first");
   const [hub, setHub] = useState("");
+  const [hubPassword, setHubPassword] = useState("");
   const [picked, setPicked] = useState<string[] | null>(null);
   const [log, setLog] = useState<Record<string, string>>({});
   const [reviewer, setReviewer] = useState<string>("");
@@ -78,10 +79,11 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
             </div>
             {boardMode === "join" && <div className="setup-join">
               <input placeholder="那台电脑的 ssh 地址，如 name@100.x.y.z" value={hub} onChange={(e) => setHub(e.target.value)} />
-              <p className="muted small">前提：那台电脑已经跑过首次设置，打开了「远程登录」（系统设置 → 通用 → 共享），并且这台能免密 ssh 过去（终端里 <code>ssh-copy-id 地址</code> 一次即可）。不想自己敲命令，可以让本机的 Agent 代劳，它会在终端里做完并接入。</p>
-              <button className="btn" disabled={!!busy || !hub.trim()} onClick={() => void run("helper", ["ssh", hub.trim()], "已交给本机 Agent，去会话页看进度")}>让本机 Agent 帮我打通并接入</button>
+              <input type="password" placeholder="那台电脑的登录密码（只用一次，不保存；已能免密可留空）" value={hubPassword} onChange={(e) => setHubPassword(e.target.value)} autoComplete="off" />
+              <p className="muted small">前提：那台电脑已经跑过首次设置，并打开了「远程登录」（系统设置 → 通用 → 共享）。填上密码，Dispatch 会把这台的公钥放过去，之后两边免密互访；不想给密码也可以交给本机 Agent 在终端里做。</p>
+              <button className="btn" disabled={!!busy || !hub.trim()} onClick={() => void run("helper", ["ssh", hub.trim()], "已交给本机 Agent，去会话页看进度")}>让本机 Agent 代劳</button>
             </div>}
-            <button className="btn primary" disabled={!!busy || (boardMode === "join" && !hub.trim())} onClick={() => void run("board", boardMode === "first" ? ["first"] : ["join", hub.trim()], boardMode === "first" ? "任务板已建立" : "已接入任务板")}>{busy === "board" ? "处理中…" : boardMode === "first" ? "新建任务板" : "接入"}</button>
+            <button className="btn primary" disabled={!!busy || (boardMode === "join" && !hub.trim())} onClick={async () => { if (boardMode === "join" && hubPassword) { setBusy("board"); try { const out = await api.on("local", ["init", "run", "ssh-key", hub.trim(), "--json"], hubPassword); const r = parse<{ error?: string }>(out); if (r.error) { onError(r.error); setLog((l) => ({ ...l, board: r.error! })); return; } setHubPassword(""); } catch (e) { onError(String(e)); return; } finally { setBusy(""); } } void run("board", boardMode === "first" ? ["first"] : ["join", hub.trim()], boardMode === "first" ? "任务板已建立" : "已接入任务板"); }}>{busy === "board" ? "处理中…" : boardMode === "first" ? "新建任务板" : "打通并接入"}</button>
           </>}
           {log.board && <pre className="setup-log">{log.board}</pre>}
         </Card>

@@ -385,6 +385,54 @@ def board_first():
     return {"dir": D.BEADS_DIR, "root": root, "remote_for_others": f"http://{D.tailscale_ip() or lan_ip()}:{REMOTESAPI_PORT}/task", "sync_user": user}
 
 
+def ssh_key_setup(target, password):
+    """Passwordless ssh to `target` without the user touching a terminal: make a key if
+    there is none, run ssh-copy-id on a pty and type the password for it, then verify.
+    The password is used once and never written anywhere."""
+    import pty, select
+    key = os.path.join(D.HOME, ".ssh", "id_ed25519")
+    if not os.path.exists(key + ".pub"):
+        os.makedirs(os.path.dirname(key), mode=0o700, exist_ok=True)
+        run(["ssh-keygen", "-t", "ed25519", "-N", "", "-f", key, "-q"], timeout=30)
+    ok, _ = ssh_target_ok(target)
+    if ok:
+        return {"ok": True, "note": "本来就能免密"}
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvp("ssh-copy-id", ["ssh-copy-id", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", "-i", key + ".pub", target])
+    out, sent = b"", 0
+    deadline = time.time() + 60
+    try:
+        while time.time() < deadline:
+            r, _, _ = select.select([fd], [], [], 1.0)
+            if not r:
+                continue
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            out += chunk
+            low = out.lower()
+            if b"(yes/no" in low and b"yes\n" not in out:
+                os.write(fd, b"yes\n")
+            elif (b"password:" in low or b"passphrase" in low) and sent < 2 and low.rstrip().endswith(b":"):
+                os.write(fd, password.encode() + b"\n"); sent += 1; out = b""
+    finally:
+        try:
+            os.waitpid(pid, 0)
+        except ChildProcessError:
+            pass
+        os.close(fd)
+    ok, why = ssh_target_ok(target)
+    if not ok:
+        text = out.decode("utf-8", "replace")
+        hint = "密码不对" if "permission denied" in text.lower() or sent >= 2 else "连不上：确认那台电脑打开了「远程登录」（系统设置 → 通用 → 共享），地址是 用户名@IP"
+        raise RuntimeError(f"{hint}（{text.strip()[-200:] or why}）")
+    return {"ok": True, "note": "已加入对方的 authorized_keys"}
+
+
 def ssh_target_ok(target):
     r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=accept-new", target, "echo ok"], capture_output=True, text=True)
     return r.returncode == 0 and "ok" in r.stdout, (r.stderr or r.stdout).strip()[-300:]
@@ -883,6 +931,11 @@ def main(a):
                 res = rules_setup()
             elif step == "review":
                 res = review_start(args[0] if args else (review_agents() or [{"kind": "claude"}])[0]["kind"]); save_state(reviewed=True)
+            elif step == "ssh-key":
+                pw = sys.stdin.read().rstrip("\n") if not sys.stdin.isatty() else ""
+                if not pw:
+                    raise RuntimeError("密码从标准输入传入")
+                res = ssh_key_setup(args[0], pw)
             elif step == "helper":
                 res = helper_start(args[0] if args else "", args[1] if len(args) > 1 else "", "claude" if "claude-code" in (load_state().get("agents") or ["claude-code"]) else "codex")
             else:
