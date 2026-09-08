@@ -2793,7 +2793,14 @@ def cmd_rules(a):
         if getattr(a, 'project', ''):
             project = next((d['dir'] for d in facts_docs() if d['key'] == a.project and d['dir']), None)
             if not project: raise ValueError('请选择已检测到的项目')
-        result = command(a, HOME, project=project)
+        try:
+            result = command(a, HOME, project=project)
+        except ValueError as e:
+            msg = str(e)
+            if "托管块" in msg:
+                msg = "这份文件里「BEGIN/END DISPATCH GLOBAL RULES」之间的内容是托管块，由 ~/.agents/rules/GLOBAL.md 生成，改它没用、也不能在这里改。要改共同规则请编辑左边的「所有 Agent 的共同规则」。托管块之外的内容可以随便改。"
+            print(json.dumps({"error": msg}, ensure_ascii=False) if a.json else f"✗ {msg}")
+            sys.exit(2)
         out(result, a.json, lambda d: print(json.dumps(d, ensure_ascii=False, indent=2)))
         return
     if a.op == "path":

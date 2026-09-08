@@ -20,10 +20,16 @@ export function RulesView(props: Props) {
   return <div className="instruction-page"><div className="views instruction-modes"><button className={mode === 'audit' ? 'on' : ''} onClick={() => setMode('audit')}>Agent 规则</button><button className={mode === 'facts' ? 'on' : ''} onClick={() => setMode('facts')}>常用资料</button></div>{mode === 'facts' ? <FactsView {...props} /> : <Center {...props} />}</div>;
 }
 
+// The managed block is generated from GLOBAL.md; while editing it shows as one placeholder
+// line so the user cannot edit it by accident, and is put back before check/apply.
+const BLOCK_RE = /<!-- BEGIN DISPATCH GLOBAL RULES[\s\S]*?<!-- END DISPATCH GLOBAL RULES -->/;
+const PLACEHOLDER = "<!-- [托管块：所有 Agent 的共同规则，来自 ~/.agents/rules/GLOBAL.md，改那边；这一行请保留] -->";
+const collapseBlock = (text: string) => ({ text: text.replace(BLOCK_RE, PLACEHOLDER), block: BLOCK_RE.exec(text)?.[0] ?? "" });
+const expandBlock = (text: string, block: string) => (block && text.includes(PLACEHOLDER) ? text.replace(PLACEHOLDER, block) : text);
 function Center({api, hosts, onDone, onError, hostId = ""}: Props) {
   const [host,setHost]=useState('local');
   useEffect(() => { setHost(hostId || "local"); }, [hostId]); const [data,setData]=useState<Inventory|null>(null); const [selected,setSelected]=useState('');
-  const [draft,setDraft]=useState<string|null>(null); const [proposal,setProposal]=useState<Proposal|null>(null); const [busy,setBusy]=useState(false);
+  const [draft,setDraft]=useState<string|null>(null); const [proposal,setProposal]=useState<Proposal|null>(null); const [busy,setBusy]=useState(false); const [block,setBlock]=useState('');
   const [profile]=useState('auto'); const model=(data?.models||[]).find(x=>x.model)?.model||''; const [backup,setBackup]=useState(''); const [error,setError]=useState('');
   const [projects,setProjects]=useState<{key:string;name:string;dir:string}[]>([]); const [project,setProject]=useState('');
   const [syncStatus,setSyncStatus]=useState<RulesStatus|null>(null);
@@ -39,12 +45,12 @@ function Center({api, hosts, onDone, onError, hostId = ""}: Props) {
   const choose=(path:string)=>{setSelected(path);setDraft(null);setProposal(null);};
   const check=async(optimize=false)=>{
     if(!doc)return;setBusy(true);setError('');
-    try { const p=JSON.parse(await api.on(host,['rules',optimize?'optimize':'check','--path',doc.path,...scopeArgs,'--profile',profile,'--model',model,'--json'],optimize?undefined:draft??doc.content)) as Proposal;setDraft(p.content);setProposal(p); }
-    catch(e){setError(String(e));}finally{setBusy(false);}
+    try { const raw=await api.on(host,['rules',optimize?'optimize':'check','--path',doc.path,...scopeArgs,'--profile',profile,'--model',model,'--json'],optimize?undefined:expandBlock(draft??(doc.content||''),block)); const p=JSON.parse(raw.replace(/^[^{]*/,'')) as Proposal&{error?:string}; if(p.error){setError(p.error);return;} const c=collapseBlock(p.content);setBlock(c.block||block);setDraft(c.text);setProposal(p); }
+    catch(e){setError(String(e).replace(/^Error: /,''));}finally{setBusy(false);}
   };
   const save=async()=>{
     if(!doc||!proposal||draft===null)return;setBusy(true);
-    try {const result=JSON.parse(await api.on(host,['rules','apply',...scopeArgs,'--json'],JSON.stringify({path:doc.path,content:draft,hashes:proposal.hashes,profile,model})));setBackup(result.backup||'');setDraft(null);setProposal(null);onDone(`已保存 ${result.changed} 个文件，已保留恢复版本`);await load();}
+    try {const raw=await api.on(host,['rules','apply',...scopeArgs,'--json'],JSON.stringify({path:doc.path,content:expandBlock(draft,block),hashes:proposal.hashes,profile,model}));const result=JSON.parse(raw.replace(/^[^{]*/,''));if(result.error){setError(result.error);return;}setBackup(result.backup||'');setDraft(null);setProposal(null);onDone(`已保存 ${result.changed} 个文件，已保留恢复版本`);await load();}
     catch(e){setError(String(e));}finally{setBusy(false);}
   };
   const restore=async()=>{setBusy(true);try{await api.on(host,['rules','restore','--backup',backup,'--json']);setBackup('');setDraft(null);setProposal(null);onDone('已恢复保存前的文档');await load();}catch(e){onError(String(e));}finally{setBusy(false);}};
@@ -75,7 +81,7 @@ function Center({api, hosts, onDone, onError, hostId = ""}: Props) {
     {blocked||error?<div className="err">{blocked||error}</div>:null}
     <div className="instruction-grid"><aside className="instruction-docs"><h3>{project?'项目与继承的全局规则':'全局规则'} <span className="muted">{data?.documents.length??'…'}</span></h3>{data?.documents.map(d=><button key={d.path} data-menu="doc" data-id={d.path} className={selected===d.path?'on':''} onClick={()=>choose(d.path)} disabled={busy||draft!==null}><b>{d.name==='GLOBAL.md'?'所有 Agent 的共同规则':d.name}</b><span>{d.agents.join(' · ')} · {!d.exists?'未创建':!d.active?'被覆盖':d.referenced_by.length?'引用文档':project&&d.path.startsWith((projects.find(p=>p.key===project)?.dir||'!')+'/')?'项目规则':'全局入口'}</span><small>{short(d.path)}</small></button>)}{data?.documents.length===0&&<p>未找到已安装 Agent 的指令文件。支持 Codex、Claude、pi、Gemini 等全局目录。</p>}</aside>
     <div className="instruction-detail">{doc?<>
-      <header><div><h3>{doc.name}</h3><div className="muted mono small">{short(doc.path)} · {doc.lines} 行 · {(doc.bytes/1024).toFixed(1)} KB</div></div><span className="spacer"/><button className="btn sm" disabled={busy||!doc.writable} onClick={()=>{setDraft(doc.content);setProposal(null);}}>编辑</button><button className="btn primary sm" disabled={busy||!doc.exists} onClick={()=>void check(true)}>优化</button></header>
+      <header><div><h3>{doc.name}</h3><div className="muted mono small">{short(doc.path)} · {doc.lines} 行 · {(doc.bytes/1024).toFixed(1)} KB</div></div><span className="spacer"/><button className="btn sm" disabled={busy||!doc.writable} onClick={()=>{const c=collapseBlock(doc.content||'');setBlock(c.block);setDraft(c.text);setProposal(null);}}>编辑</button><button className="btn primary sm" disabled={busy||!doc.exists} onClick={()=>void check(true)}>优化</button></header>
       {doc.real_path!==doc.path&&<p className="small muted">软链接指向 {short(doc.real_path)}，保存会保留软链接。</p>}
       {doc.managed&&<p className="small muted">包含自动生成的托管块。共同内容请编辑其源文件；保存源文件时会预览所有受影响副本。</p>}
       {draft===null?<div className="instruction-content"><Markdown src={doc.content||'尚未创建，可点击编辑写入。'}/></div>:<textarea aria-label="指令文档草稿" className="instruction-editor" spellCheck={false} value={draft} onChange={e=>{setDraft(e.target.value);setProposal(null);}}/>}
