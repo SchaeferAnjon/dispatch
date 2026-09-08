@@ -20,6 +20,7 @@ import { HomeView } from "./components/Home";
 import { SearchPalette } from "./components/Search";
 import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, parseProjectFlags, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
+import { SetupView, type InitStatus } from "./components/Setup";
 import { Delegate } from "./components/Delegate";
 import { Avatar } from "./components/ui";
 import { isOutcome, knownProjects, linkedSessions, projectGroups, sourceTasks, projectConversations } from "./projectModel";
@@ -32,8 +33,8 @@ import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, 
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash"];
+const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站", setup: "首次设置" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash", "setup"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 // ⌘1…⌘9 in sidebar order.
 const SHORTCUT_VIEWS: View[] = ["home", "projects", "inbox", "sessions", "board", "graph", "agents", "stats", "pitfalls"];
@@ -74,6 +75,7 @@ export default function App() {
     tick();
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [api]);
+  const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
   const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
@@ -139,6 +141,8 @@ export default function App() {
         const requestedView = new URLSearchParams(window.location.search).get("page") ?? inf.initial_view;
         if ((VIEWS as string[]).includes(requestedView ?? "")) changeView(requestedView as View);
         if (inf.initial_task && !inf.initial_task.startsWith("session:")) setSelected(inf.initial_task);
+        // The first-run guide, until it is finished or skipped once.
+        if (isTauri) { try { const st = JSON.parse((await a.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); if (!st.done && !requestedView) changeView("setup"); } catch { /* CLI too old */ } }
       } catch (e) { setErr(String(e)); }
       await reload(a);
       off = await a.onChange(() => reload(a));
@@ -490,7 +494,8 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} />}
+            {view === "settings" && <SettingsView settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "pitfalls" && api && <PitfallsView api={api} projects={projects.map((p) => p.name).filter(Boolean)} version={version} onSelectTask={setSelected} onDone={say} onError={(m) => say(m, true)} />}
           </section>

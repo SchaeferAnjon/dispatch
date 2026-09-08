@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; onPhone?: () => void; hosts?: { name: string; online: boolean; local: boolean; ip: string }[] }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; onPhone?: () => void; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, onPhone, hosts = [] }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, onPhone, hosts = [], onSetup }: Props) {
   const [draft, setDraft] = useState<DispatchSettings>(settings);
   const [busy, setBusy] = useState(false);
   useEffect(() => { setDraft(settings); }, [settings]);
@@ -42,6 +42,10 @@ export function SettingsView({ settings, onSave, theme, onTheme, onPhone, hosts 
         {onPhone && <div className="settings-row">
           <div><b>手机访问</b><p>复制 dispatch serve 的链接；手机连上 Tailscale 后用浏览器打开，可以添加到主屏幕。</p></div>
           <button className="btn sm" onClick={onPhone}>复制链接</button>
+        </div>}
+        {onSetup && <div className="settings-row">
+          <div><b>首次设置</b><p>装依赖、建或接入任务板、选 Agent、同步规则与技能。跳过过的可以从这里再打开，每一步都能重跑。</p></div>
+          <button className="btn sm" onClick={onSetup}>打开首次设置</button>
         </div>}
         {hosts.length > 0 && <div className="settings-row">
           <div><b>机器</b><p>来自 ~/tasks/.dispatch/hosts.json；侧栏可按机器筛选。</p></div>
