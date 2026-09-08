@@ -39,7 +39,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
       <button className="ws" title="Dispatch 有哪些页面、各自干什么" onClick={onOverview}>
         <img className="glyph app" src={appIcon} alt="" />
         <div style={{ minWidth: 0 }}>
-          <div className="name">Dispatch</div>
+          <div className="name">Dispatch <span className="muted">调度台</span></div>
           <div className="path" title={info?.beads_dir}>任务板 {info?.beads_dir?.replace(/^\/Users\/[^/]+/, "~") ?? "…"}</div>
         </div>
       </button>
