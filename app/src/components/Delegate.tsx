@@ -14,6 +14,8 @@ interface Props {
   initialTask?: string;
   initialPrompt?: string;
   initialLabel?: string;
+  initialKind?: string;
+  initialModel?: string;
   issues: Issue[];
   me: string;
   dirOfProject: (name: string) => string;
@@ -21,12 +23,12 @@ interface Props {
   onStart: (input: AgentStartInput) => Promise<AgentStartResult | null>;
 }
 
-export function Delegate({ hosts, initialHost, initialTask, initialPrompt, initialLabel, issues, me, dirOfProject, onClose, onStart }: Props) {
+export function Delegate({ hosts, initialHost, initialTask, initialPrompt, initialLabel, initialKind, initialModel, issues, me, dirOfProject, onClose, onStart }: Props) {
   const online = hosts.filter((h) => h.online || h.local);
   const [hostId, setHostId] = useState(initialHost ?? (online.find((h) => h.local)?.id ?? online[0]?.id ?? ""));
   const host = hosts.find((h) => h.id === hostId);
-  const [kind, setKind] = useState("claude");
-  const [model, setModel] = useState("");
+  const [kind, setKind] = useState(initialKind || "claude");
+  const [model, setModel] = useState(initialModel || "");
   const MODELS: Record<string, [string, string][]> = { claude: [["", "默认"], ["claude-fable-5-1", "Fable 5.1（最强）"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku（快、省）"]], codex: [["", "默认"], ["gpt-5.5", "gpt-5.5"], ["gpt-5.6-terra", "gpt-5.6-terra"], ["gpt-6-astra", "gpt-6-astra"]] };
   const [taskId, setTaskId] = useState(initialTask ?? "");
   const task = issues.find((i) => i.id === taskId);

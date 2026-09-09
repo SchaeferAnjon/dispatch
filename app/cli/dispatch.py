@@ -4559,30 +4559,79 @@ def conclusion_of(issue, comments=()):
     return "", "", ""
 
 
-def discussion_conclude(tid, title, comments, issue=None):
+LEADER_RE = re.compile(r"^领队[:：]\s*([a-z0-9_-]+)(?::([^\s]+))?\s*$", re.M | re.I)
+
+
+def discussion_leader(issue, override=""):
+    """(kind, model) of the discussion's leader: --leader on the command line, else the
+    「领队：kind:model」 line the discussion task's description carries; ("", "") if none."""
+    spec = (override or "").strip()
+    if not spec:
+        m = LEADER_RE.search(issue.get("description") or "")
+        spec = (m.group(1) + (":" + m.group(2) if m.group(2) else "")) if m else ""
+    if not spec:
+        return "", ""
+    kind, _, model = spec.partition(":")
+    return kind.strip().lower(), model.strip()
+
+
+def leader_chat(kind, model, system, prompt, cwd, timeout=180):
+    """One answer from the leader's own model (a fresh headless session, no tools needed) —
+    used for the conclusion and the document, so they carry the leader's judgement, not a
+    cheap summariser's. Returns "" when the CLI is missing or fails (caller falls back)."""
+    if kind not in HEADLESS_KINDS:
+        return ""
+    res = headless_call(kind, model, prompt, cwd or HOME, timeout * 1000, system=system)
+    return "" if (res.get("error") and not res.get("text")) else (res.get("text") or "").strip()
+
+
+def discussion_writer(issue, comments=(), leader=None):
+    """Who writes the conclusion/document: the leader's model when there is one and its CLI
+    answers, else the summary model. Returns (chat(system, user, timeout) -> text, label)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import summarize
+    kind, model = leader if leader is not None else discussion_leader(issue)
+    if kind in HEADLESS_KINDS:
+        label = f"{kind}:{model or 'default'}（领队）"
+        cwd = task_project_dir(issue) if issue.get("id") else HOME
+
+        def chat(system, user, timeout=180):
+            text = leader_chat(kind, model, system, user, cwd, timeout)
+            if text:
+                return text
+            p = summarize.provider()
+            return summarize.chat(p, system, user, timeout=timeout) if p else ""
+        return chat, label
+    p = summarize.provider()
+    if not p:
+        return None, ""
+    return (lambda system, user, timeout=180: summarize.chat(p, system, user, timeout=timeout)), f"{p['id']}:{p['model']}"
+
+
+def discussion_conclude(tid, title, comments, issue=None, leader=None):
     """The summary model reads every 【讨论】 statement and writes one conclusion — where they
     agree, where they differ, what the next step is. It is one block in the task's description
     (## 讨论结论), replaced each time, never a growing pile of stale 【结论】 comments."""
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import summarize
-    p = summarize.provider()
-    if not p:
+    issue = issue or bd_json(["show", tid, "--json"])
+    chat, by = discussion_writer(issue, comments, leader)
+    if not chat:
         return ""
     said = [c for c in comments if (c.get("text") or "").startswith(DISCUSS_TAG) and not (c.get("text") or "")[len(DISCUSS_TAG):].lstrip().startswith("发起")]
     body = "\n\n".join(f"{c.get('author')}：{(c.get('text') or '')[len(DISCUSS_TAG):].strip()}" for c in said)
     if not body.strip():
         return ""
-    prompt = ("你是讨论的记录员。下面是几个 AI Agent（和发起人）对同一个主题的发言，按时间排列。用简体中文写一段不超过 200 字的结论，按顺序：大家一致的判断；分歧在哪、各自理由；还没定的事和建议的下一步（最多三条，每条一句）。"
-              "只归纳发言，不加自己的观点；Agent 的共识不等于发起人的决定，发起人明确说了的才算定了。不用标题、不用引号。")
+    role = "你是这场讨论的领队，下面是大家（含你自己）的发言，按时间排列。" if "领队" in by else "你是讨论的记录员。下面是几个 AI Agent（和发起人）对同一个主题的发言，按时间排列。"
+    prompt = (role + "用简体中文写一段不超过 200 字的结论，按顺序：大家一致的判断；分歧在哪、各自理由；还没定的事和建议的下一步（最多三条，每条一句）。"
+              + ("作为领队，分歧处给出你的决定和理由；" if "领队" in by else "只归纳发言，不加自己的观点；")
+              + "Agent 的共识不等于发起人的决定，发起人明确说了的才算定了。不用标题、不用引号，不用工具，直接输出这段话。")
     try:
-        text = summarize.chat(p, prompt, f"主题：{title}\n\n{body}", timeout=120).strip().replace("\n", " ")[:600]
+        text = chat(prompt, f"主题：{title}\n\n{body}", timeout=120).strip().replace("\n", " ")[:600]
     except Exception:
         return ""
     if not text:
         return ""
-    issue = issue or bd_json(["show", tid, "--json"])
     original, _, doc = description_sections(issue.get("description") or "")
-    block = f"{CONCLUSION_HEADING}（{time.strftime('%Y-%m-%d %H:%M')} · {p['id']}:{p['model']}）\n{text}"
+    block = f"{CONCLUSION_HEADING}（{time.strftime('%Y-%m-%d %H:%M')} · {by}）\n{text}"
     bd_json(["update", tid, "--description", description_join(original, block, doc), "--json"])
     return text
 
@@ -4621,15 +4670,13 @@ DISCUSSION_DOC_PROMPT = ("你是讨论的整理者。下面是一个念头的原
 def discussion_doc(tid):
     """Turn the thread into a document the next agent can start from; it becomes the task's
     description (so `bd show` is enough) and a file under ~/tasks/.dispatch/discussions/."""
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import summarize
-    p = summarize.provider()
-    if not p:
-        raise SystemExit("没有可用的模型：设置里选一个总结模型")
     issue = bd_json(["show", tid, "--json"])
     if not issue.get("id"):
         raise SystemExit(f"没有任务 {tid}")
     comments = bd_comments(tid)
+    chat, by = discussion_writer(issue, comments)
+    if not chat:
+        raise SystemExit("没有可用的模型：设置里选一个总结模型，或给讨论指定领队")
     said = [c for c in comments if (c.get("text") or "").startswith(DISCUSS_TAG)]
     if not said:
         raise SystemExit("这个讨论还没有发言")
@@ -4640,7 +4687,7 @@ def discussion_doc(tid):
     if not conclusion:
         conclusion = conclusion_of(issue, comments)[0]
     body = f"念头：{issue.get('title', '').replace('【讨论】', '')}\n{original}\n\n" + "\n\n".join(f"{c.get('author')}：{(c.get('text') or '')[len(DISCUSS_TAG):].strip()}" for c in said) + (f"\n\n结论：{conclusion}" if conclusion else "")
-    doc = summarize.chat(p, DISCUSSION_DOC_PROMPT, body, timeout=180).strip()
+    doc = chat(DISCUSSION_DOC_PROMPT + ("你是这场讨论的领队：分歧处按你的决定写，方案和步骤要能直接开工。不用工具，直接输出文档。" if "领队" in by else ""), body, timeout=240).strip()
     if doc.startswith("```"):
         doc = re.sub(r"^```\w*\n|\n```$", "", doc).strip()
     if not doc:
@@ -4649,17 +4696,18 @@ def discussion_doc(tid):
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, f"{tid}.md")
     open(path, "w").write(doc + "\n")
-    new_desc = description_join(original, con_block, f"## 讨论文档（{time.strftime('%Y-%m-%d %H:%M')} · {p['id']}:{p['model']}）\n\n" + doc)
+    new_desc = description_join(original, con_block, f"## 讨论文档（{time.strftime('%Y-%m-%d %H:%M')} · {by}）\n\n" + doc)
     bd_json(["update", tid, "--description", new_desc, "--json"])
     m = re.search(r"##\s*验收\s*\n((?:\s*- \[[ x]\].*\n?)+)", doc)
     if m and not (issue.get("acceptance_criteria") or "").strip():
         bd_json(["update", tid, "--acceptance", m.group(1).strip(), "--json"])
-    return {"task": tid, "path": path, "doc": doc, "conclusion": conclusion, "by": f"{p['id']}:{p['model']}"}
+    kind, model = discussion_leader(issue)
+    return {"task": tid, "path": path, "doc": doc, "conclusion": conclusion, "by": by, "leader": {"kind": kind, "model": model} if kind else None}
 
 
 def cmd_discuss_doc(a):
     r = discussion_doc(a.task)
-    out(r, a.json, lambda x: print(x["doc"] + f"\n\n已写进 {x['task']} 的描述，文件 {x['path']}；派人：dispatch agent start claude --task {x['task']}"))
+    out(r, a.json, lambda x: print(x["doc"] + f"\n\n已写进 {x['task']} 的描述（{x['by']}），文件 {x['path']}；派人：dispatch agent start {(x.get('leader') or {}).get('kind') or 'claude'}" + (f" --model {x['leader']['model']}" if (x.get("leader") or {}).get("model") else "") + f" --task {x['task']}"))
 
 
 def cmd_discuss(a):
@@ -4670,9 +4718,18 @@ def cmd_discuss(a):
         if k:
             kind, _, model = k.partition(":")
             parts.append((kind, model))
-    kinds = [k for k, _ in parts]
     if not parts:
         raise SystemExit("要指定参加讨论的 Agent：--with codex,claude 或 claude:opus,claude:haiku")
+    # The leader: one of the members (kind[:model]); it speaks last each round, and the
+    # conclusion, the document and the hand-off default to it. Not in --with → added.
+    leader_spec = (getattr(a, "leader", "") or "").strip()
+    lead_kind, lead_model = "", ""
+    if leader_spec:
+        lead_kind, _, lead_model = leader_spec.partition(":")
+        lead_kind, lead_model = lead_kind.strip().lower(), lead_model.strip()
+        if (lead_kind, lead_model) not in parts:
+            parts.append((lead_kind, lead_model))
+    kinds = [k for k, _ in parts]
     me = os.environ.get("BEADS_ACTOR", "schaefer")
     topic = bool(getattr(a, "topic", ""))
     project = getattr(a, "project", "") or ""
@@ -4680,7 +4737,7 @@ def cmd_discuss(a):
         # A thought, not a task: make a task to hold the discussion (it can be split later).
         labels = [DISCUSSION_LABEL] + ([f"project:{project}"] if project else [])
         images = [os.path.abspath(os.path.expanduser(x)) for x in (getattr(a, "image", None) or []) if x]
-        desc = a.topic.strip() + (f"\n\n项目：{project}" if project else "") + (f"\n\n发起人的问题：{a.question}" if a.question else "") + ("\n\n附图（发言前用 Read 工具看一遍）：\n" + "\n".join(images) if images else "") + f"\n\n参加：{', '.join(f'{k}:{m}' if m else k for k, m in parts)}。这是一次讨论，结论在评论里；要做就用 dispatch split 拆成子任务。"
+        desc = a.topic.strip() + (f"\n\n项目：{project}" if project else "") + (f"\n\n发起人的问题：{a.question}" if a.question else "") + ("\n\n附图（发言前用 Read 工具看一遍）：\n" + "\n".join(images) if images else "") + f"\n\n参加：{', '.join(f'{k}:{m}' if m else k for k, m in parts)}。" + (f"\n领队：{lead_kind}{':' + lead_model if lead_model else ''}\n" if lead_kind else "") + "这是一次讨论，结论在评论里；要做就用 dispatch split 拆成子任务。"
         issue = bd_json(["create", "【讨论】" + a.topic.strip()[:70], "-t", "task", "-p", "3", "-l", ",".join(labels), "--description", desc, "--json"])
         if not issue.get("id"):
             raise SystemExit("建不了讨论任务")
@@ -4694,6 +4751,11 @@ def cmd_discuss(a):
             raise SystemExit(f"没有任务 {a.task}")
         topic = DISCUSSION_LABEL in (issue.get("labels") or [])
         project = project or next((l.split(":", 1)[1] for l in issue.get("labels") or [] if l.startswith("project:")), "")
+        if not lead_kind:
+            lead_kind, lead_model = discussion_leader(issue)
+            if lead_kind and (lead_kind, lead_model) not in parts:
+                parts.append((lead_kind, lead_model)); kinds = [k for k, _ in parts]
+    leader_i = next((i for i, (k, m) in enumerate(parts) if (k, m) == (lead_kind, lead_model)), -1) if lead_kind else -1
     title = issue.get("title", "")
     cwd = a.cwd or (task_project_dir(issue) if project or not topic else HOME)
     existing = discussion_of(bd_comments(a.task))
@@ -4743,7 +4805,7 @@ def cmd_discuss(a):
             claude = kind == "claude"   # claude reads pictures itself with Read; codex/pi get them attached
             key = f"{kind}:{model}#{i}"
             mem = members.get(key) or {}
-            system = discussion_system(who, kind, settings)
+            system = discussion_system(who, kind, settings) + ("你是这场讨论的领队：每轮最后发言，先看完其他人说的，再归纳分歧、给出你的决定和下一步；闲聊时不用归纳。" if i == leader_i else "")
             on_event = (lambda status, text, who=who: live.update(who, status, text)) if live else None
             resumed = bool(mem.get("session")) and mem.get("kind") == kind and (mem.get("model") or "") == (model or "")
             res = None
@@ -4776,21 +4838,32 @@ def cmd_discuss(a):
                     live.update(who, "posted" if code == 0 else "error", text if code == 0 else res["write_error"])
             if res.get("session"):
                 members[key] = {"kind": kind, "model": model, "who": who, "session": res["session"], "rounds": (mem.get("rounds") or 0) + 1, "last_at": int(time.time()),
-                                "seen": sorted(set(mem.get("seen") or []) | seen_before | ({own} if own else set()))}
+                                "seen": sorted(set(mem.get("seen") or []) | {c.get("id") for c in disc_now} | ({own} if own else set()))}
             results[i] = ("headless", who, res)
 
-        # Everyone speaks at the same time.
+        # Everyone speaks at the same time — except the leader, who goes after the others so
+        # it can read them (its prompt/session picks up their statements from the board).
         threads = []
         for i, (kind, model) in enumerate(parts):
             who = f"{kind}{'（' + model + '）' if model else ''}"
             use_tui = tui or kind not in HEADLESS_KINDS
-            threads.append((use_tui, threading.Thread(target=run_tui if use_tui else run_headless, args=(i, kind, model, who), daemon=True)))
-        for use_tui, t in threads:
+            threads.append((i, use_tui, threading.Thread(target=run_tui if use_tui else run_headless, args=(i, kind, model, who), daemon=True)))
+        for i, use_tui, t in threads:
+            if i == leader_i:
+                continue
             t.start()
             if use_tui:
                 time.sleep(1.5)  # stagger tab creation a little; Herdr serialises it anyway
-        for _, t in threads:
-            t.join()
+        for i, _, t in threads:
+            if i != leader_i:
+                t.join()
+        if leader_i >= 0:
+            now = bd_comments(a.task)
+            disc_now = discussion_of(now)
+            thread_text = discussion_thread(issue, now)
+            images = discussion_images(issue.get("description"), *[c.get("text") for c in disc_now])
+            t = next(t for i, _, t in threads if i == leader_i)
+            t.start(); t.join()
         if not tui:
             discussion_state_save(a.task, state)
         if live:
@@ -4839,7 +4912,7 @@ def cmd_discuss(a):
     state["quiet_rounds"] = (state.get("quiet_rounds") or 0) + 1 if quiet else 0
     if not tui:
         discussion_state_save(a.task, state)
-    conclusion = discussion_conclude(a.task, title, comments) if getattr(a, "conclude", False) and spoke else ""
+    conclusion = discussion_conclude(a.task, title, comments, issue, leader=(lead_kind, lead_model)) if getattr(a, "conclude", False) and spoke else ""
     if a.close:
         for pane in panes.values():
             if pane:
@@ -4849,7 +4922,7 @@ def cmd_discuss(a):
             sh(["bd", "comments", "add", a.task, f"【系统】{m['who']} 第 {m['round']} 轮没有发言：{m['reason']}"], env={"BEADS_ACTOR": "dispatch"})
     elapsed = round(time.time() - t_start, 1)
     result = {"task": a.task, "participants": [f"{k}{':' + m if m else ''}" for k, m in parts], "missing": missing, "skipped": skipped, "rounds": a.rounds, "mode": "tui" if tui else "headless",
-              "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic, "elapsed": elapsed, "timing": timing, "quiet_rounds": state.get("quiet_rounds", 0)}
+              "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic, "elapsed": elapsed, "timing": timing, "quiet_rounds": state.get("quiet_rounds", 0), "leader": {"kind": lead_kind, "model": lead_model} if lead_kind else None}
     try:
         import notify
         spoken = "；".join(re.sub(r"\s+", " ", (c.get("text") or "")[len(DISCUSS_TAG):]).strip() for c in spoke)
@@ -5126,7 +5199,7 @@ def main():
     s = sub.add_parser("discuss-live", help="what each discussion member is doing right now (the typing bubbles): discussions/<task>.live.json"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_live)
     s = sub.add_parser("discuss-conclude", help="write (replace) the discussion's conclusion — one block in the task's description"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_conclude)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)
-    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
+    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--leader", default="", help="the leader, kind[:model] (added to the members if missing): speaks last each round, writes the conclusion and the document, gets the hand-off by default"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
     s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
     s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])
