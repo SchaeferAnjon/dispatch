@@ -4108,7 +4108,7 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
         if not session:
             import uuid
             session = str(uuid.uuid4())
-        argv = ["pi", "-p", "--session-dir", sdir, "--session-id", session] + (["--model", model] if model else []) + (["--append-system-prompt", system] if system else []) + ["--"] + [f"@{p}" for p in images] + [prompt]
+        argv = ["pi", "-p", "--mode", "json", "--session-dir", sdir, "--session-id", session] + (["--model", model] if model else []) + (["--append-system-prompt", system] if system else []) + ["--"] + [f"@{p}" for p in images] + [prompt]
     else:
         return {"text": "", "session": "", "error": f"{kind} 没有无头模式", "secs": 0}
     try:
@@ -4118,12 +4118,14 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
     except FileNotFoundError:
         return {"text": "", "session": session, "error": f"没装 {kind}", "secs": round(time.time() - t0, 1)}
     o, err = r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
-    text, sid, error = "", session, ""
+    text, sid, error, usage = "", session, "", {}
     if kind == "claude":
         try:
             d = json.loads(o[o.find("{"):])
             text = d.get("result") or ""
             sid = d.get("session_id") or sid
+            u = d.get("usage") or {}
+            usage = {"input": u.get("input_tokens", 0), "cached": u.get("cache_read_input_tokens", 0), "output": u.get("output_tokens", 0)}
             if d.get("is_error"):
                 error = (text or d.get("subtype") or "claude 报错")[:200]
         except Exception:
@@ -4138,6 +4140,9 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
                 sid = ev.get("thread_id") or sid
             elif ev.get("type") == "item.completed" and (ev.get("item") or {}).get("type") == "agent_message":
                 text = (ev["item"].get("text") or "") or text
+            elif ev.get("type") == "turn.completed":
+                u = ev.get("usage") or {}
+                usage = {"input": u.get("input_tokens", 0) - u.get("cached_input_tokens", 0), "cached": u.get("cached_input_tokens", 0), "output": u.get("output_tokens", 0)}
             elif ev.get("type") == "error":
                 error = (ev.get("message") or "codex 报错")[:200]
         try:
@@ -4146,10 +4151,52 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
         except Exception:
             pass
     else:
-        text = o.strip()
+        # pi --mode json: one event per line; the last assistant message_end carries text + usage
+        for line in o.splitlines():
+            try:
+                ev = json.loads(line)
+            except Exception:
+                continue
+            m = ev.get("message") or {}
+            if ev.get("type") == "message_end" and m.get("role") == "assistant":
+                text = "".join(c.get("text", "") for c in m.get("content", []) if c.get("type") == "text") or text
+                u = m.get("usage") or {}
+                usage = {"input": u.get("input", 0), "cached": u.get("cacheRead", 0), "output": u.get("output", 0)}
+            elif ev.get("type") == "error":
+                error = (ev.get("message") or ev.get("error") or "pi 报错")[:200]
+        if not text and not error and o.strip() and not o.lstrip().startswith("{"):
+            text = o.strip()
     if r.returncode != 0 and not text:
         error = error or (err or o).strip()[-300:] or f"退出码 {r.returncode}"
-    return {"text": text.strip(), "session": sid, "error": error, "secs": round(time.time() - t0, 1)}
+    return {"text": text.strip(), "session": sid, "error": error, "secs": round(time.time() - t0, 1), "usage": usage, "prompt_chars": len(prompt)}
+
+
+def discussion_state_path(tid):
+    return os.path.join(DISCUSSIONS_DIR, f"{tid}.json")
+
+
+def discussion_state_load(tid):
+    try:
+        d = json.load(open(discussion_state_path(tid)))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def discussion_state_save(tid, state):
+    os.makedirs(DISCUSSIONS_DIR, exist_ok=True)
+    tmp = discussion_state_path(tid) + ".tmp"
+    json.dump(state, open(tmp, "w"), ensure_ascii=False, indent=1)
+    os.replace(tmp, discussion_state_path(tid))
+
+
+def headless_followup_prompt(tid, round_no, new_lines, who, question="", images=()):
+    """For a member whose session is resumed: only what was said since it last spoke."""
+    return (f"第 {round_no} 轮。你是「{who}」，线程里新增的发言在下面（你自己上一轮说的不再重复）。{DISCUSS_GUIDE}"
+            f"直接输出你这一条发言的正文：不署名、不加【讨论】、不用 Markdown 标题；没有新东西可补充就只输出 SKIP。"
+            + (f" 发起人的问题：{question}" if question else "")
+            + ("\n附图（用 Read 工具看）：\n" + "\n".join(images) if images else "")
+            + "\n\n=== 新发言 ===\n" + ("\n\n".join(new_lines) if new_lines else "（没有新发言）"))
 
 
 def clean_statement(text, who):
@@ -4293,14 +4340,21 @@ def cmd_discuss(a):
     # Headless (claude -p / codex exec / pi -p) on this Mac is the normal path; --tui or a remote
     # host goes through a Herdr tab per member as before.
     tui = bool(getattr(a, "tui", False) or a.host)
+    # Each member keeps its session between rounds (~/tasks/.dispatch/discussions/<task>.json):
+    # the next round resumes it and feeds only what was said since, so it remembers what it
+    # said and the prompt stays small. --fresh starts everyone over with the whole thread.
+    state = {} if getattr(a, "fresh", False) else discussion_state_load(a.task)
+    state["task"] = a.task
+    members = state.setdefault("members", {})
     panes, missing, skipped, timing = {}, [], [], []
     import threading
     t_start = time.time()
     for r in range(1, max(1, a.rounds) + 1):
         now = bd_comments(a.task)
-        seen_before = {c.get("id") for c in discussion_of(now)}
+        disc_now = discussion_of(now)
+        seen_before = {c.get("id") for c in disc_now}
         thread_text = discussion_thread(issue, now)
-        images = discussion_images(issue.get("description"), *[c.get("text") for c in discussion_of(now)])
+        images = discussion_images(issue.get("description"), *[c.get("text") for c in disc_now])
         results = {}
 
         def run_tui(i, kind, model, who):
@@ -4319,16 +4373,38 @@ def cmd_discuss(a):
 
         def run_headless(i, kind, model, who):
             claude = kind == "claude"   # claude reads pictures itself with Read; codex/pi get them attached
-            prompt = headless_prompt(a.task, title, r, thread_text, who, a.question, topic=topic, project=project, images=images if claude else ())
-            res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else images)
+            key = f"{kind}:{model}#{i}"
+            mem = members.get(key) or {}
+            resumed = bool(mem.get("session")) and mem.get("kind") == kind and (mem.get("model") or "") == (model or "")
+            res = None
+            if resumed:
+                seen = set(mem.get("seen") or [])
+                fresh_cs = [c for c in disc_now if c.get("id") not in seen]
+                imgs = discussion_images(*[c.get("text") for c in fresh_cs])
+                prompt = headless_followup_prompt(a.task, r, discussion_lines(fresh_cs), who, a.question, images=imgs if claude else ())
+                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else imgs, session=mem["session"], resume=True)
+                if res["error"] and not res["text"]:
+                    resumed = False   # the session is gone (or the CLI could not resume it): start over with the whole thread
+            if not resumed:
+                prompt = headless_prompt(a.task, title, r, thread_text, who, a.question, topic=topic, project=project, images=images if claude else ())
+                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else images)
+            res["resumed"] = resumed
             # The statement lands on the board the moment it is ready, so the app shows the
             # quick members while the slow one is still thinking.
+            own = ""
             if res["text"] and not is_skip(res["text"]):
                 text = clean_statement(res["text"], who)
-                code, o, err = sh(["bd", "comments", "add", a.task, f"{DISCUSS_TAG}{who}：{text}"], env={"BEADS_ACTOR": KIND_ACTOR.get(kind, kind)}, timeout=60)
+                code, o, err = sh(["bd", "comments", "add", a.task, f"{DISCUSS_TAG}{who}：{text}", "--json"], env={"BEADS_ACTOR": KIND_ACTOR.get(kind, kind)}, timeout=60)
                 res["written"] = code == 0
                 res["write_error"] = "" if code == 0 else (err or o).strip()[:120]
                 res["chars"] = len(text)
+                try:
+                    own = json.loads(o[o.find("{"):]).get("id") or ""
+                except Exception:
+                    own = ""
+            if res.get("session"):
+                members[key] = {"kind": kind, "model": model, "who": who, "session": res["session"], "rounds": (mem.get("rounds") or 0) + 1, "last_at": int(time.time()),
+                                "seen": sorted(set(mem.get("seen") or []) | seen_before | ({own} if own else set()))}
             results[i] = ("headless", who, res)
 
         # Everyone speaks at the same time.
@@ -4343,6 +4419,8 @@ def cmd_discuss(a):
                 time.sleep(1.5)  # stagger tab creation a little; Herdr serialises it anyway
         for _, t in threads:
             t.join()
+        if not tui:
+            discussion_state_save(a.task, state)
         after = [c for c in discussion_of(bd_comments(a.task)) if c.get("id") not in seen_before]
         for i, (kind, model) in enumerate(parts):
             row = results.get(i)
@@ -4351,7 +4429,7 @@ def cmd_discuss(a):
                 missing.append({"who": kind, "round": r, "reason": "没有结果"}); continue
             if row[0] == "headless":
                 _, who, res = row
-                timing.append({"who": who, "round": r, "secs": res["secs"]})
+                timing.append({"who": who, "round": r, "secs": res["secs"], "resumed": res.get("resumed", False), "prompt_chars": res.get("prompt_chars", 0), "usage": res.get("usage") or {}})
                 if res["error"] and not res["text"]:
                     print(f"⚠ {who} 第 {r} 轮没说上话：{res['error']}", file=sys.stderr)
                     missing.append({"who": who, "round": r, "reason": res["error"][:160]}); continue
@@ -4363,7 +4441,8 @@ def cmd_discuss(a):
                 if not res.get("written"):
                     missing.append({"who": who, "round": r, "reason": "发言写不进板：" + res.get("write_error", "")}); continue
                 if not a.json:
-                    print(f"· 第 {r} 轮 {who} 说了 {res.get('chars', 0)} 字（{res['secs']}s）")
+                    u = res.get("usage") or {}
+                    print(f"· 第 {r} 轮 {who} 说了 {res.get('chars', 0)} 字（{res['secs']}s{'，续接会话' if res.get('resumed') else ''}，提示 {res.get('prompt_chars', 0)} 字" + (f"，输入 {u.get('input', 0)}+缓存 {u.get('cached', 0)} token" if u else "") + "）")
                 continue
             _, who, code, res, errtxt, secs = row
             timing.append({"who": who, "round": r, "secs": secs})
@@ -4646,7 +4725,7 @@ def main():
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)
-    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--no-conclude", action="store_true", help="skip the model-written 【结论】"); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
+    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--no-conclude", action="store_true", help="skip the model-written 【结论】"); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
     s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
     s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])
