@@ -81,7 +81,7 @@ dispatch move <会话 id 前缀> --to <机器 id 或名字> [--prompt "额外交
 - 电脑上运行 `dispatch serve url` 拿到地址，或 `dispatch serve qr` 在终端显示二维码。
 - 设置 → 手机访问：内嵌同一个二维码（链接里带登录令牌，扫一次就记住），也可以复制链接发到手机；浏览器里可「添加到主屏幕」，界面按手机宽度排版。
 - **通知**：报告生成完、讨论结束、会话变成「等你」时推一条。渠道在「环境」页配 `NTFY_URL`（ntfy 主题地址）或 `BARK_KEY`（Bark 的 key），两个都没配就发这台 Mac 的系统通知；命令行 `dispatch notify "标题" "正文"`。
-- **看屏幕**：按 设置 → 屏幕访问 的提示跑 `bash app/scripts/novnc-setup.sh`，手机浏览器里用这台 Mac 的用户名和登录密码看并操作屏幕（noVNC，走 Tailscale HTTPS）。
+- **看屏幕**：设置 → 屏幕访问 点一次「配置」（等价命令 `dispatch screen setup`），它装好 noVNC 与常驻服务并开通 Tailscale HTTPS；剩下只需在系统设置 → 通用 → 共享 打开「屏幕共享」。之后手机浏览器里用这台 Mac 的用户名和登录密码看并操作屏幕（noVNC，走 Tailscale HTTPS）。
 
 网页版与桌面共用同一套 CLI；更新在 Mac 上的 Dispatch.app 里做。服务运行方式与限制见 [app/README.md](app/README.md)。
 

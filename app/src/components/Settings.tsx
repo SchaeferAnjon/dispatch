@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 import { isTauri } from "../api";
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; phoneQr?: string; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; phoneQr?: string; onScreen?: () => void; screenReady?: boolean; screen?: { url: string; up: boolean; sharing: boolean; issue: string }; onScreenSetup?: () => Promise<ScreenSetupResult | null>; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
+// What `dispatch screen setup --json` returns: the steps it walked and the one thing left for the user.
+export interface ScreenSetupResult { ok: boolean; url?: string; error?: string; steps?: { id?: string; title: string; ok: boolean; detail: string }[]; manual?: { id?: string; title: string; detail: string }[]; state?: { url: string; ready: boolean; screen_sharing: boolean; issue: string } }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, phoneQr, onScreen, screenReady, hosts = [], onSetup, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, phoneQr, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   // The version line should not read "v…" forever: look it up once when the page opens.
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -15,6 +17,8 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
   const [notifying, setNotifying] = useState(false);
   const [draft, setDraft] = useState<DispatchSettings>(settings);
   const [busy, setBusy] = useState(false);
+  const [screenBusy, setScreenBusy] = useState(false);
+  const [screenResult, setScreenResult] = useState<ScreenSetupResult | null>(null);
   useEffect(() => { setDraft(settings); }, [settings]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
   const num = (k: keyof DispatchSettings, v: string, max: number) => setDraft({ ...draft, [k]: Math.max(0, Math.min(max, Number(v) || 0)) });
@@ -88,8 +92,15 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
           {onPhone && <button className="btn sm" onClick={onPhone}>复制链接</button>}
         </div>}
         {onScreen && <div className="settings-row">
-          <div><b>屏幕访问</b><p>{screenReady ? "手机连上 Tailscale 后，用浏览器打开这个链接就能看到并操作这台电脑的屏幕（noVNC），登录用这台 Mac 的用户名和密码。" : "还没配置：先打开 系统设置 → 通用 → 共享 → 屏幕共享，再在 Agent 状态页按提示跑一次 novnc-setup；配好后这里能复制链接。"}</p></div>
-          <button className="btn sm" disabled={!screenReady} onClick={onScreen}>复制屏幕链接</button>
+          <div><b>屏幕访问</b><p>{screenReady ? "手机连上 Tailscale 后，用浏览器打开这个链接就能看到并操作这台电脑的屏幕（noVNC），登录用这台 Mac 的用户名和密码。" : "点「配置」自动装好 noVNC 与常驻服务、开通 Tailscale HTTPS；屏幕共享这个开关只能你自己在系统设置里打开。"}</p>
+            {screen?.url ? <p className="muted small mono">{screen.url}</p> : screen?.issue ? <p className="muted small">{screen.issue}</p> : null}
+            {screenResult?.steps?.length ? <pre className="setup-log">{screenResult.steps.map((s) => `${s.ok ? "✓" : "✗"} ${s.title}：${s.detail}`).join("\n")}</pre> : null}
+            {screenResult?.manual?.length ? <p className="muted small">还差一步：{screenResult.manual.map((m) => `${m.title}（${m.detail}）`).join("；")}</p> : null}
+          </div>
+          <span className="setup-row">
+            {onScreenSetup && <button className="btn sm" disabled={screenBusy} onClick={async () => { setScreenBusy(true); try { setScreenResult(await onScreenSetup()); } finally { setScreenBusy(false); } }}>{screenBusy ? "配置中…（要下载 noVNC）" : screenReady ? "重新配置" : "配置"}</button>}
+            <button className="btn sm" disabled={!screenReady} onClick={onScreen}>复制屏幕链接</button>
+          </span>
         </div>}
         {onCheckUpdate && <div className="settings-row">
           <div><b>版本与更新</b><p>当前 v{update?.current ?? "…"}{update?.latest ? `，最新 v${update.latest}` : ""}{update?.newer ? "，有新版本" : update?.latest ? "，已是最新" : ""}。{update?.error ? update.error : isTauri ? "从 GitHub Release 下载并替换应用，完成后自动重启。" : "网页版只能查看版本；更新在 Mac 上的 Dispatch.app 里做。"}</p></div>

@@ -21,7 +21,7 @@ import { SearchPalette } from "./components/Search";
 import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, parseProjectFlags, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
 import { SetupView, type InitStatus } from "./components/Setup";
-import type { UpdateInfo } from "./components/Settings";
+import type { ScreenSetupResult, UpdateInfo } from "./components/Settings";
 import { Delegate } from "./components/Delegate";
 import { DiscussDialog } from "./components/Discuss";
 import { DiscussView } from "./components/DiscussView";
@@ -610,6 +610,19 @@ export default function App() {
   // The noVNC page asks for a login: it is this Mac's account, which is the part new users miss.
   const screenLink = async () => { const h = hosts.find((x) => x.local); if (!h?.novnc || !api) { say("还没配置屏幕访问，设置页有说明", true); return; } if (!isTauri && window.matchMedia("(max-width: 760px)").matches) { window.open(h.novnc, "_blank"); return; } try { await api.copy(h.novnc); say(`屏幕链接已复制。手机先连上 Tailscale 再打开；页面要登录时，输入这台 Mac 的用户名（${h.ssh?.includes("@") ? h.ssh.split("@")[0] : "登录这台电脑用的那个"}）和开机密码`); } catch (e) { say(String(e), true); } };
 
+  // 设置 → 屏幕访问 → 配置: the CLI walks the steps (noVNC + websockify + launchd + Serve HTTPS)
+  // and reports the one manual step left (macOS Screen Sharing). Refresh hosts so the row flips at once.
+  const screenSetup = isTauri && api ? async (): Promise<ScreenSetupResult | null> => {
+    try {
+      const r = JSON.parse((await api.on("local", ["screen", "setup", "--json"])).replace(/^[^{]*/, "")) as ScreenSetupResult;
+      if (r.error) say(r.error, true);
+      else if (r.state?.ready) say("屏幕访问已就绪，手机连上 Tailscale 就能看这台电脑");
+      else say(r.manual?.[0] ? `还差一步：${r.manual[0].title}` : "配置完成", !r.ok);
+      try { setHosts(await api.hosts()); } catch { /* keep last */ }
+      return r;
+    } catch (e) { say(String(e), true); return { ok: false, error: String(e) }; }
+  } : undefined;
+
   // A model-written summary, stored with the session's preferences; the row updates in place.
   const summarizeSession = async (a: Activity) => {
     if (!api) return;
@@ -717,7 +730,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} summaryProviders={summaryProviders} onPhone={phoneLink} phoneQr={phoneQr} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} screen={(() => { const h = hosts.find((x) => x.local); return { url: h?.novnc ?? "", up: !!h?.novnc_up, sharing: !!h?.screen_sharing, issue: h?.novnc_issue ?? "" }; })()} onScreenSetup={screenSetup} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} summaryProviders={summaryProviders} onPhone={phoneLink} phoneQr={phoneQr} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "overview" && <OverviewView stats={{ projects: projects.filter((p) => p.name).length, inbox: counts.inbox, sessions: projectRows.length, running: runningSessions, tasks: issuesF.length, open: issuesF.filter((i) => i.status !== "closed").length, agentsOnline: agents.filter((a) => a.online).length, agentsTotal: agents.length, skills: skillCount, wiki: wikiCount, hosts: Math.max(1, hosts.length), rulesSynced: null, version: update?.current ?? "" }} onGo={(v) => (v === "board" ? allTasks() : setView(v))} onTour={() => setTour(true)} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

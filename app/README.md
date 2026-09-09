@@ -43,12 +43,8 @@ CLI 在 `cli/`；Rust 只通过异步进程包装 CLI；HTTP RPC 在 `cli/serve.
 
 ### 手机查看电脑画面
 
-在提供画面的 Mac 上开启系统「屏幕共享」，登录 Tailscale，然后运行：
+在提供画面的 Mac 上登录 Tailscale，打开 Dispatch 的「设置 → 屏幕访问」，点一次「配置」：它会装好 noVNC 与 websockify（放在 `~/tasks/.dispatch`）、注册 launchd 常驻、用 Tailscale Serve 开通 HTTPS，并把当前状态和链接显示在下面。剩下只有一步要自己按：系统设置 → 通用 → 共享 → 屏幕共享。首次使用若 Tailscale 还没启用 HTTPS，配置结果里会给出管理后台的开启链接。
 
-```sh
-bash app/scripts/novnc-setup.sh
-```
+终端等价命令：`dispatch screen setup`（`dispatch screen status --json` 看状态），旧入口 `bash app/scripts/novnc-setup.sh` 现在只是它的封装。手机连接同一 Tailscale 网络，在「Agent 状态」或设置页复制这台电脑的「手机看屏幕」链接，用 Mac 的用户名和登录密码登录。屏幕服务只监听本机，HTTPS 由 Tailscale Serve 提供；不会启用公网 Funnel。
 
-首次使用按命令输出的链接开启 Tailscale HTTPS。手机连接同一 Tailscale 网络，在「Agent 状态」复制这台电脑的「手机看屏幕」链接，用 Mac 的用户名和登录密码登录。脚本使用 Tailscale Serve 的 HTTPS 和 WebSocket 代理，屏幕服务只监听本机；不会启用公网 Funnel。
-
-必须使用脚本输出的 `https://…ts.net/vnc.html` 地址。旧版的 `http://机器IP:6080` 在 Safari 中没有 Web Crypto，无法进行 macOS ARD 登录，会报 `crypto.subtle.importKey` 错误。若 HTTPS 443 已有其他服务，可设置 `DISPATCH_SCREEN_PORT=8443` 再运行脚本。
+必须使用配置给出的 `https://…ts.net/vnc.html` 地址。旧版的 `http://机器IP:6080` 在 Safari 中没有 Web Crypto，无法进行 macOS ARD 登录，会报 `crypto.subtle.importKey` 错误。若 HTTPS 443 已有其他服务，用 `dispatch env set DISPATCH_SCREEN_PORT 8443`（或设置页的「环境」）改成别的端口再点「配置」。

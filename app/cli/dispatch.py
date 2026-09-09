@@ -328,7 +328,7 @@ def detect_remote_backends():
     if ov["kind"] and b["novnc_up"]:
         rec, why = "novnc", f"已在 {ov['kind']} 网里，浏览器通过 HTTPS 打开"
     elif ov["kind"] and b["screen_sharing"]:
-        rec, why = "vnc", f"已在 {ov['kind']} 网里，屏幕共享已开；跑 novnc-setup.sh 就能手机看"
+        rec, why = "vnc", f"已在 {ov['kind']} 网里，屏幕共享已开；设置页「屏幕访问」点「配置」就能手机看"
     elif b["rustdesk"]:
         rec, why = "rustdesk", "不用虚拟网，ID + 密码直连（国内外都好用，可自建中继）"
     elif b["sunshine"]:
@@ -380,7 +380,7 @@ def host_rows(local_only=False):
         if row["novnc_up"]:
             row["recommend"], row["why"] = "novnc", "浏览器通过 HTTPS 打开"
         elif row["screen_sharing"]:
-            row["recommend"], row["why"] = "vnc", "屏幕共享已开；在那台上跑 novnc-setup.sh 就能手机看"
+            row["recommend"], row["why"] = "vnc", "屏幕共享已开；在那台的设置页「屏幕访问」点「配置」就能手机看"
         elif row["rustdesk"]:
             row["recommend"], row["why"] = "rustdesk", "ID + 密码直连"
         elif row["sunshine"]:
@@ -767,6 +767,12 @@ def cmd_hosts(a):
             ov = (r.get("overlay") or {}).get("kind") or "-"
             print(f"{r['name']:<12} {r['ip']:<16} {'在线' if r['online'] else '离线'}  网:{ov:<10} 有:{','.join(have) or '无':<36} 推荐:{r.get('recommend') or '无'}  {r.get('why', '')}")
     out(rows, a.json, text)
+
+
+def cmd_screen(a):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import screen_setup
+    screen_setup.main(a)
 
 
 def _only_theirs(rows):
@@ -5858,6 +5864,7 @@ def main():
     s.set_defaults(fn=cmd_agent)
     s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link, `serve qr` prints a scannable QR"); s.add_argument("what", nargs="?", choices=["run", "url", "qr"], default="run"); s.add_argument("--svg", action="store_true", help="qr: print SVG instead of terminal blocks"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
+    s = sub.add_parser("screen", help="手机看屏幕的一键配置（noVNC + websockify 常驻 + Tailscale Serve HTTPS）"); s.add_argument("op", nargs="?", choices=["status", "setup"], default="status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_screen)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
