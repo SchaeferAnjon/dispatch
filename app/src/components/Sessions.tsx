@@ -67,15 +67,12 @@ export function SubagentDialog({ api, parent, sub, onClose }: { api: Api; parent
 export function FileHunks({ changes }: { changes: FileChange[] }) {
   return <>{changes.map((c, i) => {
     const lines = (c.new || "").split("\n").length;
-    // A whole-file write of a long file is a wall of green; fold it and say how long it is.
-    const fold = c.kind === "write" && lines > 40;
+    // One fold per file is enough (the file's own <details>); the hunk itself stays open.
     const head = <div className="hunk-h muted small">{c.kind === "write" ? `写入整个文件 · ${lines} 行` : c.kind === "patch" ? `${c.op ?? "修改"}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>;
     const body = c.kind === "patch"
       ? (c.new ? <PatchDiff text={c.new} /> : <pre className="diff"><div className="skip">补丁内容没存下来</div></pre>)
       : <PairDiff oldText={c.old} newText={c.new} label={c.kind === "write" ? "行号 = 文件行号" : "行号相对本段"} />;
-    return fold
-      ? <details key={i} className="hunk hunk-fold"><summary>{head}</summary>{body}</details>
-      : <div key={i} className="hunk">{head}{body}</div>;
+    return <div key={i} className="hunk">{head}{body}</div>;
   })}</>;
 }
 

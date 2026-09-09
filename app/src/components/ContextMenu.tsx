@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { Activity, Issue, View } from '../types';
+import type { Activity, Issue } from '../types';
 import { useTaskMenu } from './TaskActions';
 import { useConversationMenu } from './ConversationActions';
 
@@ -168,5 +168,3 @@ export function GlobalContextMenu({ issues, sessions }: { issues: Issue[]; sessi
   return null;
 }
 
-// Digit order of the view shortcuts; the modifier comes from shortcuts.ts (per-Mac setting).
-export const VIEW_SHORTCUTS: Partial<Record<View, string>> = { home: '1', projects: '2', inbox: '3', sessions: '4', board: '5', graph: '6', agents: '7', stats: '8', pitfalls: '9' };

@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 import { isTauri } from "../api";
-import { VIEW_MODS, type ViewMod } from "../shortcuts";
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; viewMod?: ViewMod; onViewMod?: (m: ViewMod) => void; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, viewMod, onViewMod, onPhone, onScreen, screenReady, hosts = [], onSetup, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, onPhone, onScreen, screenReady, hosts = [], onSetup, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   // The version line should not read "v…" forever: look it up once when the page opens.
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -53,10 +52,6 @@ export function SettingsView({ settings, onSave, theme, onTheme, viewMod, onView
           <div><b>外观</b><p>只影响这台电脑上的 Dispatch 窗口。</p></div>
           <select value={theme} onChange={(e) => onTheme(e.target.value as Theme)} aria-label="外观"><option value="">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
         </label>
-        {onViewMod && <label className="settings-row">
-          <div><b>切换页面的数字快捷键</b><p>按侧栏顺序 1–9：工作台、项目、等我、会话、全部任务、脉络、Agent 状态、统计与额度、知识库。⌘ + 数字常被系统或其他工具占用，默认用 ⌃⌥；也可以关掉。⌘K 搜索、⌘N 新会话、⌘T 新任务、⌘R 刷新不受影响。只影响这台电脑。</p></div>
-          <select value={viewMod ?? "ctrl+alt"} onChange={(e) => onViewMod(e.target.value as ViewMod)} aria-label="切换页面的快捷键">{VIEW_MODS.map(([m, l]) => <option key={m} value={m}>{l}</option>)}</select>
-        </label>}
         {onPhone && <div className="settings-row">
           <div><b>手机访问</b><p>复制 dispatch serve 的链接；手机连上 Tailscale 后用浏览器打开，可以添加到主屏幕。</p></div>
           <button className="btn sm" onClick={onPhone}>复制链接</button>
