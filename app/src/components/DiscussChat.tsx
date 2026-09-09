@@ -46,6 +46,7 @@ function toMessages(d: Discussion, me: string, personas: Record<string, string>)
       out.push({ id: c.id, role: mine ? "user" : "assistant", createdAt: new Date(c.created_at), status: mine ? undefined : DONE, content: text(said), metadata: { custom: { kind: "say", actor: a?.id ?? c.author, name: mine ? "你" : a?.name ?? c.author, leader: !mine && d.isLeaderLine(c, body), when: c.created_at, persona: kind ? personas[kind] : undefined, model: modelOf(who) } } });
     }
   }
+  if (running && live?.judge && !live.judge.everyone) out.push(sys("judge", { kind: "note", text: `这轮只叫 ${live.judge.why}；@某人 或说到谁，下一轮就叫谁` }));
   if (skippedNow.length) out.push(sys("skipped", { kind: "note", text: `${skippedNow.join("、")} 这轮没话说` }));
   for (const [who, m] of erroredNow) out.push(sys(`err:${who}`, { kind: "system", text: `${who}：${m.text || "没说上话"}` }));
   for (const c of system) out.push(sys(c.id, { kind: "system", text: c.text.trimStart().slice(4) }));

@@ -753,6 +753,40 @@ class DynamicWorkflow(unittest.TestCase):
         self.assertIn("bd show task-1", p1); self.assertIn("先做哪个", p1); self.assertIn("不改代码", p1)
         self.assertIn("第 2 轮", dispatch.discuss_prompt("task-1", "标题", 2))
 
+    def test_discussion_judge(self):
+        """The cheap referee: from the second round on, only who was @'d or named-and-questioned
+        speaks; a person's line that names nobody, or @大家, calls everyone."""
+        T = dispatch.DISCUSS_TAG
+        parts = [("claude", "opus"), ("codex", ""), ("pi", "")]
+        judge = lambda *cs: dispatch.discussion_judge(list(cs), parts)
+        me = lambda t: {"author": "schaefer", "text": T + "schaefer：" + t}
+        # @kind / @kind（model） / @model / @actor
+        self.assertEqual(judge(me("@codex 你说的冷启动怎么量化？"))["picked"], [1])
+        self.assertEqual(judge(me("@claude（opus） 先说"))["picked"], [0])
+        self.assertEqual(judge(me("@claude:opus 先说"))["picked"], [0])
+        self.assertEqual(judge(me("@opus 先说"))["picked"], [0])
+        self.assertEqual(judge(me("@claude-code 呢"))["picked"], [0])
+        self.assertEqual(judge(me("@pi @codex 你们俩"))["picked"], [2, 1])
+        r = judge(me("@codex 你说"))
+        self.assertFalse(r["everyone"]); self.assertIn("被 schaefer @", r["why"]); self.assertIn("codex", r["why"])
+        # a person talking to the group, or @大家 → everyone
+        for t in ("大家觉得呢", "@大家 觉得呢", "@all 看看", "@codex 你说，@各位 也看看"):
+            self.assertTrue(judge(me(t))["everyone"], t)
+        # a member named-and-questioned by someone else → it answers; the CLI just being mentioned does not count
+        pi = lambda t: {"author": "pi", "text": T + "pi：" + t}
+        r = judge(pi("我不同意 codex 说的并行不是关键。用 claude -p 直调就行。"))
+        self.assertEqual(r["picked"], [1]); self.assertIn("被 pi 质疑", r["why"])
+        self.assertTrue(judge(pi("用 claude -p 直调就行，codex exec 也一样。"))["everyone"])
+        self.assertTrue(judge(pi("我自己 pi 的方案有问题？"))["everyone"])   # naming yourself is not a challenge
+        # both sources add up; a member's statement alone never calls everyone unless nobody was named
+        r = judge({"author": "codex", "text": T + "codex：pi 的方案把冷启动成本低估了"}, me("@claude 你怎么看"))
+        self.assertEqual(sorted(r["picked"]), [0, 2])
+        # the opener line: only the question after 邀请 … ： counts
+        self.assertEqual(judge({"author": "schaefer", "text": T + "发起：schaefer 邀请 claude, codex, pi 讨论：@pi 先说"})["picked"], [2])
+        self.assertTrue(judge({"author": "schaefer", "text": T + "发起：schaefer 邀请 claude, codex, pi 讨论"})["everyone"])
+        self.assertTrue(judge()["everyone"])
+        self.assertEqual(dispatch.member_names("claude", "opus"), {"claude", "claude-code", "opus", "claude（opus）", "claude(opus)", "claude:opus"})
+
 
 class StatsMerge(unittest.TestCase):
     """`dispatch stats` adds the other Macs' day buckets and hour grid instead of replacing them."""

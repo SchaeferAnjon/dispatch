@@ -33,7 +33,7 @@ export function ideaText(desc: string | undefined): string {
 export const imagePaths = (text: string | undefined) => Array.from((text ?? "").matchAll(/((?:~|\/)[^\s"'`<>()[\]]+?\.(?:png|jpe?g|gif|webp|bmp))/gi)).map((m) => m[1]);
 
 type LiveMember = { kind: string; status: string; text: string; at: number; step?: string };  // step: 想：<thought> / 查：<tool> while thinking
-type Live = { round: number; started: number; at: number; finished?: number; members: Record<string, LiveMember> };
+type Live = { round: number; started: number; at: number; finished?: number; members: Record<string, LiveMember>; judge?: { everyone: boolean; picked: string[]; why: string } };  // judge: the referee's pick for this round (absent = everyone)
 type Img = { path: string; preview: string };
 
 // Everything one open discussion needs, shared by the dialog and the 讨论 page: the comments
@@ -93,7 +93,8 @@ export function useDiscussion({ api, me, issues, task, parts, leader, watch, onD
       const r = JSON.parse(raw.slice(Math.max(0, raw.indexOf("{"))));
       setQuiet(r.quiet_rounds ?? 0);
       const skipped = (r.skipped?.length ?? 0), spoke = (r.comments ?? []).filter((c: Comment) => !/^【讨论】发起[:：]/.test(c.text.trimStart())).length;
-      onDone(`这轮 ${spoke} 条发言${skipped ? `，${skipped} 人没话说` : ""}${(r.quiet_rounds ?? 0) >= 2 ? "；连续两轮没有新提议了，可以整理成文档收尾" : ""}`);
+      const judge = (r.judge ?? []).find((j: { everyone: boolean }) => !j.everyone) as { picked: string[] } | undefined;
+      onDone(`这轮 ${spoke} 条发言${skipped ? `，${skipped} 人没话说` : ""}${judge ? `，只叫了 ${judge.picked.join("、")}` : ""}${(r.quiet_rounds ?? 0) >= 2 ? "；连续两轮没有新提议了，可以整理成文档收尾" : ""}`);
     } catch (e) { onError(String(e)); }
     finally { setBusy(false); }
   };

@@ -5466,9 +5466,11 @@ def headless_prompt(tid, title, round_no, thread, who, question="", topic=False,
     return head + "\n\n=== 线程 ===\n" + thread
 
 
-def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", session="", resume=False, on_event=None):
+def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", session="", resume=False, on_event=None, thinking=""):
     """One statement from one member. Returns {text, session, error, secs}. The session id is
     what the next round resumes with (claude --resume, codex exec resume, pi --session-id).
+    `thinking` is pi's --thinking level (a discussion turn runs it low: GLM-class models
+    otherwise think for a minute before a two-line reply).
     on_event(status, text_so_far, step) is called as the reply streams in (claude and pi send
     text deltas; codex only says when it is thinking and when it is done). `step` names what the
     member is doing besides typing: 想：<the thought so far> or 查：<tool> <what> — the app's
@@ -5493,7 +5495,7 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
         if not session:
             import uuid
             session = str(uuid.uuid4())
-        argv = ["pi", "-p", "--mode", "json", "--session-dir", sdir, "--session-id", session] + (["--model", model] if model else []) + (["--append-system-prompt", system] if system else []) + ["--"] + [f"@{p}" for p in images] + [prompt]
+        argv = ["pi", "-p", "--mode", "json", "--session-dir", sdir, "--session-id", session] + (["--model", model] if model else []) + (["--thinking", thinking] if thinking else []) + (["--append-system-prompt", system] if system else []) + ["--"] + [f"@{p}" for p in images] + [prompt]
     else:
         return {"text": "", "session": "", "error": f"{kind} 没有无头模式", "secs": 0}
     raw_emit = on_event or (lambda status, text, step="": None)
@@ -5696,12 +5698,12 @@ class DiscussionLive:
     typing + the text so far / done / skip / error), rewritten as the replies stream in; the
     app polls it to draw the typing bubbles."""
 
-    def __init__(self, tid, round_no, members):
+    def __init__(self, tid, round_no, members, judge=None):
         import threading as _th
         self.path = os.path.join(DISCUSSIONS_DIR, f"{tid}.live.json")
         self.lock = _th.Lock()
         self.last_write = 0.0
-        self.state = {"task": tid, "round": round_no, "started": int(time.time()), "at": int(time.time()), "members": {who: {"kind": kind, "status": "queued", "text": "", "at": int(time.time())} for who, kind in members}}
+        self.state = {"task": tid, "round": round_no, "started": int(time.time()), "at": int(time.time()), "members": {who: {"kind": kind, "status": "queued", "text": "", "at": int(time.time())} for who, kind in members}, **({"judge": judge} if judge else {})}
         self.flush(force=True)
 
     def update(self, who, status, text, step=""):
@@ -5755,6 +5757,93 @@ def clean_statement(text, who):
 def is_skip(text):
     t = text.strip().strip("`*_ 。.").upper()
     return t in ("SKIP", "【SKIP】", "跳过") or (t.startswith("SKIP") and len(t) <= 12)
+
+
+DISCUSS_PI_THINKING = "low"   # pi's --thinking in a discussion turn; its default level makes GLM think longer than it talks
+MENTION_ALL = ("all", "everyone", "大家", "所有人", "各位", "全体")
+MENTION_RE = re.compile(r"@([A-Za-z][\w.-]*(?:[（(:][\w.-]+[）)]?)?|大家|所有人|各位|全体)")
+# A member is "challenged" when someone else names it in a sentence that questions or refers
+# to what it said — not when the name is just the CLI being talked about (`claude -p 直调`).
+CHALLENGE_RE = re.compile(r"[?？]|不对|不同意|反对|质疑|有问题|存疑|不认同|错了|说错|未必|不一定|不见得|说的|说得|讲的|的方案|的提议|的建议|的观点|的看法|的判断|的说法|的结论|的做法|回应|解释|澄清|反驳|商榷|担心|顾虑|怎么看|什么看法|什么意见|你觉得|你认为|请.{0,6}(说|讲|答|解)")
+SENTENCE_RE = re.compile(r"[。！？!?\n；;]+")
+
+
+def member_names(kind, model):
+    """How people write a member's name: the kind, the model, kind（model）/ kind:model, its actor."""
+    names = {kind.lower(), KIND_ACTOR.get(kind, kind).lower()}
+    if model:
+        names |= {model.lower(), f"{kind}（{model}）".lower(), f"{kind}({model})".lower(), f"{kind}:{model}".lower()}
+    return names
+
+
+def discussion_judge(fresh, parts, member_actors=None):
+    """The cheap referee: who has to speak this round, decided from what was said since the
+    last round — no model call. Returns {"everyone": bool, "picked": [index…], "reasons": {index: [why…]}, "why": str}.
+    Rules, in order: `@all` or a fresh line from a person that names nobody → everyone; `@name`
+    → that member (kind, model, kind（model）); a member named by someone else in a sentence that
+    questions or refers to what it said (CHALLENGE_RE) → that member; nobody named and no fresh
+    line from a person → everyone (the members skip themselves)."""
+    actors = member_actors or set(KIND_ACTOR.values())
+    names = [member_names(k, m) for k, m in parts]
+    whos = [f"{k}{'（' + m + '）' if m else ''}" for k, m in parts]
+    picked, reasons, everyone, why = [], {}, False, []
+
+    def pick(i, reason):
+        if i not in picked:
+            picked.append(i)
+        reasons.setdefault(i, [])
+        if reason not in reasons[i]:
+            reasons[i].append(reason)
+
+    def by_name(token):
+        t = token.lower().replace("(", "（").replace(")", "）").rstrip("）")
+        hits = [i for i, ns in enumerate(names) if t in ns or t + "）" in ns]
+        if not hits and "（" in t:   # @claude（opus → kind + model
+            k, _, m = t.partition("（")
+            hits = [i for i, (kind, model) in enumerate(parts) if kind.lower() == k and (model or "").lower() == m]
+        return hits
+
+    for c in fresh:
+        text = (c.get("text") or "").strip()
+        body = text[len(DISCUSS_TAG):].lstrip() if text.startswith(DISCUSS_TAG) else text
+        author = (c.get("author") or "").strip()
+        person = author not in actors
+        opener = body.startswith("发起")
+        if opener:   # 【讨论】发起：me 邀请 … ：question — the question is the part after the last colon
+            body = body.split("：", 2)[-1] if body.count("：") >= 2 else ""
+        # Who is talking: the signature (pi（deepseek）：…) tells two members of one kind apart;
+        # a member never picks itself, whether it @'s or questions its own name.
+        sig = body.split("：", 1)[0].strip() if not opener else ""
+        selves = {i for i, w in enumerate(whos) if w == sig} or ({i for i, (k, m) in enumerate(parts) if KIND_ACTOR.get(k, k) == author} if not person else set())
+        speaker = author if person else (whos[next(iter(selves))] if len(selves) == 1 else sig or author)
+        named_here = False
+        for m in MENTION_RE.finditer(body):
+            token = m.group(1)
+            if token.lower() in MENTION_ALL:
+                everyone = True; why.append(f"{speaker} @{token}"); named_here = True; continue
+            for i in by_name(token):
+                if i not in selves:
+                    pick(i, f"被 {speaker} @"); named_here = True
+        for sent in SENTENCE_RE.split(body):
+            low = sent.lower()
+            if not sent.strip() or not CHALLENGE_RE.search(sent):
+                continue
+            for i, ns in enumerate(names):
+                if i in selves:
+                    continue   # talking about yourself is not being challenged
+                if any(re.search(r"(?<![\w@-])" + re.escape(n) + r"(?![\w-])", low) for n in ns if n):
+                    pick(i, f"被 {speaker} 质疑"); named_here = True
+        if person and body.strip() and not named_here:
+            everyone = True; why.append(f"{speaker} 对大家说")
+    if not fresh or (not picked and not everyone):
+        everyone = True
+        if fresh:
+            why.append("没人被点名")
+        else:
+            why.append("没有新发言")
+    if everyone:
+        return {"everyone": True, "picked": list(range(len(parts))), "reasons": {}, "why": "全员：" + "；".join(why)}
+    return {"everyone": False, "picked": picked, "reasons": reasons, "why": "、".join(f"{whos[i]}（{'，'.join(reasons[i])}）" for i in picked)}
 
 
 CONCLUSION_HEADING = "## 讨论结论"
@@ -5947,14 +6036,37 @@ def cmd_discuss_doc(a):
     out(r, a.json, lambda x: print(x["doc"] + f"\n\n已写进 {x['task']} 的描述（{x['by']}），文件 {x['path']}；派人：dispatch agent start {(x.get('leader') or {}).get('kind') or 'claude'}" + (f" --model {x['leader']['model']}" if (x.get("leader") or {}).get("model") else "") + f" --task {x['task']}"))
 
 
-def cmd_discuss(a):
-    # Participants: `kind` or `kind:model`, repeated as often as wanted (claude:opus,claude:haiku,codex).
+def discuss_parts(spec):
     parts = []
-    for k in (a.with_ or "").split(","):
+    for k in (spec or "").split(","):
         k = k.strip()
         if k:
             kind, _, model = k.partition(":")
             parts.append((kind, model))
+    return parts
+
+
+def cmd_discuss_judge(a):
+    parts = discuss_parts(a.with_)
+    if not parts:
+        raise SystemExit("要指定成员：--with codex,claude:opus,pi")
+    state = discussion_state_load(a.task)
+    members = state.get("members") or {}
+    judged = set(state["judged"]) if isinstance(state.get("judged"), list) else set().union(*[set(m.get("seen") or []) for m in members.values()]) if members else set()
+    disc = discussion_of(bd_comments(a.task))
+    member_actors = {KIND_ACTOR.get(k, k) for k, _ in parts}
+    fresh = [c for c in disc if c.get("id") not in judged]
+    if not any(c.get("author") in member_actors for c in disc):
+        r = {"everyone": True, "picked": [f"{k}{'（' + m + '）' if m else ''}" for k, m in parts], "why": "全员：成员还没说过话（第一轮）", "fresh": len(fresh)}
+    else:
+        j = discussion_judge(fresh, parts, member_actors)
+        r = {**j, "picked": [f"{parts[i][0]}{'（' + parts[i][1] + '）' if parts[i][1] else ''}" for i in j["picked"]], "fresh": len(fresh)}
+    out(r, a.json, lambda x: print(f"下一轮叫：{'、'.join(x['picked'])}\n{x['why']}（上次裁判后有 {x['fresh']} 条新发言）"))
+
+
+def cmd_discuss(a):
+    # Participants: `kind` or `kind:model`, repeated as often as wanted (claude:opus,claude:haiku,codex).
+    parts = discuss_parts(a.with_)
     if not parts:
         raise SystemExit("要指定参加讨论的 Agent：--with codex,claude 或 claude:opus,claude:haiku")
     # The leader: one of the members (kind[:model]); it speaks last each round, and the
@@ -6012,7 +6124,8 @@ def cmd_discuss(a):
     state["task"] = a.task
     settings = settings_load() if not tui else {}
     members = state.setdefault("members", {})
-    panes, missing, skipped, timing = {}, [], [], []
+    member_actors = {KIND_ACTOR.get(k, k) for k, _ in parts}
+    panes, missing, skipped, idle, timing, judges = {}, [], [], [], [], []
     import threading
     t_start = time.time()
     for r in range(1, max(1, a.rounds) + 1):
@@ -6022,7 +6135,18 @@ def cmd_discuss(a):
         thread_text = discussion_thread(issue, now)
         images = discussion_images(issue.get("description"), *[c.get("text") for c in disc_now])
         results = {}
-        live = None if tui else DiscussionLive(a.task, r, [(f"{kind}{'（' + model + '）' if model else ''}", kind) for kind, model in parts])
+        # The cheap referee (no model call): once the members have spoken, a round only wakes
+        # who was @'d or named-and-questioned in what was said since the last round; a fresh
+        # line from a person that names nobody, or --everyone, calls the whole group.
+        judge = None
+        if not tui and not getattr(a, "everyone", False) and any(c.get("author") in member_actors for c in disc_now):
+            judged = set(state["judged"]) if isinstance(state.get("judged"), list) else set().union(*[set(m.get("seen") or []) for m in members.values()]) if members else set()
+            judge = discussion_judge([c for c in disc_now if c.get("id") not in judged], parts, member_actors)
+            judges.append({"round": r, **judge, "picked": [f"{parts[i][0]}{'（' + parts[i][1] + '）' if parts[i][1] else ''}" for i in judge["picked"]]})
+            if not a.json:
+                print(f"· 第 {r} 轮裁判：{judge['why']}")
+        chosen = set(judge["picked"]) if judge else set(range(len(parts)))
+        live = None if tui else DiscussionLive(a.task, r, [(f"{kind}{'（' + model + '）' if model else ''}", kind) for i, (kind, model) in enumerate(parts) if i in chosen], judge=judges[-1] if judge else None)
 
         def run_tui(i, kind, model, who):
             prompt = discuss_prompt(a.task, title, r, a.question, topic=topic, project=project, who=who)
@@ -6040,6 +6164,7 @@ def cmd_discuss(a):
 
         def run_headless(i, kind, model, who):
             claude = kind == "claude"   # claude reads pictures itself with Read; codex/pi get them attached
+            thinking = DISCUSS_PI_THINKING if kind == "pi" else ""
             key = f"{kind}:{model}#{i}"
             mem = members.get(key) or {}
             system = discussion_system(who, kind, settings) + ("你是这场讨论的领队：每轮最后发言，先看完其他人说的，再归纳分歧、给出你的决定和下一步；闲聊时不用归纳。" if i == leader_i else "")
@@ -6051,12 +6176,12 @@ def cmd_discuss(a):
                 fresh_cs = [c for c in disc_now if c.get("id") not in seen]
                 imgs = discussion_images(*[c.get("text") for c in fresh_cs])
                 prompt = headless_followup_prompt(a.task, r, discussion_lines(fresh_cs), who, a.question, images=imgs if claude else ())
-                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else imgs, system=system, session=mem["session"], resume=True, on_event=on_event)
+                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else imgs, system=system, session=mem["session"], resume=True, on_event=on_event, thinking=thinking)
                 if res["error"] and not res["text"]:
                     resumed = False   # the session is gone (or the CLI could not resume it): start over with the whole thread
             if not resumed:
                 prompt = headless_prompt(a.task, title, r, thread_text, who, a.question, topic=topic, project=project, images=images if claude else ())
-                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else images, system=system, on_event=on_event)
+                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else images, system=system, on_event=on_event, thinking=thinking)
             res["resumed"] = resumed
             # The statement lands on the board the moment it is ready, so the app shows the
             # quick members while the slow one is still thinking.
@@ -6083,6 +6208,8 @@ def cmd_discuss(a):
         threads = []
         for i, (kind, model) in enumerate(parts):
             who = f"{kind}{'（' + model + '）' if model else ''}"
+            if i not in chosen:
+                results[i] = ("idle", who); continue
             use_tui = tui or kind not in HEADLESS_KINDS
             threads.append((i, use_tui, threading.Thread(target=run_tui if use_tui else run_headless, args=(i, kind, model, who), daemon=True)))
         for i, use_tui, t in threads:
@@ -6094,7 +6221,7 @@ def cmd_discuss(a):
         for i, _, t in threads:
             if i != leader_i:
                 t.join()
-        if leader_i >= 0:
+        if leader_i in chosen:
             now = bd_comments(a.task)
             disc_now = discussion_of(now)
             thread_text = discussion_thread(issue, now)
@@ -6102,6 +6229,7 @@ def cmd_discuss(a):
             t = next(t for i, _, t in threads if i == leader_i)
             t.start(); t.join()
         if not tui:
+            state["judged"] = sorted(x for x in seen_before if x)   # next round's referee looks at what was said from here on
             discussion_state_save(a.task, state)
         if live:
             live.finish()
@@ -6111,6 +6239,11 @@ def cmd_discuss(a):
             actor = KIND_ACTOR.get(kind, kind)
             if not row:
                 missing.append({"who": kind, "round": r, "reason": "没有结果"}); continue
+            if row[0] == "idle":
+                idle.append({"who": row[1], "round": r})
+                if not a.json:
+                    print(f"· 第 {r} 轮 {row[1]} 没被点名，不叫")
+                continue
             if row[0] == "headless":
                 _, who, res = row
                 timing.append({"who": who, "round": r, "secs": res["secs"], "resumed": res.get("resumed", False), "prompt_chars": res.get("prompt_chars", 0), "usage": res.get("usage") or {}})
@@ -6158,7 +6291,7 @@ def cmd_discuss(a):
         for m in missing:
             sh(["bd", "comments", "add", a.task, f"【系统】{m['who']} 第 {m['round']} 轮没有发言：{m['reason']}"], env={"BEADS_ACTOR": "dispatch"})
     elapsed = round(time.time() - t_start, 1)
-    result = {"task": a.task, "participants": [f"{k}{':' + m if m else ''}" for k, m in parts], "missing": missing, "skipped": skipped, "rounds": a.rounds, "mode": "tui" if tui else "headless",
+    result = {"task": a.task, "participants": [f"{k}{':' + m if m else ''}" for k, m in parts], "missing": missing, "skipped": skipped, "idle": idle, "judge": judges, "rounds": a.rounds, "mode": "tui" if tui else "headless",
               "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic, "elapsed": elapsed, "timing": timing, "quiet_rounds": state.get("quiet_rounds", 0), "leader": {"kind": lead_kind, "model": lead_model} if lead_kind else None}
     try:
         import notify
@@ -6437,7 +6570,8 @@ def main():
     s = sub.add_parser("discuss-live", help="what each discussion member is doing right now (the typing bubbles): discussions/<task>.live.json"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_live)
     s = sub.add_parser("discuss-conclude", help="write (replace) the discussion's conclusion — one block in the task's description"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_conclude)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)
-    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--leader", default="", help="the leader, kind[:model] (added to the members if missing): speaks last each round, writes the conclusion and the document, gets the hand-off by default"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
+    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--leader", default="", help="the leader, kind[:model] (added to the members if missing): speaks last each round, writes the conclusion and the document, gets the hand-off by default"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--everyone", action="store_true", help="skip the referee: every member speaks this round (by default, once the members have spoken, a round only wakes who was @'d or named-and-questioned since the last round)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
+    s = sub.add_parser("discuss-judge", help="dry run of the discussion referee: who the next round would wake, and why"); s.add_argument("task"); s.add_argument("--with", dest="with_", required=True, help="the members, as for discuss"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_judge)
     s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
     s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])
