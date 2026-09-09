@@ -2658,6 +2658,29 @@ def cmd_review(a):
     print(f"{a.task} 复核已记录：{a.verdict}")
 
 
+def parent_autoclose(tid, issue):
+    """Close the parent of a split when every child is closed; returns a note for the caller."""
+    parents = [d for d in issue.get("dependencies") or [] if (d.get("dependency_type") or "parent-child") == "parent-child"]
+    for p in parents:
+        pid = p.get("id")
+        if not pid:
+            continue
+        par = bd_json(["show", pid, "--json"])
+        if not par.get("id") or par.get("status") == "closed":
+            continue
+        kids = [d for d in par.get("dependents") or [] if (d.get("dependency_type") or "parent-child") == "parent-child"]
+        open_kids = [k for k in kids if k.get("status") != "closed" and k.get("id") != tid]
+        if open_kids:
+            continue
+        unchecked = (par.get("acceptance_criteria") or "").count("- [ ]")
+        if unchecked:
+            sh(["bd", "comments", "add", pid, f"子任务已全部完成（最后一个 {tid}）；父任务还有 {unchecked} 项验收没勾，请核对后关闭。"])
+            return f"父任务 {pid} 的子任务已全部完成，等你核对验收后关闭"
+        bd_json(["close", pid, "--reason", f"子任务全部完成（最后一个 {tid}），自动关闭。", "--json"])
+        return f"父任务 {pid} 已随之关闭"
+    return ""
+
+
 def cmd_done(a):
     """Close a task; verification and optional peer review are separate from completion."""
     reason = a.reason
@@ -2694,6 +2717,9 @@ def cmd_done(a):
                     commits.append(o.strip())
         if commits:
             sh(["bd", "comments", "add", a.task, "提交：\n" + "\n".join(commits[:20])])
+    # A child of a split: when it was the last open sibling, the parent is done too — unless the
+    # parent still has unchecked acceptance items, in which case it only gets a nudge.
+    parent_msg = parent_autoclose(a.task, issue)
     msg = f"{a.task} 已完成" + ("（已核验）" if a.verified else "（未核验，详见完成说明）")
     if getattr(a, "review_by", None):
         msg += f"；等待 {a.review_by} 复核（不会自动启动 Agent）"
@@ -2701,6 +2727,8 @@ def cmd_done(a):
         msg += f"；后续任务：{', '.join(created)}"
     if retro_key:
         msg += f"；复盘已入知识库 {retro_key}"
+    if parent_msg:
+        msg += "；" + parent_msg
     if commits:
         msg += f"；关联提交 {len(commits)} 个"
     elif root:
