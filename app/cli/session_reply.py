@@ -124,9 +124,22 @@ def herdr_target(d, ref, require_idle=True):
         processes = r.get('result', {}).get('process_info', {}).get('foreground_processes', [])
         if not any(p.get('pid') == pid for p in processes):
             continue
-        if require_idle and pane.get('agent_status') not in ('idle', 'done'):
-            reason = '原会话正在等待权限确认，请打开电脑屏幕处理。' if pane.get('agent_status') == 'blocked' else 'Agent 正在执行，请等本轮结束后发送。'
-            raise Rejected(reason)
+        if pane.get('agent_status') == 'blocked':
+            raise Rejected('原会话正在等待权限确认，请打开电脑屏幕处理。')
+        # Herdr's status lags (pi looks idle while its bash tool runs); the hook record is the
+        # other witness. Busy if either says so.
+        busy = pane.get('agent_status') not in ('idle', 'done') or rec.get('state') == 'working'
+        if not busy:
+            # Third witness: the transcript itself (a turn with no final reply yet).
+            try:
+                from activity import activity_list
+                row = next((a for a in activity_list(d.HOME, d.DISPATCH_DIR, d.load_index()) if a.get('session_id') == ref['session_id']), None)
+                busy = bool(row and row.get('state') == 'working' and not row.get('stale'))
+            except Exception:
+                pass
+        pane = dict(pane, busy=busy)
+        if require_idle and pane['busy']:
+            raise Rejected('Agent 正在执行，请等本轮结束后发送。')
         return pane
     raise Rejected('无法确认原会话所在的终端。请在电脑上恢复原会话后重新连接。')
 
@@ -143,8 +156,11 @@ def target(d, ref):
             ipc.owner(ref['session_id'])
         return {'kind': 'codex-desktop', 'label': '回复到原 Codex 会话'}
     if ref['agent'] in ('claude-code', 'pi', 'codex'):
-        pane = herdr_target(d, ref)
-        return {'kind': 'herdr', 'pane': pane, 'label': '回复到电脑上的原会话'}
+        # A working agent can still take a message: the TUIs queue typed input for the next turn,
+        # and Esc interrupts the current one — the app offers both.
+        pane = herdr_target(d, ref, require_idle=False)
+        working = bool(pane.get('busy'))
+        return {'kind': 'herdr', 'pane': pane, 'working': working, 'label': 'Agent 正在执行：可以排队（本轮结束就看到）或打断' if working else '回复到电脑上的原会话'}
     raise Rejected('此 Agent 暂未提供直接回复接口。可打开电脑屏幕继续对话。')
 
 
@@ -180,12 +196,12 @@ def status(d, ref):
         receipts = [dict(r) for r in db.execute('SELECT id,text,state,note,created FROM replies WHERE sid=? AND agent=? ORDER BY created DESC LIMIT 10', (ref['session_id'], ref['agent']))]
     try:
         t = target(d, ref)
-        return dict(available=True, label=t['label'], receipts=receipts)
+        return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts)
     except Exception as e:
         return dict(available=False, label=str(e) if isinstance(e, Rejected) else '暂时无法连接原 Agent，请重新连接。', receipts=receipts)
 
 
-def submit(d, ref, text, request_id):
+def submit(d, ref, text, request_id, mode='queue'):
     if not text.strip() or len(text) > 16000:
         raise Rejected('请输入回复，最多 16000 字。')
     try:
@@ -213,14 +229,19 @@ def submit(d, ref, text, request_id):
             with closing(DesktopIPC(d.HOME)) as ipc:
                 note = ipc.send(ref, text, request_id)
         else:
-            pane = herdr_target(d, ref)
+            pane = herdr_target(d, ref, require_idle=False)
             focus = d.herdr(None, ['tab', 'focus', pane['tab_id']])
             if focus.get('error'):
                 raise Rejected('无法连接原终端，消息未发送。')
             # Focusing cannot select the target: it must still match the same PID.
-            check = herdr_target(d, ref)
+            check = herdr_target(d, ref, require_idle=False)
             if check['pane_id'] != pane['pane_id']:
                 raise Rejected('会话位置发生变化，消息未发送，请重试。')
+            busy = bool(check.get('busy'))
+            if busy and mode == 'interrupt':
+                # Esc stops the current turn in Claude Code, Codex and pi; give the TUI a moment to settle.
+                d.herdr(None, ['agent', 'send-keys', pane['pane_id'], 'esc'])
+                time.sleep(1.2)
             result = d.herdr(None, ['agent', 'prompt', pane['pane_id'], text], timeout=15)
             if result.get('error'):
                 err = result['error']
@@ -229,7 +250,7 @@ def submit(d, ref, text, request_id):
                 raise RuntimeError('终端未确认收到消息')
             if 'result' not in result:
                 raise RuntimeError('终端未确认收到消息')
-            note = '已送达原终端会话'
+            note = ('已打断并送达，Agent 会先处理这条' if mode == 'interrupt' else '已排队，本轮结束后 Agent 就会看到') if busy else '已送达原终端会话'
     except Rejected as e:
         state, note = 'failed', str(e)
     except Exception:
@@ -354,5 +375,5 @@ def command(d, a):
     else:
         import sys
         text = sys.stdin.read(16001)
-        result = submit(d, ref, text, a.request)
+        result = submit(d, ref, text, a.request, mode=getattr(a, 'mode', 'queue') or 'queue')
     d.out(result, a.json, lambda x: print(json.dumps(x, ensure_ascii=False)))

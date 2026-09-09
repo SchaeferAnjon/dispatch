@@ -3,7 +3,7 @@ import type { Api } from '../api';
 import type { SessionRef, TimelineMsg } from '../types';
 
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number }
-interface Connection { available: boolean; label: string; receipts: Receipt[] }
+interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[] }
 export interface SlashCommand { name: string; description: string; kind: 'builtin' | 'skill' | 'command' }
 const KIND_LABEL: Record<SlashCommand['kind'], string> = { builtin: '命令', skill: '技能', command: '自定义' };
 /** The draft is a lone `/word` (no argument yet): that word is the menu query. */
@@ -89,7 +89,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     document.addEventListener('focusin', resize); document.addEventListener('focusout', resize);
     return () => { viewport?.removeEventListener('resize', resize); viewport?.removeEventListener('scroll', resize); document.removeEventListener('focusin', resize); document.removeEventListener('focusout', resize); document.body.classList.remove('reply-keyboard'); document.documentElement.style.removeProperty('--reply-viewport'); };
   }, []);
-  const send = async () => {
+  const send = async (mode: 'queue' | 'interrupt' = 'queue') => {
     const text = draft.trim();
     if (locked.current || !text || !connection?.available) return;
     locked.current = true; setBusy(true); setError('');
@@ -97,7 +97,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     attempt.current = request;
     try { sessionStorage.setItem(storageKey+':attempt',JSON.stringify(request)); } catch { /* private browser */ }
     try {
-      const r = readJson<Receipt>(await api.on(host, ['reply', 'send', session.session_id, '--agent', session.agent, '--request', request.id, '--json'], text));
+      const r = readJson<Receipt>(await api.on(host, ['reply', 'send', session.session_id, '--agent', session.agent, '--request', request.id, '--mode', mode, '--json'], text));
       if (r.state === 'accepted') { try { if ((sessionStorage.getItem(storageKey)||'').trim()===text) sessionStorage.removeItem(storageKey); } catch { /* private browser */ } forgetAttempt(); }
       if (!alive.current) return;
       setReceipt(r);
@@ -127,7 +127,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
         </li>)}
       </ul>}
       {query !== null && commands === null && <div className="reply-slash reply-slash-loading">正在读取可用命令…</div>}
-      <textarea ref={textarea} aria-label="回复内容" placeholder="在这里回复，继续这个会话…" value={draft} maxLength={16000} rows={2} disabled={busy || !!unknown}
+      <textarea ref={textarea} aria-label="回复内容" placeholder={connection?.working ? "它在跑，也可以说话：排队等本轮结束，或打断让它马上看" : "在这里回复，继续这个会话…"} value={draft} maxLength={16000} rows={2} disabled={busy || !!unknown}
         onChange={e => { setDraft(e.target.value); if (receipt?.state === 'failed') setReceipt(null); }}
         onKeyDown={e => {
           if (e.nativeEvent.isComposing) return;
@@ -138,7 +138,8 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
           else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(menu[Math.min(cursor, menu.length - 1)]); }
           else if (e.key === 'Escape') { e.preventDefault(); setMenuClosed(draft); }
         }} />
-      <button className="btn primary" type="submit" disabled={busy || !draft.trim() || !connection?.available || !!unknown}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : '发送'}</button>
+      {connection?.working && <button className="btn" type="button" disabled={busy || !draft.trim() || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title="先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导">打断并发送</button>}
+      <button className="btn primary" type="submit" disabled={busy || !draft.trim() || !connection?.available || !!unknown} title={connection?.working ? '排进队列，本轮结束 Agent 就会看到' : undefined}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : connection?.working ? '排队发送' : '发送'}</button>
     </form>
     {(error || unknown || last?.state==='failed') && <div className="reply-error" role="alert">{error || last?.note}{unknown && <><button className="link" onClick={() => { setReceipt(null); void load(); }}>检查送达状态</button><button className="link" onClick={()=>{setDismissed(last.id);forgetAttempt();setError('');}}>已核对，继续编辑</button></>}</div>}
   </section>;
