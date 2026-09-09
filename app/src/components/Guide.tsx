@@ -85,7 +85,7 @@ export function OverviewView({ stats, onGo, onTour, onSetup }: { stats: Overview
         <ul>
           <li><b>右键</b>任何东西：任务、会话、项目、技能、文件、机器，都有它自己的操作；空白处右键是本页的操作。</li>
           <li><b>⌘K</b> 搜项目、会话、任务；<b>⌘N</b> 新建会话；<b>⌘T</b> 新任务；<b>⌘R</b> 刷新。</li>
-          <li><b>手机</b>：设置或工作台里复制「手机访问」链接，连上 Tailscale 后用浏览器打开，可添加到主屏幕；「看屏幕」能看并操作这台电脑。</li>
+          <li><b>手机</b>：连上 Tailscale 后，用相机扫设置页「手机访问」里的二维码，或复制那里的链接用浏览器打开，可添加到主屏幕；「看屏幕」能看并操作这台电脑。</li>
           <li><b>两台电脑</b>：第二台装好后在首次设置里「接入」第一台，任务板、规则、技能就是同一份；会话可以右键「迁移到另一台」接着做。</li>
           <li><b>Agent 怎么知道这些</b>：每个新会话开头会收到 <code>dispatch prime</code> 注入的身份、当前项目任务和相关知识；它用 <code>dispatch begin / log / done</code> 记任务，用 <code>dispatch wiki</code> 记坑。</li>
         </ul>

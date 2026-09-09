@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 import { isTauri } from "../api";
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; phoneQr?: string; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, onScreen, screenReady, hosts = [], onSetup, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, phoneQr, onScreen, screenReady, hosts = [], onSetup, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   // The version line should not read "v…" forever: look it up once when the page opens.
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -79,9 +79,9 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
           <div><b>外观</b><p>只影响这台电脑上的 Dispatch 窗口。</p></div>
           <select value={theme} onChange={(e) => onTheme(e.target.value as Theme)} aria-label="外观"><option value="">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
         </label>
-        {onPhone && <div className="settings-row">
-          <div><b>手机访问</b><p>复制 dispatch serve 的链接；手机连上 Tailscale 后用浏览器打开，可以添加到主屏幕。</p></div>
-          <button className="btn sm" onClick={onPhone}>复制链接</button>
+        {(onPhone || phoneQr) && <div className="settings-row">
+          <div><b>手机访问</b><p>手机连上 Tailscale 后，用相机扫下面的二维码就能打开网页版（二维码里带着登录令牌，扫一次就记住）；也可以复制链接发到手机，能添加到主屏幕。</p>{phoneQr ? <div className="settings-qr" dangerouslySetInnerHTML={{ __html: phoneQr }} /> : null}</div>
+          {onPhone && <button className="btn sm" onClick={onPhone}>复制链接</button>}
         </div>}
         {onScreen && <div className="settings-row">
           <div><b>屏幕访问</b><p>{screenReady ? "手机连上 Tailscale 后，用浏览器打开这个链接就能看到并操作这台电脑的屏幕（noVNC），登录用这台 Mac 的用户名和密码。" : "还没配置：先打开 系统设置 → 通用 → 共享 → 屏幕共享，再在 Agent 状态页按提示跑一次 novnc-setup；配好后这里能复制链接。"}</p></div>

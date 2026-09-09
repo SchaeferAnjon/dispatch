@@ -5,6 +5,8 @@ CLI call here (`bd … --json` / `dispatch … --json`), exactly like the Tauri 
 
     dispatch serve            # foreground; prints the URL with the token
     dispatch serve url        # just the URL (for the phone)
+    dispatch serve qr         # the same URL as a scannable QR in the terminal
+    dispatch serve qr --svg   # the QR as SVG (the settings page embeds it)
 
 Config: ~/tasks/.dispatch/serve.json {token, bind, port, actor}. Binds to the Tailscale
 address by default (fallback: LAN address); never to 0.0.0.0 unless bind says so.
@@ -339,6 +341,17 @@ def main():
     ip = bind_address(conf)
     if len(sys.argv) > 1 and sys.argv[1] == "url":
         print(url(conf, ip))
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "qr":
+        # The settings page embeds the same QR as SVG; the terminal gets half blocks.
+        sys.path.insert(0, HERE)
+        import qr as qrlib
+        code = qrlib.matrix(url(conf, ip))
+        if "--svg" in sys.argv[2:]:
+            print(qrlib.render_svg(code))
+        else:
+            print(qrlib.render_blocks(code))
+            print(f"\n手机相机扫这个二维码，或在手机上打开：{url(conf, ip)}")
         return
     if not os.path.isfile(os.path.join(DIST, "index.html")):
         sys.exit(f"没有构建产物 {DIST}/index.html：先在 app/ 里 npm run build")

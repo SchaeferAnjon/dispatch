@@ -644,7 +644,9 @@ def cmd_agent(a):
 
 def cmd_serve(a):
     import runpy
-    sys.argv = ["serve"] + (["url"] if a.what == "url" else [])
+    what = getattr(a, "what", "run")
+    args = ["url"] if what == "url" else (["qr"] + (["--svg"] if getattr(a, "svg", False) else [])) if what == "qr" else []
+    sys.argv = ["serve"] + args
     runpy.run_path(os.path.join(os.path.dirname(os.path.realpath(__file__)), "serve.py"), run_name="__main__")
 
 
@@ -4977,7 +4979,7 @@ def main():
     s.add_argument("--extra", default="", help="start: extra args for the agent CLI, as one quoted string (e.g. --extra '--effort high')")
     s.add_argument("--auto", action="store_true", help="start: unattended mode (Codex bypasses sandbox approvals, Claude skips permissions); implied by --task")
     s.set_defaults(fn=cmd_agent)
-    s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link"); s.add_argument("what", nargs="?", choices=["run", "url"], default="run"); s.set_defaults(fn=cmd_serve)
+    s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link, `serve qr` prints a scannable QR"); s.add_argument("what", nargs="?", choices=["run", "url", "qr"], default="run"); s.add_argument("--svg", action="store_true", help="qr: print SVG instead of terminal blocks"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)

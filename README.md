@@ -34,7 +34,7 @@ npm run tauri build
 
 任务板功能额外依赖 [Beads](https://github.com/steveyegge/beads) 和 Dolt。按 Beads 文档完成安装和初始化；默认任务目录为 `~/tasks/.beads`，可通过 `BEADS_DIR` 指定。会话、附件和指令检查不需要模型 API Key，也不需要先建立任务板。
 
-若要在终端使用 CLI，可将 `app/cli/dispatch.py` 链接到 `~/.local/bin/dispatch`。查看手机地址运行 `dispatch serve url`；服务运行方式与限制见 [app/README.md](app/README.md)。手机需能访问运行服务的电脑，不能直接把服务暴露到公网。
+若要在终端使用 CLI，可将 `app/cli/dispatch.py` 链接到 `~/.local/bin/dispatch`。查看手机地址运行 `dispatch serve url`，在终端显示可扫的二维码运行 `dispatch serve qr`；服务运行方式与限制见 [app/README.md](app/README.md)。手机需能访问运行服务的电脑，不能直接把服务暴露到公网。
 
 ```sh
 dispatch rules inspect --json

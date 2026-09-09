@@ -278,6 +278,20 @@ class ServeSymlink(unittest.TestCase):
                 dispatch.cmd_serve(SimpleNamespace(what='url'))
             run.assert_called_once_with(os.path.realpath(os.path.join(root,'cli','serve.py')),run_name='__main__')
 
+    def test_qr_passes_the_svg_flag(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with patch.object(sys,'argv',['dispatch']), patch('runpy.run_path'):
+            dispatch.cmd_serve(SimpleNamespace(what='qr', svg=True))
+            self.assertEqual(sys.argv, ['serve','qr','--svg'])
+
+    def test_qr_without_svg_prints_terminal_blocks(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with patch.object(sys,'argv',['dispatch']), patch('runpy.run_path'):
+            dispatch.cmd_serve(SimpleNamespace(what='qr', svg=False))
+            self.assertEqual(sys.argv, ['serve','qr'])
+
 
 class FactsSections(unittest.TestCase):
     DOC = "# 常用信息\n\n> 说明\n\n## 通用\n\n- 机器 A\n\n## relecture（ReLecture · 重讲）\n\n- 域名 relecture.app\n\n## ReadOut\n\n- 手机阅读\n\n## 空节\n"

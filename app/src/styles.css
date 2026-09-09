@@ -517,6 +517,8 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .settings-row p{margin:4px 0 0;color:var(--ink-3);font-size:12px;line-height:1.5}
 .settings-num{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .settings-num input{width:72px;text-align:right}
+.settings-qr{margin-top:10px;display:inline-block;padding:8px;background:#fff;border:1px solid var(--line);border-radius:10px;line-height:0}
+.settings-qr svg{display:block;width:176px;height:176px}
 .settings-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .home-projects{display:flex;flex-direction:column;gap:14px}
 .home-project{border:1px solid var(--line);border-radius:14px;background:var(--win);box-shadow:var(--card-shadow);padding:14px 18px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}

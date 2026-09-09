@@ -543,6 +543,15 @@ export default function App() {
   const startAgent = async (i: AgentStartInput) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; };
 
   const phoneLink = isTauri && api ? async () => { try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say(/100\.\d+\.\d+\.\d+/.test(url) ? "手机访问链接已复制。手机先连上 Tailscale 再用浏览器打开；链接自带登录令牌，不用输密码，可添加到主屏幕" : "手机访问链接已复制。手机和电脑要在同一个网络里；链接自带登录令牌，不用输密码"); } catch (e) { say(String(e), true); } } : undefined;
+  // The settings page shows the same QR the terminal prints; the CLI owns the encoding, so
+  // fetch it only when that page is open (this also creates serve.json on first use).
+  const [phoneQr, setPhoneQr] = useState("");
+  useEffect(() => {
+    if (view !== "settings" || !isTauri || !api) return;
+    let alive = true;
+    void api.on("local", ["serve", "qr", "--svg"]).then((svg) => { if (alive) setPhoneQr(svg.trim()); }).catch(() => {});
+    return () => { alive = false; };
+  }, [view, api]);
 
   // Every conversation a row can stand for, by activity key, for the global right-click.
   const sessionByKey = useMemo(() => {
@@ -684,7 +693,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} summaryProviders={summaryProviders} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} summaryProviders={summaryProviders} onPhone={phoneLink} phoneQr={phoneQr} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "overview" && <OverviewView stats={{ projects: projects.filter((p) => p.name).length, inbox: counts.inbox, sessions: projectRows.length, running: runningSessions, tasks: issuesF.length, open: issuesF.filter((i) => i.status !== "closed").length, agentsOnline: agents.filter((a) => a.online).length, agentsTotal: agents.length, skills: skillCount, wiki: wikiCount, hosts: Math.max(1, hosts.length), rulesSynced: null, version: update?.current ?? "" }} onGo={(v) => (v === "board" ? allTasks() : setView(v))} onTour={() => setTour(true)} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

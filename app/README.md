@@ -1,6 +1,6 @@
 # Dispatch
 
-会话工作台，使用 Tauri、React 和本机 `dispatch` CLI。网页端通过同一套 CLI 读取数据，手机可以连接 `dispatch serve url` 给出的地址。
+会话工作台，使用 Tauri、React 和本机 `dispatch` CLI。网页端通过同一套 CLI 读取数据，手机可以连接 `dispatch serve url` 给出的地址，或在设置页「手机访问」扫二维码直接打开。
 
 ## 使用逻辑
 
