@@ -1,7 +1,8 @@
 """One-paragraph summary of a conversation, written by a model (`dispatch session-summary`).
 
 Uses whatever chat API key `dispatch env` already holds — DeepSeek, 智谱 GLM, Kimi,
-MiniMax, OpenAI — through the OpenAI-compatible chat endpoint each of them offers.
+MiniMax, OpenAI — through the OpenAI-compatible chat endpoint each of them offers, or the
+Claude Code subscription through `claude -p` (`SUMMARY_MODEL=claude:haiku`).
 `SUMMARY_MODEL=<provider>:<model>` in `dispatch env` picks one explicitly. The result is
 stored in the session's preferences (next to starred/archived), so every view shows it
 and it is not recomputed until the conversation moves on.
@@ -23,17 +24,27 @@ PROMPT = ("你是会话记录的总结者。下面是用户和一个编程 Agent
           "只写事实，不评价，不用「用户」「Agent」之外的称呼，不加标题、不用列表、不用引号。")
 
 
+CLAUDE_BIN = next((p for p in (os.path.join(D.HOME, ".local", "bin", "claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude") if os.path.exists(p)), "")
+
+
 def provider():
+    """Which model writes summaries. `SUMMARY_MODEL=claude:haiku` (or sonnet / a full model id)
+    runs `claude -p` on the Claude Code subscription — no API key, counts against its usage
+    limits, a few seconds per call. Otherwise the first API key found, 智谱 first."""
     env = {i["name"]: i["value"] for i in D.env_read()}
     pick = env.get("SUMMARY_MODEL", "")
     if pick and ":" in pick:
         pid, model = pick.split(":", 1)
+        if pid == "claude" and CLAUDE_BIN:
+            return {"id": "claude", "base": "", "model": model or "haiku", "key": ""}
         for key, p, base, _ in PROVIDERS:
             if p == pid and env.get(key):
                 return {"id": p, "base": base, "model": model, "key": env[key]}
     for key, p, base, model in PROVIDERS:
         if env.get(key):
             return {"id": p, "base": base, "model": model, "key": env[key]}
+    if CLAUDE_BIN:
+        return {"id": "claude", "base": "", "model": "haiku", "key": ""}
     return None
 
 
@@ -64,6 +75,15 @@ def transcript_excerpt(key, limit=12000):
 
 
 def chat(p, system, user, timeout=90):
+    if p["id"] == "claude":
+        # Headless Claude Code: the prompt is the system text, the transcript comes on stdin.
+        # Strip the session markers so a summary started from inside a Claude session still saves nothing odd.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+        env["PATH"] = D.PATH_EXTRA + ":" + env.get("PATH", "")
+        r = subprocess.run([CLAUDE_BIN, "-p", system, "--model", p["model"], "--output-format", "text", "--tools", ""], input=user, capture_output=True, text=True, timeout=timeout + 60, env=env, cwd=D.HOME)
+        if r.returncode != 0 and not r.stdout.strip():
+            raise RuntimeError("claude -p 失败：" + (r.stderr or "").strip()[-200:])
+        return r.stdout.strip()
     req_body = {"model": p["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "temperature": 0.2, "max_tokens": 400}
     if p["id"] == "zhipu" and p["model"].startswith("glm-5"):
         # GLM-5 always reasons and spends max_tokens on it; ask for as little as it allows.
@@ -79,7 +99,7 @@ def summarize(key, force=False):
     from activity import set_preferences, session_preferences
     p = provider()
     if not p:
-        raise RuntimeError("没有可用的模型 Key：在 dispatch env 里放 DEEPSEEK_API_KEY / ZHIPU_API_KEY / KIMI_API_KEY / MINIMAX_API_KEY / OPENAI_API_KEY 之一")
+        raise RuntimeError("没有可用的模型：装了 Claude Code 就能用订阅（SUMMARY_MODEL=claude:haiku），或在 dispatch env 里放 DEEPSEEK_API_KEY / ZHIPU_API_KEY / KIMI_API_KEY / MINIMAX_API_KEY / OPENAI_API_KEY 之一")
     excerpt, meta, version = transcript_excerpt(key)
     if meta.get("agent") and meta.get("session_id"):
         key = f"{meta['agent']}:{meta['session_id']}"  # the full key preferences are stored under
@@ -99,7 +119,7 @@ def summarize(key, force=False):
 def main(a):
     if a.op == "provider":
         p = provider()
-        res = {"available": bool(p), **({"id": p["id"], "model": p["model"]} if p else {}), "hint": "" if p else "在 dispatch env 里放 DEEPSEEK_API_KEY / ZHIPU_API_KEY / KIMI_API_KEY / MINIMAX_API_KEY / OPENAI_API_KEY 之一；SUMMARY_MODEL=provider:model 可指定"}
+        res = {"available": bool(p), **({"id": p["id"], "model": p["model"]} if p else {}), "hint": "" if p else "装了 Claude Code 就能用订阅（SUMMARY_MODEL=claude:haiku），或在 dispatch env 里放 DEEPSEEK_API_KEY / ZHIPU_API_KEY / KIMI_API_KEY / MINIMAX_API_KEY / OPENAI_API_KEY 之一；SUMMARY_MODEL=provider:model 可指定"}
     else:
         try:
             res = summarize(a.key, force=a.force)
