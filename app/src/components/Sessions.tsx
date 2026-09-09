@@ -78,7 +78,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
   const [sel, setSel] = useState<string | null>(initialId ?? null);
   useEffect(() => { onSelected?.(sel); }, [sel]);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [tab, setTab] = useState<"timeline" | "activity" | "files" | "tasks" | "attachments" | "subagents">("timeline");
+  const [tab, setTab] = useState<"timeline" | "files" | "tasks" | "attachments" | "subagents">("timeline");
   const [subView, setSubView] = useState<SessionRef["subagents"][number] | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -88,6 +88,9 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
   // 只看结论: your messages plus the last reply of each turn, nothing in between.
   const [brief, setBrief] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tl-brief") === "1"; } catch { return false; } });
   const toggleBrief = () => { setBrief((b) => { try { localStorage.setItem("dispatch-tl-brief", b ? "0" : "1"); } catch { /* ignore */ } return !b; }); };
+  // 实时活动: the tracker's event log docked above the conversation. On by default; the chip hides it.
+  const [liveLog, setLiveLog] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tl-live") !== "0"; } catch { return true; } });
+  const toggleLiveLog = () => { setLiveLog((b) => { try { localStorage.setItem("dispatch-tl-live", b ? "0" : "1"); } catch { /* ignore */ } return !b; }); };
 
   const scroller = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -275,7 +278,6 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
               </details>
               <div className="views session-tabs">
                 <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>对话</button>
-                {current && <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")}>实时活动</button>}
                 <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>图片与产物 {detail.attachments?.length || 0}</button>
                 <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")} title="这段会话改过的文件；目录里其他改动折在下面">文件 {detail.files.length}</button>
                 <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务与成果 {related.length + results.length}</button>
@@ -286,10 +288,16 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                     <span className="kinds" title="怎么看这段对话">
                       <button className={`chip${brief ? " on" : ""}`} onClick={toggleBrief} title="只显示你的问题和每一轮最后的回复，不看思考和工具调用">只看结论</button>
                       <button className={`chip${kinds.tool ? " on" : ""}`} disabled={brief} onClick={() => flip("tool")} title="显示或隐藏工具调用卡片（正在运行的总会显示）">工具调用 <span className="mono muted">{nT}</span></button>
+                      {current && <button className={`chip${liveLog ? " on" : ""}`} onClick={toggleLiveLog} title="在对话上方显示 Agent 正在做的事：工具调用、回复、报错，最新在前">实时活动 <span className="mono muted">{current.events.filter((e) => e.kind !== "result").length}</span></button>}
                     </span>
                   );
                 })()}
               </div>
+              {tab === 'timeline' && current && liveLog && (() => {
+                const ev = current.events.filter((e) => e.kind !== 'result').slice(-40).reverse();
+                const label = (k: string) => k === 'error' ? '执行失败' : k === 'user' ? '你的消息' : k === 'reply' ? 'Agent 回复' : '进展';
+                return <div className="activity-dock" aria-label="实时活动">{ev.length === 0 ? <div className="muted small">还没有记录到活动</div> : ev.map((e) => <div key={e.id} className={`activity-event ${e.kind}`} title={e.text}><span className="muted mono small">{new Date(e.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false })}</span><b>{e.kind === 'tool' ? e.tool : label(e.kind)}</b><span className="t">{e.text}</span></div>)}</div>;
+              })()}
               {tab === 'timeline' && !atLatest && <button className="follow-latest" onClick={latest}>回到最新 ↓{current?.unread ? ' · 有未读回复' : ''}</button>}
               <div className="sess-body" tabIndex={0} aria-label="会话内容" ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>
                 {tab === "timeline" && <SessionThread list={shownTurns} name={a?.name ?? m.agent} running={running} />}
@@ -304,7 +312,6 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   </div>;
                 })()}
                 {tab === "attachments" && <AttachmentList items={detail.attachments || []} />}
-                {tab === "activity" && <div className="activity-log">{[...(current?.events ?? [])].filter(e => e.kind !== 'result').reverse().slice(0,40).map(e => <div key={e.id} className={`activity-event ${e.kind}`}><span className="muted mono small">{new Date(e.ts*1000).toLocaleTimeString('zh-CN',{hour12:false})}</span><div><b>{e.kind === 'tool' ? e.tool : e.kind === 'result' ? '工具返回' : e.kind === 'error' ? '执行失败' : e.kind === 'user' ? '你的消息' : e.kind === 'reply' ? 'Agent 回复' : '进展'}</b><p>{e.text}</p></div></div>)}</div>}
                 {tab === "files" && <h3 className="recorded-files-title">这段会话改过的文件 <span className="muted">{detail.files.length}</span></h3>}
                 {tab === "files" && detail.files.length === 0 && <p className="muted">没有记录到编辑类工具调用；用终端命令改的文件看下方「目录里现在的 git 改动」。</p>}
                 {tab === "files" && detail.files.map((f) => (

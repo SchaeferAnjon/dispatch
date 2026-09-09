@@ -270,7 +270,14 @@ td .t{font-weight:500}
 @media(max-width:760px){.rules-flow{align-items:flex-start;flex-direction:column;padding:8px 12px}.rule-scope{padding:4px 0}.facts-grid.mobile-vaults .facts-sidebar,.facts-grid.mobile-docs .facts-sidebar{display:none}.facts-grid.mobile-vaults .instruction-detail,.facts-grid.mobile-docs .instruction-detail{display:block!important}.facts-grid.mobile-vaults,.facts-grid.mobile-docs{display:flex;flex:1;min-height:0}.instruction-top{flex-wrap:wrap}}
 .session-reply{flex:none;border-top:1px solid var(--line);padding:10px 16px;background:var(--win);min-width:0}
 .reply-connection{display:flex;gap:8px;justify-content:space-between;color:var(--ink-3);font-size:12px;margin-bottom:6px}
-.session-reply form{display:flex;gap:8px;align-items:flex-end}
+.session-reply form{display:flex;gap:8px;align-items:flex-end;position:relative}
+.reply-slash{position:absolute;left:0;right:0;bottom:calc(100% + 6px);margin:0;padding:4px;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);max-height:260px;overflow:auto;z-index:5}
+.reply-slash li{display:flex;gap:10px;align-items:baseline;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:13px;min-width:0}
+.reply-slash li.on{background:var(--panel-2)}
+.reply-slash li b{flex:none;font-weight:600;font-family:var(--mono,ui-monospace,monospace)}
+.reply-slash li span{flex:1;min-width:0;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reply-slash li i{flex:none;font-style:normal;font-size:11px;color:var(--ink-3);border:1px solid var(--line);border-radius:6px;padding:0 5px}
+.reply-slash-loading{padding:8px 12px;font-size:12px;color:var(--ink-3)}
 .session-reply textarea{min-width:0;flex:1;resize:vertical;max-height:160px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--panel);color:var(--ink);font:inherit;line-height:1.45}
 .session-reply .btn{flex:none;min-height:40px}
 .reply-receipt{font-size:13px;padding:6px 10px;margin-bottom:8px;border-radius:6px;background:var(--panel);max-height:100px;overflow:auto}
@@ -1000,11 +1007,15 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
   .host{flex-wrap:wrap;min-width:0}
   .host .mono{font-size:11px}
 }
-.activity-log{display:flex;flex-direction:column}
-.activity-event{display:grid;grid-template-columns:68px minmax(0,1fr);gap:12px;padding:12px 2px;border-bottom:1px solid var(--line);font-size:12px}
-.activity-event b{font-weight:550}
-.activity-event p{margin:5px 0 0;color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+/* 实时活动: the tracker's event log docked under the tabs, newest first, a few rows tall. */
+.activity-dock{flex-shrink:0;max-height:132px;overflow:auto;padding:4px 16px;background:var(--panel);border-bottom:1px solid var(--line);font-size:12px}
+.activity-dock>.muted{padding:6px 0}
+.activity-event{display:grid;grid-template-columns:62px auto minmax(0,1fr);gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line);font-size:12px}
+.activity-event:last-child{border-bottom:0}
+.activity-event b{font-weight:550;white-space:nowrap}
+.activity-event .t{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .activity-event.error b{color:var(--s-block)}
+@media(max-width:760px){.activity-dock{max-height:96px;padding:2px 12px}.activity-event{grid-template-columns:54px auto minmax(0,1fr);gap:6px}}
 .mentioned-tasks{margin-top:12px;border-top:1px solid var(--line);padding-top:12px;font-size:12px}
 .mentioned-tasks summary{cursor:pointer;color:var(--ink-3)}
 .titlebar .crumb button{pointer-events:auto}
