@@ -6,6 +6,7 @@ import { COLUMNS, SOURCE_LABEL, projectColor, actorOf, columnOf, delegatedBy, de
 import type { Column, Host, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 import { linkedSessions } from "../projectModel";
+import { conflictingFiles, recentEdits } from "../activity";
 import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
 
 interface Common { progress?: Record<string, string>; issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
@@ -167,6 +168,8 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
     ] };
   }, [hosts, onDelegate, onCopyText, onOpenUrl]);
   useViewMenuExtras(hosts.filter((h) => h.online).map((h) => ({ label: `在 ${h.name} 派活`, onClick: () => onDelegate(h) })), [hosts]);
+  // Files two live sessions both touched recently: rendered in red under each of them.
+  const conflicts = conflictingFiles(agents.flatMap((a) => a.sessions));
   return (
     <div className="agrid">
       {hosts.length > 0 && (
@@ -229,6 +232,13 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
                   <div className="agent-session-main">
                     <div className="agent-session-title"><span className="proj-name">{s.herdr?.title || r?.title || s.project || "未关联会话记录"}</span><span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{sessionStatus(s)}</span></div>
                     <div className="agent-session-meta"><span>{s.state_source === "transcript" ? "实际会话记录" : s.source_kind === "unknown" ? "来源未识别" : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${ago(s.last_at)}活动` : "尚无活动上报"}</span></div>
+                    {(() => {
+                      const ed = recentEdits(s);
+                      if (!ed.length) return null;
+                      const ordered = [...ed].sort((x, y) => Number(conflicts.has(y.path)) - Number(conflicts.has(x.path)) || y.at - x.at);
+                      const shown = ordered.slice(0, 5);
+                      return <div className="sess-edits" title={ordered.map((e) => e.path).join("\n")}>正在改：{shown.map((e, i) => <span key={e.path} className={conflicts.has(e.path) ? "conflict" : ""} title={`${e.path}${conflicts.has(e.path) ? " · 多个会话在改" : ""}`}>{i > 0 ? "、" : ""}{e.path.split("/").pop()}</span>)}{ordered.length > 5 ? ` 等 ${ordered.length} 个` : ""}</div>;
+                    })()}
                     {(() => { const own = a.current.find(i => linkedSessions(i).includes(s.session_id)); return own ? <button className="link small linked-task" onClick={() => onSelect(own.id)}><span className="mono">{own.id}</span> {own.title}</button> : null; })()}
                   </div>
                   <div className="agent-session-actions"><AdoptButton session={s} compact className="copy-btn" /><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button></div>

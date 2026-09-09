@@ -13,6 +13,7 @@ dispatch claim TASK_ID
 dispatch log TASK_ID "关键进展"
 dispatch done TASK_ID --reason "交付与验证" --verified
 dispatch wiki search "关键词"
+dispatch editing [--dir <cwd>]   # 谁在改哪些文件；两个以上会话改同一个会标冲突
 dispatch wiki add --kind pit "现象" --fix "解法" -P 项目
 dispatch facts get "主题"
 dispatch notify "标题" "正文"          # 想让人知道就推一条：ntfy / Bark（dispatch env 配），没配就本机通知

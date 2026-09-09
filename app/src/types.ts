@@ -156,6 +156,10 @@ export interface Session {
   host?: string;
   host_name?: string;
   remote?: boolean;
+  // Files the session touched recently: `editing` from the hook registry (dispatch sessions),
+  // `files` from the transcript activity snapshot. Absolute paths either way.
+  editing?: { path: string; ts: number }[];
+  files?: Record<string, number>;
 }
 export interface Presence { sessions: Session[]; apps: string[] }
 

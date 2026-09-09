@@ -64,10 +64,10 @@ export function fixtureApi(): Api {
     presence: async () => ({
       apps: ["Claude 桌面端"],
       sessions: [
-        { agent: "claude-code", session_id: "s1", cwd: "/Users/x/Projects/kanban", project: "kanban", agent_pid: 1, source_kind: "terminal", source_app: "Herdr", entrypoint: "cli", started_at: now / 1000 - 3600, last_at: now / 1000 - 30, state: "working", prompts: 14, alive: true, registered: true },
+        { agent: "claude-code", session_id: "s1", cwd: "/Users/x/Projects/kanban", project: "kanban", agent_pid: 1, source_kind: "terminal", source_app: "Herdr", entrypoint: "cli", started_at: now / 1000 - 3600, last_at: now / 1000 - 30, state: "working", prompts: 14, alive: true, registered: true, editing: [{ path: "/Users/x/Projects/kanban/app/src/App.tsx", ts: now / 1000 - 40 }, { path: "/Users/x/Projects/kanban/app/src/components/views.tsx", ts: now / 1000 - 120 }] },
         { agent: "claude-code", session_id: "s2", cwd: "/Users/x/Projects/demo-app", project: "demo-app", agent_pid: 2, source_kind: "terminal", source_app: "Warp", entrypoint: "cli", started_at: now / 1000 - 7200, last_at: now / 1000 - 900, state: "idle", prompts: 6, alive: true, registered: true },
         { agent: "claude-code", session_id: "s3", cwd: "/Users/x/dotfiles", project: "dotfiles", agent_pid: 3, source_kind: "desktop", source_app: "Claude 桌面端", entrypoint: "", started_at: now / 1000 - 600, last_at: now / 1000 - 60, state: "idle", prompts: 2, alive: true, registered: true },
-        { agent: "codex", session_id: "s4", cwd: "/Users/x/Projects/demo-app", project: "demo-app", agent_pid: 4, source_kind: "terminal", source_app: "Terminal", entrypoint: "", started_at: now / 1000 - 2400, last_at: now / 1000 - 120, state: "working", prompts: 9, alive: true, registered: true },
+        { agent: "codex", session_id: "s4", cwd: "/Users/x/Projects/demo-app", project: "demo-app", agent_pid: 4, source_kind: "terminal", source_app: "Terminal", entrypoint: "", started_at: now / 1000 - 2400, last_at: now / 1000 - 120, state: "working", prompts: 9, alive: true, registered: true, editing: [{ path: "/Users/x/Projects/kanban/app/src/App.tsx", ts: now / 1000 - 60 }, { path: "/Users/x/Projects/demo-app/src/main.tsx", ts: now / 1000 - 200 }] },
       ],
     }),
     taskSessions: async (id) => sessionRefs.filter((r) => r.tasks[id]),

@@ -1,8 +1,11 @@
 import importlib.util
+import contextlib
+import io
 import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -176,6 +179,61 @@ class EditGuard(unittest.TestCase):
         self.assertEqual(g.files_of("Edit", {"file_path": "/a/b.ts"}), ["/a/b.ts"])
         self.assertEqual(g.files_of("apply_patch", {"input": "*** Begin Patch\n*** Update File: x/y.py\n@@\n*** Add File: z.md\n*** End Patch"}), ["x/y.py", "z.md"])
         self.assertEqual(g.files_of("Bash", {"command": "ls"}), [])
+
+
+class EditingReport(unittest.TestCase):
+    """`dispatch editing`: per-file aggregation of who changed what, conflicts included."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._orig = dispatch.EDITS_DIR
+        dispatch.EDITS_DIR = os.path.join(self.tmp, "edits")
+        os.makedirs(dispatch.EDITS_DIR)
+        self._real_map = dispatch.session_edit_map
+
+    def tearDown(self):
+        dispatch.EDITS_DIR = self._orig
+
+    def record(self, sid, agent, path, ts=None, name=None):
+        with open(os.path.join(dispatch.EDITS_DIR, (name or sid) + ".json"), "w") as f:
+            json.dump({"file": path, "agent": agent, "session_id": sid, "ts": time.time() if ts is None else ts, "host": "h"}, f)
+
+    def report(self, dir=None, window=30):
+        from types import SimpleNamespace
+        a = SimpleNamespace(dir=dir, window=window, json=True)
+        buf = io.StringIO()
+        # Isolate from the real ~/tasks transcripts; the registry is what we are testing.
+        with patch.object(dispatch, "session_cwd_map", lambda: {}), \
+                patch.object(dispatch, "session_edit_map", lambda w=1800, with_activity=True: self._real_map(w, with_activity=False)):
+            with contextlib.redirect_stdout(buf):
+                dispatch.cmd_editing(a)
+        return json.loads(buf.getvalue())
+
+    def test_two_sessions_on_different_files_are_not_a_conflict(self):
+        now = time.time()
+        self.record("s1", "pi", "/p/a.py", ts=now)
+        self.record("s2", "claude-code", "/p/b.tsx", ts=now - 10)
+        r = self.report()
+        self.assertEqual([f["file"] for f in r["files"]], ["/p/a.py", "/p/b.tsx"])
+        self.assertFalse(any(f["conflict"] for f in r["files"]))
+        self.assertEqual(len(r["sessions"]), 2)
+
+    def test_same_file_from_two_sessions_is_flagged_and_sorted_first(self):
+        self.record("s1", "pi", "/p/a.py", name="a1")
+        self.record("s2", "claude-code", "/p/a.py", name="a2")
+        self.record("s3", "pi", "/p/b.py", name="b1")
+        r = self.report()
+        self.assertEqual(r["files"][0]["file"], "/p/a.py")
+        self.assertTrue(r["files"][0]["conflict"])
+        self.assertEqual(len(r["files"][0]["editors"]), 2)
+        self.assertFalse(r["files"][1]["conflict"])
+
+    def test_stale_records_and_other_directories_are_dropped(self):
+        self.record("s1", "pi", "/p/here/a.py")
+        self.record("s2", "pi", "/other/b.py")
+        self.record("s3", "pi", "/p/old.py", ts=time.time() - 3600, name="old")
+        r = self.report(dir="/p")
+        self.assertEqual([f["file"] for f in r["files"]], ["/p/here/a.py"])
 
 
 class FrontmatterMultiline(unittest.TestCase):

@@ -649,6 +649,8 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .sess .src-ic{width:18px;height:18px;border-radius:4px;display:grid;place-items:center;font-size:11px;background:var(--win);border:1px solid var(--line);color:var(--ink-2)}
 .sess .src-ic.desktop{border-color:var(--cursor);color:var(--cursor)}
 .sess .proj-name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sess-edits{font-family:var(--mono);font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.sess-edits .conflict{color:var(--s-block);font-weight:600}
 .small{font-size:11px}
 .right{text-align:right;white-space:nowrap}
 .kv b{font-weight:500;color:var(--ink-3)}

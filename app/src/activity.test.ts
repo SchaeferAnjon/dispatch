@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canReadReply, activityKey, conversationSummary, conversationProject, mergeActivity, resolveProject, sessionLifecycle } from './activity';
+import { canReadReply, activityKey, conversationSummary, conversationProject, mergeActivity, resolveProject, sessionLifecycle, recentEdits, conflictingFiles } from './activity';
 import type { Activity } from './types';
 const a = { key: 'codex:id', host:'local', unread:true, reply_id:'2:reply' } as Activity;
 describe('read cursor', () => {
@@ -30,6 +30,22 @@ describe('conversation context', () => {
     expect(conversationProject({...a,cwd:'/Users/apple',project:'apple',project_override:'日报'})).toBe('日报');
     expect(conversationProject({...a, cwd:'/Users/apple/Projects/kanban', project:'kanban'})).toBe('kanban');
     expect(conversationProject({...a, cwd:'/Users/apple/Projects/relecture/app', project:'app'})).toBe('relecture');
+  });
+});
+
+describe('recent edits', () => {
+  const now = 1_000_000;
+  it('merges hook and transcript sources inside the window, newest first', () => {
+    const rows = recentEdits({ editing: [{ path: '/p/a.py', ts: now - 60 }], files: { '/p/b.tsx': now - 120, '/p/old.py': now - 3600 } }, now);
+    expect(rows.map((r) => r.path)).toEqual(['/p/a.py', '/p/b.tsx']);
+  });
+  it('flags a file two sessions touched and not one each', () => {
+    const clash = conflictingFiles([
+      { session_id: 's1', files: { '/p/a.py': now - 10 } },
+      { session_id: 's2', editing: [{ path: '/p/a.py', ts: now - 20 }] },
+      { session_id: 's3', files: { '/p/own.tsx': now - 5 } },
+    ], now);
+    expect([...clash]).toEqual(['/p/a.py']);
   });
 });
 

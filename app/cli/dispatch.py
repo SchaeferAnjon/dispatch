@@ -4,6 +4,7 @@
 Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
 
   dispatch sessions                 live Agent sessions (who is running where, busy or waiting)
+  dispatch editing                  files each active session changed in the last 30 min, aggregated per file, with conflicts
   dispatch find <task-id>           sessions whose transcript mentions the task, with resume commands
   dispatch commits <task-id>        git commits of a task (id in the commit message, or hash in its close reason)
   dispatch resume <session|task>    print (or --copy) the command that resumes a session
@@ -758,6 +759,13 @@ def probable_session(idx, agent, cwd, within=6 * 3600):
 
 def cmd_sessions(a):
     s = live_sessions(local_only=getattr(a, "local", False))
+    # The files each session touched, from the hook registry only: cheap enough for the
+    # 5-second presence poll, and it covers agents the transcript index does not parse.
+    edits = session_edit_map(window=30 * 60, with_activity=False)
+    for x in s:
+        rec = edits.get(x.get("session_id"))
+        if rec and rec["files"]:
+            x["editing"] = [{"path": f, "ts": ts} for f, ts in sorted(rec["files"].items(), key=lambda kv: -kv[1])]
 
     def text(s):
         if not s:
@@ -3903,17 +3911,107 @@ def neighbours(cwd, self_id=""):
 EDITS_DIR = os.path.join(DISPATCH_DIR, "edits")
 
 
-def editing_now(session_id, window=30 * 60):
-    """Files this session touched recently (edit-guard registry)."""
-    files, now = [], time.time()
+def session_edit_map(window=30 * 60, with_activity=True):
+    """Recent file edits per session inside `window` seconds.
+
+    Two sources, because neither is complete alone: the edit-guard registry (Pre/PostToolUse
+    hooks — exact timestamp, but only agents that installed the hook) and the incremental
+    transcript index (every Edit/Write a conversation ran, whichever agent). Keyed by
+    session_id; files are absolute paths, values are epoch seconds.
+    """
+    now = time.time()
+    out = {}
+
+    def add(sid, agent, path, ts, source, cwd=""):
+        if not sid or not path:
+            return
+        rec = out.setdefault(sid, {"session_id": sid, "agent": agent or "", "cwd": cwd or "", "files": {}, "source": {}})
+        if agent and not rec["agent"]:
+            rec["agent"] = agent
+        if cwd and not rec["cwd"]:
+            rec["cwd"] = cwd
+        p = os.path.abspath(path)
+        if p not in rec["files"] or ts > rec["files"][p]:
+            rec["files"][p] = ts
+        if source == "edit-guard" or p not in rec["source"]:
+            rec["source"][p] = source
+
     for n in os.listdir(EDITS_DIR) if os.path.isdir(EDITS_DIR) else []:
         try:
             r = json.load(open(os.path.join(EDITS_DIR, n)))
         except Exception:
             continue
-        if r.get("session_id") == session_id and now - r.get("ts", 0) < window:
-            files.append(os.path.basename(r.get("file", "")))
-    return sorted(files)
+        ts = r.get("ts", 0)
+        if now - ts <= window:
+            add(r.get("session_id", ""), r.get("agent", ""), r.get("file", ""), ts, "edit-guard")
+    if with_activity:
+        try:
+            from activity import activity_list
+            for s in activity_list(HOME, DISPATCH_DIR, load_index()):
+                for f, ts in (s.get("files") or {}).items():
+                    if now - ts <= window:
+                        add(s.get("session_id", ""), s.get("agent", ""), f, ts, "activity", s.get("cwd", ""))
+        except Exception:
+            pass
+    return out
+
+
+def session_cwd_map():
+    """session_id → cwd for live sessions (edit-guard records carry no directory)."""
+    m = {}
+    try:
+        for s in live_sessions(local_only=True):
+            sid = s.get("session_id")
+            if sid and s.get("cwd"):
+                m.setdefault(sid, s["cwd"])
+    except Exception:
+        pass
+    return m
+
+
+def _edit_in_dir(rec, cwd):
+    """Same directory or nested below it — matching neighbours(); falls back to the file
+    paths when the session has no recorded cwd."""
+    d = os.path.normpath(cwd)
+    c = os.path.normpath(rec.get("cwd") or "")
+    if c and (c == d or c.startswith(d + os.sep) or d.startswith(c + os.sep)):
+        return True
+    return any(f == d or f.startswith(d + os.sep) for f in rec["files"])
+
+
+def cmd_editing(a):
+    """Who is editing which file right now, and where two sessions landed on the same one."""
+    window = max(1, int(getattr(a, "window", 30))) * 60
+    edits = session_edit_map(window)
+    cwds = session_cwd_map()
+    for rec in edits.values():
+        if not rec["cwd"]:
+            rec["cwd"] = cwds.get(rec["session_id"], "")
+    d = os.path.abspath(os.path.expanduser(a.dir)) if getattr(a, "dir", None) else ""
+    recs = [r for r in edits.values() if r["files"] and (not d or _edit_in_dir(r, d))]
+    by_file = {}
+    for r in recs:
+        for f, ts in r["files"].items():
+            e = by_file.setdefault(f, {"file": f, "editors": []})
+            e["editors"].append({"agent": r["agent"], "session_id": r["session_id"], "cwd": r["cwd"], "ts": ts, "source": r["source"].get(f, "")})
+    for e in by_file.values():
+        e["editors"].sort(key=lambda x: -x["ts"])
+        e["conflict"] = len({x["session_id"] for x in e["editors"]}) > 1
+    files = sorted(by_file.values(), key=lambda e: (not e["conflict"], -max(x["ts"] for x in e["editors"])))
+    recs.sort(key=lambda r: -max(r["files"].values()))
+    sessions = [{"agent": r["agent"], "session_id": r["session_id"], "cwd": r["cwd"],
+                 "files": [f for f, _ in sorted(r["files"].items(), key=lambda kv: -kv[1])]} for r in recs]
+    report = {"window_minutes": window // 60, "dir": d or None, "files": files, "sessions": sessions}
+
+    def text(o):
+        if not o["files"]:
+            print(f"最近 {o['window_minutes']} 分钟没有会话改动文件")
+            return
+        print(f"最近 {o['window_minutes']} 分钟有 {len(o['sessions'])} 个会话改过 {len(o['files'])} 个文件")
+        for e in o["files"]:
+            who = "、".join(f"{x['agent'] or '?'} {x['session_id'][:8]}" for x in e["editors"])
+            print(f"{'⚠ 冲突 ' if e['conflict'] else '   '}{e['file']}  ← {who}")
+    out(report, a.json, text)
 
 
 def quota_for(actor):
@@ -4871,8 +4969,19 @@ def cmd_prime(a):
         lines.append(f"## 同目录在跑（{len(nb)}）")
         for s_ in nb[:6]:
             mark = "◐" if s_.get("state") == "working" else "○"
-            ed = editing_now(s_["session_id"])
-            lines.append(f"{mark} {s_['agent']} {s_['session_id'][:8]} · {'在跑' if s_.get('state') == 'working' else '等用户'} · {(lambda t: t + '活动' if t.startswith('刚刚') else t + '前活动')(ago(s_.get('last_at') or 0))} · 目录 …{(s_.get('cwd') or '')[-28:]}" + (f" · {s_['host_name']}" if s_.get("host") not in (None, "local") else "") + (f" · 正在改：{', '.join(ed[:5])}{'…' if len(ed) > 5 else ''}" if ed else ""))
+            lines.append(f"{mark} {s_['agent']} {s_['session_id'][:8]} · {'在跑' if s_.get('state') == 'working' else '等用户'} · {(lambda t: t + '活动' if t.startswith('刚刚') else t + '前活动')(ago(s_.get('last_at') or 0))} · 目录 …{(s_.get('cwd') or '')[-28:]}" + (f" · {s_['host_name']}" if s_.get("host") not in (None, "local") else ""))
+        # What the neighbours actually have open, from hooks + transcripts: the thing that
+        # stops two agents from writing the same file. Conflicts are called out separately.
+        edits = session_edit_map()
+        per_file = {}
+        for s_ in nb:
+            rec = edits.get(s_["session_id"]) or {}
+            for f, ts in (rec.get("files") or {}).items():
+                per_file.setdefault(f, []).append((s_["session_id"], s_["agent"], ts))
+        if per_file:
+            ordered = sorted(per_file.items(), key=lambda kv: (len({sid for sid, _, _ in kv[1]}) < 2, -max(t for _, _, t in kv[1])))
+            parts = [f"{'⚠' if len({sid for sid, _, _ in eds}) > 1 else ''}{os.path.basename(f)}（{'、'.join(sorted({a for _, a, _ in eds}))}）" for f, eds in ordered[:8]]
+            lines.append(f"同目录 {len(nb)} 个会话最近改了这些文件：{'、'.join(parts)}{'…' if len(ordered) > 8 else ''}。动手前别碰它们正在改的文件，冲突先 `dispatch session <id>` 看它在做什么。")
         lines.append("只改自己任务的文件，commit 按文件 add；看它在干什么 `dispatch session <id>`；认领用 `dispatch claim`。")
     ql, worst = quota_line(actor)
     if ql:
@@ -4930,6 +5039,7 @@ def main():
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("attachment", help="read a file linked in a conversation; --thumbs returns every image as a small thumbnail in one call"); s.add_argument("key"); s.add_argument("ref", nargs="?", default=""); s.add_argument("--thumbs", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
+    s = sub.add_parser("editing", help="files each active session changed in the last 30 min, aggregated per file, with conflicts"); s.add_argument("--dir", help="only sessions working in this directory (default: every directory)"); s.add_argument("--window", type=int, default=30, help="minutes back to look (default 30)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_editing)
     s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
     s = sub.add_parser("project", help="star / archive a project (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
     s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)

@@ -100,12 +100,32 @@ export function mergeActivity(presence: import('./types').Presence, rows: Activi
     const a = rows.find(a => a.session_id === s.session_id && (a.host ?? 'local') === (s.host ?? 'local'));
     if (!a) return s;
     const merged = a.last_at >= s.last_at ? { ...s, title: a.title, state: a.stale ? 'unknown' as const : a.state === 'working' ? 'working' as const : 'idle' as const, last_at: a.last_at, state_source: 'transcript' as const } : s;
+    // The files the conversation wrote travel with the session, so the Agents view can show them.
+    const withFiles = a.files ? { ...merged, files: a.files } : merged;
     // The user's classification travels with the session so every count treats it the same way.
-    return a.scheduled ? { ...merged, scheduled: true } : merged;
+    return a.scheduled ? { ...withFiles, scheduled: true } : withFiles;
   });
   for (const a of rows) {
     if (a.stale || a.state !== 'working' || sessions.some(s => s.session_id === a.session_id && (s.host ?? 'local') === (a.host ?? 'local'))) continue;
-    sessions.push({ agent:a.agent, session_id:a.session_id, title:a.title, cwd:a.cwd, project:a.project, agent_pid:null, source_kind:'unknown', source_app:'会话记录', entrypoint:'', started_at:0, last_at:a.last_at, state:'working', prompts:0, alive:true, registered:true, state_source:'transcript', host:a.host,host_name:a.host_name,remote:a.remote, scheduled:a.scheduled||undefined });
+    sessions.push({ agent:a.agent, session_id:a.session_id, title:a.title, cwd:a.cwd, project:a.project, agent_pid:null, source_kind:'unknown', source_app:'会话记录', entrypoint:'', started_at:0, last_at:a.last_at, state:'working', prompts:0, alive:true, registered:true, state_source:'transcript', host:a.host,host_name:a.host_name,remote:a.remote, scheduled:a.scheduled||undefined, files:a.files });
   }
   return { ...presence, sessions };
+}
+
+export const EDIT_WINDOW_S = 30 * 60;
+
+// Files a session touched inside the window, newest first, merging the hook registry
+// (`editing`, already windowed by the CLI) with the transcript snapshot (`files`).
+export function recentEdits(s: { editing?: { path: string; ts: number }[]; files?: Record<string, number> }, now = Date.now() / 1000): { path: string; at: number }[] {
+  const by = new Map<string, number>();
+  for (const [path, at] of Object.entries(s.files ?? {})) if (now - at <= EDIT_WINDOW_S) by.set(path, Math.max(by.get(path) ?? 0, at));
+  for (const e of s.editing ?? []) by.set(e.path, Math.max(by.get(e.path) ?? 0, e.ts));
+  return [...by].map(([path, at]) => ({ path, at })).sort((a, b) => b.at - a.at);
+}
+
+// Absolute paths more than one session touched recently: the edits that will actually clash.
+export function conflictingFiles(sessions: { session_id: string; editing?: { path: string; ts: number }[]; files?: Record<string, number> }[], now = Date.now() / 1000): Set<string> {
+  const by = new Map<string, Set<string>>();
+  for (const s of sessions) for (const { path } of recentEdits(s, now)) { const ids = by.get(path) ?? new Set<string>(); ids.add(s.session_id); by.set(path, ids); }
+  return new Set([...by].filter(([, ids]) => ids.size > 1).map(([path]) => path));
 }
