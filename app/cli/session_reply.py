@@ -7,6 +7,7 @@ No new model process, account, or internet-facing listener is created here.
 import hashlib
 import json
 import os
+import re
 import socket
 import sqlite3
 import struct
@@ -238,10 +239,118 @@ def submit(d, ref, text, request_id):
         return dict(db.execute('SELECT * FROM replies WHERE id=?', (request_id,)).fetchone())
 
 
+# Slash commands the reply box can offer for each agent. Built-ins are the ones that
+# make sense typed from another screen; a dialog-only command still works, it just
+# needs the desktop to finish it.
+BUILTIN_COMMANDS = {
+    'claude-code': [
+        ('compact', '压缩对话上下文，后面可加一句要保留的重点'),
+        ('clear', '清空对话，开始新任务'),
+        ('context', '看当前上下文占用'),
+        ('cost', '看本会话用量与额度'),
+        ('status', '会话与账号状态'),
+        ('model', '切换模型'),
+        ('memory', '查看/编辑记忆文件'),
+        ('review', '审查当前改动'),
+        ('rewind', '回退到之前的对话或代码状态'),
+        ('resume', '恢复另一个会话'),
+        ('init', '生成 CLAUDE.md'),
+        ('permissions', '权限设置'),
+        ('mcp', 'MCP 服务器'),
+        ('export', '导出对话'),
+        ('doctor', '诊断安装'),
+        ('help', '帮助'),
+    ],
+    'codex': [
+        ('compact', '压缩对话上下文'),
+        ('new', '开始新会话'),
+        ('status', '状态与用量'),
+        ('model', '切换模型'),
+        ('approvals', '审批策略'),
+        ('review', '审查当前改动'),
+        ('diff', '看 git diff'),
+        ('init', '生成 AGENTS.md'),
+        ('mcp', 'MCP 服务器'),
+    ],
+    'pi': [
+        ('compact', '压缩对话上下文'),
+        ('new', '开始新会话'),
+        ('model', '切换模型'),
+        ('thinking', '思考等级'),
+        ('session', '会话信息'),
+        ('tree', '会话树'),
+        ('fork', '从某条消息分叉'),
+        ('resume', '恢复会话'),
+        ('name', '给会话命名'),
+        ('export', '导出对话'),
+        ('settings', '设置'),
+    ],
+}
+
+
+def _markdown_commands(folder, kind, description=''):
+    """`<folder>/<name>.md` → /name (Claude Code custom commands, pi prompt templates)."""
+    rows = []
+    if not os.path.isdir(folder):
+        return rows
+    for fn in sorted(os.listdir(folder)):
+        if not fn.endswith('.md') or fn.startswith('.'):
+            continue
+        desc = description
+        try:
+            with open(os.path.join(folder, fn), encoding='utf-8') as f:
+                head = f.read(2000)
+            m = re.search(r'^description:\s*(.+)$', head, re.M) if head.startswith('---') else None
+            if m:
+                desc = m.group(1).strip().strip('"').strip("'")
+            elif not desc:
+                desc = next((l.strip('# ').strip() for l in head.splitlines() if l.strip()), '')
+        except OSError:
+            pass
+        rows.append(dict(name=fn[:-3], description=desc, kind=kind))
+    return rows
+
+
+def _skill_commands(d, dirs, prefix=''):
+    rows = []
+    for folder in dirs:
+        if not os.path.isdir(folder):
+            continue
+        for n in sorted(os.listdir(folder)):
+            p = os.path.join(folder, n)
+            if os.path.isdir(p) and not n.startswith('.') and os.path.exists(os.path.join(p, 'SKILL.md')):
+                rows.append(dict(name=prefix + n, description=d.read_frontmatter(p).get('description', ''), kind='skill'))
+    return rows
+
+
+def commands(d, ref):
+    """Slash commands this session accepts: built-ins, then skills and custom commands
+    visible to the agent from its working directory. Dedup by name, first wins."""
+    agent, cwd = ref['agent'], ref.get('cwd') or ''
+    rows = [dict(name=n, description=desc, kind='builtin') for n, desc in BUILTIN_COMMANDS.get(agent, [])]
+    if agent == 'claude-code':
+        rows += _skill_commands(d, [os.path.join(cwd, '.claude', 'skills')] + d.AGENT_SKILL_DIRS['claude'])
+        rows += _markdown_commands(os.path.join(cwd, '.claude', 'commands'), 'command')
+        rows += _markdown_commands(os.path.join(d.HOME, '.claude', 'commands'), 'command')
+    elif agent == 'pi':
+        rows += _markdown_commands(os.path.join(cwd, '.pi', 'prompts'), 'command')
+        rows += _markdown_commands(os.path.join(d.HOME, '.pi', 'agent', 'prompts'), 'command')
+        rows += _skill_commands(d, [os.path.join(cwd, '.pi', 'skills'), os.path.join(d.HOME, '.pi', 'agent', 'skills'), os.path.join(d.HOME, '.agents', 'skills')], prefix='skill:')
+    seen, out = set(), []
+    for r in rows:
+        if r['name'] in seen:
+            continue
+        seen.add(r['name'])
+        out.append(r)
+    return out
+
+
 def command(d, a):
     ref = exact_ref(d, a.key, a.agent)
     if a.op == 'status':
         result = status(d, ref)
+    elif a.op == 'commands':
+        result = commands(d, ref)
     else:
         import sys
         text = sys.stdin.read(16001)

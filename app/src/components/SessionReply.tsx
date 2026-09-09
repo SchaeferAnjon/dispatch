@@ -4,6 +4,17 @@ import type { SessionRef, TimelineMsg } from '../types';
 
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number }
 interface Connection { available: boolean; label: string; receipts: Receipt[] }
+export interface SlashCommand { name: string; description: string; kind: 'builtin' | 'skill' | 'command' }
+const KIND_LABEL: Record<SlashCommand['kind'], string> = { builtin: '命令', skill: '技能', command: '自定义' };
+/** The draft is a lone `/word` (no argument yet): that word is the menu query. */
+export const slashQuery = (draft: string): string | null => { const m = /^\/(\S*)$/.exec(draft); return m ? m[1] : null; };
+/** Prefix matches first, then substring matches on name or description; at most `limit`. */
+export function matchCommands(all: SlashCommand[], query: string, limit = 40): SlashCommand[] {
+  const q = query.toLowerCase();
+  const starts = all.filter(c => c.name.toLowerCase().startsWith(q));
+  const rest = q ? all.filter(c => !starts.includes(c) && (c.name.toLowerCase().includes(q) || (q.length > 1 && c.description.toLowerCase().includes(q)))) : [];
+  return [...starts, ...rest].slice(0, limit);
+}
 const readJson = <T,>(raw: string): T => JSON.parse(raw.slice(raw.indexOf('{')));
 const messageId = () => {
   // randomUUID is unavailable on HTTP phone connections; getRandomValues is not.
@@ -27,6 +38,22 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   const locked = useRef(false);
   const alive = useRef(true);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const [commands, setCommands] = useState<SlashCommand[] | null>(null);
+  const [cursor, setCursor] = useState(0);
+  const [menuClosed, setMenuClosed] = useState('');
+  const query = slashQuery(draft);
+  const menu = query !== null && menuClosed !== draft && commands ? matchCommands(commands, query) : [];
+  useEffect(() => {
+    if (query === null || commands) return;
+    let live = true;
+    api.on(host, ['reply', 'commands', session.session_id, '--agent', session.agent, '--json'])
+      .then(raw => { if (live) setCommands(JSON.parse(raw.slice(raw.indexOf('[')))); })
+      .catch(() => { if (live) setCommands([]); });
+    return () => { live = false; };
+  }, [query === null, commands, api, host, session.session_id, session.agent]);
+  useEffect(() => { setCursor(0); }, [query]);
+  useEffect(() => { document.querySelector('.reply-slash li.on')?.scrollIntoView({ block: 'nearest' }); }, [cursor, menu.length]);
+  const pick = (c: SlashCommand) => { setDraft(`/${c.name} `); setMenuClosed(''); textarea.current?.focus(); };
   const args = ['reply', 'status', session.session_id, '--agent', session.agent, '--json'];
   const load = async () => {
     try {
@@ -93,9 +120,24 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     {last?.state === 'accepted' && !inTranscript && <div className="reply-receipt" role="status"><span>你 · {last.note}</span><p>{last.text}</p></div>}
     <div className="reply-connection"><span>{connection?.label || (error ? '连接暂时不可用' : '正在连接原会话…')}</span>{!connection?.available && <button className="link" onClick={() => void load()}>重新连接</button>}</div>
     <form onSubmit={e => { e.preventDefault(); void send(); }}>
+      {menu.length > 0 && <ul className="reply-slash" role="listbox" aria-label="可用的 / 命令">
+        {menu.map((c, i) => <li key={c.name} role="option" aria-selected={i === cursor} className={i === cursor ? 'on' : ''}
+          onMouseDown={e => { e.preventDefault(); pick(c); }} onMouseEnter={() => setCursor(i)}>
+          <b>/{c.name}</b><span>{c.description}</span><i>{KIND_LABEL[c.kind]}</i>
+        </li>)}
+      </ul>}
+      {query !== null && commands === null && <div className="reply-slash reply-slash-loading">正在读取可用命令…</div>}
       <textarea ref={textarea} aria-label="回复内容" placeholder="在这里回复，继续这个会话…" value={draft} maxLength={16000} rows={2} disabled={busy || !!unknown}
         onChange={e => { setDraft(e.target.value); if (receipt?.state === 'failed') setReceipt(null); }}
-        onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
+        onKeyDown={e => {
+          if (e.nativeEvent.isComposing) return;
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void send(); return; }
+          if (!menu.length) return;
+          if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(i => (i + 1) % menu.length); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor(i => (i - 1 + menu.length) % menu.length); }
+          else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(menu[Math.min(cursor, menu.length - 1)]); }
+          else if (e.key === 'Escape') { e.preventDefault(); setMenuClosed(draft); }
+        }} />
       <button className="btn primary" type="submit" disabled={busy || !draft.trim() || !connection?.available || !!unknown}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : '发送'}</button>
     </form>
     {(error || unknown || last?.state==='failed') && <div className="reply-error" role="alert">{error || last?.note}{unknown && <><button className="link" onClick={() => { setReceipt(null); void load(); }}>检查送达状态</button><button className="link" onClick={()=>{setDismissed(last.id);forgetAttempt();setError('');}}>已核对，继续编辑</button></>}</div>}

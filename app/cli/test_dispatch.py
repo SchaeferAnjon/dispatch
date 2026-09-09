@@ -1,3 +1,4 @@
+import importlib
 import importlib.util
 import contextlib
 import io
@@ -1028,3 +1029,50 @@ class SkillsImport(SkillPoolBase):
         with patch.object(dispatch, "download_repo", return_value=(root, "main", os.path.join(self.tmp, "dl"))):
             with self.assertRaises(SystemExit):
                 self.call(op="import", name="owner/repo", path="", as_name=None, force=False, agent=[], description=None)
+
+
+def load_sibling(name):
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    return importlib.import_module(name)
+
+
+class ReplySlashCommands(unittest.TestCase):
+    """`dispatch reply commands`: built-ins first, then the skills and custom commands
+    the agent sees from its working directory, deduplicated by name."""
+
+    def test_claude_code_lists_builtins_project_skills_and_commands(self):
+        session_reply = load_sibling("session_reply")
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as cwd:
+            os.makedirs(os.path.join(cwd, ".claude", "skills", "deploy"))
+            with open(os.path.join(cwd, ".claude", "skills", "deploy", "SKILL.md"), "w") as f:
+                f.write("---\nname: deploy\ndescription: 发布到生产\n---\n")
+            os.makedirs(os.path.join(home, ".claude", "skills", "compact"))  # shadowed by the built-in
+            with open(os.path.join(home, ".claude", "skills", "compact", "SKILL.md"), "w") as f:
+                f.write("---\ndescription: 不应出现\n---\n")
+            os.makedirs(os.path.join(home, ".claude", "commands"))
+            with open(os.path.join(home, ".claude", "commands", "save-session.md"), "w") as f:
+                f.write("---\ndescription: 保存会话\n---\n")
+            with open(os.path.join(home, ".claude", "commands", "notes.md"), "w") as f:
+                f.write("# 记笔记\n正文\n")
+            d = types.SimpleNamespace(HOME=home, AGENT_SKILL_DIRS={"claude": [os.path.join(home, ".claude", "skills")]}, read_frontmatter=dispatch.read_frontmatter)
+            rows = session_reply.commands(d, {"agent": "claude-code", "cwd": cwd})
+            names = [r["name"] for r in rows]
+            self.assertEqual(names[0], "compact")
+            self.assertEqual(names.count("compact"), 1)
+            self.assertEqual(next(r for r in rows if r["name"] == "compact")["kind"], "builtin")
+            self.assertIn({"name": "deploy", "description": "发布到生产", "kind": "skill"}, rows)
+            self.assertIn({"name": "save-session", "description": "保存会话", "kind": "command"}, rows)
+            self.assertIn({"name": "notes", "description": "记笔记", "kind": "command"}, rows)
+
+    def test_pi_skills_use_the_skill_prefix_and_unknown_agents_get_nothing(self):
+        session_reply = load_sibling("session_reply")
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".pi", "agent", "skills", "brain"))
+            with open(os.path.join(home, ".pi", "agent", "skills", "brain", "SKILL.md"), "w") as f:
+                f.write("---\ndescription: 知识库\n---\n")
+            d = types.SimpleNamespace(HOME=home, AGENT_SKILL_DIRS={"claude": []}, read_frontmatter=dispatch.read_frontmatter)
+            rows = session_reply.commands(d, {"agent": "pi", "cwd": "/nonexistent"})
+            self.assertIn({"name": "skill:brain", "description": "知识库", "kind": "skill"}, rows)
+            self.assertEqual(rows[0]["name"], "compact")
+            self.assertEqual(session_reply.commands(d, {"agent": "zcode", "cwd": ""}), [])
