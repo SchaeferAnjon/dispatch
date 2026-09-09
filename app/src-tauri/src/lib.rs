@@ -310,6 +310,7 @@ fn run_dispatch_blocking(args: &[String]) -> Result<String, String> {
         .arg(&bin)
         .args(args)
         .env("BEADS_DIR", beads_dir())
+        .env("BEADS_ACTOR", actor()) // the GUI speaks as the human, whatever shell launched it
         .env("PATH", path)
         .output()
         .map_err(|e| format!("无法启动 dispatch（{}）：{}", bin.display(), e))?;
@@ -333,6 +334,7 @@ fn run_dispatch_stdin_blocking(args: &[String], stdin: Option<String>) -> Result
         .arg(&bin)
         .args(args)
         .env("BEADS_DIR", beads_dir())
+        .env("BEADS_ACTOR", actor())
         .env("PATH", path)
         .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped())
