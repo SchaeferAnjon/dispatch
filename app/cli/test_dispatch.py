@@ -658,6 +658,62 @@ class SessionLifecycle(unittest.TestCase):
         self.assertEqual([r["session_id"] for r in dispatch.starred_sessions(prefs, idx, "", {})], ["bbbb2222", "aaaa1111"])
 
 
+class TaskArchive(unittest.TestCase):
+    NOW = 1_800_000_000.0
+    DAY = 86_400.0
+
+    def _iso(self, days_ago):
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.NOW - days_ago * self.DAY))
+
+    def _issue(self, tid, days_ago, status="closed", labels=None, field="closed_at"):
+        it = {"id": tid, "status": status, "labels": labels or [], "updated_at": self._iso(days_ago)}
+        if field:
+            it[field] = self._iso(days_ago)
+        return it
+
+    def test_only_old_closed_tasks_without_skip_labels(self):
+        issues = [
+            self._issue("old", 40),
+            self._issue("fresh", 5),
+            self._issue("done-label", 40, labels=["dispatch:archived"]),
+            self._issue("trashed", 40, labels=["dispatch:trashed"]),
+            self._issue("outcome", 40, labels=["dispatch:outcome"]),
+            self._issue("open", 40, status="open"),
+            self._issue("no-closed-at", 40, field=None),
+        ]
+        self.assertEqual(dispatch.task_archive_candidates(issues, 30, now=self.NOW), ["old", "no-closed-at"])
+        self.assertEqual(dispatch.task_archive_candidates(issues, 0, now=self.NOW), [])
+        self.assertEqual(dispatch.task_archive_candidates(issues, 60, now=self.NOW), [])
+
+    def test_settings_parse_keeps_task_archive_days(self):
+        self.assertEqual(dispatch.settings_parse(json.dumps({"task_archive_days": 14})), {"task_archive_days": 14})
+        self.assertEqual(dispatch.settings_parse(json.dumps({"task_archive_days": -1})), {})
+
+    def test_command_labels_every_candidate_and_reports_the_count(self):
+        issues = [
+            {"id": "t1", "status": "closed", "labels": [], "closed_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z"},
+            {"id": "t2", "status": "closed", "labels": ["dispatch:archived"], "closed_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z"},
+        ]
+        calls = []
+
+        def fake_sh(args, timeout=20, env=None):
+            calls.append(list(args))
+            return (0, json.dumps(issues), "") if args[:3] == ["bd", "list", "--all"] else (0, "{}", "")
+
+        buf = io.StringIO()
+        with patch.object(dispatch, "sh", side_effect=fake_sh), contextlib.redirect_stdout(buf):
+            dispatch.cmd_task_archive(types.SimpleNamespace(days=30, json=True))
+        self.assertEqual(json.loads(buf.getvalue()), {"days": 30, "archived": ["t1"], "count": 1})
+        self.assertIn(["bd", "update", "t1", "--add-label", "dispatch:archived", "--json"], calls)
+        self.assertFalse(any("t2" in c for c in calls))
+
+    def test_command_is_a_noop_when_the_setting_is_off(self):
+        buf = io.StringIO()
+        with patch.object(dispatch, "sh", side_effect=AssertionError("should not touch bd")), patch.object(dispatch, "settings_load", return_value={}), contextlib.redirect_stdout(buf):
+            dispatch.cmd_task_archive(types.SimpleNamespace(days=None, json=True))
+        self.assertEqual(json.loads(buf.getvalue()), {"days": 0, "archived": [], "count": 0})
+
+
 class Facts(unittest.TestCase):
     TEXT = "# x\n\n## 通用\n\n**机器**\n- 本机 MacBook，Tailscale 100.85.245.72\n- mini 100.118.80.86\n\n**我常说的话**\n- 密钥只进 dispatch env\n\n## kanban\n- 板在 ~/tasks/.beads\n"
 

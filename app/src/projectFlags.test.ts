@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROJECT_FLAGS_KEY, parseProjectFlags, rankProjects, serializeProjectFlags, withProjectFlag } from "./projectFlags";
+import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, parseProjectFlags, parseSettings, rankProjects, serializeProjectFlags, serializeSettings, withProjectFlag } from "./projectFlags";
 
 describe("project flags", () => {
   it("parses only true known fields from the shared memory", () => {
@@ -22,5 +22,13 @@ describe("project flags", () => {
     const { active, archived } = rankProjects(list, { c: { starred: true }, b: { archived: true }, d: { starred: true, archived: true } });
     expect(active.map((p) => p.name)).toEqual(["c", "a"]);
     expect(archived.map((p) => p.name)).toEqual(["b", "d"]);
+  });
+
+  it("reads and writes the task auto-archive days, defaulting to off", () => {
+    expect(DEFAULT_SETTINGS.task_archive_days).toBe(0);
+    expect(parseSettings([]).task_archive_days).toBe(0);
+    expect(parseSettings([{ key: SETTINGS_KEY, value: JSON.stringify({ task_archive_days: 14 }) }]).task_archive_days).toBe(14);
+    expect(parseSettings([{ key: SETTINGS_KEY, value: JSON.stringify({ task_archive_days: -1 }) }]).task_archive_days).toBe(0);
+    expect(JSON.parse(serializeSettings({ ...DEFAULT_SETTINGS, task_archive_days: 7 })).task_archive_days).toBe(7);
   });
 });

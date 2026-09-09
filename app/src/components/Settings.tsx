@@ -69,6 +69,10 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
       <section className="settings-card">
         <h3>工作台</h3>
         <label className="settings-row">
+          <div><b>已完成任务多少天后自动归档</b><p>完成超过这些天的任务自动打上归档标记，从已完成列和计数里移开，「已归档」里能找到，随时可取消归档。填 0 表示不自动归档（看板上仍有「归档 30 天前完成的」按钮）。</p></div>
+          <span className="settings-num"><input type="number" min={0} max={3650} value={draft.task_archive_days} onChange={(e) => num("task_archive_days", e.target.value, 3650)} /> 天</span>
+        </label>
+        <label className="settings-row">
           <div><b>默认展开前几个项目</b><p>其余项目折叠成一行摘要，点一下展开。有等你回复或等待确认的项目总是展开。</p></div>
           <span className="settings-num"><input type="number" min={0} max={50} value={draft.home_expanded} onChange={(e) => num("home_expanded", e.target.value, 50)} /> 个</span>
         </label>

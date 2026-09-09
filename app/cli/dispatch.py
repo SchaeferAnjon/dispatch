@@ -3780,7 +3780,7 @@ DISCUSS_RULES_DEFAULT = "闲聊就闲聊，两句以内；正事默认一两段�
 DISCUSS_PERSONA_DEFAULT = {"claude": "偏架构和验收：先问值不值得做、做完怎么验证，习惯把方案拆成可交付的步骤。",
                            "codex": "抠实现细节：关心具体改哪里、边界情况、能不能复用已有代码，不信没验证过的说法。",
                            "pi": "短句直给：一次只说最重要的一点，倾向先做最小可验证的版本，看到过度设计会直说。"}
-SETTING_DEFAULTS = {"session_archive_days": 30, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": "",
+SETTING_DEFAULTS = {"session_archive_days": 30, "task_archive_days": 0, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": "",
                     "discuss_rules": DISCUSS_RULES_DEFAULT, **{f"discuss_persona_{k}": v for k, v in DISCUSS_PERSONA_DEFAULT.items()}}
 # free-text settings and their length caps; everything else numeric except workspace_roots
 SETTING_STRINGS = {"summary_model": 80, "discuss_rules": 600, "discuss_persona_claude": 300, "discuss_persona_codex": 300, "discuss_persona_pi": 300}
@@ -3834,7 +3834,7 @@ def cmd_settings(a):
         cur[a.key] = val
         wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
     shown = {a.key: cur[a.key]} if a.key else cur
-    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选",
+    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "task_archive_days": "天，已完成任务超过这些天自动打 dispatch:archived 标签；0=不自动", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选",
              "discuss_rules": "讨论群的规矩（发言长度、什么时候 SKIP），进每个成员的系统提示", "discuss_persona_claude": "讨论里 claude 的一句人设", "discuss_persona_codex": "讨论里 codex 的一句人设", "discuss_persona_pi": "讨论里 pi 的一句人设"}
     out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes[k]}）") for k, v in x.items()])
 
@@ -3868,6 +3868,51 @@ def cmd_projects(a):
         print("没有收藏或归档的项目。`dispatch project <名> --star` 收藏，`--archive` 归档。")
     for r in rows:
         print(f"{'★' if r['starred'] else ' '} {r['name']}{'（已归档）' if r['archived'] else ''}")
+
+
+# Closed tasks stay in the done column forever unless something labels them. The manual
+# button does 30 days once; this runs the same rule every day using the shared setting.
+TASK_ARCHIVED_LABEL = "dispatch:archived"
+TASK_ARCHIVE_SKIP = (TASK_ARCHIVED_LABEL, "dispatch:trashed", "dispatch:outcome")
+
+
+def task_archive_candidates(issues, days, now=None):
+    """Ids of tasks closed more than `days` days ago, not already archived/trashed/outcomes."""
+    if days <= 0:
+        return []
+    cutoff = (time.time() if now is None else now) - days * 86400
+    ids = []
+    for it in issues:
+        if it.get("status") != "closed":
+            continue
+        if any(l in TASK_ARCHIVE_SKIP for l in it.get("labels") or []):
+            continue
+        ts = _iso_epoch(it.get("closed_at") or it.get("updated_at") or "")
+        if ts is not None and ts < cutoff:
+            ids.append(it["id"])
+    return ids
+
+
+def cmd_task_archive(a):
+    days = a.days if a.days is not None else int(settings_load().get("task_archive_days") or 0)
+    if days <= 0:
+        out({"days": 0, "archived": [], "count": 0}, a.json,
+            lambda _: print("task_archive_days=0，没有自动归档任何任务（在设置页或 `dispatch settings task_archive_days <天>` 打开）"))
+        return
+    code, o, _ = sh(["bd", "list", "--all", "--json"], timeout=60)
+    issues = []
+    if code == 0:
+        try:
+            issues = json.loads(o[o.find("["):])
+        except Exception:
+            issues = []
+    done = []
+    for tid in task_archive_candidates(issues, days):
+        code, _, _ = sh(["bd", "update", tid, "--add-label", TASK_ARCHIVED_LABEL, "--json"], timeout=20)
+        if code == 0:
+            done.append(tid)
+    out({"days": days, "archived": done, "count": len(done)}, a.json,
+        lambda x: print(f"已归档 {x['count']} 项完成超过 {x['days']} 天的任务" + ("：" + "、".join(x["archived"]) if x["archived"] else "")))
 
 
 def wiki_line(it, width=170):
@@ -5761,7 +5806,8 @@ def main():
     s = sub.add_parser("attachment", help="read a file linked in a conversation; --thumbs returns every image as a small thumbnail in one call"); s.add_argument("key"); s.add_argument("ref", nargs="?", default=""); s.add_argument("--thumbs", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
     s = sub.add_parser("editing", help="files each active session changed in the last 30 min, aggregated per file, with conflicts"); s.add_argument("--dir", help="only sessions working in this directory (default: every directory)"); s.add_argument("--window", type=int, default=30, help="minutes back to look (default 30)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_editing)
-    s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
+    s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days / task_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
+    s = sub.add_parser("task-archive", help="archive closed tasks older than task_archive_days (default: the setting)"); s.add_argument("--days", type=int); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_task_archive)
     s = sub.add_parser("project", help="star / archive a project (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
     s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)
     s = sub.add_parser("session-preferences", help="classify a conversation without changing its transcript"); s.add_argument("key"); s.add_argument("changes"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_preferences)

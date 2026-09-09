@@ -376,6 +376,22 @@ export default function App() {
     const t = window.setInterval(pass, 3 * 60_000);
     return () => { window.clearTimeout(first); window.clearInterval(t); };
   }, [api, settings.summary_auto]);
+  // Auto-archive finished tasks: once at startup and once a day, the CLI labels anything
+  // closed longer than the setting with dispatch:archived. 0 means the setting is off.
+  useEffect(() => {
+    if (!api || !isTauri || !settings.task_archive_days) return;
+    let running = false;
+    const pass = async () => {
+      if (running) return; running = true;
+      try {
+        const r = JSON.parse((await api.on("local", ["task-archive", "--json"])).replace(/^[^{]*/, "")) as { archived?: string[] };
+        if (r.archived?.length) { say(`已自动归档 ${r.archived.length} 项完成超过 ${settings.task_archive_days} 天的任务`); await reload(); }
+      } catch { /* next pass */ } finally { running = false; }
+    };
+    const first = window.setTimeout(pass, 12_000);
+    const t = window.setInterval(pass, 24 * 60 * 60_000);
+    return () => { window.clearTimeout(first); window.clearInterval(t); };
+  }, [api, settings.task_archive_days, reload, say]);
   const archiveDays = settings.session_archive_days;
   const saveSettings = async (next: DispatchSettings) => { if (!api) return; try { await api.remember(SETTINGS_KEY, serializeSettings(next)); setSettings(next); say("设置已保存"); } catch (e) { say(String(e), true); } };
   // A real push through the CLI, so the button tests the same path the events use.
