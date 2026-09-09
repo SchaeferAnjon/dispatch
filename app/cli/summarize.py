@@ -183,3 +183,77 @@ def main(a):
             print(json.dumps({"error": str(e)}, ensure_ascii=False) if a.json else f"✗ {e}")
             sys.exit(1)
     print(json.dumps(res, ensure_ascii=False, indent=2) if a.json else (res.get("summary") or json.dumps(res, ensure_ascii=False)))
+
+
+# ---------------------------------------------------------------- project summary: the whole project in a paragraph
+
+PROJECT_PROMPT = ("你是项目记录的总结者。下面是一个项目的材料：最近的会话总结（每段会话一条）、任务板上未完成和最近完成的任务。用简体中文写一段不超过 200 字的项目总结，四层意思按顺序连成一段话："
+                  "这个项目是什么；现在做到哪了；最近在做什么、结果如何；还差什么或下一步。只写事实，不评价，不用「用户」「Agent」之外的称呼，不加标题、不用列表、不用引号。")
+
+
+def project_material(name):
+    """What the model reads: this project's session summaries (or first prompts), open tasks, recent closes."""
+    from activity import session_preferences
+    prefs = session_preferences(D.DISPATCH_DIR)
+    names = D.project_names()
+    roots = D.settings_load().get("workspace_roots") or []
+    idx = D.load_index() or D.refresh_index()
+    by_cwd = {}
+    sessions = []
+    for k, e in idx.items():
+        if e.get("subagent") or not e.get("user_msgs"):
+            continue
+        cwd = (e.get("cwd") or "").rstrip("/")
+        if cwd not in by_cwd:
+            by_cwd[cwd] = D.project_of_cwd(cwd, names, roots).lower() == name.lower() if cwd else False
+        if not by_cwd[cwd]:
+            continue
+        key = f"{e['agent']}:{e['session_id']}"
+        pr = prefs.get(key, {})
+        if pr.get("scheduled") or pr.get("archived"):
+            continue
+        sessions.append((e.get("mtime", 0), time.strftime("%Y-%m-%d", time.localtime(e.get("mtime", 0))), pr.get("summary") or (e.get("title") or "") + "：" + (e.get("first_prompt") or "")[:200]))
+    sessions.sort(reverse=True)
+    lines = [f"[{d}] {t}" for _, d, t in sessions[:20] if t.strip(" ：")]
+    code, o, _ = D.sh(["bd", "list", "--all", "--json"])
+    open_t, closed_t = [], []
+    try:
+        for it in (json.loads(o[o.find("["):]) if code == 0 else []):
+            if not any(l.lower() == f"project:{name.lower()}" for l in it.get("labels") or []):
+                continue
+            if it.get("status") == "closed":
+                closed_t.append((it.get("closed_at") or "", f"{it.get('title', '')}｜{(it.get('close_reason') or '')[:120]}"))
+            elif it.get("status") not in ("tombstone",):
+                open_t.append(f"[{it.get('status')}] {it.get('title', '')}")
+    except Exception:
+        pass
+    closed_t.sort(reverse=True)
+    return {"sessions": len(sessions), "open": len(open_t), "closed": len(closed_t),
+            "text": "## 最近的会话\n" + "\n".join(lines) + "\n\n## 未完成的任务\n" + "\n".join(open_t[:15]) + "\n\n## 最近完成的任务\n" + "\n".join(t for _, t in closed_t[:10])}
+
+
+def project_summary(name, force=False, if_stale=False):
+    key = D.INTERNAL_MEMORY_PREFIX + "project-summary-" + name
+    code, o, _ = D.sh(["bd", "memories", "--json"])
+    old = None
+    try:
+        raw = json.loads(o[o.find("{"):]).get(key) if code == 0 else None
+        old = json.loads(raw) if raw else None
+    except (ValueError, AttributeError):
+        old = None
+    if old and not force and not (if_stale and time.time() - old.get("at", 0) > 86400):
+        return {**old, "cached": True}
+    if if_stale and not force and old is None and not D.settings_load().get("summary_auto", 1):
+        return {"summary": "", "cached": True}
+    p = provider()
+    if not p:
+        raise RuntimeError("没有可用的模型：设置里选一个总结模型")
+    m = project_material(name)
+    if not m["sessions"] and not m["open"] and not m["closed"]:
+        raise RuntimeError("这个项目还没有会话或任务")
+    text = chat(p, PROJECT_PROMPT, f"项目：{name}\n\n{m['text']}", timeout=120).strip().strip('"“”').replace("\n", " ")[:500]
+    if not text:
+        raise RuntimeError("模型没有返回内容")
+    rec = {"summary": text, "at": int(time.time()), "by": f"{p['id']}:{p['model']}", "sessions": m["sessions"], "open": m["open"], "closed": m["closed"]}
+    D.wiki_store(key, json.dumps(rec, ensure_ascii=False))
+    return {**rec, "cached": False}

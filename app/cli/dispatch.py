@@ -3691,6 +3691,17 @@ def env_summary_line():
     return "Key（`dispatch env get 名`，别让用户重贴）：" + "，".join(f"{it['name']}" + (f"={short(it['note'])}" if it["note"] else "") for it in items)
 
 
+def cmd_project_summary(a):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import summarize
+    try:
+        r = summarize.project_summary(a.name, force=a.force, if_stale=a.if_stale)
+    except Exception as e:
+        print(json.dumps({"error": str(e)}, ensure_ascii=False) if a.json else f"✗ {e}")
+        sys.exit(1)
+    out(r, a.json, lambda x: print(x.get("summary") or "（还没有总结）"))
+
+
 def cmd_session_summary(a):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import summarize
@@ -4312,6 +4323,7 @@ def main():
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
+    s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)
