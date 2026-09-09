@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
 import type { Api } from "../api";
 import type { Comment, Issue } from "../types";
-import { actorOf, relTime, discussionConclusion } from "../derive";
+import { actorOf, isMe, relTime, discussionConclusion } from "../derive";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 import { KINDS, KIND_ACTOR } from "./Delegate";
@@ -46,12 +46,17 @@ export function useDiscussion({ api, me, issues, task, parts, leader, watch, onD
   const [freshConclusion, setFreshConclusion] = useState("");
   const [doc, setDoc] = useState("");
   const [docBusy, setDocBusy] = useState(false);
+  // A line the person sends triggers a round by itself; sent during a round, it waits for that
+  // round to end and then runs one. `saying` guards against the same line going twice (Enter repeat).
+  const [saying, setSaying] = useState(false);
+  const sayingRef = useRef(false);
+  const queuedRef = useRef(false);
   const leaderPart = parts[Math.min(leader, parts.length - 1)] ?? parts[0];
   const withArg = parts.map(partArg).join(",");
   const leaderArgs = leaderPart ? ["--leader", partArg(leaderPart)] : [];
 
   const [live, setLive] = useState<Live | null>(null);
-  useEffect(() => { setComments([]); setQuiet(0); setFreshConclusion(""); setDoc(""); setLive(null); }, [task]);
+  useEffect(() => { setComments([]); setQuiet(0); setFreshConclusion(""); setDoc(""); setLive(null); queuedRef.current = false; }, [task]);
   // The typing bubbles: queued → thinking → typing + text so far → done → posted, polled every
   // second while a round runs here; with `watch` the file is polled anyway, so a round started
   // elsewhere (the dialog, the CLI) shows up too — it counts as running until the file says finished.
@@ -92,13 +97,19 @@ export function useDiscussion({ api, me, issues, task, parts, leader, watch, onD
     } catch (e) { onError(String(e)); }
     finally { setBusy(false); }
   };
-  // The person is in the group too: a line lands as a 【讨论】 comment (pictures by path).
+  // The person is in the group too: a line lands as a 【讨论】 comment (pictures by path) and
+  // the members answer it — right away, or after the round that is running.
   const say = async (line: string, images: Img[]) => {
-    if (!task || (!line.trim() && !images.length)) return false;
+    if (!task || (!line.trim() && !images.length) || sayingRef.current) return false;
+    sayingRef.current = true; setSaying(true);
     const text = `${TAG}${me}：${line.trim()}` + (images.length ? "\n附图（用 Read 看）：\n" + images.map((x) => x.path).join("\n") : "");
-    try { await api.on("local", ["log", task, text]); setComments(await api.comments(task)); return true; }
-    catch (e) { onError(String(e)); return false; }
+    try { await api.on("local", ["log", task, text]); setComments(await api.comments(task)); }
+    catch (e) { onError(String(e)); sayingRef.current = false; setSaying(false); return false; }
+    sayingRef.current = false; setSaying(false);
+    if (running) queuedRef.current = true; else void round(task);
+    return true;
   };
+  useEffect(() => { if (!running && queuedRef.current && task) { queuedRef.current = false; void round(task); } }, [running]);  // eslint-disable-line react-hooks/exhaustive-deps
   // Wrap-up: the conclusion (one block, replaced) then the document, both written into the task.
   const makeDoc = async () => {
     if (!task) return;
@@ -122,14 +133,14 @@ export function useDiscussion({ api, me, issues, task, parts, leader, watch, onD
   const system = comments.filter((c) => c.text.trimStart().startsWith("【系统】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
   // Rounds: what the members said since the person last spoke (the 发起 line or a line typed here).
   let n = 0;
-  const thread = said.map((c) => { const body = c.text.trimStart().slice(TAG.length).trim(); const opener = /^发起[:：]/.test(body); const mine = !opener && actorOf(c.author, me)?.kind === "human"; if (opener || mine) n += 1; return { c, body, opener, mine, round: Math.max(1, n) }; });
+  const thread = said.map((c) => { const body = c.text.trimStart().slice(TAG.length).trim(); const opener = /^发起[:：]/.test(body); const prefix = (/^([^：:\n]{1,24})[：:]/.exec(body)?.[1] ?? "").trim(); const mine = !opener && (isMe(c.author, me) || isMe(prefix, me) || actorOf(c.author, me)?.kind === "human"); if (opener || mine) n += 1; return { c, body, opener, mine, round: Math.max(1, n) }; });
   const roundsSeen = Math.max(0, ...thread.map((t) => t.round));
   const spoken = thread.filter((t) => !t.opener && !t.mine && t.round === Math.max(1, roundsSeen)).length;
   const waiting = running ? Math.max(0, parts.length - spoken) : 0;
   const isLeaderLine = (c: Comment, body: string) => { const a = actorOf(c.author, me); return !!leaderPart && a?.id === KIND_ACTOR[leaderPart.kind] && (!leaderPart.model || body.startsWith(`${leaderPart.kind}（${leaderPart.model}）`)); };
   const isLeaderLive = (who: string) => !!leaderPart && who === `${leaderPart.kind}${leaderPart.model ? `（${leaderPart.model}）` : ""}`;
 
-  return { busy, running, comments, quiet, issue, leaderPart, conclusion, docText, hasDoc: !!docText, docBusy, live, bubbles, skippedNow, erroredNow, queued, thread, roundsSeen, waiting, system, round, say, makeDoc, saveImage, isLeaderLine, isLeaderLive };
+  return { busy, running, saying, comments, quiet, issue, leaderPart, conclusion, docText, hasDoc: !!docText, docBusy, live, bubbles, skippedNow, erroredNow, queued, thread, roundsSeen, waiting, system, round, say, makeDoc, saveImage, isLeaderLine, isLeaderLive };
 }
 export type Discussion = ReturnType<typeof useDiscussion>;
 
@@ -143,14 +154,15 @@ export function DiscussThread({ d, me, showConclusion, compact }: { d: Discussio
   return (
     <div className={`disc-thread${compact ? " compact" : ""}`} ref={threadRef}>
       {showConclusion && conclusion && <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">{conclusion.when.includes("T") ? relTime(conclusion.when) : conclusion.when}{conclusion.by ? ` · ${conclusion.by}` : ""}</span></div><Markdown src={conclusion.text} className="compact" /></div>}
+      {thread.filter((t) => t.opener).slice(0, 1).map(({ c, body }) => <div key={c.id} className="disc-opener muted small">{body}</div>)}
       {thread.length === 0 && <div className="empty small">{running ? "Agent 正在读上下文……第一条发言通常十几秒后出现" : "还没有发言"}</div>}
       {Array.from({ length: roundsSeen }, (_, i) => i + 1).map((r) => (
         <div key={r} className="disc-round">
           {roundsSeen > 1 && <div className="disc-round-h muted small">第 {r} 轮</div>}
-          {thread.filter((t) => t.round === r).map(({ c, body }) => { const a = actorOf(c.author, me); return (
-            <div key={c.id} className="disc-say">
+          {thread.filter((t) => t.round === r && !t.opener).map(({ c, body, mine }) => { const a = mine ? actorOf(me, me) : actorOf(c.author, me); return (
+            <div key={c.id} className={`disc-say${mine ? " mine" : ""}`}>
               <Avatar actor={a} size={28} />
-              <div className="disc-bubble"><div className="l1"><b>{a?.name ?? c.author}</b>{d.isLeaderLine(c, body) && <span className="chip disc-leader-tag">领队</span>}<span className="muted small">{relTime(c.created_at)}</span></div><Markdown src={body.replace(/^[^：:]{1,24}[：:]\s*/, "")} className="compact" /></div>
+              <div className="disc-bubble"><div className="l1"><b>{mine ? "你" : a?.name ?? c.author}</b>{!mine && d.isLeaderLine(c, body) && <span className="chip disc-leader-tag">领队</span>}<span className="muted small">{relTime(c.created_at)}</span></div><Markdown src={body.replace(/^[^：:\n]{1,24}[：:]\s*/, "")} className="compact" /></div>
             </div>
           ); })}
         </div>
@@ -165,7 +177,6 @@ export function DiscussThread({ d, me, showConclusion, compact }: { d: Discussio
       ); })}
       {skippedNow.length > 0 && <div className="disc-opener muted small">{skippedNow.join("、")} 这轮没话说</div>}
       {erroredNow.map(([who, m]) => <div key={who} className="disc-system small">{who}：{m.text || "没说上话"}</div>)}
-      {thread.filter((t) => t.opener).map(({ c, body }) => <div key={c.id} className="disc-opener muted small">{body}</div>)}
       {system.map((c) => <div key={c.id} className="disc-system small">{c.text.trimStart().slice(4)}</div>)}
       {running && waiting > 0 && bubbles.length === 0 && <div className="disc-waiting muted small">{live ? `${queued} 个成员排队中…` : "正在起会话……"}</div>}
       {!running && quiet >= 2 && <div className="disc-waiting muted small">连续 {quiet} 轮没有新提议了——可以「整理成文档」收尾，或者你再说一句把话题推进一步。</div>}
@@ -178,11 +189,11 @@ export function DiscussCompose({ d, onError }: { d: Discussion; onError: (m: str
   const [line, setLine] = useState("");
   const [images, setImages] = useState<Img[]>([]);
   const add = async (files: File[]) => { for (const f of files.filter((x) => x.type.startsWith("image/"))) { try { const im = await d.saveImage(f, "reply"); setImages((xs) => [...xs, im]); } catch (e) { onError(String(e)); } } };
-  const send = async () => { if (await d.say(line, images)) { setLine(""); setImages([]); } };
+  const send = async () => { if (d.saying) return; if (await d.say(line, images)) { setLine(""); setImages([]); } };
   return (
     <div className="disc-compose-wrap">
       {images.length > 0 && <div className="disc-images">{images.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt="" /><button className="x" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label="移除">✕</button></div>)}</div>}
-      <div className="disc-compose"><textarea rows={2} placeholder="你也说一句（回车发言，Shift+回车换行；截图直接粘贴）。然后点「让他们回应」" value={line} disabled={d.busy} onChange={(e) => setLine(e.target.value)} onPaste={(e) => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); void add(files); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (line.trim() || images.length) void send(); } }} /><label className="btn sm disc-img-add" title="附图">🖼<input type="file" accept="image/*" multiple hidden disabled={d.busy} onChange={(e) => { void add(Array.from(e.target.files ?? [])); e.target.value = ""; }} /></label><button className="btn sm" disabled={d.busy || (!line.trim() && !images.length)} onClick={() => void send()}>发言</button></div>
+      <div className="disc-compose"><textarea rows={2} placeholder={d.running ? "你也说一句（回车发言）；他们正在说，你的话会在这轮结束后得到回应" : "你也说一句（回车发言，Shift+回车换行；截图直接粘贴），他们会接着回应"} value={line} disabled={d.saying} onChange={(e) => setLine(e.target.value)} onPaste={(e) => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); void add(files); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!e.repeat && !d.saying && (line.trim() || images.length)) void send(); } }} /><label className="btn sm disc-img-add" title="附图">🖼<input type="file" accept="image/*" multiple hidden disabled={d.saying} onChange={(e) => { void add(Array.from(e.target.files ?? [])); e.target.value = ""; }} /></label><button className="btn sm" disabled={d.saying || (!line.trim() && !images.length)} onClick={() => void send()}>{d.saying ? "发送中…" : "发言"}</button></div>
     </div>
   );
 }
