@@ -7,7 +7,10 @@ export const activityKey = (a: Activity) => `${a.host ?? 'local'}:${a.key}`;
 export const isSubagentSession = (r: { path?: string }) => /\/subagents\//.test(r.path ?? '');
 // Sessions another program started through the SDK (scripts, schedulers, agents
 // driving agents): real conversations, but noise in a list meant for the user's own.
-export const isScriptSession = (r: { path?: string; entrypoint?: string }) => isSubagentSession(r) || /^sdk/.test(r.entrypoint ?? '');
+// A discussion participant's session (dispatch discuss): the prompt names the topic task. It is
+// machinery, not a conversation with the user, so it stays out of 等我, the workbench and notifications.
+export const isDiscussionSession = (r: { title?: string }) => /(^|「)(你是「[^」]*」，)?你?参加(主题|任务) task-[a-z0-9]{3,4}|^【讨论】/.test(r.title ?? '');
+export const isScriptSession = (r: { path?: string; entrypoint?: string; title?: string }) => isSubagentSession(r) || /^sdk/.test(r.entrypoint ?? '') || isDiscussionSession(r);
 
 // A conversation is either tracked (★, never fades), ordinary (fades into the
 // archive after `days` without activity) or archived (by hand or by time).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canReadReply, activityKey, conversationSummary, conversationProject, mergeActivity, resolveProject, sessionLifecycle, recentEdits, conflictingFiles } from './activity';
+import { isDiscussionSession, canReadReply, activityKey, conversationSummary, conversationProject, mergeActivity, resolveProject, sessionLifecycle, recentEdits, conflictingFiles } from './activity';
 import type { Activity } from './types';
 const a = { key: 'codex:id', host:'local', unread:true, reply_id:'2:reply' } as Activity;
 describe('read cursor', () => {
@@ -80,5 +80,13 @@ describe('session lifecycle', () => {
     expect(sessionLifecycle({ last_at: now - 40 * 86400, starred: true }, 30, now)).toBe('starred');
     expect(sessionLifecycle({ last_at: now, archived: true, starred: true }, 30, now)).toBe('archived');
     expect(sessionLifecycle({ last_at: now - 400 * 86400 }, 0, now)).toBe('active');
+  });
+});
+
+describe("discussion sessions", () => {
+  it("are recognised by their prompt and stay out of the inbox", () => {
+    expect(isDiscussionSession({ title: "你参加主题 task-q2n「【讨论】Dispatch 的「等我」收件箱要不要加一个「稍后提醒」按钮？」的讨论（第 1 轮）" })).toBe(true);
+    expect(isDiscussionSession({ title: "你是「codex」，参加主题 task-yc9「【讨论】…」的讨论（第 1 轮）" })).toBe(true);
+    expect(isDiscussionSession({ title: "使用统计的洞察功能和Agent改进" })).toBe(false);
   });
 });
