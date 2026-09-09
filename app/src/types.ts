@@ -1,6 +1,6 @@
 export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type Column = "todo" | "prog" | "done" | "reviewed";
-export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "agents" | "settings" | "sessions" | "stats" | "skills" | "rules" | "pitfalls" | "env" | "quota" | "trash" | "archive" | "setup" | "overview";
+export type View = "home" | "inbox" | "board" | "table" | "graph" | "projects" | "agents" | "settings" | "sessions" | "discuss" | "stats" | "skills" | "rules" | "pitfalls" | "env" | "quota" | "trash" | "archive" | "setup" | "overview";
 
 export interface StatsTokens { in: number; out: number; cr: number; cw: number; think: number }
 export interface StatsDay { date: string; msgs: number; tokens: number; in: number; out: number; cr: number; cw: number; by: Record<string, number> }

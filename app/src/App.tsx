@@ -24,6 +24,7 @@ import { SetupView, type InitStatus } from "./components/Setup";
 import type { UpdateInfo } from "./components/Settings";
 import { Delegate } from "./components/Delegate";
 import { DiscussDialog } from "./components/Discuss";
+import { DiscussView } from "./components/DiscussView";
 import { Avatar } from "./components/ui";
 import { isOutcome, knownProjects, linkedSessions, projectGroups, sourceTasks, projectConversations } from "./projectModel";
 import { UNGROUPED_PROJECT, activityKey, conversationProject, isScriptSession, isSubagentSession, mergeActivity, resolveProject } from "./activity";
@@ -35,18 +36,19 @@ import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, 
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View } from "./types";
 
 type Theme = "light" | "dark" | "";
-const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站", archive: "已归档任务", setup: "首次设置", overview: "总览" };
-const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash", "archive", "setup", "overview"];
+const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", discuss: "讨论", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站", archive: "已归档任务", setup: "首次设置", overview: "总览" };
+const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "discuss", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash", "archive", "setup", "overview"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 const TASK_VIEWS: View[] = ["board", "table", "trash", "archive"];  // share the 看板/表格/回收站/已归档 switch
 
-// ---- Where you are lives in the URL hash: `#/board`, `#/sessions/<id>`, `#/projects/<name>`, `#/board/task/<id>`.
+// ---- Where you are lives in the URL hash: `#/board`, `#/sessions/<id>`, `#/discuss/<task>`, `#/projects/<name>`, `#/board/task/<id>`.
 // Reload restores it; the browser's back/forward (and the phone's back gesture) walk it instead of leaving the app.
-type Place = { view: View; selected: string | null; project: string | null; session: string | null };
+type Place = { view: View; selected: string | null; project: string | null; session: string | null; discussion?: string | null };
 function placeToHash(p: Place): string {
   const parts: string[] = [p.view];
   if (p.view === "projects" && p.project) parts.push(p.project);
   if (p.view === "sessions" && p.session) parts.push(p.session);
+  if (p.view === "discuss" && p.discussion) parts.push(p.discussion);
   if (p.selected) parts.push("task", p.selected);
   return "#/" + parts.map(encodeURIComponent).join("/");
 }
@@ -57,7 +59,7 @@ function parseHash(h: string): Place | null {
   const ti = parts.indexOf("task", 1);
   const selected = ti > 0 && parts[ti + 1] ? parts[ti + 1] : null;
   const arg = parts[1] && parts[1] !== "task" ? parts[1] : null;
-  return { view, selected, project: view === "projects" ? arg : null, session: view === "sessions" ? arg : null };
+  return { view, selected, project: view === "projects" ? arg : null, session: view === "sessions" ? arg : null, discussion: view === "discuss" ? arg : null };
 }
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
 
@@ -161,13 +163,16 @@ export default function App() {
   const [sessionFocus, setSessionFocus] = useState<string | null>(initialPlace.current?.session ?? null);
   // The session the list currently shows (reported by SessionsView); only for the URL, so selecting one does not remount the view.
   const [sessionShown, setSessionShown] = useState<string | null>(initialPlace.current?.session ?? null);
+  // The discussion the 讨论 page shows (for the URL) and the one it was asked to open.
+  const [discussShown, setDiscussShown] = useState<string | null>(initialPlace.current?.discussion ?? null);
+  const [discussFocus, setDiscussFocus] = useState<string | null>(initialPlace.current?.discussion ?? null);
   // Keep the hash in step with the place. After popstate the hash already equals the new place, so nothing is pushed twice.
   useEffect(() => {
     if (isTauri) return;  // the desktop window has no address bar, no reload and no back gesture; WKWebView on tauri:// also dislikes pushState
-    const here = placeToHash({ view, selected, project: projectSelection, session: view === "sessions" ? sessionShown : null });
+    const here = placeToHash({ view, selected, project: projectSelection, session: view === "sessions" ? sessionShown : null, discussion: view === "discuss" ? discussShown : null });
     if (window.location.hash === here) return;
     if (window.location.hash && parseHash(window.location.hash)) window.history.pushState(null, "", here); else window.history.replaceState(null, "", here);
-  }, [view, selected, projectSelection, sessionShown]);
+  }, [view, selected, projectSelection, sessionShown, discussShown]);
   useEffect(() => {
     if (isTauri) return;
     const onPop = () => {
@@ -175,6 +180,7 @@ export default function App() {
       changeView(p.view); setSelected(p.selected); setBackStack([]);
       if (p.view === "projects") setProjectSelection(p.project);
       if (p.view === "sessions") { setSessionFocus(p.session); setSessionShown(p.session); }
+      if (p.view === "discuss") { setDiscussFocus(p.discussion ?? null); setDiscussShown(p.discussion ?? null); }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -183,6 +189,7 @@ export default function App() {
   const [tour, setTour] = useState(false);
   const closeTour = () => setTour(false);
   const openSession = (id: string) => { setSessionFocus(id); setSessionShown(id); navigateContext("sessions"); };
+  const openDiscussion = (id?: string) => { setDiscussFocus(id ?? null); setDiscussShown(id ?? null); navigateContext("discuss"); };
   const [version, setVersion] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   // Which Mac to look at: "" = all, else a host *name* (matches session.host_name and the host:<name> task label).
@@ -687,6 +694,7 @@ export default function App() {
             {view === "board" && <Board sort={boardSort} starred={starredProjects} progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView starred={starredProjects} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(what.endsWith("。") ? what : `${what}已复制`)).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
+            {view === "discuss" && api && <DiscussView api={api} me={me} issues={issuesF} initialTask={discussFocus} onShown={setDiscussShown} onNew={() => setDiscuss({})} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, label: `开工 ${tid}`, kind: leader?.kind, model: leader?.model })} onDone={say} onError={(m) => say(m, true)} />}
             {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
             {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
@@ -708,7 +716,7 @@ export default function App() {
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
-      {discuss && api && <DiscussDialog api={api} me={me} issues={issuesF} projects={projects.map((p) => p.name).filter(Boolean)} initialProject={discuss.project} initialTask={discuss.task} onClose={() => { setDiscuss(null); void reload(); }} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, label: `开工 ${tid}`, kind: leader?.kind, model: leader?.model })} onDone={say} onError={(m) => say(m, true)} />}
+      {discuss && api && <DiscussDialog api={api} me={me} issues={issuesF} projects={projects.map((p) => p.name).filter(Boolean)} initialProject={discuss.project} initialTask={discuss.task} onClose={() => { setDiscuss(null); void reload(); }} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, label: `开工 ${tid}`, kind: leader?.kind, model: leader?.model })} onAll={openDiscussion} onDone={say} onError={(m) => say(m, true)} />}
       {delegate && api && <Delegate hosts={hosts} initialHost={delegate.host} initialTask={delegate.task} initialPrompt={delegate.prompt} initialLabel={delegate.label} initialKind={delegate.kind} initialModel={delegate.model} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} />}
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
       {creating && <NewTask projects={projectOptions.formal} otherProjects={projectOptions.other} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}

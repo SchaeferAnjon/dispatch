@@ -58,6 +58,7 @@ export function Sidebar({ info, view, setView, counts, projects, agents, filters
         {item("projects", "project", "项目", <span className="n">{projects.filter((p) => p.name).length}</span>, undefined, `${projects.filter((p) => p.name).length} 个项目和目录（有会话或任务的）`)}
         {item("inbox", "inbox", "等我", counts.inbox > 0 ? <span className="badge">{counts.inbox}</span> : <span className="n">0</span>)}
         {item("sessions", "chat", "会话")}
+        {item("discuss", "discuss", "讨论")}
       </nav>
 
       <nav className="nav">

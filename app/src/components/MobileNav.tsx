@@ -12,6 +12,7 @@ const TABS: { v: View; icon: string; label: string }[] = [
 ];
 const MORE: { v: View; icon: string; label: string }[] = [
   { v: "board", icon: "board", label: "全部任务" },
+  { v: "discuss", icon: "discuss", label: "讨论" },
   { v: "agents", icon: "agent", label: "Agent 状态" },
   { v: "stats", icon: "chart", label: "统计与额度" },
   { v: "graph", icon: "graph", label: "脉络" },
