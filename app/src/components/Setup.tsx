@@ -7,7 +7,10 @@ import type { Api } from "../api";
 
 interface Dep { name: string; found: boolean; path: string; formula: string | null; why: string; required: boolean; installable: boolean }
 interface AgentRow { id: string; name: string; found: boolean; home: string; hooks: boolean | null; rules: boolean }
-interface Step { id: string; title: string; ok: boolean; detail: string; optional?: boolean; deps?: Dep[]; reviewers?: { id: string; kind: string; name: string }[]; cli?: { link: string; exists: boolean; target: string; in_app: boolean }; board?: { exists: boolean; server_up: boolean; hub?: { name: string; ssh: string } | null; mode: string }; agents?: AgentRow[]; rules?: { have_rules: boolean; targets: { agent: string; state: string; path: string }[]; seeded_from: string } }
+interface Step { id: string; title: string; ok: boolean; detail: string; optional?: boolean; deps?: Dep[]; reviewers?: { id: string; kind: string; name: string }[]; cli?: { link: string; exists: boolean; target: string; in_app: boolean }; board?: { exists: boolean; server_up: boolean; hub?: { name: string; ssh: string } | null; mode: string; reverse_ssh?: Reverse }; agents?: AgentRow[]; rules?: { have_rules: boolean; targets: { agent: string; state: string; path: string }[]; seeded_from: string } }
+// Can the hub ssh back here? Needed for the hub to merge this Mac's sessions; 远程登录
+// is a GUI toggle, so a failed check must say where to flip it.
+interface Reverse { checked: boolean; ok: boolean; ssh?: string; hub?: string; hint?: string; detail?: string; local_remote_login?: boolean; note?: string }
 export interface InitStatus { done: boolean; skipped: boolean; all_ok: boolean; machine: { name: string; user: string; tailscale_ip: string; lan_ip: string }; steps: Step[]; state: Record<string, unknown> }
 
 const parse = <T,>(s: string): T => { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); };
@@ -46,6 +49,7 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
   const missing = deps.filter((d) => !d.found && d.required);
   const brewMissing = deps.some((d) => d.name === "brew" && !d.found);
   const board = step("board").board;
+  const reverse = board?.reverse_ssh;
   const rules = step("rules").rules;
   const m = status.machine;
 
@@ -80,6 +84,13 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
         <Card n={3} s={step("board")} busy={busy === "board"}>
           {board?.exists ? <>
             <p className="muted">{board.hub ? `已接入 ${board.hub.name}（${board.hub.ssh}），每 2 分钟双向同步。` : "任务板在这台电脑上；别的电脑接入时填这台的地址。"}</p>
+            {board.hub && <div className="setup-row">
+              <span className={reverse?.checked && !reverse.ok ? "setup-bad" : "muted small"}>
+                {!reverse || !reverse.checked ? "枢纽能否连回本机：还没检查" : reverse.ok ? `✓ 枢纽 ${board.hub.name} 能连回本机（${reverse.ssh}）` : `✗ 枢纽连不回本机（${reverse.ssh}）`}
+              </span>
+              <button className="btn sm" disabled={!!busy} onClick={() => void run("reverse-ssh", [], "反向检查完成")}>{busy === "reverse-ssh" ? "检查中…" : "检查一次"}</button>
+            </div>}
+            {board.hub && reverse?.checked && !reverse.ok && <p className="setup-note">{reverse.hint || "枢纽连不回本机"}</p>}
             {!board.hub && <details className="setup-rejoin" open={rejoin} onToggle={(e) => setRejoin((e.target as HTMLDetailsElement).open)}>
               <summary className="link">改为接入另一台电脑的任务板…</summary>
               <div className="setup-join">
@@ -150,7 +161,8 @@ function Card({ n, s, busy, children }: { n: number; s: Step; busy: boolean; chi
 function summarize(id: string, r: Record<string, unknown>): string {
   try {
     if (id === "deps") { const f = (r.failed as { name: string; error: string; command?: string }[]) ?? []; return [...((r.installed as string[]) ?? []).map((n) => `✓ ${n}`), ...f.map((x) => `✗ ${x.name}：${x.error}${x.command ? `\n  终端里跑：${x.command}` : ""}`)].join("\n"); }
-    if (id === "board") { return r.remote_for_others ? `其他电脑接入时用：${r.remote_for_others}` : r.hub ? `已接入 ${(r.hub as { name: string }).name}` : JSON.stringify(r); }
+    if (id === "board") { const rev = r.reverse_ssh as Reverse | undefined; const revLine = rev ? (rev.checked ? (rev.ok ? `\n✓ 枢纽能连回本机（${rev.ssh}）` : `\n✗ 枢纽连不回本机：${rev.hint ?? ""}`) : "") : ""; return (r.remote_for_others ? `其他电脑接入时用：${r.remote_for_others}` : r.hub ? `已接入 ${(r.hub as { name: string }).name}` : JSON.stringify(r)) + revLine; }
+    if (id === "reverse-ssh") { return r.checked ? (r.ok ? `✓ 枢纽能连回本机（${r.ssh}）` : `✗ ${r.hint ?? "枢纽连不回本机"}`) : String(r.note ?? "不用检查"); }
     if (id === "rules") { const s = r.sync as { targets?: { agent: string; state: string }[]; results?: { agent: string; action: string }[] } | undefined; const rows = s?.results ?? s?.targets; return `来源：${r.seed_label ?? r.seed}` + (rows ? "\n" + rows.map((t) => `${t.agent}: ${"action" in t ? t.action : (t as { state: string }).state}`).join("，") : ""); }
     if (id === "agents") { const inst = (r.installed as Record<string, { note?: string; error?: string; mode?: string }>) ?? {}; const hooks = Object.keys(inst).filter((k) => k !== "herdr"); const h = inst.herdr; return `已选：${((r.agents as string[]) ?? []).join("、")}` + (hooks.length ? `\n已装 hook：${hooks.join("、")}` : "") + (h ? `\nHerdr：${h.error ? "没起来（" + h.error + "）" : h.note}` : ""); }
     if (id === "helper") { return r.started ? "Agent 已在 Herdr 里开始处理，会话页能看到它；需要输密码时它会提醒" : `没起成：${r.error}\n可以把这段发给任意 Agent：\n${r.prompt}`; }

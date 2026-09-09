@@ -6,7 +6,8 @@ re-run after fixing something by hand:
   deps    Homebrew, Dolt, Beads (bd), Herdr, tmux; Tailscale optional
   cli     `dispatch` on PATH -> the CLI bundled inside Dispatch.app
   board   the task board: start a new one here (this Mac becomes the hub) or join
-          the board of a Mac that already runs Dispatch
+          the board of a Mac that already runs Dispatch; joining also asks the hub to
+          ssh back, since 远程登录 (a GUI toggle) is what lets it merge this Mac's sessions
   agents  which agents live here; hooks for Claude Code
   rules   one GLOBAL.md for every agent + a shared skills pool (copied from the hub
           when joining), then `dispatch rules sync`
@@ -17,7 +18,7 @@ re-run after fixing something by hand:
 calls `dispatch init run <step> ...` for each button. The terminal wizard
 (`dispatch init`) walks the same steps with prompts.
 """
-import json, os, plistlib, re, secrets, shutil, socket, subprocess, sys, time
+import json, os, plistlib, re, secrets, shlex, shutil, socket, subprocess, sys, time
 
 import dispatch as D
 
@@ -214,7 +215,7 @@ def board_status():
         m = re.search(r'remote:\s*"?([^"\n]+)"?', open(cfg).read())
         remote = m.group(1).strip() if m else ""
     st = load_state()
-    return {"dir": D.BEADS_DIR, "exists": exists, "remote": remote, "mode": st.get("board_mode", ""), "hub": st.get("hub"),
+    return {"dir": D.BEADS_DIR, "exists": exists, "remote": remote, "mode": st.get("board_mode", ""), "hub": st.get("hub"), "reverse_ssh": st.get("reverse_ssh"),
             "server_up": dolt_server_up() if exists else False, "launchd": os.path.exists(os.path.join(LAUNCH_DIR, "dev.schaefer.beads-dolt.plist")),
             "sync_launchd": os.path.exists(os.path.join(LAUNCH_DIR, "dev.schaefer.beads-sync.plist")), "remotesapi": remotesapi_enabled()}
 
@@ -460,6 +461,52 @@ def ssh_target_ok(target):
     return r.returncode == 0 and "ok" in r.stdout, (r.stderr or r.stdout).strip()[-300:]
 
 
+REMOTE_LOGIN_STEP = "系统设置 → 通用 → 共享 → 打开「远程登录」"
+
+
+def remote_login_on():
+    """Is this Mac listening for ssh? 远程登录 opens port 22. The toggle itself is a GUI
+    one (`systemsetup -setremotelogin` wants sudo), so all we can check is the port."""
+    try:
+        with socket.create_connection(("127.0.0.1", 22), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def check_reverse_ssh(target="", addr=""):
+    """Ask the hub to ssh back to this Mac. board_join puts the hub's key into our
+    authorized_keys, but this Mac also has to listen: 远程登录 is off by default and the
+    toggle needs the GUI, so when it is off we can only point at where to turn it on."""
+    st = load_state()
+    target = target or (st.get("hub") or {}).get("ssh", "")
+    if not target:
+        return {"checked": False, "ok": False, "note": "这台是枢纽（没有接入别的电脑），不用反向检查"}
+    me = machine()
+    addr = addr or (st.get("me") or {}).get("ssh") or f"{me['user']}@{me['tailscale_ip'] or me['lan_ip']}"
+    local = remote_login_on()
+    reachable, why = ssh_target_ok(target)
+    res = {"checked": True, "ok": False, "ssh": addr, "hub": target, "local_remote_login": local}
+    if not reachable:
+        res["detail"] = why
+        last = (why or "").strip().splitlines()[-1] if why else ""
+        res["hint"] = f"连不上枢纽 {target}：{last or '确认那台电脑开着，并在那边也打开「远程登录」'}"
+    else:
+        cmd = f"ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new {shlex.quote(addr)} echo ok"
+        try:
+            r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new", target, cmd], capture_output=True, text=True, timeout=30)
+            res["ok"] = r.returncode == 0 and "ok" in r.stdout
+            res["detail"] = (r.stderr or r.stdout).strip()[-300:]
+        except Exception as e:
+            res["detail"] = str(e)
+        if not res["ok"]:
+            res["hint"] = (f"本机没在监听 ssh：「远程登录」没开。{REMOTE_LOGIN_STEP}，打开后点「检查一次」。"
+                           if not local else
+                           f"枢纽 {target} 连不回 {addr}：两台电脑要在同一个 Tailscale 网络，本机防火墙也别挡 ssh；还是不行就在 {REMOTE_LOGIN_STEP} 关掉再打开一次。")
+    save_state(reverse_ssh=res)
+    return res
+
+
 def remote_dispatch_json(target, args, timeout=90):
     cmd = "env BEADS_DIR=$HOME/tasks/.beads $HOME/.local/bin/dispatch " + " ".join(args) + " --json"
     r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", target, cmd], capture_output=True, text=True, timeout=timeout)
@@ -579,8 +626,10 @@ def board_join(target, replace=False):
         if hub["pubkey"] not in cur:
             open(ak, "a").write(("\n" if cur and not cur.endswith("\n") else "") + hub["pubkey"] + "\n")
             os.chmod(ak, 0o600)
-    save_state(board_mode="join", hub={"name": hub["name"], "ssh": hub_entry["ssh"], "remote": hub["remote"]})
-    return {"hub": hub_entry, "me": my_entry, "remote": hub["remote"], "retired": retired}
+    save_state(board_mode="join", hub={"name": hub["name"], "ssh": hub_entry["ssh"], "remote": hub["remote"]}, me=my_entry)
+    # The hub can only merge this Mac's sessions if it can ssh back here.
+    reverse = check_reverse_ssh(target=hub_entry["ssh"], addr=my_entry["ssh"])
+    return {"hub": hub_entry, "me": my_entry, "remote": hub["remote"], "retired": retired, "reverse_ssh": reverse}
 
 
 def add_host(entry):
@@ -943,6 +992,11 @@ def wizard():
         else:
             t = ask("  那台电脑的 ssh 地址（用户名@Tailscale 或局域网 IP）")
             r = board_join(t); print(f"  ✓ 已接入 {r['hub']['name']}，每 2 分钟双向同步")
+            rev = r.get("reverse_ssh") or {}
+            if rev.get("ok"):
+                print(f"  ✓ 枢纽 {r['hub']['name']} 能连回本机（{rev['ssh']}）")
+            elif rev.get("checked"):
+                print(f"  ✗ 枢纽连不回本机：{rev.get('hint', '')}")
     print("4/6 Agent")
     found = [a for a in agents_status() if a["found"]]
     print("  检测到：" + ("、".join(a["name"] for a in found) or "没有"))
@@ -993,6 +1047,8 @@ def main(a):
                 res = rules_setup()
             elif step == "review":
                 res = review_start(args[0] if args else (review_agents() or [{"kind": "claude"}])[0]["kind"]); save_state(reviewed=True)
+            elif step == "reverse-ssh":
+                res = check_reverse_ssh(args[0] if args else "")
             elif step == "ssh-key":
                 pw = sys.stdin.read().rstrip("\n") if not sys.stdin.isatty() else ""
                 if not pw:
