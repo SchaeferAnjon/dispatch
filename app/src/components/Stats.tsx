@@ -137,7 +137,8 @@ export function StatsView({ api, me, host, hostName, onDone, onError, onStart, o
   useEffect(() => {
     let alive = true; setBusy(true);
     try { localStorage.setItem("dispatch-stats-agent", agent); localStorage.setItem("dispatch-stats-days", String(days)); } catch { /* ignore */ }
-    const req = host && host !== "local" ? api.on(host, ["stats", ...(agent ? ["--agent", agent] : []), "--days", String(days), "--cached", "--json"]).then((t) => parseJson<Stats | null>(t, null)) : api.stats(agent, days);
+    // A specific machine (this one or another): only its numbers, hence --local. "全部" merges every Mac.
+    const req = host ? api.on(host, ["stats", ...(agent ? ["--agent", agent] : []), "--days", String(days), "--cached", "--local", "--json"]).then((t) => parseJson<Stats | null>(t, null)) : api.stats(agent, days);
     req.then((r) => { if (alive) setS(r); }).catch((e) => onError(String(e))).finally(() => alive && setBusy(false));
     return () => { alive = false; };
   }, [api, agent, days, host]);
@@ -161,6 +162,7 @@ export function StatsView({ api, me, host, hostName, onDone, onError, onStart, o
         </div>
         <span className="spacer" />
         {hostName && <span className="chip on" title="侧栏选了这台机器，统计只算它">只看 {hostName}</span>}
+        {!hostName && s?.hosts && s.hosts.length > 1 && <span className="chip on" title="两台 Mac 的统计相加，不是同一份数据">{s.hosts.join(" + ")}</span>}
         {busy && <span className="muted small">统计中…</span>}
       </div>
 

@@ -1268,10 +1268,117 @@ def cmd_folders(a):
     out(rows, a.json, text)
 
 
+def _rank_sum(a_list, b_list, key, nums):
+    """Add two rank lists (tools / skills / subagents / projects / models) by their name."""
+    out = {}
+    for x in (a_list or []) + (b_list or []):
+        name = x.get(key) or ""
+        cur = out.get(name)
+        if cur is None:
+            cur = dict(x)
+            if "by" in x:
+                cur["by"] = dict(x.get("by") or {})
+            out[name] = cur
+            continue
+        for f in nums:
+            cur[f] = cur.get(f, 0) + x.get(f, 0)
+        if "by" in x or "by" in cur:
+            cur["by"] = dict(cur.get("by") or {})
+            for ag, n in (x.get("by") or {}).items():
+                cur["by"][ag] = cur["by"].get(ag, 0) + n
+        for f in ("cwd", "agent"):
+            if not cur.get(f):
+                cur[f] = x.get(f, "")
+    return list(out.values())
+
+
+def merge_stats(base, extra):
+    """Fold another Mac's `dispatch stats --cached --local` into this one. Day buckets and
+    the weekday×hour grid are added; ranks and projects are added by name; the day, streak
+    and active-hour counts are recomputed from the merged buckets so a day both Macs worked
+    on is not counted twice."""
+    if not extra or not isinstance(extra, dict):
+        return base
+    days = {d["date"]: dict(d, by=dict(d.get("by") or {})) for d in base.get("days") or []}
+    for d in extra.get("days") or []:
+        cur = days.get(d["date"])
+        if cur is None:
+            days[d["date"]] = dict(d, by=dict(d.get("by") or {}))
+            continue
+        for k in ("msgs", "tokens", "in", "out", "cr", "cw"):
+            cur[k] = cur.get(k, 0) + d.get(k, 0)
+        for ag, n in (d.get("by") or {}).items():
+            cur["by"][ag] = cur["by"].get(ag, 0) + n
+    hours = [row[:] for row in (base.get("hours") or [[0] * 24 for _ in range(7)])]
+    for w, row in enumerate(extra.get("hours") or []):
+        if w >= len(hours):
+            continue
+        for h, n in enumerate(row):
+            if h < len(hours[w]):
+                hours[w][h] += n
+    agents = {}
+    for A in (base.get("agents") or []) + (extra.get("agents") or []):
+        cur = agents.setdefault(A["agent"], {"agent": A["agent"], "sessions": 0, "msgs": 0, "tokens": {k: 0 for k in ("in", "out", "cr", "cw", "think")}, "total": 0, "days": 0})
+        cur["sessions"] += A.get("sessions", 0)
+        cur["msgs"] += A.get("msgs", 0)
+        cur["total"] += A.get("total", 0)
+        for k, n in (A.get("tokens") or {}).items():
+            cur["tokens"][k] = cur["tokens"].get(k, 0) + n
+    day_list = sorted(days.values(), key=lambda d: d["date"])
+    active = [d["date"] for d in day_list if d.get("msgs", 0) > 0]
+    from datetime import datetime as _dt
+    cur = longest = run = 0
+    prev = None
+    for day in active:
+        dd = _dt.strptime(day, "%Y-%m-%d").date()
+        run = run + 1 if prev and (dd - prev).days == 1 else 1
+        longest = max(longest, run)
+        prev = dd
+    from datetime import date as _date
+    if prev and (_date.today() - prev).days <= 1:
+        cur = run
+    tot = {k: 0 for k in ("in", "out", "cr", "cw", "think")}
+    for A in agents.values():
+        for k in tot:
+            tot[k] += (A["tokens"] or {}).get(k, 0)
+        # No per-agent message count per day in the JSON; token presence is the best proxy.
+        A["days"] = sum(1 for d in day_list if (d.get("by") or {}).get(A["agent"]))
+    total_tokens = tot["in"] + tot["out"] + tot["cr"] + tot["cw"]
+    bt, et = base.get("total") or {}, extra.get("total") or {}
+    tools = _rank_sum(base.get("tools"), extra.get("tools"), "name", ("count",))
+    skills = _rank_sum(base.get("skills"), extra.get("skills"), "name", ("count",))
+    subs = _rank_sum(base.get("subagents"), extra.get("subagents"), "name", ("count",))
+    projects = _rank_sum(base.get("projects"), extra.get("projects"), "name", ("tokens", "msgs", "sessions"))
+    models = _rank_sum(base.get("models"), extra.get("models"), "model", ("msgs",))
+    res = dict(base)
+    res.update({
+        "total": {
+            "tokens": tot, "total": total_tokens,
+            "sub_tokens": bt.get("sub_tokens", 0) + et.get("sub_tokens", 0),
+            "msgs": sum(d.get("msgs", 0) for d in day_list),
+            "sessions": sum(A["sessions"] for A in agents.values()),
+            "active_days": len(active), "streak_cur": cur, "streak_max": longest,
+            "tools_distinct": len(tools),
+            "active_hours": sum(1 for row in hours for n in row if n) if not base.get("range_days") else None,
+            "first_day": active[0] if active else "", "last_day": active[-1] if active else "",
+        },
+        "agents": sorted(agents.values(), key=lambda A: -A["total"]),
+        "days": day_list, "hours": hours,
+        "models": sorted(models, key=lambda m: -m.get("msgs", 0)),
+        "tools": sorted(tools, key=lambda t: -t.get("count", 0))[:30],
+        "skills": sorted(skills, key=lambda t: -t.get("count", 0))[:30],
+        "subagents": sorted(subs, key=lambda t: -t.get("count", 0))[:30],
+        "projects": sorted(projects, key=lambda p: -p.get("tokens", 0))[:20],
+        "generated_at": max(base.get("generated_at", 0), extra.get("generated_at", 0)),
+    })
+    return res
+
+
 def cmd_stats(a):
     """Everything the agents burned, across all of them: tokens, activity by day and hour,
     tools / skills / subagents, models, projects. Ranges filter days by activity date and
-    sessions (tools, models, projects) by their last activity."""
+    sessions (tools, models, projects) by their last activity. Other Macs in hosts.json are
+    merged in (`--local` skips them); their day buckets and hour grid are added."""
     from datetime import date, timedelta
     idx = load_index() if a.cached else refresh_index()
     days_n = a.days or 0
@@ -1379,6 +1486,17 @@ def cmd_stats(a):
         "projects": sorted(projects.values(), key=lambda p: -p["tokens"])[:20],
         "generated_at": time.time(),
     }
+    if not getattr(a, "local", False):
+        merged = []
+        for h in hosts():
+            rargs = ["stats", "--cached", "--local", "--days", str(days_n)] + (["--agent", a.agent] if a.agent else [])
+            other = remote_dispatch(h, rargs, 120)
+            if not other:
+                continue
+            res = merge_stats(res, other)
+            merged.append(h["name"])
+        if merged:
+            res["hosts"] = [local_host_name()] + merged
 
     def text(r):
         t = r["total"]
@@ -5203,7 +5321,7 @@ def main():
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; this is not independent peer review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.add_argument("--review-by", help="request peer review from this Agent, without launching it"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("review", help="record independent Agent review and its evidence"); s.add_argument("task"); s.add_argument("--verdict", choices=["pass", "changes"], required=True); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
-    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--local", action="store_true", help="this Mac only (other Macs are merged in by default)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("discuss-live", help="what each discussion member is doing right now (the typing bubbles): discussions/<task>.live.json"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_live)
     s = sub.add_parser("discuss-conclude", help="write (replace) the discussion's conclusion — one block in the task's description"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_conclude)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)

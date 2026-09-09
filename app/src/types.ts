@@ -18,6 +18,7 @@ export interface Stats {
   subagents: StatsRank[];
   projects: { name: string; cwd: string; tokens: number; msgs: number; sessions: number; by: Record<string, number> }[];
   generated_at: number;
+  hosts?: string[];
 }
 export interface Host {
   id: string; name: string; ip: string; ssh: string; online: boolean; local: boolean; herdr_session?: string;

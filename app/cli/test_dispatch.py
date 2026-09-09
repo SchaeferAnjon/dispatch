@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import time
+import types
 import unittest
 from unittest.mock import patch
 
@@ -455,3 +456,118 @@ class DynamicWorkflow(unittest.TestCase):
         p1 = dispatch.discuss_prompt("task-1", "标题", 1, "先做哪个")
         self.assertIn("bd show task-1", p1); self.assertIn("先做哪个", p1); self.assertIn("不改代码", p1)
         self.assertIn("第 2 轮", dispatch.discuss_prompt("task-1", "标题", 2))
+
+
+class StatsMerge(unittest.TestCase):
+    """`dispatch stats` adds the other Macs' day buckets and hour grid instead of replacing them."""
+
+    @staticmethod
+    def _day(date, msgs, tokens, by):
+        return {"date": date, "msgs": msgs, "tokens": tokens, "in": tokens, "out": 0, "cr": 0, "cw": 0, "by": by}
+
+    @staticmethod
+    def _agent(name, sessions, msgs, tokens, days):
+        return {"agent": name, "sessions": sessions, "msgs": msgs, "tokens": {"in": tokens, "out": 0, "cr": 0, "cw": 0, "think": 0}, "total": tokens, "days": days}
+
+    @staticmethod
+    def _stats(days, hours, agents, tools=(), projects=(), sub=0, ts=1, range_days=0):
+        return {
+            "range_days": range_days, "agent": "",
+            "total": {"tokens": {"in": 0, "out": 0, "cr": 0, "cw": 0, "think": 0}, "total": 0, "sub_tokens": sub,
+                      "msgs": 0, "sessions": 0, "active_days": 0, "streak_cur": 0, "streak_max": 0,
+                      "tools_distinct": 0, "active_hours": 0, "first_day": "", "last_day": ""},
+            "agents": list(agents), "days": list(days), "hours": hours,
+            "models": [], "tools": list(tools), "skills": [], "subagents": [],
+            "projects": list(projects), "generated_at": ts,
+        }
+
+    def setUp(self):
+        grid = [[0] * 24 for _ in range(7)]
+        grid[0][9] = 2
+        self.base = self._stats(
+            [self._day("2026-09-08", 2, 100, {"claude-code": 100})], grid,
+            [self._agent("claude-code", 1, 2, 100, 1)],
+            tools=[{"name": "Bash", "count": 2, "by": {"claude-code": 2}}],
+            projects=[{"name": "kanban", "cwd": "/k", "tokens": 100, "msgs": 2, "sessions": 1, "by": {"claude-code": 100}}],
+            sub=10, ts=100)
+        grid2 = [[0] * 24 for _ in range(7)]
+        grid2[0][9] = 1
+        grid2[3][14] = 5
+        self.extra = self._stats(
+            [self._day("2026-09-08", 3, 200, {"pi": 200}), self._day("2026-09-07", 1, 50, {"pi": 50})], grid2,
+            [self._agent("pi", 2, 4, 250, 2)],
+            tools=[{"name": "Bash", "count": 3, "by": {"pi": 3}}, {"name": "Read", "count": 1, "by": {"pi": 1}}],
+            projects=[{"name": "kanban", "cwd": "/k", "tokens": 200, "msgs": 3, "sessions": 1, "by": {"pi": 200}}],
+            sub=5, ts=200)
+
+    def test_none_is_ignored(self):
+        self.assertIs(dispatch.merge_stats(self.base, None), self.base)
+
+    def test_days_and_hours_are_summed(self):
+        m = dispatch.merge_stats(self.base, self.extra)
+        self.assertEqual([d["date"] for d in m["days"]], ["2026-09-07", "2026-09-08"])
+        d = m["days"][1]
+        self.assertEqual((d["msgs"], d["tokens"]), (5, 300))
+        self.assertEqual(d["by"], {"claude-code": 100, "pi": 200})
+        self.assertEqual(m["hours"][0][9], 3)
+        self.assertEqual(m["hours"][3][14], 5)
+
+    def test_totals_are_recomputed_not_added_twice(self):
+        m = dispatch.merge_stats(self.base, self.extra)
+        t = m["total"]
+        self.assertEqual(t["total"], 350)
+        self.assertEqual(t["msgs"], 6)
+        self.assertEqual(t["sessions"], 3)
+        self.assertEqual(t["sub_tokens"], 15)
+        self.assertEqual(t["active_days"], 2)
+        self.assertEqual(t["active_hours"], 2)
+        self.assertEqual(t["tools_distinct"], 2)
+        self.assertEqual((t["first_day"], t["last_day"]), ("2026-09-07", "2026-09-08"))
+        self.assertEqual(t["streak_max"], 2)
+        self.assertEqual(m["generated_at"], 200)
+
+    def test_agents_and_ranks_merge_by_name(self):
+        m = dispatch.merge_stats(self.base, self.extra)
+        by = {A["agent"]: A for A in m["agents"]}
+        self.assertEqual((by["claude-code"]["total"], by["claude-code"]["days"]), (100, 1))
+        self.assertEqual((by["pi"]["total"], by["pi"]["days"]), (250, 2))
+        self.assertEqual({x["name"]: x["count"] for x in m["tools"]}, {"Bash": 5, "Read": 1})
+        self.assertEqual(m["tools"][0]["by"], {"claude-code": 2, "pi": 3})
+        p = m["projects"][0]
+        self.assertEqual((p["tokens"], p["msgs"], p["sessions"]), (300, 5, 2))
+
+    def test_range_keeps_hour_grid_unknown(self):
+        base = dict(self.base, range_days=7)
+        extra = dict(self.extra, range_days=7)
+        self.assertIsNone(dispatch.merge_stats(base, extra)["total"]["active_hours"])
+
+    def test_cmd_stats_asks_remotes_for_local_only(self):
+        idx = {"s": {"agent": "claude-code", "session_id": "s", "cwd": "/tmp/p", "subagent": False,
+                     "days": {"2026-09-08": [1, 100, 100, 0, 0, 0]},
+                     "tokens": {"in": 100, "out": 0, "cr": 0, "cw": 0, "think": 0}, "mtime": 4e9,
+                     "hours": {"0-9": 1}, "models": {}, "tools": {}, "skills": {}, "subs": {},
+                     "user_msgs": 1, "assistant_msgs": 0}}
+        seen = {}
+
+        def remote(host, args, ttl):
+            seen["args"] = args
+            return self.extra
+
+        def run(local):
+            buf = io.StringIO()
+            a = types.SimpleNamespace(agent="", days=0, cached=True, json=True, local=local)
+            with patch.object(dispatch, "load_index", return_value=idx), \
+                 patch.object(dispatch, "hosts", return_value=[{"id": "mini", "name": "mini", "ssh": "x"}]), \
+                 patch.object(dispatch, "remote_dispatch", side_effect=remote), \
+                 contextlib.redirect_stdout(buf):
+                dispatch.cmd_stats(a)
+            return json.loads(buf.getvalue())
+
+        merged = run(False)
+        self.assertEqual(seen["args"], ["stats", "--cached", "--local", "--days", "0"])
+        self.assertEqual(merged["hosts"], [dispatch.local_host_name(), "mini"])
+        self.assertEqual(merged["hours"][0][9], 2)
+        seen.clear()
+        only = run(True)
+        self.assertNotIn("hosts", only)
+        self.assertEqual(seen, {})
