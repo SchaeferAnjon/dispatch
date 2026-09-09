@@ -4285,8 +4285,22 @@ def docs_project_dirs(project):
 
     def add(d):
         d = os.path.abspath(os.path.expanduser(d or ""))
-        if d and d not in seen and os.path.isdir(d):
-            seen.add(d); out.append(d)
+        if not d or d in seen or not os.path.isdir(d):
+            return
+        # A git worktree (.git is a file pointing at the main repo) holds a copy of the same
+        # documents: read them from the main repository instead, once.
+        dotgit = os.path.join(d, ".git")
+        if os.path.isfile(dotgit):
+            try:
+                gitdir = open(dotgit).read().strip().split("gitdir:", 1)[1].strip()
+                main = os.path.abspath(os.path.join(gitdir.split("/.git/worktrees/")[0]))
+                if os.path.isdir(main):
+                    d = main
+            except Exception:
+                return
+            if d in seen:
+                return
+        seen.add(d); out.append(d)
 
     try:
         names = project_names()
