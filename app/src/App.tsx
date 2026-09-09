@@ -343,6 +343,22 @@ export default function App() {
   const hostId = useMemo(() => { if (!hostFilter) return ""; const h = hosts.find((x) => x.name === hostFilter); return h ? (h.local ? "local" : h.id) : ""; }, [hostFilter, hosts]);
   const localName = hosts.find((h) => h.local)?.name ?? "";
   const [settings, setSettings] = useState<DispatchSettings>(DEFAULT_SETTINGS);
+  // Models the summary setting can offer (Claude subscription + configured API keys); asked once.
+  const [summaryProviders, setSummaryProviders] = useState<{ id: string; label: string }[]>([]);
+  useEffect(() => {
+    if (!api || view !== "settings" || summaryProviders.length) return;
+    api.on("local", ["session-summary", "providers", "--json"]).then((t) => setSummaryProviders((JSON.parse(t.slice(Math.max(0, t.indexOf("{")))) as { providers: { id: string; label: string }[] }).providers)).catch(() => {});
+  }, [api, view, summaryProviders.length]);
+  // Auto summaries: a couple per pass, newest conversations first, so a fresh reply gets its
+  // summary within minutes and older sessions fill in over time. The CLI honours the setting.
+  useEffect(() => {
+    if (!api || !isTauri || !settings.summary_auto) return;
+    let running = false;
+    const pass = async () => { if (running) return; running = true; try { await api.on("local", ["session-summary", "auto", "--limit", "2", "--json"]); } catch { /* next pass */ } finally { running = false; } };
+    const first = window.setTimeout(pass, 20_000);
+    const t = window.setInterval(pass, 3 * 60_000);
+    return () => { window.clearTimeout(first); window.clearInterval(t); };
+  }, [api, settings.summary_auto]);
   const archiveDays = settings.session_archive_days;
   const saveSettings = async (next: DispatchSettings) => { if (!api) return; try { await api.remember(SETTINGS_KEY, serializeSettings(next)); setSettings(next); say("设置已保存"); } catch (e) { say(String(e), true); } };
   const known = useMemo(() => knownProjects(issues, activity.sessions), [issues, activity]);
@@ -656,7 +672,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} summaryProviders={summaryProviders} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "overview" && <OverviewView stats={{ projects: projects.filter((p) => p.name).length, inbox: counts.inbox, sessions: projectRows.length, running: runningSessions, tasks: issuesF.length, open: issuesF.filter((i) => i.status !== "closed").length, agentsOnline: agents.filter((a) => a.online).length, agentsTotal: agents.length, skills: skillCount, wiki: wikiCount, hosts: Math.max(1, hosts.length), rulesSynced: null, version: update?.current ?? "" }} onGo={(v) => (v === "board" ? allTasks() : setView(v))} onTour={() => setTour(true)} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

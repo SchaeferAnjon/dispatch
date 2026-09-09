@@ -37,9 +37,9 @@ export function withProjectFlag(flags: ProjectFlags, name: string, change: { sta
 
 // Shared settings live next to the flags, in their own memory (`dispatch settings`).
 export const SETTINGS_KEY = "dispatch-settings";
-export interface DispatchSettings { session_archive_days: number; home_expanded: number; sdk_sessions_scheduled: boolean; workspace_roots: string[] }
+export interface DispatchSettings { session_archive_days: number; home_expanded: number; sdk_sessions_scheduled: boolean; workspace_roots: string[]; summary_auto: boolean; summary_model: string }
 // Folders whose direct children are projects (~/Projects/<name>/… belongs to <name>).
-export const DEFAULT_SETTINGS: DispatchSettings = { session_archive_days: 30, home_expanded: 2, sdk_sessions_scheduled: true, workspace_roots: ["~/Projects"] };
+export const DEFAULT_SETTINGS: DispatchSettings = { session_archive_days: 30, home_expanded: 2, sdk_sessions_scheduled: true, workspace_roots: ["~/Projects"], summary_auto: true, summary_model: "" };
 export function parseSettings(memories: Memory[]): DispatchSettings {
   const out = { ...DEFAULT_SETTINGS };
   const raw = memories.find((m) => m.key === SETTINGS_KEY)?.value;
@@ -50,11 +50,13 @@ export function parseSettings(memories: Memory[]): DispatchSettings {
     if (d && typeof d.home_expanded === "number" && d.home_expanded >= 0) out.home_expanded = d.home_expanded;
     if (d && Array.isArray(d.workspace_roots)) out.workspace_roots = d.workspace_roots.filter((x: unknown) => typeof x === "string" && x.trim()).map((x: string) => x.trim());
     if (d && typeof d.sdk_sessions_scheduled === "number") out.sdk_sessions_scheduled = d.sdk_sessions_scheduled !== 0;
+    if (d && typeof d.summary_auto === "number") out.summary_auto = d.summary_auto !== 0;
+    if (d && typeof d.summary_model === "string") out.summary_model = d.summary_model.trim();
   } catch { /* keep defaults */ }
   return out;
 }
 // The CLI stores integers only; booleans travel as 0/1.
-export const serializeSettings = (s: DispatchSettings) => JSON.stringify({ home_expanded: s.home_expanded, sdk_sessions_scheduled: s.sdk_sessions_scheduled ? 1 : 0, session_archive_days: s.session_archive_days, workspace_roots: s.workspace_roots });
+export const serializeSettings = (s: DispatchSettings) => JSON.stringify({ home_expanded: s.home_expanded, sdk_sessions_scheduled: s.sdk_sessions_scheduled ? 1 : 0, session_archive_days: s.session_archive_days, workspace_roots: s.workspace_roots, summary_auto: s.summary_auto ? 1 : 0, summary_model: s.summary_model });
 
 export const serializeProjectFlags = (flags: ProjectFlags) => JSON.stringify(Object.fromEntries(Object.keys(flags).sort().map((k) => [k, flags[k]])));
 export const isStarred = (flags: ProjectFlags, name: string) => !!flags[name]?.starred;

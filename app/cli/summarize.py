@@ -32,7 +32,8 @@ def provider():
     runs `claude -p` on the Claude Code subscription — no API key, counts against its usage
     limits, a few seconds per call. Otherwise the first API key found, 智谱 first."""
     env = {i["name"]: i["value"] for i in D.env_read()}
-    pick = env.get("SUMMARY_MODEL", "")
+    # The app's 设置 wins (shared through the board), then the env file, then whatever is available.
+    pick = (D.settings_load().get("summary_model") or "").strip() or env.get("SUMMARY_MODEL", "")
     if pick and ":" in pick:
         pid, model = pick.split(":", 1)
         if pid == "claude" and CLAUDE_BIN:
@@ -46,6 +47,52 @@ def provider():
     if CLAUDE_BIN:
         return {"id": "claude", "base": "", "model": "haiku", "key": ""}
     return None
+
+
+def providers():
+    """Every model the settings page can offer: the Claude subscription (when the CLI is installed)
+    and each API key in `dispatch env`, with the default model each one gets."""
+    env = {i["name"]: i["value"] for i in D.env_read()}
+    out = []
+    if CLAUDE_BIN:
+        out += [{"id": "claude:haiku", "label": "Claude Haiku（订阅，最省）"}, {"id": "claude:sonnet", "label": "Claude Sonnet（订阅）"}]
+    for key, p, base, model in PROVIDERS:
+        if env.get(key):
+            out.append({"id": f"{p}:{model}", "label": f"{model}（{p}，API Key）"})
+    return out
+
+
+def auto(limit=2):
+    """Summarize the conversations a person will actually look at, newest first, a few per call:
+    fresh replies get a summary within minutes; older sessions fill in over time. Skips scheduled
+    and archived sessions and anything summarized since it last changed."""
+    from activity import session_preferences, set_preferences
+    if not D.settings_load().get("summary_auto", 1):
+        return {"done": [], "reason": "自动总结已关闭"}
+    prefs = session_preferences(D.DISPATCH_DIR)
+    idx = D.load_index() or D.refresh_index()
+    rows = [(k, e) for k, e in idx.items() if not e.get("subagent") and (e.get("user_msgs") or 0) > 0 and e.get("agent") in ("claude-code", "codex", "pi", "zcode")]
+    rows.sort(key=lambda kv: kv[1].get("mtime", 0), reverse=True)
+    done, tried = [], 0
+    for path, e in rows:
+        key = f"{e['agent']}:{e['session_id']}"
+        pr = prefs.get(key, {})
+        if pr.get("scheduled") or pr.get("archived"):
+            continue
+        if pr.get("summary") and pr.get("summary_mtime") == e.get("mtime"):
+            continue
+        if not pr.get("summary") and time.time() - (e.get("mtime") or 0) > 60 * 86400:
+            break  # older than two months without a summary: not worth the calls
+        tried += 1
+        try:
+            r = summarize(key, force=bool(pr.get("summary")))
+            set_preferences(D.DISPATCH_DIR, key, {"summary_mtime": e.get("mtime")})
+            done.append({"key": key, "summary": r["summary"][:80], "cached": r.get("cached", False)})
+        except Exception as ex:
+            done.append({"key": key, "error": str(ex)[:160]})
+        if len(done) >= limit:
+            break
+    return {"done": done, "tried": tried}
 
 
 def transcript_excerpt(key, limit=12000):
@@ -112,11 +159,20 @@ def summarize(key, force=False):
     text = text.strip().strip('"“”').replace("\n", " ")[:300]
     if not text:
         raise RuntimeError("模型没有返回内容")
-    data = set_preferences(D.DISPATCH_DIR, key, {"summary": text, "summary_at": int(time.time()), "summary_version": version, "summary_by": f"{p['id']}:{p['model']}"})
+    mtime = next((e.get("mtime") for e in (D.load_index() or {}).values() if f"{e.get('agent')}:{e.get('session_id')}" == key and not e.get("subagent")), None)
+    data = set_preferences(D.DISPATCH_DIR, key, {"summary": text, "summary_at": int(time.time()), "summary_version": version, "summary_by": f"{p['id']}:{p['model']}", "summary_mtime": mtime})
     return {"key": key, "summary": data["summary"], "cached": False, "provider": data["summary_by"]}
 
 
 def main(a):
+    if a.op == "providers":
+        res = {"providers": providers(), "current": (D.settings_load().get("summary_model") or "")}
+        print(json.dumps(res, ensure_ascii=False, indent=2) if a.json else "\n".join(f"{x['id']:<28} {x['label']}" for x in res["providers"]))
+        return
+    if a.op == "auto":
+        res = auto(a.limit)
+        print(json.dumps(res, ensure_ascii=False, indent=2) if a.json else (res.get("reason") or "\n".join(f"{d['key'][:28]}  {d.get('summary') or d.get('error')}" for d in res["done"]) or "没有需要总结的会话"))
+        return
     if a.op == "provider":
         p = provider()
         res = {"available": bool(p), **({"id": p["id"], "model": p["model"]} if p else {}), "hint": "" if p else "装了 Claude Code 就能用订阅（SUMMARY_MODEL=claude:haiku），或在 dispatch env 里放 DEEPSEEK_API_KEY / ZHIPU_API_KEY / KIMI_API_KEY / MINIMAX_API_KEY / OPENAI_API_KEY 之一；SUMMARY_MODEL=provider:model 可指定"}

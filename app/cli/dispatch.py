@@ -3194,7 +3194,8 @@ def project_flags_load():
 
 # ---------------------------------------------------------------- settings (shared, one bd memory)
 SETTINGS_KEY = "dispatch-settings"
-SETTING_DEFAULTS = {"session_archive_days": 30, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"]}
+SETTING_DEFAULTS = {"session_archive_days": 30, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": ""}
+SETTING_STRINGS = {"summary_model"}   # free-text settings; everything else numeric except workspace_roots
 
 
 def settings_parse(raw):
@@ -3204,7 +3205,10 @@ def settings_parse(raw):
         return {}
     if not isinstance(d, dict):
         return {}
-    out = {k: v for k, v in d.items() if k in SETTING_DEFAULTS and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
+    out = {k: v for k, v in d.items() if k in SETTING_DEFAULTS and k not in SETTING_STRINGS and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
+    for k in SETTING_STRINGS:
+        if isinstance(d.get(k), str):
+            out[k] = d[k].strip()[:80]
     if isinstance(d.get("workspace_roots"), list):
         out["workspace_roots"] = [x.strip() for x in d["workspace_roots"] if isinstance(x, str) and x.strip()]
     return out
@@ -3229,6 +3233,8 @@ def cmd_settings(a):
     if a.key and a.value is not None:
         if a.key == "workspace_roots":
             val = [x.strip() for x in a.value.split(",") if x.strip()]
+        elif a.key in SETTING_STRINGS:
+            val = a.value.strip()
         else:
             try:
                 val = int(a.value)
@@ -3240,7 +3246,7 @@ def cmd_settings(a):
         cur[a.key] = val
         wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
     shown = {a.key: cur[a.key]} if a.key else cur
-    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目"}
+    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选"}
     out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes[k]}）") for k, v in x.items()])
 
 
@@ -4306,7 +4312,7 @@ def main():
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
-    s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（用 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
+    s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)
     s = sub.add_parser("init", help="首次设置向导：装依赖、建/接入任务板、选 Agent、同步规则与技能（无参数=交互式）"); s.add_argument("op", nargs="?", choices=["wizard", "status", "run", "hub-info", "add-host", "skip", "finish", "reset", "peers"]); s.add_argument("args", nargs="*", help="run: <deps|cli|board|agents|rules|review> [参数…]"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_init)

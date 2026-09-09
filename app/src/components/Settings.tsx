@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 import { isTauri } from "../api";
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, onPhone, onScreen, screenReady, hosts = [], onSetup, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, onScreen, screenReady, hosts = [], onSetup, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   // The version line should not read "v…" forever: look it up once when the page opens.
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -25,6 +25,14 @@ export function SettingsView({ settings, onSave, theme, onTheme, onPhone, onScre
         <label className="settings-row">
           <div><b>普通会话多少天没有活动后自动归档</b><p>收藏（追踪中）的会话不受影响；归档的会话在会话页「已归档」和 ⌘K 里还能找到。填 0 表示永不自动归档。</p></div>
           <span className="settings-num"><input type="number" min={0} max={3650} value={draft.session_archive_days} onChange={(e) => num("session_archive_days", e.target.value, 3650)} /> 天</span>
+        </label>
+        <label className="settings-row">
+          <div><b>自动给会话写总结</b><p>一轮结束后由模型写一段 120 字的总结，工作台、项目页、会话页都显示它；以前的会话也会逐步补上（每次几段，从最近的往前）。关掉后仍可在会话上手动点「用模型总结」。</p></div>
+          <input type="checkbox" checked={draft.summary_auto} onChange={(e) => setDraft({ ...draft, summary_auto: e.target.checked })} />
+        </label>
+        <label className="settings-row">
+          <div><b>总结用的模型</b><p>Claude 走你的订阅，不用 Key，但计入用量；API Key 的来自「环境」页里配的密钥。空着就自动选：设置 → 环境变量 SUMMARY_MODEL → 第一个可用的。</p></div>
+          <select value={draft.summary_model} onChange={(e) => setDraft({ ...draft, summary_model: e.target.value })} aria-label="总结用的模型"><option value="">自动</option>{summaryProviders.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}{draft.summary_model && !summaryProviders.some((p) => p.id === draft.summary_model) && <option value={draft.summary_model}>{draft.summary_model}（当前不可用）</option>}</select>
         </label>
         <label className="settings-row">
           <div><b>脚本或其他 Agent 通过 SDK 启动的会话，自动当作定时会话</b><p>定时会话不进「等我」、不发通知、不出现在工作台；会话页「定时」筛选里能看到。对单条会话手动标记过的，以手动为准。</p></div>
