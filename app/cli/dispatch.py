@@ -4045,11 +4045,20 @@ HEADLESS_KINDS = ("claude", "codex", "pi")
 IMG_RE = re.compile(r"((?:~|/)[^\s\"'`<>()\[\]]+?\.(?:png|jpe?g|gif|webp|bmp))", re.I)
 
 
+def node_bin_dirs():
+    """Where npm-installed CLIs (codex, pi, gemini…) live when the caller is the app, not a
+    login shell: the global npm prefix, volta/bun, the newest nvm node."""
+    dirs = [os.path.join(HOME, "npm-global", "bin"), os.path.join(HOME, ".npm-global", "bin"), os.path.join(HOME, ".volta", "bin"), os.path.join(HOME, ".bun", "bin")]
+    dirs += sorted(glob.glob(os.path.join(HOME, ".nvm", "versions", "node", "*", "bin")), reverse=True)[:1]
+    return [d for d in dirs if os.path.isdir(d)]
+
+
 def child_env():
-    """Environment for a headless CLI child: PATH extended, every CLAUDE* variable stripped (a
-    claude started from inside a Claude Code session refuses to nest otherwise), BEADS_DIR set."""
+    """Environment for a headless CLI child: PATH extended (incl. npm's global bin, since the
+    app's PATH is not a login shell's), every CLAUDE* variable stripped (a claude started from
+    inside a Claude Code session refuses to nest otherwise), BEADS_DIR set."""
     e = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
-    e["PATH"] = PATH_EXTRA + ":" + e.get("PATH", "")
+    e["PATH"] = ":".join([PATH_EXTRA] + node_bin_dirs() + [e.get("PATH", "")])
     e.setdefault("BEADS_DIR", BEADS_DIR)
     return e
 
@@ -4657,11 +4666,11 @@ def cmd_discuss(a):
                 print(f"· 第 {r} 轮 {who}（Herdr {res.get('pane_id')}）{res.get('status')}（{secs}s）" + (f" · {res.get('warning')}" if res.get("warning") else ""))
     comments = discussion_of(bd_comments(a.task))
     new = comments[before:]
-    # A quiet round: nobody had anything new (all skipped, or only short acknowledgements).
+    # A quiet round: nobody had anything new (all skipped, or only one-line acknowledgements).
     # Two in a row and the app suggests wrapping up; the conclusion itself is written on demand
     # (--conclude here, discuss-conclude, or 整理成文档), one block, replaced each time.
     spoke = [c for c in new if not (c.get("text") or "")[len(DISCUSS_TAG):].lstrip().startswith("发起")]
-    quiet = not tui and (not spoke or all(len((c.get("text") or "")) < 140 for c in spoke))
+    quiet = not tui and (not spoke or all(len((c.get("text") or "")) < len(DISCUSS_TAG) + 60 for c in spoke))
     state["quiet_rounds"] = (state.get("quiet_rounds") or 0) + 1 if quiet else 0
     if not tui:
         discussion_state_save(a.task, state)

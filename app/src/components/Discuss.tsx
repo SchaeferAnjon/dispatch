@@ -77,6 +77,10 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
   const postedAt = (m: LiveMember) => comments.some((c) => c.text.trimStart().startsWith(TAG) && actorOf(c.author, me)?.id === KIND_ACTOR[m.kind] && Date.parse(c.created_at) / 1000 >= (live?.started ?? 0) - 1);
   const bubbles = busy && live ? Object.entries(live.members).filter(([, m]) => m.status === "thinking" || m.status === "typing" || m.status === "done" || (m.status === "posted" && !postedAt(m))) : [];
   const skippedNow = busy && live ? Object.entries(live.members).filter(([, m]) => m.status === "skip").map(([w]) => w) : [];
+  // A group chat follows the newest line: keep the thread scrolled to the bottom while it grows.
+  const threadRef = useRef<HTMLDivElement>(null);
+  const growth = comments.length * 100000 + bubbles.length * 10000 + bubbles.map(([, m]) => m.text.length).reduce((a, b) => a + b, 0);
+  useEffect(() => { const el = threadRef.current; if (el) el.scrollTop = el.scrollHeight; }, [growth]);
   const erroredNow = busy && live ? Object.entries(live.members).filter(([, m]) => m.status === "error") : [];
 
   const go = async () => {
@@ -177,7 +181,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
         </>}
 
         {task && (
-          <div className="disc-thread">
+          <div className="disc-thread" ref={threadRef}>
             {conclusion && <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">总结模型归纳 · {conclusion.when.includes("T") ? relTime(conclusion.when) : conclusion.when}{conclusion.by ? ` · ${conclusion.by}` : ""}</span></div><Markdown src={conclusion.text} className="compact" /></div>}
             {thread.length === 0 && <div className="empty small">{busy ? "Agent 正在起会话、读上下文……第一条发言通常一两分钟后出现" : "还没有发言"}</div>}
             {Array.from({ length: roundsSeen }, (_, i) => i + 1).map((r) => (
@@ -191,8 +195,6 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
                 ); })}
               </div>
             ))}
-            {thread.filter((t) => t.opener).map(({ c, body }) => <div key={c.id} className="disc-opener muted small">{body}</div>)}
-            {system.map((c) => <div key={c.id} className="disc-system small">{c.text.trimStart().slice(4)}</div>)}
             {bubbles.map(([who, m]) => { const a = actorOf(KIND_ACTOR[m.kind] ?? m.kind, me); return (
               <div key={who} className="disc-say disc-live">
                 <Avatar actor={a} size={28} />
@@ -203,6 +205,8 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
             ); })}
             {skippedNow.length > 0 && <div className="disc-opener muted small">{skippedNow.join("、")} 这轮没话说</div>}
             {erroredNow.map(([who, m]) => <div key={who} className="disc-system small">{who}：{m.text || "没说上话"}</div>)}
+            {thread.filter((t) => t.opener).map(({ c, body }) => <div key={c.id} className="disc-opener muted small">{body}</div>)}
+            {system.map((c) => <div key={c.id} className="disc-system small">{c.text.trimStart().slice(4)}</div>)}
             {busy && waiting > 0 && bubbles.length === 0 && <div className="disc-waiting muted small">{live ? `${live.members ? Object.values(live.members).filter((m) => m.status === "queued").length : waiting} 个成员排队中…` : "正在起会话……"}</div>}
             {!busy && quiet >= 2 && <div className="disc-waiting muted small">连续 {quiet} 轮没有新提议了——可以「整理成文档」收尾，或者你再说一句把话题推进一步。</div>}
           </div>
