@@ -394,6 +394,55 @@ class ProjectFlags(unittest.TestCase):
             self.assertEqual([it["key"] for it in dispatch.wiki_all()], ["pit-a"])
 
 
+class PaneChrome(unittest.TestCase):
+    RULE = "─" * 80
+    CLAUDE = ("\n❯ 只回复两个字：收到。不要调用任何工具。\n\n⏺ 收到。\n\n✻ Brewed for 2s · done 7:07 PM\n"
+              + "\n" * 6
+              + f"{RULE}\n❯\n{RULE}\n"
+              + "  [Fable 5.1] │ tmp" + " " * 60 + "/rc\n"
+              + "  Context ░░░░░░░░░░ 4% │ Usage ██░░░░░░░░ 22% (resets in 2h 13m)\n"
+              + "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent\n")
+    PI = ("\n[Context]\n  ~/.pi/agent/AGENTS.md\n\n 只回复两个字：收到。不要调用任何工具。\n\n"
+          + " The user asked me to reply with exactly two characters: 收到. No tool calls needed.\n\n 收到\n\n"
+          + f"{RULE}\n\n{RULE}\n/private/tmp\n"
+          + "↑4.9k ↓22 $0.000 0.5%/1.0M (auto)" + " " * 60 + "(zai-coding-cn) glm-5.3-flash • high\n")
+
+    def test_keeps_the_reply_and_drops_the_tail_status_bar(self):
+        claude = dispatch.strip_pane_chrome(self.CLAUDE)
+        self.assertEqual(claude.splitlines()[-1], "⏺ 收到。")
+        self.assertNotIn("bypass permissions", claude)
+        self.assertNotIn("Context", claude)
+        pi = dispatch.strip_pane_chrome(self.PI)
+        self.assertEqual(pi.splitlines()[-1], " 收到")
+        self.assertNotIn("1.0M (auto)", pi)
+        self.assertIn("No tool calls needed", pi)
+
+    def test_a_reply_without_chrome_is_untouched(self):
+        self.assertEqual(dispatch.strip_pane_chrome("⏺ 好了。"), "⏺ 好了。")
+        self.assertEqual(dispatch.strip_pane_chrome(""), "")
+        # a markdown rule inside the reply is short, not the full-width TUI separator
+        self.assertEqual(dispatch.strip_pane_chrome("方案：\n---\n照做"), "方案：\n---\n照做")
+
+    def test_only_the_new_text_since_the_startup_screen(self):
+        before = "pi v0.85.1\n[Context]\n  ~/.pi/agent/AGENTS.md"
+        after = before + "\n\n 只回复两个字：收到。\n\n 收到"
+        self.assertEqual(dispatch.new_pane_text(before, after), " 只回复两个字：收到。\n\n 收到")
+        self.assertEqual(dispatch.new_pane_text("", after), after)
+
+    def test_echoed_prompt_is_dropped_from_the_answer(self):
+        self.assertEqual(dispatch.drop_echoed_prompt("❯ 只回复：收到\n\n⏺ 收到。", "只回复：收到"), "⏺ 收到。")
+        self.assertEqual(dispatch.drop_echoed_prompt("⏺ 收到。", "只回复：收到"), "⏺ 收到。")
+        self.assertEqual(dispatch.drop_echoed_prompt("", "x"), "")
+
+    def test_settle_read_polls_until_the_text_stops_changing(self):
+        reads = iter(["a", "a", "b", "b"])
+        with patch.object(dispatch, "herdr", side_effect=lambda *a, **k: next(reads)), patch.object(dispatch.time, "sleep"):
+            self.assertEqual(dispatch.read_pane(None, "w1:p1", 40, settle=True, cap=30), "a")
+        reads = iter(["a", "b", "c", "c"])
+        with patch.object(dispatch, "herdr", side_effect=lambda *a, **k: next(reads)), patch.object(dispatch.time, "sleep"):
+            self.assertEqual(dispatch.read_pane(None, "w1:p1", 40, settle=True, cap=30), "c")
+
+
 class HumanNote(unittest.TestCase):
     def test_only_the_users_latest_unanswered_note_is_injected(self):
         user = {"author": "schaefer", "text": "请补一下  手机截图", "created_at": "2"}

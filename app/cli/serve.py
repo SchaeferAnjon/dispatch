@@ -74,8 +74,8 @@ def run_bd(args, actor):
             raise
 
 
-def run_dispatch(args):
-    return sh(["python3", DISPATCH_PY] + args, timeout=300)
+def run_dispatch(args, timeout=300):
+    return sh(["python3", DISPATCH_PY] + args, timeout=timeout)
 
 
 def _skill_file(name):
@@ -165,14 +165,17 @@ def commands():
         for k, flag in (("host", "--host"), ("cwd", "--cwd"), ("model", "--model"), ("task", "--task"), ("prompt", "--prompt"), ("label", "--label")):
             if args.get(k):
                 a += [flag, str(args[k])]
-        a += ["--timeout", str(args.get("timeout") or 600000)]
-        return run_dispatch(a)
+        timeout = int(args.get("timeout") or 600000)
+        # Read back the whole reply, and give the subprocess more time than the prompt wait.
+        a += ["--timeout", str(timeout), "--lines", str(args.get("lines") or 200)]
+        return run_dispatch(a, timeout=timeout // 1000 + 200)
 
     def agent_ask(args, actor):
-        a = ["agent", "ask", args["target"], args["text"], "--json", "--timeout", str(args.get("timeout") or 600000)]
+        timeout = int(args.get("timeout") or 600000)
+        a = ["agent", "ask", args["target"], args["text"], "--json", "--timeout", str(timeout), "--lines", str(args.get("lines") or 200)]
         if args.get("host"):
             a += ["--host", args["host"]]
-        return run_dispatch(a)
+        return run_dispatch(a, timeout=timeout // 1000 + 200)
 
     return {
         "bd_info": lambda args, actor: {"bd_bin": "bd", "beads_dir": BEADS_DIR, "actor": actor, "version": run_bd(["version"], actor).strip(), "initial_view": None, "initial_task": None},

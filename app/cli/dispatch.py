@@ -505,23 +505,105 @@ def wait_interactive(host, pane, timeout=90):
     dialog, and Herdr's `interactive_ready` flips true only once the input box is up.
     Answers known dialogs along the way. Returns (ready, keys pressed)."""
     deadline = time.time() + timeout
-    pressed, quiet = [], 0
+    pressed, quiet, last = [], 0, None
     while time.time() < deadline:
         hit = dismiss_startup_dialogs(host, pane, tries=1)
         if hit:
             pressed += hit
-            quiet = 0
+            quiet, last = 0, None
             continue
         info = herdr(host, ["agent", "get", pane])
         ag = (info.get("result") or {}).get("agent", {}) if isinstance(info, dict) else {}
         if ag.get("interactive_ready") or ag.get("agent_status") in ("idle", "ready"):
-            quiet += 1
-            if quiet >= 2:  # two clean reads in a row: no dialog popped up after ready
-                return True, pressed
+            # interactive_ready flips true while the agent is still printing its start-up
+            # (skills, extensions, update notice); a prompt sent then misses the 5-second
+            # state-change window Herdr's `prompt --wait` needs, so wait for a quiet pane.
+            # Compare the body, not the status bar: a blinking cursor or a ticking
+            # context meter would otherwise keep the pane "changing" forever.
+            txt = strip_pane_chrome(herdr(host, ["agent", "read", pane, "--lines", "40"], raw=True) or "")
+            if txt == last:
+                quiet += 1
+                if quiet >= 2:  # two clean reads in a row: no dialog popped up after ready
+                    return True, pressed
+            else:
+                last, quiet = txt, 0
         else:
-            quiet = 0
+            quiet, last = 0, None
         time.sleep(1.5)
     return False, pressed
+
+
+# A pane read ends with the agent's own UI, never with the reply: separator rules, the
+# empty input box, and the model / context / permission status. Strip that tail so the
+# dialog shows the answer, not the chrome.
+ANSI_RX = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b[PX^_][^\x1b]*\x1b\\")
+RULE_RX = re.compile(r"^\s*[─━═╌┄┅┈┉\-—_=·•]{16,}\s*$")
+CHROME_RX = re.compile(
+    r"^\s*(?:❯\s*$|"
+    r"\[[^\]]+\]\s*│|"
+    r"Context\s+[█▓▒░]|"
+    r"[⏵▶⏸].*(?:permission|agents?)|"
+    r"●\s*\S+\s*·\s*/|"
+    r"↑\s*[\d.]+k?\s+↓|"
+    r"esc interrupt\b|Press ctrl\+o\b|"
+    r"Image in clipboard\b|"
+    r"✻\s+\S+.*\bfor\s+\d)"
+)
+
+
+def strip_pane_chrome(text):
+    """Keep the reply; drop the agent's status bar / input box at the tail of a pane read."""
+    if not text:
+        return text
+    lines = ANSI_RX.sub("", text).split("\n")
+    for i in range(len(lines) - 1, max(len(lines) - 14, -1), -1):
+        if RULE_RX.match(lines[i]):  # everything below the last full-width rule is status
+            lines = lines[:i]
+            break
+    while lines and (not lines[-1].strip() or RULE_RX.match(lines[-1]) or CHROME_RX.match(lines[-1])):
+        lines.pop()
+    return "\n".join(lines).strip("\n")
+
+
+def read_pane(host, pane, lines, settle=False, cap=45):
+    """Read a pane. settle=True keeps reading until the text stops changing, so the reply
+    is complete even when Herdr reported idle before the agent had drawn it (pi)."""
+    txt = herdr(host, ["agent", "read", pane, "--lines", str(lines)], raw=True) or ""
+    if not settle:
+        return txt
+    last, deadline = txt, time.time() + cap
+    while time.time() < deadline:
+        time.sleep(1.0)
+        cur = herdr(host, ["agent", "read", pane, "--lines", str(lines)], raw=True) or ""
+        if cur == last:
+            return cur
+        last = cur
+    return last
+
+
+def new_pane_text(before, after):
+    """The part of `after` the agent added since `before` — the answer, not the start-up
+    screen that was already there when the prompt went in."""
+    if not before or not after:
+        return after
+    n = min(len(before), len(after))
+    i = 0
+    while i < n and before[i] == after[i]:
+        i += 1
+    return after[i:].lstrip("\n") if i else after
+
+
+def drop_echoed_prompt(text, prompt):
+    """Claude and pi echo the prompt in the input box; the dialog already shows what was
+    asked, so the first line is not part of the answer."""
+    first = (prompt or "").strip().split("\n")[0].strip()
+    if not text or not first:
+        return text
+    lines = text.split("\n")
+    for i, line in enumerate(lines[:3]):
+        if first in line:
+            return "\n".join(lines[i + 1:]).lstrip("\n")
+    return text
 
 
 def cmd_agent(a):
@@ -600,6 +682,7 @@ def cmd_agent(a):
                 res["dismissed"] = True
             if not ready:
                 res["warning"] = "等了 90 秒 Agent 还没准备好接收输入；提示词已尝试发送，看输出确认"
+            before = strip_pane_chrome(read_pane(host, pane, a.lines))
             pargs = ["agent", "prompt", pane, a.prompt]
             if a.wait:
                 pargs += ["--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(a.timeout)]
@@ -607,11 +690,18 @@ def cmd_agent(a):
             if isinstance(d, dict) and d.get("error") and dismiss_startup_dialogs(host, pane):
                 # a dialog appeared after the prompt went in: answer it and send the prompt once more
                 d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
+            # Read only after the reply stops drawing: Herdr can report idle before the
+            # answer is on screen, and --wait gives up when an agent never flips its state.
+            res["output"] = drop_echoed_prompt(new_pane_text(before, strip_pane_chrome(read_pane(host, pane, a.lines, settle=True, cap=min(max(a.timeout // 1000, 15), 120)))), a.prompt)
             if isinstance(d, dict) and d.get("error"):
-                res["status"], res["warning"] = "stalled", (d["error"].get("message") or "")[:200] + "——看输出，可能在等你回答一个对话框（dispatch agent keys <pane> enter）"
+                info = herdr(host, ["agent", "get", pane])
+                now = ((info.get("result") or {}).get("agent") or {}).get("agent_status")
+                if res["output"] and res["output"] != before and now in ("idle", "done"):
+                    res["status"] = now  # it did answer; Herdr just never saw the state flip
+                else:
+                    res["status"], res["warning"] = "stalled", (d["error"].get("message") or "")[:200] + "——看输出，可能在等你回答一个对话框（dispatch agent keys <pane> enter）"
             else:
                 res["status"] = (d.get("result") or {}).get("agent", {}).get("agent_status")
-            res["output"] = herdr(host, ["agent", "read", pane, "--lines", str(a.lines)], raw=True)
 
         def text(r):
             print(f"已在 {r['host']} 起了 {r['kind']}（{r['actor']}）· Herdr {r['pane_id']} · {r['cwd']}" + (f" · 认领 {r['task']}" if r["task"] else ""))
@@ -629,10 +719,17 @@ def cmd_agent(a):
         pargs = ["agent", "prompt", pane, a.text]
         if a.wait:
             pargs += ["--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(a.timeout)]
+        before = strip_pane_chrome(read_pane(host, pane, a.lines))
         d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
         err = (d.get("error") or {}).get("message", "") if isinstance(d, dict) else str(d)
         status = "stalled" if err else (d.get("result") or {}).get("agent", {}).get("agent_status")
-        res = {"host": where, "pane_id": pane, "status": status, "warning": err[:200], "output": herdr(host, ["agent", "read", pane, "--lines", str(a.lines)], raw=True)}
+        output = drop_echoed_prompt(new_pane_text(before, strip_pane_chrome(read_pane(host, pane, a.lines, settle=True, cap=min(max(a.timeout // 1000, 15), 120)))), a.text)
+        if err and output and output != before:
+            info = herdr(host, ["agent", "get", pane])
+            now = ((info.get("result") or {}).get("agent") or {}).get("agent_status")
+            if now in ("idle", "done"):
+                status, err = now, ""  # it answered; Herdr just never saw the state flip
+        res = {"host": where, "pane_id": pane, "status": status, "warning": err[:200], "output": output}
         return out(res, a.json, lambda x: print((x["output"].rstrip() + ("\n[!] " + x["warning"] if x["warning"] else "")) if x["output"] else f"已发，状态 {x['status']}"))
     if a.op == "keys":
         keys = [a.text] + list(a.more or []) if a.text else []
