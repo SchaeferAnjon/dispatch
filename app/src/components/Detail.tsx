@@ -237,7 +237,7 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
               {wf === "discuss" && <div className="wf-form">
                 <div className="task-links">{KINDS.map(([k, l]) => <label key={k} className="chip"><input type="checkbox" checked={wfKinds.includes(k)} onChange={(e) => setWfKinds(e.target.checked ? [...wfKinds, k] : wfKinds.filter((x) => x !== k))} /> {l}</label>)}</div>
                 <input placeholder="想让他们决定什么（可空）" value={wfQuestion} onChange={(e) => setWfQuestion(e.target.value)} />
-                <p className="muted small">每个 Agent 会在这台电脑的 Herdr 里起一个会话，读任务和前面的发言，只留一条【讨论】评论就停。通常要几分钟，期间这个面板会等着。</p>
+                <p className="muted small">每个 Agent 无头直调（claude -p / codex exec / pi），读任务和前面的发言，各留一条【讨论】评论；通常一分钟内到齐，期间这个面板会等着。</p>
                 <div className="task-links"><button className="btn primary sm" disabled={wfBusy || !wfKinds.length} onClick={() => void runDiscuss()}>{wfBusy ? "讨论进行中…" : "开始讨论"}</button><button className="btn sm" disabled={wfBusy} onClick={() => setWf("")}>取消</button></div>
               </div>}
               {wf === "split" && <div className="wf-form">
