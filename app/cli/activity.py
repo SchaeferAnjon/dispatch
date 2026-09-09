@@ -144,6 +144,19 @@ def observe(state, d):
             tools = [(p.get('call_id', ''), p.get('name', ''), p.get('arguments', p.get('input', '')))]
         elif p.get('type') in ('function_call_output', 'custom_tool_call_output'):
             results = [(p.get('call_id', ''), p.get('output', ''))]
+    elif t == 'session' and isinstance(d.get('cwd'), str):
+        # pi: the first record names the session and its directory.
+        state['session_id'] = d.get('id') or state.get('session_id'); state['cwd'] = d.get('cwd') or state.get('cwd', '')
+    elif t == 'message' and isinstance(p, dict) and p.get('role') in ('user', 'assistant', 'toolResult'):
+        # pi: one record per message; tool calls and thinking are blocks inside an assistant message.
+        r = p.get('role')
+        role, text = (r if r != 'toolResult' else ''), (text_of(p.get('content')) if r != 'toolResult' else '')
+        for b in p.get('content') or []:
+            if not isinstance(b, dict): continue
+            if b.get('type') == 'toolCall': tools.append((b.get('id', ''), b.get('name', ''), b.get('arguments', {})))
+        if r == 'toolResult':
+            results = [(p.get('toolCallId', ''), {'error': bool(p.get('isError'))})]
+        finished = role == 'assistant' and bool(text.strip()) and not tools
     elif t in ('user', 'assistant') and not d.get('isSidechain'):
         role, text = t, text_of(p.get('content'))
         state['cwd'] = d.get('cwd') or state.get('cwd', '')
@@ -292,7 +305,7 @@ def session_preferences(directory):
 
 def activity_list(home, directory, index):
     paths = []
-    for folder, agent in (('.claude/projects', 'claude-code'), ('.codex/sessions', 'codex')):
+    for folder, agent in (('.claude/projects', 'claude-code'), ('.codex/sessions', 'codex'), ('.pi/agent/sessions', 'pi')):
         for path in glob.glob(os.path.join(home, folder, '**', '*.jsonl'), recursive=True):
             if '/subagents/' in path: continue
             try: paths.append((os.stat(path).st_mtime, path, agent))
