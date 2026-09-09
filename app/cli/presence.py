@@ -61,6 +61,8 @@ def event_status(event, data, prev):
     attention = prev.get("attention")
     if event in ("SessionStart", "Stop"):
         state, attention = "idle", None
+    elif event == "PreToolUse" and data.get("tool_name") == "AskUserQuestion":
+        state, attention = "idle", "input"  # the picker is up; the turn waits for a choice
     elif event in ("UserPromptSubmit", "PreToolUse", "PostToolUse"):
         state, attention = "working", None
     elif event == "PermissionRequest" or (event == "Notification" and data.get("notification_type") in ("permission_prompt", "elicitation_dialog")):
@@ -154,6 +156,8 @@ def main():
         "attention": attention,
         "state_source": "hook",
         "prompts": prev.get("prompts", 0) + (1 if event == "UserPromptSubmit" else 0),
+        "permission_mode": data.get("permission_mode") or prev.get("permission_mode"),
+        "tool": data.get("tool_name") if event == "PreToolUse" else None,
     }
     tmp = path + ".tmp"
     with open(tmp, "w") as f:

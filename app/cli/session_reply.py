@@ -101,7 +101,7 @@ def exact_ref(d, sid, agent):
     return dict(entry, path=path)
 
 
-def herdr_target(d, ref, require_idle=True):
+def herdr_target(d, ref, require_idle=True, allow_blocked=False):
     # Old presence records may point at a PID now running a newer conversation.
     records = []
     for name in os.listdir(d.SESS_DIR) if os.path.isdir(d.SESS_DIR) else []:
@@ -124,7 +124,7 @@ def herdr_target(d, ref, require_idle=True):
         processes = r.get('result', {}).get('process_info', {}).get('foreground_processes', [])
         if not any(p.get('pid') == pid for p in processes):
             continue
-        if pane.get('agent_status') == 'blocked':
+        if pane.get('agent_status') == 'blocked' and not allow_blocked:
             raise Rejected('原会话正在等待权限确认，请打开电脑屏幕处理。')
         # Herdr's status lags (pi looks idle while its bash tool runs); the hook record is the
         # other witness. Busy if either says so.
@@ -366,12 +366,73 @@ def commands(d, ref):
     return out
 
 
+# Answering Claude Code's AskUserQuestion picker by key presses, the way a person would:
+# number keys pick (single) or toggle (multi), → moves to the next question, the last
+# choice lands on a review screen where 1 submits. "Type something" is option n+1.
+PICKER_MARKS = ('Esc to cancel', 'Chat about this', 'Review your answers', 'Ready to submit', '✔ Submit', '❯ 1.')
+
+
+def answer(d, ref, payload):
+    if ref['agent'] != 'claude-code':
+        raise Rejected('只有 Claude Code 的选择题能在这里作答。')
+    questions = payload.get('questions') or []
+    answers = payload.get('answers') or []
+    if not questions or len(answers) != len(questions):
+        raise Rejected('答案和问题数量不一致，请刷新后重试。')
+    pane = herdr_target(d, ref, require_idle=False, allow_blocked=True)  # Herdr reports the picker as blocked
+    pid = pane['pane_id']
+    # While the picker is up Herdr calls the pane blocked and only serves the visible screen —
+    # and that capture can stop short of the bottom, so the checks below are lenient.
+    visible = lambda: d.herdr(None, ['agent', 'read', pid, '--source', 'visible'], raw=True) or ''
+    tail = lambda: '\n'.join(visible().splitlines()[-20:])
+    screen = visible()
+    if not (any(m in screen for m in PICKER_MARKS) or any(str(q.get('question', ''))[:12] in screen for q in questions)):
+        raise Rejected('原终端上现在没有这道题（可能已经答过或被取消），刷新看看。')
+    keys = lambda *ks: d.herdr(None, ['agent', 'send-keys', pid, *ks])
+    for i, (q, a) in enumerate(zip(questions, answers)):
+        n = len(q.get('options') or [])
+        picks = [int(x) for x in (a.get('picks') or [])]
+        other = (a.get('other') or '').strip()
+        if other:
+            keys(str(n + 1)); time.sleep(0.6)
+            r = d.herdr(None, ['agent', 'prompt', pid, other], timeout=15)
+            if r.get('error'):
+                raise RuntimeError('自定义答案没输进去')
+        elif not picks or any(p < 1 or p > n for p in picks):
+            raise Rejected(f'第 {i + 1} 题没有选择。')
+        elif q.get('multiSelect'):
+            for p in picks:
+                keys(str(p)); time.sleep(0.4)
+            keys('right')
+        else:
+            keys(str(picks[0]))
+        time.sleep(0.8)
+    # One single-choice question submits by itself; anything else lands on a review screen.
+    for _ in range(8):
+        t = tail()
+        if 'Review your answers' in t or 'Ready to submit' in t:
+            keys('1'); time.sleep(1.2)
+            continue
+        if 'User answered' in t or not any(m in t for m in PICKER_MARKS):
+            return dict(state='accepted', note='答案已提交，Agent 继续了')
+        time.sleep(1.0)
+    return dict(state='unknown', note='按键发过去了，但没确认对话框已关闭；看一下原终端。')
+
+
 def command(d, a):
     ref = exact_ref(d, a.key, a.agent)
     if a.op == 'status':
         result = status(d, ref)
     elif a.op == 'commands':
         result = commands(d, ref)
+    elif a.op == 'answer':
+        import sys
+        try:
+            result = answer(d, ref, json.loads(sys.stdin.read() or '{}'))
+        except Rejected as e:
+            result = dict(state='failed', note=str(e))
+        except Exception:
+            result = dict(state='unknown', note='按键没能全部发出去，看一下原终端再决定要不要重答。')
     else:
         import sys
         text = sys.stdin.read(16001)

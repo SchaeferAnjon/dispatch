@@ -1753,7 +1753,9 @@ def _compact_input(inp):
         return {"value": str(inp)[:INPUT_CHARS]} if inp not in (None, "") else {}
     out = {}
     for k, v in list(inp.items())[:12]:
-        if isinstance(v, str):
+        if k == "questions" and isinstance(v, list):
+            out[k] = v  # AskUserQuestion: the UI renders the choices and answers them
+        elif isinstance(v, str):
             out[k] = v[:INPUT_CHARS] + ("…" if len(v) > INPUT_CHARS else "")
         elif isinstance(v, (int, float, bool)) or v is None:
             out[k] = v
@@ -1800,7 +1802,8 @@ class _Timeline:
 
     def finish(self, live):
         for b in self.pending.values():
-            if b["status"] == "running" and not live:
+            # A question to the person waits as long as it takes; it is still running.
+            if b["status"] == "running" and not live and b["name"] != "AskUserQuestion":
                 b["status"] = "incomplete"
         self.pending = {}
 
@@ -6579,7 +6582,7 @@ def main():
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply; reply=unread drops the receipt"); s.add_argument("key"); s.add_argument("reply", help="reply id, or `unread` to mark the session unread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
     s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status", "adopt"]); s.set_defaults(fn=cmd_session_control)
     s = sub.add_parser("adopt", help="take a session running in another terminal (Warp/iTerm/Terminal/VS Code) into Herdr: stop it when idle, resume it in a new Herdr tab"); s.add_argument("key", help="session id, prefix, or pid-<n>"); s.add_argument("--keep", action="store_true", help="leave the old process running (the two will interleave writes)"); s.add_argument("--force", action="store_true", help="adopt even while it is working"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_adopt)
-    s = sub.add_parser("reply", help="reply to an exact Agent session; `commands` lists the slash commands it accepts"); s.add_argument("op", choices=["status", "send", "commands"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--mode", choices=["queue", "interrupt"], default="queue", help="while the agent works: queue for its next turn, or Esc first (steer it now)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
+    s = sub.add_parser("reply", help="reply to an exact Agent session; `commands` lists the slash commands it accepts"); s.add_argument("op", choices=["status", "send", "commands", "answer"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--mode", choices=["queue", "interrupt"], default="queue", help="while the agent works: queue for its next turn, or Esc first (steer it now)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
     s = sub.add_parser("save-image", help="store a pasted image (base64 JSON on stdin: {name, data}) and print its path"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_save_image)
     s = sub.add_parser("commits", help="git commits that belong to a task (id in the message, or hashes in its close reason / comments)"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_commits)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)

@@ -211,6 +211,11 @@ def observe(state, d):
         # Display operation names, not hidden model reasoning.
         event('tool', summary, tool=name, paths=paths)
         state['state'], state['activity'] = 'working', f'{name} · {summary[:160]}'
+        if name == 'AskUserQuestion':
+            # The turn is parked on a picker; say what it asks, so the list shows the question.
+            qs = inp.get('questions') if isinstance(inp, dict) else None
+            first = qs[0].get('question', '') if isinstance(qs, list) and qs and isinstance(qs[0], dict) else ''
+            state['activity'] = f'等你回答：{first[:140]}' if first else '等你回答一个问题'
     for call_id, output in results:
         op = pending.pop(call_id, None)
         if op:

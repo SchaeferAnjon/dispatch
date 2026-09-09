@@ -14,6 +14,7 @@ import { Markdown, Linkified } from "./Markdown";
 import { OpenSessionButton, AdoptButton } from "./SessionActions";
 import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
+import { SessionQuestion, pendingQuestion } from "./SessionQuestion";
 
 interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
@@ -335,6 +336,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   {mentioned.length > 0 && <details className="mentioned-tasks"><summary>对话中还提及过 {mentioned.length} 个任务</summary><p className="muted small">提及过的任务不代表由这个会话负责。</p><div className="task-links">{mentioned.sort((x,y) => y[1]-x[1]).map(([id,n]) => <button key={id} className="chip" onClick={() => onSelectTask(id)}><span>{issues.find(i => i.id === id)?.title ?? id}</span><span className="muted">{n} 次提及</span></button>)}</div></details>}
                 </>}
               </div>
+              {tab === 'timeline' && (() => { const pq = pendingQuestion(detail.messages); return pq ? <SessionQuestion key={pq.id} api={api} session={m} pending={pq} onAnswered={() => { onDone('答案已提交'); latest(); }} onError={(e) => onError(e)} /> : null; })()}
               <SessionReply key={`${m.host || 'local'}:${m.agent}:${m.session_id}`} api={api} session={m} messages={detail.messages} onSent={() => { setTab('timeline'); latest(); }} />
             </>
           );
