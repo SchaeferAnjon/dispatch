@@ -196,7 +196,8 @@ def status(d, ref):
         receipts = [dict(r) for r in db.execute('SELECT id,text,state,note,created FROM replies WHERE sid=? AND agent=? ORDER BY created DESC LIMIT 10', (ref['session_id'], ref['agent']))]
     try:
         t = target(d, ref)
-        return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts)
+        extra = tui_state(d, t['pane']['pane_id']) if t['kind'] == 'herdr' and ref['agent'] == 'claude-code' else {}
+        return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts, **extra)
     except Exception as e:
         return dict(available=False, label=str(e) if isinstance(e, Rejected) else '暂时无法连接原 Agent，请重新连接。', receipts=receipts)
 
@@ -369,6 +370,72 @@ def commands(d, ref):
 # Answering Claude Code's AskUserQuestion picker by key presses, the way a person would:
 # number keys pick (single) or toggle (multi), → moves to the next question, the last
 # choice lands on a review screen where 1 submits. "Type something" is option n+1.
+# Claude Code's status line: "[Sonnet 5] │ dir" and "⏵⏵ accept edits on (shift+tab to cycle)".
+MODE_LABELS = {'manual mode on': 'default', 'accept edits on': 'acceptEdits', 'plan mode on': 'plan', 'bypass permissions on': 'bypassPermissions'}
+MODE_ORDER = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
+
+
+def pane_tail(d, pid):
+    """The bottom of the pane. The visible screen is current (history keeps stale status lines);
+    it can come back short when the pane is scrolled up, then the history read fills in."""
+    r = d.herdr(None, ['agent', 'read', pid, '--source', 'visible'], raw=True) or ''
+    if '│' not in r:
+        r = d.herdr(None, ['agent', 'read', pid, '--lines', '6'], raw=True) or ''
+    return '\n'.join(r.splitlines()[-12:])
+
+
+def tui_state(d, pid):
+    """{model, mode} as the Claude Code status line shows them; empty when unreadable."""
+    t = pane_tail(d, pid)
+    m = re.search(r'\[([^\]\n]{2,40})\] │', t)
+    # The status line only redraws with the next turn; a fresh "/model" answer is newer than it.
+    set_to = re.findall(r'Set model to (.+?) and saved', t)
+    mode = next((v for k, v in MODE_LABELS.items() if k in t), None)
+    out = {}
+    if set_to:
+        out['model'] = set_to[-1].strip()
+    elif m:
+        out['model'] = m.group(1).strip()
+    if mode:
+        out['mode'] = mode
+    return out
+
+
+def control(d, ref, payload):
+    """Switch the permission mode (Shift+Tab cycles: default → acceptEdits → plan → bypass) or
+    the model (/model <alias>, confirming the cache warning) of a Claude Code terminal session."""
+    if ref['agent'] != 'claude-code':
+        raise Rejected('只有 Claude Code 的会话能在这里切模式和模型。')
+    pane = herdr_target(d, ref, require_idle=False)
+    pid = pane['pane_id']
+    want_mode, want_model = payload.get('mode'), (payload.get('model') or '').strip()
+    if want_mode:
+        if want_mode not in MODE_ORDER:
+            raise Rejected('未知的模式。')
+        for _ in range(len(MODE_ORDER) + 1):
+            cur = tui_state(d, pid).get('mode')
+            if cur == want_mode:
+                return dict(state='accepted', note='模式已切换', **tui_state(d, pid))
+            d.herdr(None, ['pane', 'send-text', pid, '\x1b[Z'])  # Shift+Tab as the terminal sends it
+            time.sleep(1.0)
+        return dict(state='unknown', note='按了 Shift+Tab 但没读到目标模式（这个模式可能没开放），看一下原终端。', **tui_state(d, pid))
+    if want_model:
+        if not re.fullmatch(r'[\w.\-\[\]]{2,60}', want_model):
+            raise Rejected('模型名不合法。')
+        if pane.get('busy'):
+            raise Rejected('Agent 正在执行，等本轮结束再切模型。')
+        r = d.herdr(None, ['agent', 'prompt', pid, f'/model {want_model}'], timeout=15)
+        if r.get('error'):
+            raise Rejected('终端没接受命令，请重新连接。')
+        time.sleep(2.0)
+        t = pane_tail(d, pid)
+        if 'Yes, switch' in t or 'switch to' in t:
+            d.herdr(None, ['pane', 'send-keys', pid, '1']); time.sleep(1.5)
+        st = tui_state(d, pid)
+        return dict(state='accepted' if st.get('model') else 'unknown', note='模型已切换' if st.get('model') else '没读到状态行，看一下原终端。', **st)
+    raise Rejected('没有要切换的内容。')
+
+
 PICKER_MARKS = ('Esc to cancel', 'Chat about this', 'Review your answers', 'Ready to submit', '✔ Submit', '❯ 1.')
 
 
@@ -425,6 +492,12 @@ def command(d, a):
         result = status(d, ref)
     elif a.op == 'commands':
         result = commands(d, ref)
+    elif a.op == 'control':
+        import sys
+        try:
+            result = control(d, ref, json.loads(sys.stdin.read() or '{}'))
+        except Rejected as e:
+            result = dict(state='failed', note=str(e))
     elif a.op == 'answer':
         import sys
         try:

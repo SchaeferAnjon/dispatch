@@ -3,7 +3,11 @@ import type { Api } from '../api';
 import type { SessionRef, TimelineMsg } from '../types';
 
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number }
-interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[] }
+interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string }
+const MODES: [string, string][] = [['default', '手动确认'], ['acceptEdits', '自动接受编辑'], ['plan', '计划模式'], ['bypassPermissions', '跳过权限']];
+const MODELS: [string, string][] = [['fable', 'Fable 5.1'], ['opus', 'Opus 5'], ['sonnet', 'Sonnet 5'], ['haiku', 'Haiku 4.5']];
+/** "Sonnet 5" → "sonnet": the alias /model takes. */
+export const modelAlias = (label: string): string => (label.trim().split(/\s+/)[0] || '').toLowerCase();
 export interface SlashCommand { name: string; description: string; kind: 'builtin' | 'skill' | 'command' }
 const KIND_LABEL: Record<SlashCommand['kind'], string> = { builtin: '命令', skill: '技能', command: '自定义' };
 /** The draft is a lone `/word` (no argument yet): that word is the menu query. */
@@ -119,6 +123,17 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     document.addEventListener('focusin', resize); document.addEventListener('focusout', resize);
     return () => { viewport?.removeEventListener('resize', resize); viewport?.removeEventListener('scroll', resize); document.removeEventListener('focusin', resize); document.removeEventListener('focusout', resize); document.body.classList.remove('reply-keyboard'); document.documentElement.style.removeProperty('--reply-viewport'); };
   }, []);
+  const [switching, setSwitching] = useState(false);
+  const control = async (payload: { mode?: string; model?: string }) => {
+    if (switching) return;
+    setSwitching(true); setError('');
+    try {
+      const r = readJson<{ state: string; note: string; model?: string; mode?: string }>(await api.on(host, ['reply', 'control', session.session_id, '--agent', session.agent, '--json'], JSON.stringify(payload)));
+      if (r.state !== 'accepted') setError(r.note);
+      setConnection(c => c ? { ...c, model: r.model ?? c.model, mode: r.mode ?? c.mode } : c);
+    } catch (e) { setError(String(e)); }
+    finally { setSwitching(false); }
+  };
   const send = async (mode: 'queue' | 'interrupt' = 'queue') => {
     const text = withImages(draft, images.map(x => x.path));
     if (locked.current || !text || saving || !connection?.available) return;
@@ -148,7 +163,12 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   const unknown = last && (last.state === 'unknown' || last.state === 'sending');
   return <section className="session-reply" aria-label="回复当前会话">
     {last?.state === 'accepted' && !inTranscript && <div className="reply-receipt" role="status"><span>你 · {last.note}</span><p>{last.text}</p></div>}
-    <div className="reply-connection"><span>{connection?.label || (error ? '连接暂时不可用' : '正在连接原会话…')}</span>{!connection?.available && <button className="link" onClick={() => void load()}>重新连接</button>}</div>
+    <div className="reply-connection"><span>{connection?.label || (error ? '连接暂时不可用' : '正在连接原会话…')}</span>
+      {connection?.available && (connection.mode || connection.model) && <span className="reply-switches">
+        {connection.mode && <select aria-label="权限模式" title="权限模式：终端里的 Shift+Tab" value={connection.mode} disabled={switching} onChange={e => void control({ mode: e.target.value })}>{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODES.some(([v]) => v === connection.mode) && <option value={connection.mode}>{connection.mode}</option>}</select>}
+        {connection.model && <select aria-label="模型" title="模型：终端里的 /model" value={modelAlias(connection.model)} disabled={switching || !!connection.working} onChange={e => void control({ model: e.target.value })}>{MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODELS.some(([v]) => v === modelAlias(connection.model!)) && <option value={modelAlias(connection.model)}>{connection.model}</option>}</select>}
+      </span>}
+      {!connection?.available && <button className="link" onClick={() => void load()}>重新连接</button>}</div>
     <form onSubmit={e => { e.preventDefault(); void send(); }}>
       {menu.length > 0 && <ul className="reply-slash" role="listbox" aria-label="可用的 / 命令">
         {menu.map((c, i) => <li key={c.name} role="option" aria-selected={i === cursor} className={i === cursor ? 'on' : ''}

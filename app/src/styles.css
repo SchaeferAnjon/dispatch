@@ -269,7 +269,10 @@ td .t{font-weight:500}
 .vault-card{border-bottom:1px solid var(--line);padding:16px 0}.vault-card h4{margin:0}.vault-card>div{display:flex;gap:8px;flex-wrap:wrap}.vault-card p{overflow-wrap:anywhere}
 @media(max-width:760px){.rules-flow{align-items:flex-start;flex-direction:column;padding:8px 12px}.rule-scope{padding:4px 0}.facts-grid.mobile-vaults .facts-sidebar,.facts-grid.mobile-docs .facts-sidebar{display:none}.facts-grid.mobile-vaults .instruction-detail,.facts-grid.mobile-docs .instruction-detail{display:block!important}.facts-grid.mobile-vaults,.facts-grid.mobile-docs{display:flex;flex:1;min-height:0}.instruction-top{flex-wrap:wrap}}
 .session-reply{flex:none;border-top:1px solid var(--line);padding:10px 16px;background:var(--win);min-width:0}
-.reply-connection{display:flex;gap:8px;justify-content:space-between;color:var(--ink-3);font-size:12px;margin-bottom:6px}
+.reply-connection{display:flex;gap:8px;justify-content:space-between;align-items:center;color:var(--ink-3);font-size:12px;margin-bottom:6px;flex-wrap:wrap}
+.reply-connection>span:first-child{flex:1;min-width:0}
+.reply-switches{display:inline-flex;gap:6px;margin-left:auto}
+.reply-switches select{font:inherit;font-size:12px;color:var(--ink-2);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:2px 6px;max-width:130px}
 .session-reply form{display:flex;gap:8px;align-items:flex-end;position:relative}
 .reply-slash{position:absolute;left:0;right:0;bottom:calc(100% + 6px);margin:0;padding:4px;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);max-height:260px;overflow:auto;z-index:5}
 .reply-slash li{display:flex;gap:10px;align-items:baseline;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:13px;min-width:0}
