@@ -2274,8 +2274,39 @@ def cmd_claim(a):
     print(f"{a.task} 已认领" + (f"（从 {owner} 手里接过来）" if owner and owner != actor else ""))
 
 
+# A task card is read by a person weeks later, cold. The title must say what changes and why;
+# the description must carry the trigger. Vague titles are refused so the board stays readable.
+_VAGUE_TITLES = re.compile(r"^(修复|修改|优化|改进|更新|调整|处理|完善|继续|测试|检查|fix|update|improve|refactor|wip|todo|misc|杂项|其他|bug|问题)[\s:：]*$", re.I)
+
+
+def title_problems(title, desc):
+    """Why a task title/description would leave the next reader guessing; empty when fine."""
+    t = (title or "").strip()
+    probs = []
+    if len(t) < 8:
+        probs.append("标题太短：要说清「改什么 + 为了什么」，例如「会话页 diff 改成可横向滚动：手机上右半截被截掉」")
+    elif _VAGUE_TITLES.match(t):
+        probs.append("标题只有动词没有对象：写成「<对象> <怎么改>：<为什么>」")
+    if len(t) > 80:
+        probs.append("标题超过 80 字：把细节放到描述里，标题一句话")
+    if not any(sep in t for sep in ("：", ":", "，", "—", "→", "（", "(")) and len(t) < 16:
+        probs.append("标题缺「为什么」：用冒号接一句原因或期望结果")
+    d = (desc or "").strip()
+    if len(d) < 20:
+        probs.append("描述太短（-d）：至少写触发原因（谁在什么情况下遇到什么）和期望结果，接手的人才不用猜")
+    return probs
+
+
 def cmd_begin(a):
     """Create + claim a task in one go: the first thing an Agent does once it knows what it is doing."""
+    probs = title_problems(a.title, a.desc)
+    if probs and not getattr(a, "force", False):
+        print("任务没建：先把标题和描述写清楚（或加 --force 硬建）", file=sys.stderr)
+        for pr in probs:
+            print("  · " + pr, file=sys.stderr)
+        sys.exit(2)
+    for pr in probs:
+        print("⚠ " + pr, file=sys.stderr)
     for w in begin_warnings(a.title, a.project, os.getcwd()):
         print("⚠ " + w, file=sys.stderr)
     labels = [f"project:{a.project}"] if a.project else []
@@ -4238,7 +4269,7 @@ def main():
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash"]); s.add_argument("name", nargs="?"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
-    s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing)"); s.add_argument("title"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
+    s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing); the title must say what + why, the description the trigger"); s.add_argument("title", help="「<对象> <怎么改>：<为什么>」，8–80 字"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d", help="触发原因 + 期望结果，≥20 字"); s.add_argument("--force", action="store_true", help="create even when the title/description checks fail"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; this is not independent peer review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.add_argument("--review-by", help="request peer review from this Agent, without launching it"); s.set_defaults(fn=cmd_done)
