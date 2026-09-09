@@ -4053,6 +4053,52 @@ def discussion_of(comments):
     return [c for c in comments if (c.get("text") or "").lstrip().startswith(DISCUSS_TAG)]
 
 
+DISCUSSION_DOC_PROMPT = ("你是讨论的整理者。下面是一个念头的原文和几个 AI Agent 的发言（以及可能有的发起人插话和一段结论）。把它整理成一份可以直接交给另一个 Agent 开工的 Markdown 文档，用简体中文，结构固定：\n"
+                         "# <标题（≤30 字）>\n## 背景\n（这个念头是什么、为什么现在讨论）\n## 结论\n（讨论达成的判断，做/不做/怎么做，一段话）\n## 方案\n（具体怎么做，3–8 条要点）\n## 步骤\n（按顺序的执行步骤，每步一行，标出建议由谁做：Claude Code / Codex / pi）\n## 风险与注意\n（发言里提到的风险和坑，各一句）\n## 验收\n（做完怎么算做完，- [ ] 列表）\n"
+                         "只归纳发言，不加发言里没有的内容；没有的段落写「无」。不要代码块包裹整份文档。")
+
+
+def discussion_doc(tid):
+    """Turn the thread into a document the next agent can start from; it becomes the task's
+    description (so `bd show` is enough) and a file under ~/tasks/.dispatch/discussions/."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import summarize
+    p = summarize.provider()
+    if not p:
+        raise SystemExit("没有可用的模型：设置里选一个总结模型")
+    issue = bd_json(["show", tid, "--json"])
+    if not issue.get("id"):
+        raise SystemExit(f"没有任务 {tid}")
+    comments = bd_comments(tid)
+    said = [c for c in comments if (c.get("text") or "").startswith(DISCUSS_TAG)]
+    con = [c for c in comments if (c.get("text") or "").startswith("【结论】")]
+    if not said:
+        raise SystemExit("这个讨论还没有发言")
+    desc = issue.get("description") or ""
+    original = desc.split("\n\n## 讨论文档", 1)[0]
+    body = f"念头：{issue.get('title', '').replace('【讨论】', '')}\n{original}\n\n" + "\n\n".join(f"{c.get('author')}：{(c.get('text') or '')[len(DISCUSS_TAG):].strip()}" for c in said) + ("\n\n结论：" + con[-1]["text"][4:].strip() if con else "")
+    doc = summarize.chat(p, DISCUSSION_DOC_PROMPT, body, timeout=180).strip()
+    if doc.startswith("```"):
+        doc = re.sub(r"^```\w*\n|\n```$", "", doc).strip()
+    if not doc:
+        raise SystemExit("模型没有返回文档")
+    folder = os.path.join(DISPATCH_DIR, "discussions")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{tid}.md")
+    open(path, "w").write(doc + "\n")
+    new_desc = original.rstrip() + f"\n\n## 讨论文档（{time.strftime('%Y-%m-%d %H:%M')} · {p['id']}:{p['model']}）\n\n" + doc
+    bd_json(["update", tid, "--description", new_desc, "--json"])
+    m = re.search(r"##\s*验收\s*\n((?:\s*- \[[ x]\].*\n?)+)", doc)
+    if m and not (issue.get("acceptance_criteria") or "").strip():
+        bd_json(["update", tid, "--acceptance", m.group(1).strip(), "--json"])
+    return {"task": tid, "path": path, "doc": doc, "by": f"{p['id']}:{p['model']}"}
+
+
+def cmd_discuss_doc(a):
+    r = discussion_doc(a.task)
+    out(r, a.json, lambda x: print(x["doc"] + f"\n\n已写进 {x['task']} 的描述，文件 {x['path']}；派人：dispatch agent start claude --task {x['task']}"))
+
+
 def cmd_discuss(a):
     # Participants: `kind` or `kind:model`, repeated as often as wanted (claude:opus,claude:haiku,codex).
     parts = []
@@ -4374,6 +4420,7 @@ def main():
     s = sub.add_parser("review", help="record independent Agent review and its evidence"); s.add_argument("task"); s.add_argument("--verdict", choices=["pass", "changes"], required=True); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)
     s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--no-conclude", action="store_true", help="skip the model-written 【结论】"); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
     s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")

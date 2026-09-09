@@ -11,11 +11,11 @@ import { FileHunks } from "./Sessions";
 import { ImageGrid, MediaProvider } from "./Media";
 import { KINDS } from "./Delegate";
 
-interface Props { rows: Activity[]; onOpenSession: (id: string) => void; onDiscuss?: (taskId: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string, undo?: () => void) => void }
+interface Props { rows: Activity[]; onOpenSession: (id: string) => void; onDiscuss?: (taskId: string) => void; initialWf?: "split" | "discuss"; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string, undo?: () => void) => void }
 
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
-export function Detail({ rows, onOpenSession, onDiscuss, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
+export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
   const [editProperties, setEditProperties] = useState(false);
   // The right column (diffs, images) is what needs width; the left one can step aside. Remembered per device.
   const [wide, setWide] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-detail-wide") === "1"; } catch { return false; } });
@@ -77,7 +77,7 @@ export function Detail({ rows, onOpenSession, onDiscuss, id, api, me, initial, r
   useEffect(() => { try { if (draft) sessionStorage.setItem(`dispatch-draft:${id}`, draft); else sessionStorage.removeItem(`dispatch-draft:${id}`); } catch { /* storage unavailable */ } }, [id, draft]);
   const [busy, setBusy] = useState(false);
   // Dynamic workflow: a discussion round (each agent leaves one 【讨论】 comment) and a split into sub-tasks.
-  const [wf, setWf] = useState<"" | "discuss" | "split">("");
+  const [wf, setWf] = useState<"" | "discuss" | "split">(initialWf ?? "");
   const [wfKinds, setWfKinds] = useState<string[]>(["claude", "codex"]);
   const [wfQuestion, setWfQuestion] = useState("");
   const [wfRows, setWfRows] = useState<{ kind: string; title: string; desc: string }[]>([{ kind: "codex", title: "", desc: "" }]);

@@ -151,6 +151,7 @@ export default function App() {
   const [delegate, setDelegate] = useState<{ host?: string; task?: string; prompt?: string; label?: string } | null>(null);
   // 讨论一个念头: a topic (optionally under a project) put to several agents at once.
   const [discuss, setDiscuss] = useState<{ project?: string; task?: string } | null>(null);
+  const [detailWf, setDetailWf] = useState<"split" | undefined>(undefined);
   const [sessionFocus, setSessionFocus] = useState<string | null>(initialPlace.current?.session ?? null);
   // The session the list currently shows (reported by SessionsView); only for the URL, so selecting one does not remount the view.
   const [sessionShown, setSessionShown] = useState<string | null>(initialPlace.current?.session ?? null);
@@ -683,14 +684,14 @@ export default function App() {
           </section>
         </main>
         {selected && api && (
-          <Detail rows={projectRows} onOpenSession={openSession} onDiscuss={(tid) => setDiscuss({ task: tid })} key={selected} id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
+          <Detail rows={projectRows} onOpenSession={openSession} onDiscuss={(tid) => setDiscuss({ task: tid })} initialWf={detailWf} key={selected} id={selected} api={api} me={me} root={rootIssue(selected) ?? null} initial={issues.find((i) => i.id === selected) ?? null} stamp={issues.find((i) => i.id === selected)?.updated_at ?? String(version)} live={presence.sessions} onClose={() => setSelected(null)} onSelect={setSelected} onError={(m) => say(m, true)} onDone={(m) => { say(m); reload(); }} />
         )}
       </div>
 
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
-      {discuss && api && <DiscussDialog api={api} me={me} issues={issuesF} projects={projects.map((p) => p.name).filter(Boolean)} initialProject={discuss.project} initialTask={discuss.task} onClose={() => { setDiscuss(null); void reload(); }} onOpened={(id) => { setSelected(id); }} onDone={say} onError={(m) => say(m, true)} />}
+      {discuss && api && <DiscussDialog api={api} me={me} issues={issuesF} projects={projects.map((p) => p.name).filter(Boolean)} initialProject={discuss.project} initialTask={discuss.task} onClose={() => { setDiscuss(null); void reload(); }} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt) => setDelegate({ task: tid, prompt, label: `开工 ${tid}` })} onDone={say} onError={(m) => say(m, true)} />}
       {delegate && api && <Delegate hosts={hosts} initialHost={delegate.host} initialTask={delegate.task} initialPrompt={delegate.prompt} initialLabel={delegate.label} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} />}
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
       {creating && <NewTask projects={projectOptions.formal} otherProjects={projectOptions.other} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}

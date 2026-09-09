@@ -15,13 +15,13 @@ const MODELS: Record<string, [string, string][]> = {
 };
 type Participant = { kind: string; model: string };
 
-interface Props { api: Api; projects: string[]; issues: Issue[]; me: string; initialProject?: string; initialTask?: string; onClose: () => void; onOpened: (taskId: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
+interface Props { api: Api; projects: string[]; issues: Issue[]; me: string; initialProject?: string; initialTask?: string; onClose: () => void; onOpened: (taskId: string, intent?: "split") => void; onDelegate: (taskId: string, prompt: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
 
 // 讨论一个念头: a thought — with or without a project — put to several agents at once. Each
 // reads the context (project summary, open tasks, pits) and leaves one 【讨论】 comment; the
 // summary model writes a 【结论】. It all lives on a 【讨论】 task, so it can be split into work.
 // The thread is drawn live: each statement appears as it lands, the conclusion on top.
-export function DiscussDialog({ api, projects, issues, me, initialProject, initialTask, onClose, onOpened, onDone, onError }: Props) {
+export function DiscussDialog({ api, projects, issues, me, initialProject, initialTask, onClose, onOpened, onDelegate, onDone, onError }: Props) {
   const [topic, setTopic] = useState("");
   const [project, setProject] = useState(initialProject ?? "");
   const [parts, setParts] = useState<Participant[]>([{ kind: "claude", model: "" }, { kind: "codex", model: "" }]);
@@ -43,7 +43,6 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
     }
   };
   const onPaste = (e: ReactClipboardEvent) => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); void addFiles(files); } };
-  const [rounds, setRounds] = useState(1);
   const [busy, setBusy] = useState(false);
   const [task, setTask] = useState<string>(initialTask ?? "");
   const [comments, setComments] = useState<Comment[]>([]);
@@ -69,7 +68,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
         const made = JSON.parse((await api.on("local", ["discuss", "--topic", topic.trim(), ...(project ? ["--project", project] : []), "--with", withArg, ...images.flatMap((im) => ["--image", im.path]), "--create-only", "--json"])).replace(/^[^{]*/, ""));
         id = made.task; setTask(id);
       }
-      const raw = await api.on("local", ["discuss", id, "--with", withArg, "--rounds", String(rounds), ...(question.trim() ? ["--question", question.trim()] : []), "--close", "--json"]);
+      const raw = await api.on("local", ["discuss", id, "--with", withArg, "--rounds", "1", ...(question.trim() ? ["--question", question.trim()] : []), "--close", "--json"]);
       const r = JSON.parse(raw.slice(Math.max(0, raw.indexOf("{"))));
       setFinished({ conclusion: r.conclusion || "" });
       onDone(`讨论结束：${Math.max(0, (r.comments?.length ?? 1) - 1)} 条发言${r.conclusion ? "，结论已写好" : ""}`);
@@ -84,6 +83,21 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
     try { await api.on("local", ["log", task, `${TAG}${me}：${line.trim()}`]); setLine(""); const cs = await api.comments(task); setComments(cs); }
     catch (e) { onError(String(e)); }
   };
+  // The document: the thread condensed into 背景/结论/方案/步骤/风险/验收, written into the task so
+  // the next agent only needs `bd show`.
+  const [doc, setDoc] = useState<string>("");
+  const [docBusy, setDocBusy] = useState(false);
+  const [showDoc, setShowDoc] = useState(false);
+  const makeDoc = async () => {
+    if (!task) return;
+    setDocBusy(true);
+    try { const t = await api.on("local", ["discuss-doc", task, "--json"]); const r = JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); setDoc(r.doc); setShowDoc(true); onDone("讨论文档已写进任务，验收项也填好了"); }
+    catch (e) { onError(String(e)); }
+    finally { setDocBusy(false); }
+  };
+  const existingDoc = task ? (issues.find((i) => i.id === task)?.description ?? "").split("\n\n## 讨论文档")[1] : "";
+  const hasDoc = !!(doc || existingDoc);
+  const delegate = () => { if (!task) return; onDelegate(task, `你接手 ${task}。先 \`bd show ${task} --json\` 读完整描述——里面有一份讨论文档（背景、结论、方案、步骤、风险、验收），按「步骤」和「验收」做，进展用 dispatch log，做完 dispatch done --reason。有疑问先 \`bd comments ${task}\` 看讨论原文。`); onClose(); };
   const recent = issues.filter((i) => i.labels?.includes("dispatch:discussion")).sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8);
   const said = comments.filter((c) => c.text.trimStart().startsWith(TAG)).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const conclusion = comments.filter((c) => c.text.trimStart().startsWith(CONCLUSION)).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
@@ -103,7 +117,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
       <div className="dialog delegate discuss-dialog" role="dialog" aria-label="讨论一个念头">
         <h3>讨论一个念头{project ? ` · ${project}` : ""}{task ? <span className="mono muted small"> · {task}</span> : null}</h3>
         {!task && <>
-          <p className="muted small">把一个想法交给几个 Agent 各说一次：值不值得做、怎么做、怎么拆、风险在哪。每个 Agent 在这台电脑的 Herdr 里起一个会话，读项目现状和坑，只留一条发言就停；最后由总结模型写一段结论。结果记在一条「【讨论】」任务上，觉得该做就从那里拆成子任务派出去。</p>
+          <p className="muted small">把一个想法交给几个 Agent 各说一次：值不值得做、怎么做、怎么拆、风险在哪。每个 Agent 读项目现状和坑，只留一条发言就停，总结模型再写一段结论。你看完可以回一句，点「让他们回应」他们就接着讨论；方向定了就「拆分派活」，决定谁来干。</p>
           <label>念头<textarea rows={6} autoFocus placeholder="比如：把洞察报告改成每周自动发到手机；或者：要不要给 Dispatch 做 iOS 原生版。截图直接粘贴进来。" value={topic} onChange={(e) => setTopic(e.target.value)} onPaste={onPaste} disabled={busy} /></label>
           <div className="disc-images">
             {images.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt={im.name} title={im.path} /><button className="x" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label="移除图片">✕</button></div>)}
@@ -112,7 +126,6 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
           </div>
           <div className="new-session-selects">
             <label>项目<select value={project} onChange={(e) => setProject(e.target.value)} disabled={busy}><option value="">不挂项目，就一个念头</option>{projects.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
-            <label>轮数<select value={rounds} onChange={(e) => setRounds(Number(e.target.value))} disabled={busy}><option value={1}>1 轮（各说一次）</option><option value={2}>2 轮（再互相回应一次）</option></select></label>
           </div>
           <div className="disc-parts">
             <div className="muted small">参加的 Agent（同一种可以加多个，各选各的模型）</div>
@@ -147,13 +160,16 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
             {busy && waiting === 0 && !finished && <div className="disc-waiting muted small">发言都到了，总结模型在写结论……</div>}
           </div>
         )}
+        {task && showDoc && (doc || existingDoc) && <div className="disc-doc"><div className="l1"><b>讨论文档</b><span className="muted small">已写进任务描述</span><span className="spacer" /><button className="link sm" onClick={() => setShowDoc(false)}>收起</button></div><Markdown src={doc || existingDoc.replace(/^[^\n]*\n/, "")} className="compact" /></div>}
         {task && <div className="disc-compose"><input placeholder="你也说一句（会作为发言记进去；然后点「让他们回应」再来一轮）" value={line} disabled={busy} onChange={(e) => setLine(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && line.trim()) void say(); }} /><button className="btn sm" disabled={busy || !line.trim()} onClick={() => void say()}>发言</button></div>}
 
         <div className="foot">
           <button className="btn ghost" disabled={busy} onClick={onClose}>{task ? "关闭" : "取消"}</button>
-          {task && <button className="btn" onClick={() => { onOpened(task); onClose(); }}>打开任务页 · 拆分派活</button>}
+          {task && <button className="btn" disabled={busy || docBusy} onClick={hasDoc && !doc ? () => setShowDoc(true) : makeDoc} title="把讨论整理成一份文档（背景、结论、方案、步骤、风险、验收），写进任务">{docBusy ? "整理中…" : hasDoc ? (showDoc ? "文档已生成" : "看文档") : "整理成文档"}</button>}
+          {task && hasDoc && <button className="btn" disabled={busy || docBusy} onClick={delegate} title="选一个 Agent 和模型，读这份文档开工">派 Agent 去做 →</button>}
+          {task && <button className="btn" disabled={busy} onClick={() => { onOpened(task, "split"); onClose(); }} title="或者拆成几个子任务分给不同 Agent">拆分</button>}
           {task && !busy && <span className="disc-parts-inline">{parts.map((p, i) => <span key={i} className="chip">{KINDS.find(([x]) => x === p.kind)?.[1]}{p.model ? ` · ${p.model}` : ""}</span>)}</span>}
-          <button className="btn primary" disabled={busy || !parts.length || (!task && !topic.trim())} onClick={() => { if (task) { setRounds(1); setFinished(null); } void go(); }}>{busy ? "讨论中…" : task ? "让他们回应一轮" : `请 ${parts.length} 个 Agent 讨论`}</button>
+          <button className="btn primary" disabled={busy || !parts.length || (!task && !topic.trim())} onClick={() => { if (task) setFinished(null); void go(); }}>{busy ? "讨论中…" : task ? "让他们回应" : `请 ${parts.length} 个 Agent 讨论`}</button>
         </div>
       </div>
     </div>
