@@ -391,7 +391,7 @@ def host_rows(local_only=False):
 
 # ---------------------------------------------------------------- hand work to another agent through Herdr
 
-KIND_ACTOR = {"claude": "claude-code", "codex": "codex", "opencode": "zcode", "gemini": "gemini", "cursor": "cursor", "kimi": "kimi", "amp": "amp"}
+KIND_ACTOR = {"claude": "claude-code", "codex": "codex", "pi": "pi", "opencode": "zcode", "gemini": "gemini", "cursor": "cursor", "kimi": "kimi", "amp": "amp"}
 PANE_RE = re.compile(r"^w\d+:p\w+$")
 
 
@@ -555,9 +555,11 @@ def cmd_agent(a):
         # The new tab's shell needs a while before it counts as "an available shell":
         # fish start-up (prime, env export) can take most of a minute on a busy Mac.
         started = None
-        for attempt in range(24):
+        # fish start-up in a fresh tab (the prime hook reads the board and the index) can take
+        # well over a minute on a loaded Mac: keep asking for ~3 minutes before giving up.
+        for attempt in range(70):
             d = herdr(host, sargs, timeout=150)
-            if isinstance(d, dict) and (d.get("error") or {}).get("code") == "agent_pane_busy" and attempt < 23:
+            if isinstance(d, dict) and (d.get("error") or {}).get("code") == "agent_pane_busy" and attempt < 69:
                 time.sleep(2.5)
                 continue
             started = herdr_ok(d, "起 Agent").get("agent", {})
@@ -1684,6 +1686,26 @@ def task_commits(tid, issue=None, comments=None):
         m = re.match(r"(?:git@github\.com:|https://github\.com/)([^/]+/[^/.]+?)(?:\.git)?$", u)
         remote = f"https://github.com/{m.group(1)}" if m else ""
     return {"root": root, "remote": remote, "commits": out}
+
+
+def cmd_save_image(a):
+    """Store a pasted picture for a discussion (base64 JSON on stdin) and print its path, so the
+    agents' Read tool can look at it. ~/tasks/.dispatch/images/<stamp>-<n>.<ext>."""
+    import base64
+    d = json.loads(sys.stdin.read() or "{}")
+    data = d.get("data", "")
+    if data.startswith("data:"):
+        data = data.split(",", 1)[1]
+    raw = base64.b64decode(data)
+    if len(raw) > 20 * 1024 * 1024:
+        raise SystemExit("图片超过 20 MB")
+    ext = "jpg" if raw[:3] == b"\xff\xd8\xff" else "png" if raw[:4] == b"\x89PNG" else "gif" if raw[:3] == b"GIF" else "webp" if raw[8:12] == b"WEBP" else "bin"
+    folder = os.path.join(DISPATCH_DIR, "images")
+    os.makedirs(folder, exist_ok=True)
+    name = re.sub(r"[^\w.-]", "_", (d.get("name") or "image"))[:40].rsplit(".", 1)[0]
+    path = os.path.join(folder, f"{time.strftime('%Y%m%d-%H%M%S')}-{name}.{ext}")
+    open(path, "wb").write(raw)
+    out({"path": path, "size": len(raw)}, a.json, lambda x: print(x["path"]))
 
 
 def cmd_commits(a):
@@ -3978,12 +4000,42 @@ def task_project_dir(issue, names=None):
     return guess if os.path.isdir(guess) else os.getcwd()
 
 
-def discuss_prompt(tid, title, round_no, question=""):
+DISCUSSION_LABEL = "dispatch:discussion"   # a task that exists only to hold a discussion (topic / project)
+
+
+def discuss_prompt(tid, title, round_no, question="", topic=False, project=""):
+    ctx = ""
+    if topic:
+        ctx = (f"这不是一个已定的任务，而是一个念头/主题的讨论：先判断值不值得做、做成什么样、最小可行的第一步是什么。"
+               + (f" 它挂在项目「{project}」下：先 `dispatch project-summary {project}` 看项目现状，`bd list -l project:{project} --json` 看未完成任务，`dispatch wiki search {project}` 看这个项目踩过的坑，再发言。" if project else " 没有指定项目，就按独立的事来想。"))
     if round_no <= 1:
-        return (f"你参加任务 {tid}「{title}」的讨论。步骤：1) `bd show {tid}` 读背景与验收项；2) `bd comments {tid}` 读已有发言（带{DISCUSS_TAG}的）；"
-                f"3) 只写一条评论：`dispatch log {tid} \"{DISCUSS_TAG}<你的身份>：方案 / 拆分建议（每个子任务一行：标题 · 建议谁做 · 为什么）/ 风险\"`。"
+        return (f"你参加{'主题' if topic else '任务'} {tid}「{title}」的讨论。{ctx}步骤：1) `bd show {tid}` 读背景{'' if topic else '与验收项'}（描述里若列了附图路径，先用 Read 看图）；2) `bd comments {tid}` 读已有发言（带{DISCUSS_TAG}的）；"
+                f"3) 只写一条评论：`dispatch log {tid} \"{DISCUSS_TAG}<你的身份>：{'判断（做/不做/换个做法）与理由 / 建议的做法 / 拆分建议（每个子任务一行：标题 · 建议谁做 · 为什么）/ 风险' if topic else '方案 / 拆分建议（每个子任务一行：标题 · 建议谁做 · 为什么）/ 风险'}\"`。"
                 f"不要改代码、不要认领任务，写完就停。" + (f" 发起人的问题：{question}" if question else ""))
-    return (f"第 {round_no} 轮：再读一遍 `bd comments {tid}` 里别人的{DISCUSS_TAG}发言，用一条 `dispatch log {tid} \"{DISCUSS_TAG}…\"` 回应：同意什么、反对什么、最终建议怎么拆。写完就停。")
+    return (f"第 {round_no} 轮：再读一遍 `bd comments {tid}` 里别人的{DISCUSS_TAG}发言，用一条 `dispatch log {tid} \"{DISCUSS_TAG}…\"` 回应：同意什么、反对什么、最终建议{'做不做、怎么做、怎么拆' if topic else '怎么拆'}。写完就停。")
+
+
+def discussion_conclude(tid, title, comments):
+    """After the rounds: the summary model reads every 【讨论】 comment and writes one 【结论】 —
+    where they agree, where they differ, what the next step is — so the person reads one
+    paragraph, not five."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import summarize
+    p = summarize.provider()
+    if not p:
+        return ""
+    body = "\n\n".join(f"{c.get('author')}：{(c.get('text') or '')[len(DISCUSS_TAG):].strip()}" for c in comments if (c.get("text") or "").startswith(DISCUSS_TAG))
+    if not body.strip():
+        return ""
+    prompt = ("你是讨论的记录员。下面是几个 AI Agent 对同一个主题各自的发言。用简体中文写一段不超过 200 字的结论，按顺序：大家一致的判断；分歧在哪、各自理由；建议的下一步（最多三条，每条一句）。"
+              "只归纳发言，不加自己的观点，不用标题、不用引号。")
+    try:
+        text = summarize.chat(p, prompt, f"主题：{title}\n\n{body}", timeout=120).strip().replace("\n", " ")[:600]
+    except Exception:
+        return ""
+    if text:
+        sh(["bd", "comments", "add", tid, "【结论】" + text], env={"BEADS_ACTOR": "dispatch"})
+    return text
 
 
 def split_spec(spec):
@@ -4002,50 +4054,78 @@ def discussion_of(comments):
 
 
 def cmd_discuss(a):
-    issue = bd_json(["show", a.task, "--json"])
-    if not issue.get("id"):
-        raise SystemExit(f"没有任务 {a.task}")
-    kinds = [k.strip() for k in (a.with_ or "").split(",") if k.strip()]
-    if not kinds:
-        raise SystemExit("要指定参加讨论的 Agent：--with codex,claude")
+    # Participants: `kind` or `kind:model`, repeated as often as wanted (claude:opus,claude:haiku,codex).
+    parts = []
+    for k in (a.with_ or "").split(","):
+        k = k.strip()
+        if k:
+            kind, _, model = k.partition(":")
+            parts.append((kind, model))
+    kinds = [k for k, _ in parts]
+    if not parts:
+        raise SystemExit("要指定参加讨论的 Agent：--with codex,claude 或 claude:opus,claude:haiku")
     me = os.environ.get("BEADS_ACTOR", "schaefer")
-    cwd = a.cwd or task_project_dir(issue)
+    topic = bool(getattr(a, "topic", ""))
+    project = getattr(a, "project", "") or ""
+    if topic:
+        # A thought, not a task: make a task to hold the discussion (it can be split later).
+        labels = [DISCUSSION_LABEL] + ([f"project:{project}"] if project else [])
+        images = [os.path.abspath(os.path.expanduser(x)) for x in (getattr(a, "image", None) or []) if x]
+        desc = a.topic.strip() + (f"\n\n项目：{project}" if project else "") + (f"\n\n发起人的问题：{a.question}" if a.question else "") + ("\n\n附图（发言前用 Read 工具看一遍）：\n" + "\n".join(images) if images else "") + f"\n\n参加：{', '.join(kinds)}。这是一次讨论，结论在评论里；要做就用 dispatch split 拆成子任务。"
+        issue = bd_json(["create", "【讨论】" + a.topic.strip()[:70], "-t", "task", "-p", "3", "-l", ",".join(labels), "--description", desc, "--json"])
+        if not issue.get("id"):
+            raise SystemExit("建不了讨论任务")
+        a.task = issue["id"]
+        if getattr(a, "create_only", False):
+            # The app creates first so it can watch the comments land, then runs the rounds on the id.
+            return out({"task": a.task, "title": issue.get("title", "")}, a.json, lambda x: print(f"{x['task']} 已建：dispatch discuss {x['task']} --with … 开始讨论"))
+    else:
+        issue = bd_json(["show", a.task, "--json"])
+        if not issue.get("id"):
+            raise SystemExit(f"没有任务 {a.task}")
+        topic = DISCUSSION_LABEL in (issue.get("labels") or [])
+        project = project or next((l.split(":", 1)[1] for l in issue.get("labels") or [] if l.startswith("project:")), "")
+    cwd = a.cwd or (task_project_dir(issue) if project or not topic else HOME)
     before = len(discussion_of(bd_comments(a.task)))
     sh(["bd", "comments", "add", a.task, f"{DISCUSS_TAG}发起：{me} 邀请 {', '.join(kinds)} 讨论" + (f"：{a.question}" if a.question else "")], env={"BEADS_ACTOR": me})
     hostargs = ["--host", a.host] if a.host else []
     panes = {}
     for r in range(1, max(1, a.rounds) + 1):
-        for kind in kinds:
-            prompt = discuss_prompt(a.task, issue.get("title", ""), r, a.question)
-            if kind not in panes:
-                argv = self_cmd() + ["agent", "start", kind, "--cwd", cwd, "--label", f"讨论 {a.task}", "-p", prompt, "--auto", "--timeout", str(a.timeout), "--lines", "40", "--json"] + hostargs
+        for i, (kind, model) in enumerate(parts):
+            who = f"{kind}{'·' + model if model else ''}"
+            prompt = discuss_prompt(a.task, issue.get("title", ""), r, a.question, topic=topic, project=project)
+            if model:
+                prompt += f" 发言开头的身份写「{kind}（{model}）」。"
+            if i not in panes:
+                argv = self_cmd() + ["agent", "start", kind, "--cwd", cwd, "--label", f"讨论 {a.task} · {who}", "-p", prompt, "--auto", "--timeout", str(a.timeout), "--lines", "40", "--json"] + (["--model", model] if model else []) + hostargs
             else:
-                argv = self_cmd() + ["agent", "ask", panes[kind], prompt, "--timeout", str(a.timeout), "--lines", "40", "--json"] + hostargs
-            code, o, err = sh(argv, timeout=a.timeout // 1000 + 180)
+                argv = self_cmd() + ["agent", "ask", panes[i], prompt, "--timeout", str(a.timeout), "--lines", "40", "--json"] + hostargs
+            code, o, err = sh(argv, timeout=a.timeout // 1000 + 240)
             try:
                 res = json.loads(o[o.find("{"):])
             except Exception:
                 res = {}
             if code != 0 or not res:
-                print(f"⚠ {kind} 第 {r} 轮没跑起来：{(err or o).strip()[:300]}", file=sys.stderr)
+                print(f"⚠ {who} 第 {r} 轮没跑起来：{(err or o).strip()[:300]}", file=sys.stderr)
                 continue
-            panes.setdefault(kind, res.get("pane_id"))
+            panes.setdefault(i, res.get("pane_id"))
             if not a.json:
-                print(f"· 第 {r} 轮 {kind}（Herdr {res.get('pane_id')}）{res.get('status')}" + (f" · {res.get('warning')}" if res.get("warning") else ""))
+                print(f"· 第 {r} 轮 {who}（Herdr {res.get('pane_id')}）{res.get('status')}" + (f" · {res.get('warning')}" if res.get("warning") else ""))
     comments = discussion_of(bd_comments(a.task))
     new = comments[before:]
+    conclusion = discussion_conclude(a.task, issue.get("title", ""), new) if len(new) > 1 and not getattr(a, "no_conclude", False) else ""
     if a.close:
-        for kind, pane in panes.items():
+        for pane in panes.values():
             if pane:
                 sh(self_cmd() + ["agent", "close", pane] + hostargs, timeout=60)
-    result = {"task": a.task, "participants": kinds, "rounds": a.rounds, "panes": panes, "comments": new}
+    result = {"task": a.task, "participants": [f"{k}{':' + m if m else ''}" for k, m in parts], "rounds": a.rounds, "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic}
     if a.json:
         print(json.dumps(result, ensure_ascii=False)); return
-    print(f"\n讨论结束：{len(new)} 条新发言（含发起）。")
+    print(f"\n讨论结束：{len(new)} 条新发言（含发起）。" + (f"\n结论：{conclusion}" if conclusion else ""))
     for c in new:
         print(f"— {c.get('author')}：{re.sub(r'\\s+', ' ', (c.get('text') or '')[len(DISCUSS_TAG):]).strip()[:400]}")
     if panes and not a.close:
-        print("\n讨论用的 Agent 还开着：" + "、".join(f"{k}={p}" for k, p in panes.items()) + "（`dispatch agent close <pane>` 关掉）")
+        print("\n讨论用的 Agent 还开着：" + "、".join(f"{k}={p}" for k, p in result["panes"].items()) + "（`dispatch agent close <pane>` 关掉）")
     print(f"\n下一步由你拍板拆分：dispatch split {a.task} --to codex:\"子任务标题|说明\" --to claude:\"…\"")
 
 
@@ -4277,6 +4357,7 @@ def main():
     s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status", "adopt"]); s.set_defaults(fn=cmd_session_control)
     s = sub.add_parser("adopt", help="take a session running in another terminal (Warp/iTerm/Terminal/VS Code) into Herdr: stop it when idle, resume it in a new Herdr tab"); s.add_argument("key", help="session id, prefix, or pid-<n>"); s.add_argument("--keep", action="store_true", help="leave the old process running (the two will interleave writes)"); s.add_argument("--force", action="store_true", help="adopt even while it is working"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_adopt)
     s = sub.add_parser("reply", help="reply to an exact Agent session"); s.add_argument("op", choices=["status", "send"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
+    s = sub.add_parser("save-image", help="store a pasted image (base64 JSON on stdin: {name, data}) and print its path"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_save_image)
     s = sub.add_parser("commits", help="git commits that belong to a task (id in the message, or hashes in its close reason / comments)"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_commits)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
@@ -4293,7 +4374,7 @@ def main():
     s = sub.add_parser("review", help="record independent Agent review and its evidence"); s.add_argument("task"); s.add_argument("--verdict", choices=["pass", "changes"], required=True); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
-    s = sub.add_parser("discuss", help="dynamic workflow step 1: several agents read a task and each leaves one 【讨论】 comment"); s.add_argument("task"); s.add_argument("--with", dest="with_", required=True, help="comma-separated kinds: codex,claude,gemini…"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
+    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--no-conclude", action="store_true", help="skip the model-written 【结论】"); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
     s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
     s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])

@@ -54,6 +54,7 @@ interface Props {
   onProject: (name: string) => void;
   onView: (v: View) => void;
   onNew: (a?: Activity) => void;
+  onDiscuss?: () => void;
   onPhone?: () => void;
   onScreen?: () => void;
   screenReady?: boolean;
@@ -85,7 +86,7 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ insight, alertCount, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone, onScreen, screenReady }: Props) {
+export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone, onScreen, screenReady }: Props) {
   // The count chips narrow this page instead of leaving it.
   const [focus, setFocus] = useState<"" | "unread" | "waiting" | "blocked" | "running">("");
   // How the project cards are ordered; starred ones stay on top either way.
@@ -302,6 +303,7 @@ export function HomeView({ insight, alertCount, me, loaded, connectionError, una
           <span className={`live-indicator${connectionError ? " interrupted" : ""}`}>{connectionError ? "更新中断 · 正在重连" : loaded ? "每 3 秒同步会话活动" : "正在连接会话…"}{unavailable.length > 0 && ` · ${unavailable.join("、")} 暂时连不上`}</span>
         </div>
         <div className="home-head-actions">
+          {onDiscuss && <button className="btn" onClick={onDiscuss} title="把一个想法交给几个 Agent 各说一次，最后出一段结论">讨论一个念头</button>}
           <button className="btn primary" onClick={() => onNew()}>新建会话</button>
         </div>
       </header>

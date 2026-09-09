@@ -11,11 +11,11 @@ import { FileHunks } from "./Sessions";
 import { ImageGrid, MediaProvider } from "./Media";
 import { KINDS } from "./Delegate";
 
-interface Props { rows: Activity[]; onOpenSession: (id: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string, undo?: () => void) => void }
+interface Props { rows: Activity[]; onOpenSession: (id: string) => void; onDiscuss?: (taskId: string) => void; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string, undo?: () => void) => void }
 
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
-export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
+export function Detail({ rows, onOpenSession, onDiscuss, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
   const [editProperties, setEditProperties] = useState(false);
   // The right column (diffs, images) is what needs width; the left one can step aside. Remembered per device.
   const [wide, setWide] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-detail-wide") === "1"; } catch { return false; } });
@@ -229,7 +229,8 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
           if (issue.status === "closed" && !discussion.length && !subtasks.length) return null;
           return (
             <section className="sec workflow">
-              <h4>讨论与分工 <span className="muted">先让几个 Agent 各说一次，再拆成子任务派出去</span></h4>
+              <h4>讨论与分工 <span className="muted">先让几个 Agent 各说一次，再拆成子任务派出去</span>{onDiscuss && discussion.length > 0 && <button className="btn ghost sm" onClick={() => onDiscuss(id)}>可视化 · 继续讨论</button>}</h4>
+              {(() => { const con = comments.filter((c) => c.text.trimStart().startsWith("【结论】")).sort((a, b) => b.created_at.localeCompare(a.created_at))[0]; return con ? <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">总结模型归纳 · {relTime(con.created_at)}</span></div><Markdown src={con.text.trimStart().slice(4).trim()} className="compact" /></div> : null; })()}
               {discussion.length > 0 && <div className="discussion">{discussion.map((c) => { const a = actorOf(c.author, me); return <div key={c.id} className="say"><Avatar actor={a} /><div><div className="l1"><b>{a?.name ?? c.author}</b><span className="ts">{relTime(c.created_at)}</span></div><Markdown src={c.text.trimStart().slice(4)} className="compact" /></div></div>; })}</div>}
               {subtasks.length > 0 && <div className="subtasks">{subtasks.map((d) => { const st = statusLabel(d); const who = actorOf(d.assignee, me); return <button key={d.id} className="subtask" onClick={() => onSelect(d.id)}><span className={`st sm ${st.cls}`}>{st.text}</span><span className="t">{d.title}</span>{who && <span className="muted small">{who.name}</span>}<span className="mono muted small">{d.id}</span></button>; })}</div>}
               {issue.status !== "closed" && wf === "" && <div className="task-links"><button className="btn sm" onClick={() => setWf("discuss")}>发起讨论…</button><button className="btn sm" onClick={() => setWf("split")}>拆分并派活…</button></div>}
