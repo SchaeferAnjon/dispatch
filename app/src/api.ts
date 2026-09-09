@@ -164,7 +164,8 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "notify" | "tra
     memories: () => invoke<Memory[]>("memories_list"),
     remember: async (key, value) => void (await call("memory_set", { key, value })),
     forget: async (key) => void (await call("memory_forget", { key })),
-    agentStart: async (input) => parse<AgentStartResult | null>(await call("agent_start", { ...input }), null),
+    // Tauri wants the struct under `input`; the HTTP server reads the flat keys. Send both shapes.
+    agentStart: async (input) => parse<AgentStartResult | null>(await call("agent_start", { input, ...input }), null),
   };
 }
 

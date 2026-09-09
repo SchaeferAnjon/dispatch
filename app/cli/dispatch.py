@@ -542,7 +542,15 @@ def cmd_agent(a):
         if kind in RETIRED_AGENTS:
             raise SystemExit("该 Agent 已不再支持")
         actor = KIND_ACTOR.get(kind, kind)
-        cwd = a.cwd or (os.getcwd() if host is None else "")
+        cwd = a.cwd
+        if not cwd and host is None:
+            # From the app there is no meaningful "current directory": use the task's project folder, else home.
+            if a.task:
+                issue = bd_json(["show", a.task, "--json"])
+                cwd = task_project_dir(issue) if issue.get("id") else ""
+                if cwd == os.getcwd() and not any(l.startswith("project:") for l in issue.get("labels") or []):
+                    cwd = HOME
+            cwd = cwd or (os.getcwd() if sys.stdin.isatty() else HOME)
         if host is not None:
             remote_home = "/Users/" + host["ssh"].split("@")[0] if "@" in host.get("ssh", "") else ""
             cwd = (cwd or remote_home).replace("~", remote_home, 1) if remote_home else (cwd or "~")

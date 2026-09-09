@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentStartInput, AgentStartResult } from "../api";
+import type { Api, AgentStartInput, AgentStartResult } from "../api";
+import { control } from "./SessionActions";
 import { actorOf, projectOf } from "../derive";
 import type { Host, Issue } from "../types";
 
@@ -9,6 +10,7 @@ export const KINDS: [string, string][] = [["claude", "Claude Code"], ["codex", "
 export const KIND_ACTOR: Record<string, string> = { claude: "claude-code", codex: "codex", pi: "pi", opencode: "zcode", gemini: "gemini" };
 
 interface Props {
+  api?: Api;
   hosts: Host[];
   initialHost?: string;
   initialTask?: string;
@@ -23,7 +25,7 @@ interface Props {
   onStart: (input: AgentStartInput) => Promise<AgentStartResult | null>;
 }
 
-export function Delegate({ hosts, initialHost, initialTask, initialPrompt, initialLabel, initialKind, initialModel, issues, me, dirOfProject, onClose, onStart }: Props) {
+export function Delegate({ api, hosts, initialHost, initialTask, initialPrompt, initialLabel, initialKind, initialModel, issues, me, dirOfProject, onClose, onStart }: Props) {
   const online = hosts.filter((h) => h.online || h.local);
   const [hostId, setHostId] = useState(initialHost ?? (online.find((h) => h.local)?.id ?? online[0]?.id ?? ""));
   const host = hosts.find((h) => h.id === hostId);
@@ -34,6 +36,19 @@ export function Delegate({ hosts, initialHost, initialTask, initialPrompt, initi
   const task = issues.find((i) => i.id === taskId);
   const suggestedCwd = task ? dirOfProject(projectOf(task)) : "";
   const [cwd, setCwd] = useState("");
+  // Folder picker: the same browse the new-session dialog uses, on the chosen machine.
+  type Folders = { path: string; parent: string; children: { name: string; path: string }[]; recent: string[]; truncated: boolean };
+  const [picking, setPicking] = useState(false);
+  const [folders, setFolders] = useState<Folders | null>(null);
+  const [browseBusy, setBrowseBusy] = useState(false);
+  const browse = async (next: string) => {
+    if (!api || !host) return;
+    setBrowseBusy(true);
+    try { const r = await control<Folders>(api, host.local ? "local" : host.id, "browse", { path: next }); setFolders(r); setCwd(r.path); }
+    catch (e) { setErr(String(e)); }
+    finally { setBrowseBusy(false); }
+  };
+  const openPicker = () => { setPicking(true); void browse(cwd.trim() || suggestedCwd || ""); };
   const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<AgentStartResult | null>(null);
@@ -68,7 +83,12 @@ export function Delegate({ hosts, initialHost, initialTask, initialPrompt, initi
           <label>模型<select value={model} onChange={(e) => setModel(e.target.value)}>{(MODELS[kind] ?? [["", "默认"]]).map(([m, l]) => <option key={m} value={m}>{l}</option>)}</select></label>
         </div>
         <label>任务<select value={taskId} onChange={(e) => setTaskId(e.target.value)}><option value="">不挂任务，只发一句话</option>{groups.filter(([, xs]) => xs.length).map(([label, xs]) => <optgroup key={label} label={label}>{xs.map((i) => <option key={i.id} value={i.id}>{i.id} · {i.title}{i.assignee ? ` · 现在 ${actorOf(i.assignee, me)?.name ?? i.assignee}` : ""}</option>)}</optgroup>)}</select></label>
-        <label>目录<input placeholder={suggestedCwd || (host?.local ? "默认当前目录" : "默认那台机器的家目录")} value={cwd} onChange={(e) => setCwd(e.target.value)} /></label>
+        <label>目录<div className="folder-path"><input placeholder={suggestedCwd ? `默认：${suggestedCwd}` : host?.local ? "默认：~（家目录）；点「选择…」挑一个" : "默认：那台机器的家目录"} value={cwd} onChange={(e) => setCwd(e.target.value)} />{api && <button className="btn sm" type="button" disabled={busy || browseBusy} onClick={picking ? () => setPicking(false) : openPicker}>{picking ? "收起" : "选择…"}</button>}</div></label>
+        {picking && <div className="folder-picker" aria-busy={browseBusy}>
+          <div className="folder-picker-heading"><b>浏览文件夹</b><span className="muted small">{folders?.path}</span><button className="link" disabled={!folders || browseBusy || folders.path === folders.parent} onClick={() => browse(folders!.parent)}>↑ 上一级</button></div>
+          {browseBusy ? <p className="muted">读取文件夹…</p> : <div className="folder-children">{folders?.children.map((f) => <button key={f.path} type="button" onClick={() => browse(f.path)}>▱ {f.name}<span>›</span></button>)}{folders?.children.length === 0 && <p className="muted">没有子文件夹，就用当前目录。</p>}</div>}
+          {!!folders?.recent.length && <select aria-label="最近使用的文件夹" value="" disabled={browseBusy} onChange={(e) => browse(e.target.value)}><option value="">最近使用的文件夹…</option>{folders.recent.map((p) => <option key={p} value={p}>{p}</option>)}</select>}
+        </div>}
         <label>第一句话<textarea rows={4} placeholder={defaultPrompt || "要它做什么"} value={prompt} onChange={(e) => setPrompt(e.target.value)} /></label>
         {err && <div className="err">{err}</div>}
         {res && (
