@@ -90,3 +90,10 @@ describe("discussion sessions", () => {
     expect(isDiscussionSession({ title: "使用统计的洞察功能和Agent改进" })).toBe(false);
   });
 });
+
+describe("worktree folders", () => {
+  it("belong to the project they were cut from", () => {
+    expect(resolveProject({ cwd: "/Users/x/Projects/kanban-wt/task-8vb/app", project: "" }, [], ["~/Projects"])).toBe("kanban");
+    expect(resolveProject({ cwd: "/Users/x/Projects/kanban/app", project: "" }, [], ["~/Projects"])).toBe("kanban");
+  });
+});

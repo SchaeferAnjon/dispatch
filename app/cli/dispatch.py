@@ -4165,7 +4165,8 @@ def workspace_project(cwd, roots=None):
     for r in (roots if roots is not None else settings_load().get("workspace_roots") or []):
         root = os.path.normpath(os.path.expanduser(r))
         if cwd.startswith(root + os.sep):
-            return cwd[len(root) + 1:].split(os.sep)[0]
+            # `<project>-wt/<branch>` holds git worktrees of <project>: same project.
+            return re.sub(r"-wt$", "", cwd[len(root) + 1:].split(os.sep)[0])
     return ""
 
 
