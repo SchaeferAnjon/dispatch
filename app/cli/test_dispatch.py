@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -893,3 +894,103 @@ class SkillStats(unittest.TestCase):
         with patch.object(dispatch, "zcode_query", side_effect=fake_query):
             dispatch.parse_zcode_stats(e, "sess_1")
         self.assertEqual(e["skills"], {"video-to-notes": 2, "getnote": 1})
+
+
+class SkillNames(unittest.TestCase):
+    def test_keeps_cjk_and_dots(self):
+        self.assertEqual(dispatch.safe_skill_name("Get笔记"), "Get笔记")
+        self.assertEqual(dispatch.safe_skill_name("web-artifacts.builder"), "web-artifacts.builder")
+
+    def test_rejects_paths_and_leading_dot(self):
+        for bad in ("../evil", "a/b", ".hidden", "", "   ", "a b"):
+            self.assertEqual(dispatch.safe_skill_name(bad), "", bad)
+
+    def test_github_refs(self):
+        self.assertEqual(dispatch.parse_github_ref("anthropics/skills"), ("anthropics", "skills", "", ""))
+        self.assertEqual(dispatch.parse_github_ref("https://github.com/anthropics/skills/tree/main/skills/pdf"),
+                         ("anthropics", "skills", "main", "skills/pdf"))
+        self.assertEqual(dispatch.parse_github_ref("https://github.com/owner/repo.git"), ("owner", "repo", "", ""))
+        self.assertEqual(dispatch.parse_github_ref("https://raw.githubusercontent.com/o/r/main/x/SKILL.md"),
+                         ("o", "r", "main", "x"))
+        self.assertIsNone(dispatch.parse_github_ref("not a repo"))
+
+
+class SkillPoolBase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="dispatch-skill-test-")
+        self.pool = os.path.join(self.tmp, "pool")
+        self.dirs = {"claude": [os.path.join(self.tmp, "claude")], "codex": [os.path.join(self.tmp, "codex")]}
+        for p in (patch.object(dispatch, "POOL", self.pool), patch.object(dispatch, "AGENT_SKILL_DIRS", self.dirs),
+                  patch.object(dispatch, "cc_switch_flag", lambda *a: None)):
+            p.start()
+            self.addCleanup(p.stop)
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def call(self, **kw):
+        a = types.SimpleNamespace(op=kw.pop("op"), json=True, **kw)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            dispatch.cmd_skills(a)
+        return json.loads(buf.getvalue())
+
+
+class SkillsNew(SkillPoolBase):
+    def test_template_and_mount(self):
+        res = self.call(op="new", name="demo-skill", description="用户要 demo 时用。", trigger=None,
+                        constraint=None, agent=["claude"])
+        md = open(os.path.join(res["path"], "SKILL.md"), encoding="utf-8").read()
+        self.assertIn('name: demo-skill', md)
+        self.assertIn('description: "用户要 demo 时用。"', md)
+        self.assertIn("## 触发条件", md)
+        self.assertIn("## 关键约束", md)
+        self.assertTrue(os.path.islink(os.path.join(self.dirs["claude"][0], "demo-skill")))
+        self.assertFalse(os.path.exists(os.path.join(self.dirs["codex"][0], "demo-skill")))
+
+    def test_all_mounts_both_agents(self):
+        res = self.call(op="new", name="both", description="", trigger=None, constraint=None, agent=["all"])
+        self.assertEqual(sorted(res["agents"]), ["claude", "codex"])
+        self.assertTrue(os.path.islink(os.path.join(self.dirs["codex"][0], "both")))
+
+    def test_existing_name_refused(self):
+        self.call(op="new", name="dup", description="", trigger=None, constraint=None, agent=[])
+        with self.assertRaises(SystemExit):
+            self.call(op="new", name="dup", description="", trigger=None, constraint=None, agent=[])
+
+
+class SkillsImport(SkillPoolBase):
+    def repo(self, *files):
+        root = os.path.join(self.tmp, "repo")
+        for rel, body in files:
+            p = os.path.join(root, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            open(p, "w", encoding="utf-8").write(body)
+        return root
+
+    def test_copies_skill_records_source_and_license(self):
+        root = self.repo(("skills/thing/SKILL.md", "---\nname: thing\ndescription: d\n---\nbody\n"), ("LICENSE", "MIT"))
+        with patch.object(dispatch, "download_repo", return_value=(root, "main", os.path.join(self.tmp, "dl"))):
+            res = self.call(op="import", name="owner/repo", path="skills/thing", as_name="imported-thing",
+                            force=False, agent=["codex"], description=None)
+        md = open(os.path.join(res["path"], "SKILL.md"), encoding="utf-8").read()
+        self.assertIn("source: https://github.com/owner/repo", md)
+        self.assertIn("body", md)
+        self.assertTrue(os.path.exists(os.path.join(res["path"], "LICENSE")))
+        self.assertIn("LICENSE", open(os.path.join(res["path"], "SOURCE.md"), encoding="utf-8").read())
+        self.assertTrue(os.path.islink(os.path.join(self.dirs["codex"][0], "imported-thing")))
+        self.assertFalse(res["generated"])
+
+    def test_repo_without_skill_gets_a_generated_entry(self):
+        root = self.repo(("README.md", "hi"))
+        with patch.object(dispatch, "download_repo", return_value=(root, "main", os.path.join(self.tmp, "dl"))):
+            res = self.call(op="import", name="owner/tool", path="", as_name="tool", force=False,
+                            agent=[], description=None)
+        md = open(os.path.join(res["path"], "SKILL.md"), encoding="utf-8").read()
+        self.assertTrue(res["generated"])
+        self.assertIn("## 来源与提炼", md)
+        self.assertIn("https://github.com/owner/tool", md)
+
+    def test_multiple_skills_need_a_path(self):
+        root = self.repo(("a/SKILL.md", "---\nname: a\n---\n"), ("b/SKILL.md", "---\nname: b\n---\n"))
+        with patch.object(dispatch, "download_repo", return_value=(root, "main", os.path.join(self.tmp, "dl"))):
+            with self.assertRaises(SystemExit):
+                self.call(op="import", name="owner/repo", path="", as_name=None, force=False, agent=[], description=None)

@@ -29,6 +29,8 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [byUse, setByUse] = useState(true);
+  const [newOpen, setNewOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const total = (s: Skill) => Object.values(s.usage ?? {}).reduce((a, b) => a + b, 0);
   const improve = async () => {
@@ -102,6 +104,41 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
     try { await api.on(host, ["skills", "write", sel, "--file", file], draft); setContent(draft); setDraft(null); onDone(`${file} 已保存（旧版本留在 .bak）`); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
 
+  // Create writes the SKILL.md template into the pool and mounts it; import pulls a public
+  // repo (or a subdirectory of one) in. Both then reload the list and open the new skill.
+  const createSkill = async (v: { name: string; description: string; trigger: string; constraint: string; agents: string[] }) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const args = ["skills", "new", v.name, "--json"];
+      if (v.description) args.push("--description", v.description);
+      if (v.trigger) args.push("--trigger", v.trigger);
+      if (v.constraint) args.push("--constraint", v.constraint);
+      for (const ag of v.agents) args.push("--agent", ag);
+      const res = parseJson<{ name?: string }>(await api.on(host, args), {});
+      setNewOpen(false);
+      await load();
+      if (res.name) setSel(res.name);
+      onDone(`已新建 ${res.name ?? v.name}` + (v.agents.length ? `，已挂给 ${v.agents.join(" / ")}（新会话生效）` : ""));
+    } catch (e) { onError(String(e)); } finally { setBusy(false); }
+  };
+
+  const importSkill = async (v: { url: string; name: string; path: string; agents: string[] }) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const args = ["skills", "import", v.url, "--json"];
+      if (v.name) args.push("--as", v.name);
+      if (v.path) args.push("--path", v.path);
+      for (const ag of v.agents) args.push("--agent", ag);
+      const res = parseJson<{ name?: string; generated?: boolean }>(await api.on(host, args), {});
+      setImportOpen(false);
+      await load();
+      if (res.name) setSel(res.name);
+      onDone(`已导入 ${res.name}` + (res.generated ? "（仓库里没有 SKILL.md，生成了待提炼的入口）" : "") + (v.agents.length ? `，已挂给 ${v.agents.join(" / ")}（新会话生效）` : ""));
+    } catch (e) { onError(String(e)); } finally { setBusy(false); }
+  };
+
   return (
     <div className="sk-wrap">
       <HostPicker locked fromSidebar={!!hostId} hosts={hosts} value={host} onChange={setHost} />
@@ -116,6 +153,10 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
           <div className="views" style={{ marginTop: 6 }}>
             <button className={byUse ? "on" : ""} onClick={() => setByUse(!byUse)} title="按各 Agent 的调用次数排序（来自会话索引；Codex / ZCode 不记录技能调用）">按使用频次</button>
             <button className="primary" disabled={busy} onClick={improve} title="生成一条 Agent 任务：回看最近 14 天的会话，审查并改进最常用的技能">✦ 按最近工作流改进技能</button>
+          </div>
+          <div className="views" style={{ marginTop: 6 }}>
+            <button disabled={busy || !!blocked} onClick={() => setNewOpen(true)} title="按 SKILL.md 模板建到技能池并挂给选中的 Agent">＋ 新建技能</button>
+            <button disabled={busy || !!blocked} onClick={() => setImportOpen(true)} title="从公开 GitHub 仓库（或它的子目录）导入一个技能">从 GitHub 导入</button>
           </div>
         </div>
         <div className="sess-items">
@@ -176,6 +217,83 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
             </div>
           </>
         )}
+      </div>
+      {newOpen && <NewSkillDialog busy={busy} onCancel={() => setNewOpen(false)} onSave={createSkill} />}
+      {importOpen && <ImportSkillDialog busy={busy} onCancel={() => setImportOpen(false)} onSave={importSkill} />}
+    </div>
+  );
+}
+
+function AgentPicker({ agents, onToggle, busy }: { agents: string[]; onToggle: (id: string) => void; busy: boolean }) {
+  return (
+    <div className="skill-agents">
+      <span className="muted small">挂给</span>
+      {AGENTS.map((a) => (
+        <label key={a.id} className={`mount-row ${a.cls}`}>
+          <input type="checkbox" checked={agents.includes(a.id)} disabled={busy} onChange={() => onToggle(a.id)} />
+          <span className={`av ${a.cls}`}>{a.id === "claude" ? "C" : "X"}</span>
+          <span>{a.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+const NAME_RE = /^[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff._-]*$/;
+
+export function NewSkillDialog({ busy, onCancel, onSave }: { busy: boolean; onCancel: () => void; onSave: (v: { name: string; description: string; trigger: string; constraint: string; agents: string[] }) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [trigger, setTrigger] = useState("");
+  const [constraint, setConstraint] = useState("");
+  const [agents, setAgents] = useState<string[]>(["claude"]);
+  const ok = !busy && NAME_RE.test(name.trim());
+  const toggle = (id: string) => setAgents((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
+  const submit = () => ok && onSave({ name: name.trim(), description: description.trim(), trigger: trigger.trim(), constraint: constraint.trim(), agents });
+  return (
+    <div className="overlay" onMouseDown={(e) => !busy && e.target === e.currentTarget && onCancel()}>
+      <div className="dialog skill-dialog" role="dialog" aria-modal="true" aria-label="新建技能" onKeyDown={(e) => { if (e.key === "Escape" && !busy) onCancel(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); }}>
+        <h3>新建技能</h3>
+        <p className="skill-hint">按 SKILL.md 模板建到技能池 <span className="mono">~/.cc-switch/skills</span>，再挂给选中的 Agent。</p>
+        <div className="row two">
+          <label>技能名（目录名）<input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="code-review" spellCheck={false} /></label>
+          <label>一句话触发描述<input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="用户要…时用。" /></label>
+        </div>
+        <label>触发条件<textarea value={trigger} onChange={(e) => setTrigger(e.target.value)} placeholder="用户明确要做…时用。" /></label>
+        <label>关键约束<textarea value={constraint} onChange={(e) => setConstraint(e.target.value)} placeholder="先确认本机实际路径与命令；只写模型推不出来的内容。" /></label>
+        <AgentPicker agents={agents} onToggle={toggle} busy={busy} />
+        <div className="foot">
+          <button className="btn ghost" disabled={busy} onClick={onCancel}>取消</button>
+          <button className="btn primary" disabled={!ok} onClick={submit}>{busy ? "创建中…" : "创建 ⌘⏎"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ImportSkillDialog({ busy, onCancel, onSave }: { busy: boolean; onCancel: () => void; onSave: (v: { url: string; name: string; path: string; agents: string[] }) => Promise<void> }) {
+  const [url, setUrl] = useState("");
+  const [name, setName] = useState("");
+  const [path, setPath] = useState("");
+  const [agents, setAgents] = useState<string[]>(["claude"]);
+  const ok = !busy && url.trim().length > 0 && (!name.trim() || NAME_RE.test(name.trim()));
+  const toggle = (id: string) => setAgents((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
+  const submit = () => ok && onSave({ url: url.trim(), name: name.trim(), path: path.trim(), agents });
+  return (
+    <div className="overlay" onMouseDown={(e) => !busy && e.target === e.currentTarget && onCancel()}>
+      <div className="dialog skill-dialog" role="dialog" aria-modal="true" aria-label="从 GitHub 导入技能" onKeyDown={(e) => { if (e.key === "Escape" && !busy) onCancel(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); }}>
+        <h3>从 GitHub 导入技能</h3>
+        <p className="skill-hint">下载公开仓库，把里面的 <span className="mono">SKILL.md</span> 目录（或指定子目录）拷进技能池；仓库没有 SKILL.md 时按 skill-from-github 的思路生成待提炼的入口。来源和 LICENSE 一并记下。</p>
+        <label>仓库地址<input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="anthropics/skills 或 https://github.com/owner/repo/tree/main/skills/pdf" spellCheck={false} /></label>
+        <div className="row two">
+          <label>落到技能池的名字（可留空）<input value={name} onChange={(e) => setName(e.target.value)} placeholder="默认用 SKILL.md 里的 name" spellCheck={false} /></label>
+          <label>仓库里的子目录（可留空）<input value={path} onChange={(e) => setPath(e.target.value)} placeholder="skills/pdf" spellCheck={false} /></label>
+        </div>
+        <AgentPicker agents={agents} onToggle={toggle} busy={busy} />
+        <div className="foot">
+          <button className="btn ghost" disabled={busy} onClick={onCancel}>取消</button>
+          <button className="btn primary" disabled={!ok} onClick={submit}>{busy ? "导入中…" : "导入 ⌘⏎"}</button>
+        </div>
       </div>
     </div>
   );

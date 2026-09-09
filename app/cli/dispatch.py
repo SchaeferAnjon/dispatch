@@ -10,7 +10,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch resume <session|task>    print (or --copy) the command that resumes a session
   dispatch focus <session|task>     jump to the Herdr tab running that session
   dispatch adopt <session|pid-N>    take a session running in Warp/iTerm/Terminal into Herdr (stop when idle, resume there)
-  dispatch skills list|show|enable|disable|open|path
+  dispatch skills list|show|enable|disable|open|path|new|import   pool + per-agent mounts; new writes the template, import pulls a public GitHub repo
   dispatch prime [--hook-json]      compact session-start digest: identity, this project's tasks, relevant wiki, who else is in this dir, your quota
   dispatch claim <task> [--force]   claim without stealing: refuses a task another agent is working on
   dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
@@ -27,7 +27,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
 Data lives in ~/tasks/.dispatch (session registry, transcript index) and the
 Beads board at $BEADS_DIR. bd remains the tool for tasks themselves.
 """
-import argparse, glob, json, os, re, subprocess, sys, time
+import argparse, glob, json, os, re, shutil, subprocess, sys, tarfile, tempfile, time
 
 HOME = os.path.expanduser("~")
 DISPATCH_DIR = os.path.join(HOME, "tasks", ".dispatch")
@@ -2632,6 +2632,268 @@ def cmd_skills_improve(a):
         lambda o: print(prompt + "\n\n启动命令" + ("（已复制）" if a.copy else "") + "：\n" + cmd))
 
 
+# A new skill starts from the same four fields every useful SKILL.md has: the name and the
+# one-line trigger in the frontmatter, then 触发条件 / 关键约束 in the body. Anything longer is
+# the agent's job to fill in once the skill is actually used.
+SKILL_TEMPLATE = '''---
+name: {name}
+description: "{description}"
+---
+
+# {name}
+
+{description}
+
+## 触发条件
+
+- {trigger}
+
+## 关键约束
+
+- {constraint}
+'''
+
+
+def safe_skill_name(n):
+    """A skill is a folder in the pool: no separators, no leading dot, keep CJK."""
+    n = (n or "").strip()
+    if not n or n in (".", "..") or n.startswith("."):
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff._-]*", n):
+        return ""
+    return n
+
+
+def want_agents(a):
+    """--agent may repeat (claude/codex/all); none = create without mounting."""
+    raw = a.agent if isinstance(a.agent, list) else ([a.agent] if a.agent else [])
+    if "all" in raw:
+        return list(AGENT_SKILL_DIRS)
+    picked = []
+    for x in raw:
+        if x in AGENT_SKILL_DIRS and x not in picked:
+            picked.append(x)
+    return picked
+
+
+def mount_skill(name, path, agents):
+    """Symlink the skill into each agent's first skills dir (what `skills enable` does)."""
+    mounts = {}
+    for ag in agents:
+        d = AGENT_SKILL_DIRS[ag][0]
+        os.makedirs(d, exist_ok=True)
+        link = os.path.join(d, name)
+        if not (os.path.islink(link) or os.path.exists(link)):
+            os.symlink(path, link)
+        cc_switch_flag(name, ag, True)
+        mounts[ag] = link
+    return mounts
+
+
+def cmd_skills_new(a):
+    name = safe_skill_name(a.name)
+    if not name:
+        print("技能名不合法：用字母/数字/中文/点/下划线/连字符，别用斜杠或开头点", file=sys.stderr)
+        sys.exit(2)
+    dest = os.path.join(POOL, name)
+    if os.path.exists(dest):
+        print(f"{name} 已经存在（{dest}）——换个名字，或先在技能页删掉它", file=sys.stderr)
+        sys.exit(2)
+    description = (a.description or "").strip() or f"用户要做{name}相关的事时用。"
+    body = SKILL_TEMPLATE.format(
+        name=name,
+        description=description.replace('"', "'"),
+        trigger=(a.trigger or f"用户明确要做{name}相关的事时用。").strip(),
+        constraint=(a.constraint or "先确认本机实际路径与命令；只写模型推不出来的内容。").strip(),
+    )
+    os.makedirs(dest, exist_ok=True)
+    with open(os.path.join(dest, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write(body)
+    agents = want_agents(a)
+    mounts = mount_skill(name, dest, agents)
+    res = {"name": name, "path": dest, "description": description, "agents": agents, "mounts": mounts}
+    out(res, a.json, lambda r: print(f"已新建 {r['name']}：{r['path']}" +
+                                     (f"\n已挂给 {', '.join(r['agents'])}（新会话生效）" if r["agents"] else "\n还没挂给任何 Agent——在技能页勾选即可")))
+
+
+# ---- import a skill from a public GitHub repo ----
+
+GH_URL_RE = re.compile(r"^https?://(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/tree/([^/]+)(?:/(.*))?)?/?$")
+GH_RAW_RE = re.compile(r"^https?://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$")
+
+
+def parse_github_ref(url):
+    """owner/repo[@branch][/sub/path] or a GitHub URL → (owner, repo, branch, subpath)."""
+    u = (url or "").strip().rstrip("/")
+    if not u:
+        return None
+    m = GH_RAW_RE.match(u)
+    if m:
+        owner, repo, branch, path = m.groups()
+        return owner, repo, branch, os.path.dirname(path)
+    m = GH_URL_RE.match(u)
+    if m:
+        owner, repo, branch, path = m.group(1), m.group(2), m.group(3) or "", (m.group(4) or "").strip("/")
+        return owner, repo, branch, path
+    m = re.match(r"^([\w.-]+)/([\w.-]+?)(?:@([\w.-]+))?(?:/(.+))?$", u)
+    if m:
+        return m.group(1), m.group(2), m.group(3) or "", (m.group(4) or "").strip("/")
+    return None
+
+
+def gh_fetch_text(url, timeout=20):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "dispatch-skill-import", "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def github_default_branch(owner, repo):
+    try:
+        return json.loads(gh_fetch_text(f"https://api.github.com/repos/{owner}/{repo}")).get("default_branch") or ""
+    except Exception:
+        return ""
+
+
+def download_repo(owner, repo, branch):
+    """codeload tarball → a temp dir. Tries the given branch, then main/master, then the API default."""
+    import urllib.request
+    tried, errors = [], []
+    for b in ([branch] if branch else []) + ["main", "master", github_default_branch(owner, repo)]:
+        b = (b or "").strip()
+        if not b or b in tried:
+            continue
+        tried.append(b)
+        tmp = tempfile.mkdtemp(prefix="dispatch-skill-")
+        tgz = os.path.join(tmp, "repo.tar.gz")
+        try:
+            req = urllib.request.Request(f"https://codeload.github.com/{owner}/{repo}/tar.gz/refs/heads/{b}", headers={"User-Agent": "dispatch-skill-import"})
+            with urllib.request.urlopen(req, timeout=300) as r, open(tgz, "wb") as f:
+                shutil.copyfileobj(r, f)
+            with tarfile.open(tgz, "r:gz") as tf:
+                try:
+                    tf.extractall(tmp, filter="data")   # Python 3.12+ guards path traversal
+                except TypeError:
+                    tf.extractall(tmp)
+            os.remove(tgz)
+            roots = [os.path.join(tmp, n) for n in os.listdir(tmp)]
+            root = next((p for p in roots if os.path.isdir(p)), tmp)
+            return os.path.realpath(root), b, tmp
+        except Exception as e:
+            errors.append(f"{b}: {e}")
+            shutil.rmtree(tmp, ignore_errors=True)
+    raise RuntimeError(f"下载 {owner}/{repo} 失败（试过 {', '.join(tried) or '默认分支'}）。检查仓库是否公开、地址是否写对。" +
+                       ("\n" + "\n".join(errors[:3]) if errors else ""))
+
+
+def find_skill_dirs(root, subpath=""):
+    base = os.path.realpath(os.path.join(root, subpath)) if subpath else os.path.realpath(root)
+    if not os.path.isdir(base) or not base.startswith(os.path.realpath(root)):
+        return []
+    hits = []
+    for dp, dns, fns in os.walk(base):
+        dns[:] = [d for d in dns if d not in (".git", "node_modules", "__pycache__")]
+        if "SKILL.md" in fns:
+            hits.append(dp)
+    return hits
+
+
+def repo_license(root, sub=""):
+    for base in ([sub, root] if sub and sub != root else [root]):
+        for n in ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING", "COPYING.md"):
+            if os.path.isfile(os.path.join(base, n)):
+                return os.path.join(base, n)
+    return ""
+
+
+def add_frontmatter_source(skill_md, url):
+    """Record where an imported skill came from, without touching the rest of the file."""
+    try:
+        txt = open(skill_md, encoding="utf-8").read()
+    except Exception:
+        return
+    if re.search(r"^source:", txt, re.M) or not txt.startswith("---"):
+        return
+    end = txt.find("\n---", 3)
+    if end < 0:
+        return
+    open(skill_md, "w", encoding="utf-8").write(txt[:end + 1] + f"source: {url}\n" + txt[end + 1:])
+
+
+def cmd_skills_import(a):
+    ref = parse_github_ref(a.name)
+    if not ref:
+        print(f"看不懂这个地址：{a.name}。给 owner/repo 或 https://github.com/owner/repo[/tree/分支/子目录]", file=sys.stderr)
+        sys.exit(2)
+    owner, repo, branch, subpath = ref
+    subpath = (a.path or subpath or "").strip("/")
+    src_url = a.name.strip() if str(a.name).strip().startswith("http") else \
+        f"https://github.com/{owner}/{repo}" + (f"/tree/{branch}/{subpath}" if branch and subpath else (f"/tree/{branch}" if branch else ""))
+    root, used_branch, tmp = download_repo(owner, repo, branch)
+    try:
+        hits = find_skill_dirs(root, subpath)
+        if a.path and not hits:
+            print(f"仓库里没有 {a.path} 这个目录（或它下面没有 SKILL.md）", file=sys.stderr)
+            sys.exit(2)
+        want = safe_skill_name(a.as_name) or repo
+        if hits:
+            src = next((h for h in hits if os.path.basename(h) == want), None) \
+                or next((h for h in hits if read_frontmatter(h).get("name") == want), None) \
+                or (hits[0] if len(hits) == 1 else None)
+            if src is None:
+                rels = "、".join(os.path.relpath(h, root) for h in hits[:12])
+                print(f"这个仓库里有多个技能，用 --path 指定一个：{rels}", file=sys.stderr)
+                sys.exit(2)
+        else:
+            src = None
+        fm = read_frontmatter(src) if src else {}
+        target = safe_skill_name(a.as_name or fm.get("name") or (os.path.basename(src) if src else "")) or \
+            safe_skill_name(re.sub(r"[^A-Za-z0-9\u4e00-\u9fff._-]+", "-", repo).strip("-")) or repo
+        dest = os.path.join(POOL, target)
+        if os.path.exists(dest):
+            if not a.force:
+                print(f"{target} 已经存在（{dest}）——用 --as 换个名字，或加 --force 覆盖", file=sys.stderr)
+                sys.exit(2)
+            shutil.move(dest, f"{dest}.bak-{int(time.time())}")
+        os.makedirs(POOL, exist_ok=True)
+        if src:
+            shutil.copytree(src, dest, ignore=shutil.ignore_patterns(".git", "__pycache__", "node_modules"))
+        else:
+            os.makedirs(dest, exist_ok=True)
+        lic = repo_license(root, src or "")
+        lic_name = os.path.basename(lic) if lic else ""
+        if lic and not os.path.exists(os.path.join(dest, lic_name)):
+            shutil.copy2(lic, os.path.join(dest, lic_name))
+        prov = [f"来源：{src_url}", f"仓库：{owner}/{repo}" + (f"（分支 {used_branch}）" if used_branch else "")]
+        if subpath:
+            prov.append(f"目录：{subpath}")
+        prov.append(f"许可证：{lic_name}（已一并复制）" if lic else "许可证：仓库里没找到 LICENSE，使用前自己确认")
+        if src:
+            add_frontmatter_source(os.path.join(dest, "SKILL.md"), src_url)
+            with open(os.path.join(dest, "SOURCE.md"), "w", encoding="utf-8") as f:
+                f.write("# 来源\n\n" + "\n".join(f"- {p}" for p in prov) + "\n")
+        else:
+            # No SKILL.md in the repo: write the entry point ourselves, the way skill-from-github
+            # would — point at the project, keep the licence and the source, let the agent extract.
+            description = (a.description or "").strip() or f"用户要参考 {owner}/{repo} 的做法时用。"
+            body = SKILL_TEMPLATE.format(name=target, description=description.replace('"', "'"),
+                                         trigger=f"用户要做 {owner}/{repo} 能解决的事、想借用它的做法时用。",
+                                         constraint="只提炼模型推不出来的接口/格式/坑，不要照抄整仓文档；遵守下面的许可证。")
+            body += "\n## 来源与提炼\n\n" + "\n".join(f"- {p}" for p in prov) + \
+                    "\n\n读仓库里的 README、核心脚本和示例，把可复用的做法写进本技能。\n"
+            with open(os.path.join(dest, "SKILL.md"), "w", encoding="utf-8") as f:
+                f.write(body)
+        agents = want_agents(a)
+        mounts = mount_skill(target, dest, agents)
+        res = {"name": target, "path": dest, "source": src_url, "branch": used_branch, "license": lic_name,
+               "generated": not bool(src), "agents": agents, "mounts": mounts}
+        out(res, a.json, lambda r: print(f"已导入 {r['name']}：{r['path']}" +
+                                         ("（仓库里没有 SKILL.md，已生成入口待提炼）" if r["generated"] else "") +
+                                         (f"\n已挂给 {', '.join(r['agents'])}（新会话生效）" if r["agents"] else "")))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def cc_switch_flag(name, agent, on):
     try:
         import sqlite3
@@ -2647,10 +2909,15 @@ def cc_switch_flag(name, agent, on):
 def cmd_skills(a):
     if a.op == "improve":
         return cmd_skills_improve(a)
+    if a.op == "new":
+        return cmd_skills_new(a)
+    if a.op == "import":
+        return cmd_skills_import(a)
     if a.op == "list":
         rows = all_skills()
-        if a.agent:
-            rows = [r for r in rows if r["agents"].get(a.agent)]
+        only = want_agents(a)
+        if only:
+            rows = [r for r in rows if any(r["agents"].get(x) for x in only)]
         if a.query:
             q = a.query.lower()
             rows = [r for r in rows if q in r["name"].lower() or q in r["description"].lower()]
@@ -2719,7 +2986,7 @@ def cmd_skills(a):
         open(f, "w", encoding="utf-8").write(new)
         print(f"{a.name}/{os.path.relpath(f, r['path'])} 已保存（旧版 .bak）")
     elif a.op in ("enable", "disable"):
-        agents = list(AGENT_SKILL_DIRS) if a.agent in (None, "all") else [a.agent]
+        agents = want_agents(a) or list(AGENT_SKILL_DIRS)
         for ag in agents:
             existing = mounted(ag).get(a.name)
             if a.op == "enable":
@@ -5830,7 +6097,7 @@ def main():
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--since", type=int, help="只读上次返回的 offset 之后新增的记录（实时 tail）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
-    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash"]); s.add_argument("name", nargs="?"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
+    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash", "new", "import"]); s.add_argument("name", nargs="?", help="技能名；import 时是仓库地址（owner/repo 或 GitHub URL）"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", action="append", choices=["claude", "codex", "all"], help="可重复；不传 = enable/disable 两个都动、new/import 不挂载"); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--description", help="new/import: 一句话触发描述（写进 frontmatter）"); s.add_argument("--trigger", help="new: 触发条件"); s.add_argument("--constraint", help="new: 关键约束"); s.add_argument("--path", help="import: 仓库里的子目录"); s.add_argument("--as", dest="as_name", help="import: 落进技能池的名字"); s.add_argument("--force", action="store_true", help="import: 覆盖同名技能（旧的改名 .bak-时间戳）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing); the title must say what + why, the description the trigger"); s.add_argument("title", help="「<对象> <怎么改>：<为什么>」，8–80 字"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d", help="触发原因 + 期望结果，≥20 字"); s.add_argument("--force", action="store_true", help="create even when the title/description checks fail"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)

@@ -1062,6 +1062,11 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .env-more>summary:hover{background:var(--panel-2)}
 .env-more>div{display:flex;gap:4px;flex-wrap:wrap;padding:5px 0}
 .env-dialog .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.skill-dialog{width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 32px);overflow:auto}
+.skill-dialog .row.two{grid-template-columns:1fr 1fr}
+.skill-hint{margin:0;color:var(--ink-3);font-size:12px;line-height:1.6}
+.skill-agents{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.skill-agents .mount-row{font-size:12.5px}
 .env-dialog .row label{min-width:0}
 .env-dialog input,.env-dialog textarea{width:100%;min-width:0}
 .env-dialog .foot{display:flex;justify-content:flex-end;gap:8px}
