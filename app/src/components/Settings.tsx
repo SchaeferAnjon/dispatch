@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 import { isTauri } from "../api";
+import type { Host } from "../types";
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; phoneQr?: string; onScreen?: () => void; screenReady?: boolean; screen?: { url: string; up: boolean; sharing: boolean; issue: string }; onScreenSetup?: () => Promise<ScreenSetupResult | null>; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; phoneQr?: string; onScreen?: () => void; screenReady?: boolean; screen?: { url: string; up: boolean; sharing: boolean; issue: string }; onScreenSetup?: () => Promise<ScreenSetupResult | null>; hosts?: Host[]; onSetup?: () => void; onRenameHost?: (host: Host, name: string) => Promise<void>; onDeleteHost?: (host: Host) => Promise<void>; onRedetectHost?: (host: Host) => Promise<void>; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
 // What `dispatch screen setup --json` returns: the steps it walked and the one thing left for the user.
 export interface ScreenSetupResult { ok: boolean; url?: string; error?: string; steps?: { id?: string; title: string; ok: boolean; detail: string }[]; manual?: { id?: string; title: string; detail: string }[]; state?: { url: string; ready: boolean; screen_sharing: boolean; issue: string } }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, phoneQr, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, phoneQr, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onRenameHost, onDeleteHost, onRedetectHost, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   // The version line should not read "v…" forever: look it up once when the page opens.
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -23,6 +24,34 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
   const num = (k: keyof DispatchSettings, v: string, max: number) => setDraft({ ...draft, [k]: Math.max(0, Math.min(max, Number(v) || 0)) });
   const save = async () => { setBusy(true); try { await onSave(draft); } finally { setBusy(false); } };
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [hostBusyId, setHostBusyId] = useState<string | null>(null);
+  const hostKey = (h: Host) => (h.local ? "local" : h.id);
+  const startRename = (h: Host) => { setRenamingId(hostKey(h)); setNameDraft(h.name); };
+  const confirmRename = async (h: Host) => {
+    const name = nameDraft.trim();
+    setRenamingId(null);
+    if (!name || name === h.name || !onRenameHost) return;
+    setHostBusyId(hostKey(h));
+    try { await onRenameHost(h, name); } finally { setHostBusyId(null); }
+  };
+  const deleteHost = async (h: Host) => {
+    if (hostBusyId) return;
+    const key = hostKey(h);
+    if (pendingDeleteId !== key) { setPendingDeleteId(key); window.setTimeout(() => setPendingDeleteId((k) => (k === key ? null : k)), 4000); return; }
+    setPendingDeleteId(null);
+    if (!onDeleteHost) return;
+    setHostBusyId(key);
+    try { await onDeleteHost(h); } finally { setHostBusyId(null); }
+  };
+  const redetectHost = async (h: Host) => {
+    if (!onRedetectHost) return;
+    const key = hostKey(h);
+    setHostBusyId(key);
+    try { await onRedetectHost(h); } finally { setHostBusyId(null); }
+  };
   return (
     <div className="settings">
       <section className="settings-card">
@@ -110,9 +139,33 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
           <div><b>首次设置</b><p>装依赖、建或接入任务板、选 Agent、同步规则与技能。跳过过的可以从这里再打开，每一步都能重跑。</p></div>
           <button className="btn sm" onClick={onSetup}>打开首次设置</button>
         </div>}
-        {hosts.length > 0 && <div className="settings-row">
-          <div><b>机器</b><p>来自 ~/tasks/.dispatch/hosts.json；侧栏可按机器筛选。要加一台：在那台电脑上装 Dispatch，走首次设置时选「接入」并填这台的地址；或者在这台上「接入另一台」。</p></div>
-          <span className="setup-row">{onSetup && <button className="btn sm" onClick={onSetup}>接入另一台电脑…</button>}{hosts.map((h) => <span key={h.name} className="host-chip" title={h.ip}>{h.online ? "● " : "○ "}{h.name}{h.local ? "（本机）" : ""}</span>)}</span>
+        {hosts.length > 0 && <div className="settings-row host-manage">
+          <div><b>机器</b><p>来自 ~/tasks/.dispatch/hosts.json；侧栏可按机器筛选。要加一台：在那台电脑上装 Dispatch，走首次设置时选「接入」并填这台的地址；或者在这台上「接入另一台」。改名会同步推给已知的机器；删除后本机不再尝试连接它。</p>{onSetup && <button className="btn sm" onClick={onSetup}>接入另一台电脑…</button>}</div>
+          <div className="host-list">
+            {hosts.map((h) => {
+              const key = hostKey(h);
+              const rowBusy = hostBusyId === key;
+              return (
+                <div key={key} className="host-row">
+                  <span className={`dot${h.online ? " on" : ""}`} title={h.ip} />
+                  {renamingId === key ? (
+                    <>
+                      <input className="host-name-input" autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void confirmRename(h); if (e.key === "Escape") setRenamingId(null); }} />
+                      <button className="btn ghost sm" disabled={rowBusy} onClick={() => void confirmRename(h)}>保存</button>
+                      <button className="btn ghost sm" disabled={rowBusy} onClick={() => setRenamingId(null)}>取消</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="host-name" title={h.ip}>{h.name}{h.local ? "（本机）" : ""}</span>
+                      {onRenameHost && <button className="btn ghost sm" disabled={rowBusy} onClick={() => startRename(h)}>{rowBusy ? "…" : "改名"}</button>}
+                      {onRedetectHost && !h.local && <button className="btn ghost sm" disabled={rowBusy} onClick={() => void redetectHost(h)}>重新检测</button>}
+                      {onDeleteHost && !h.local && <button className="btn ghost sm danger" disabled={rowBusy} onClick={() => void deleteHost(h)}>{pendingDeleteId === key ? "再点一次确认删除" : "删除"}</button>}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>}
       </section>
       <div className="settings-actions">

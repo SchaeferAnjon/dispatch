@@ -142,17 +142,26 @@ def zcode_live(table):
 # ---------------------------------------------------------------- other Macs over Tailscale
 
 HOSTS_FILE = os.path.join(DISPATCH_DIR, "hosts.json")
+SELF_NAME_FILE = os.path.join(DISPATCH_DIR, "self-name.json")
 REMOTE_DIR = os.path.join(DISPATCH_DIR, "remote")
 _LOCAL_NAME = None
 
 
 def local_host_name():
+    """The system ComputerName (e.g. "Apple的Mac mini"), unless renamed from Settings —
+    that override lives in SELF_NAME_FILE, separate from the system name so it survives
+    across reinstalls and doesn't touch macOS's own ComputerName."""
     global _LOCAL_NAME
     if _LOCAL_NAME is None:
         try:
-            _LOCAL_NAME = subprocess.run(["/usr/sbin/scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2).stdout.strip() or os.uname().nodename
+            _LOCAL_NAME = json.load(open(SELF_NAME_FILE)).get("name", "").strip()
         except Exception:
-            _LOCAL_NAME = os.uname().nodename
+            _LOCAL_NAME = ""
+        if not _LOCAL_NAME:
+            try:
+                _LOCAL_NAME = subprocess.run(["/usr/sbin/scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2).stdout.strip() or os.uname().nodename
+            except Exception:
+                _LOCAL_NAME = os.uname().nodename
     return _LOCAL_NAME
 
 
@@ -761,6 +770,13 @@ def cmd_serve(a):
 
 
 def cmd_hosts(a):
+    refresh = getattr(a, "refresh", "")
+    if refresh:
+        for p in glob.glob(os.path.join(REMOTE_DIR, f"{refresh}.down")) + glob.glob(os.path.join(REMOTE_DIR, f"{refresh}--*.json")):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
     rows = host_rows(local_only=getattr(a, "local", False))
 
     def text(rows):
@@ -6607,7 +6623,7 @@ def main():
     s.add_argument("--auto", action="store_true", help="start: unattended mode (Codex bypasses sandbox approvals, Claude skips permissions); implied by --task")
     s.set_defaults(fn=cmd_agent)
     s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link, `serve qr` prints a scannable QR"); s.add_argument("what", nargs="?", choices=["run", "url", "qr"], default="run"); s.add_argument("--svg", action="store_true", help="qr: print SVG instead of terminal blocks"); s.set_defaults(fn=cmd_serve)
-    s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
+    s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--refresh", help="clear the cached probe for this host id first, forcing a fresh ssh check"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("screen", help="手机看屏幕的一键配置（noVNC + websockify 常驻 + Tailscale Serve HTTPS）"); s.add_argument("op", nargs="?", choices=["status", "setup"], default="status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_screen)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)
@@ -6622,7 +6638,7 @@ def main():
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)
-    s = sub.add_parser("init", help="首次设置向导：装依赖、建/接入任务板、选 Agent、同步规则与技能（无参数=交互式）"); s.add_argument("op", nargs="?", choices=["wizard", "status", "run", "hub-info", "add-host", "skip", "finish", "reset", "peers"]); s.add_argument("args", nargs="*", help="run: <deps|cli|board|agents|rules|review|reverse-ssh> [参数…]"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_init)
+    s = sub.add_parser("init", help="首次设置向导：装依赖、建/接入任务板、选 Agent、同步规则与技能（无参数=交互式）"); s.add_argument("op", nargs="?", choices=["wizard", "status", "run", "hub-info", "add-host", "rename-self", "rename-peer", "remove-host", "skip", "finish", "reset", "peers"]); s.add_argument("args", nargs="*", help="run: <deps|cli|board|agents|rules|review|reverse-ssh> [参数…]; rename-self <新名字>; rename-peer <ssh或id> <新名字>; remove-host <id>"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_init)
     s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
     s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=4, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()

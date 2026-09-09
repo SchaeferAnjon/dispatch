@@ -338,6 +338,13 @@ td .t{font-weight:500}
 .hosts-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--line-2)}
 .hosts-bar .dot.on{background:var(--s-done)}
 .host-chip{display:inline-block;margin-left:6px;padding:0 6px;border-radius:9px;font-size:10.5px;line-height:16px;background:var(--accent-soft);color:var(--accent-ink);vertical-align:1px;white-space:nowrap}
+.host-manage{align-items:flex-start;cursor:default}
+.host-list{display:flex;flex-direction:column;gap:6px;min-width:0}
+.host-row{display:flex;align-items:center;gap:8px}
+.host-row .dot{width:7px;height:7px;border-radius:50%;background:var(--line-2);flex:none}
+.host-row .dot.on{background:var(--s-done)}
+.host-name{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.host-name-input{width:160px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);font-size:13px}
 .kinds{margin-left:auto;display:inline-flex;gap:4px;align-items:center}
 .kinds .chip{opacity:.55}
 .kinds .chip.on{opacity:1;border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}

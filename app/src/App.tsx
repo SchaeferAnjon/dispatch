@@ -338,6 +338,7 @@ export default function App() {
   }, [api]);
 
   // The Macs on the tailnet (this one + hosts.json), for the 机器 strip on the Agents view.
+  const refreshHosts = useCallback(async () => { if (!api) return; try { setHosts(await api.hosts()); } catch { /* keep last */ } }, [api]);
   useEffect(() => {
     if (!api) return;
     let alive = true;
@@ -346,6 +347,35 @@ export default function App() {
     const t = window.setInterval(tick, 60_000);
     return () => { alive = false; window.clearInterval(t); };
   }, [api]);
+  // Settings 页「机器」：rename pushes to every known peer so their hosts.json agrees;
+  // delete just drops the local entry (host_rows()/remote_dispatch() re-read the file each
+  // call, so the next poll stops ssh'ing it); redetect clears that host's cached probe.
+  const renameHost = async (h: Host, name: string) => {
+    if (!api) return;
+    try {
+      const r = JSON.parse((await api.on(h.local ? "local" : h.id, ["init", "rename-self", name, "--json"])).replace(/^[^{]*/, ""));
+      if (r.error) { say(String(r.error), true); return; }
+      say(`已改名为 ${r.name ?? name}`);
+      await refreshHosts();
+    } catch (e) { say(String(e), true); }
+  };
+  const deleteHost = async (h: Host) => {
+    if (!api) return;
+    try {
+      const r = JSON.parse((await api.on("local", ["init", "remove-host", h.id, "--json"])).replace(/^[^{]*/, ""));
+      if (r.error) { say(String(r.error), true); return; }
+      say(`已删除 ${h.name}，不再尝试连接它`);
+      await refreshHosts();
+    } catch (e) { say(String(e), true); }
+  };
+  const redetectHost = async (h: Host) => {
+    if (!api) return;
+    try {
+      await api.on("local", ["hosts", "--refresh", h.id, "--json"]);
+      await refreshHosts();
+      say(`已重新检测 ${h.name}`);
+    } catch (e) { say(String(e), true); }
+  };
 
   // Transcript index (titles, last claimed task) keyed by session id, for the Agents view.
   const [refs, setRefs] = useState<Map<string, SessionRef>>(new Map());
@@ -730,7 +760,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} screen={(() => { const h = hosts.find((x) => x.local); return { url: h?.novnc ?? "", up: !!h?.novnc_up, sharing: !!h?.screen_sharing, issue: h?.novnc_issue ?? "" }; })()} onScreenSetup={screenSetup} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} summaryProviders={summaryProviders} onPhone={phoneLink} phoneQr={phoneQr} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} screen={(() => { const h = hosts.find((x) => x.local); return { url: h?.novnc ?? "", up: !!h?.novnc_up, sharing: !!h?.screen_sharing, issue: h?.novnc_issue ?? "" }; })()} onScreenSetup={screenSetup} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} summaryProviders={summaryProviders} onPhone={phoneLink} phoneQr={phoneQr} hosts={hosts} onRenameHost={api ? renameHost : undefined} onDeleteHost={api ? deleteHost : undefined} onRedetectHost={api ? redetectHost : undefined} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "overview" && <OverviewView stats={{ projects: projects.filter((p) => p.name).length, inbox: counts.inbox, sessions: projectRows.length, running: runningSessions, tasks: issuesF.length, open: issuesF.filter((i) => i.status !== "closed").length, agentsOnline: agents.filter((a) => a.online).length, agentsTotal: agents.length, skills: skillCount, wiki: wikiCount, hosts: Math.max(1, hosts.length), rulesSynced: null, version: update?.current ?? "" }} onGo={(v) => (v === "board" ? allTasks() : setView(v))} onTour={() => setTour(true)} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

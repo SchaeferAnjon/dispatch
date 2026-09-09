@@ -37,3 +37,26 @@ describe("SettingsView screen access", () => {
     expect(html).toContain("屏幕共享");
   });
 });
+
+describe("SettingsView 机器", () => {
+  const hosts = [
+    { id: "local", name: "大哥", ip: "100.1.1.1", ssh: "", online: true, local: true, overlay: { kind: "tailscale", ip: "100.1.1.1" }, screen_sharing: false, novnc: "", novnc_up: false, vnc: "", rustdesk: false, rustdesk_id: "", sunshine: false, sunshine_ui: "", uu: false, recommend: "" as const, why: "" },
+    { id: "mini", name: "Mac mini", ip: "100.1.1.2", ssh: "user@100.1.1.2", online: true, local: false, overlay: { kind: "tailscale", ip: "100.1.1.2" }, screen_sharing: false, novnc: "", novnc_up: false, vnc: "", rustdesk: false, rustdesk_id: "", sunshine: false, sunshine_ui: "", uu: false, recommend: "" as const, why: "" },
+  ];
+
+  it("offers rename for every machine, but delete/redetect only for peers", () => {
+    const html = renderToStaticMarkup(<SettingsView {...base} hosts={hosts} onRenameHost={async () => {}} onDeleteHost={async () => {}} onRedetectHost={async () => {}} />);
+    expect(html.match(/>改名</g)?.length).toBe(2);
+    expect(html).toContain("大哥（本机）");
+    expect(html).toContain("Mac mini");
+    expect(html.match(/>重新检测</g)?.length).toBe(1);
+    expect(html.match(/>删除</g)?.length).toBe(1);
+  });
+
+  it("hides the machine actions when no handler is wired", () => {
+    const html = renderToStaticMarkup(<SettingsView {...base} hosts={hosts} />);
+    expect(html).not.toContain(">改名<");
+    expect(html).not.toContain(">删除<");
+    expect(html).not.toContain(">重新检测<");
+  });
+});

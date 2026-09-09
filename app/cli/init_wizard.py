@@ -18,7 +18,7 @@ re-run after fixing something by hand:
 calls `dispatch init run <step> ...` for each button. The terminal wizard
 (`dispatch init`) walks the same steps with prompts.
 """
-import json, os, plistlib, re, secrets, shlex, shutil, socket, subprocess, sys, time
+import glob, json, os, plistlib, re, secrets, shlex, shutil, socket, subprocess, sys, time
 
 import dispatch as D
 
@@ -639,6 +639,75 @@ def add_host(entry):
     return {"hosts": hs}
 
 
+def set_self_name(name):
+    """Rename this Mac's display name (Settings 页「机器」), independent of macOS's own
+    ComputerName — kept in SELF_NAME_FILE so it isn't lost on a reinstall of Dispatch."""
+    name = (name or "").strip()[:60]
+    if not name:
+        return {"error": "名字不能为空"}
+    os.makedirs(D.DISPATCH_DIR, exist_ok=True)
+    json.dump({"name": name}, open(D.SELF_NAME_FILE, "w"), ensure_ascii=False)
+    D._LOCAL_NAME = name  # bust dispatch.py's process-local cache
+    return {"name": name}
+
+
+def rename_peer(match, name):
+    """Update the hosts.json entry identified by ssh address or id — either a peer telling
+    us it renamed itself (matched by ssh, which stays put across a rename), or us fixing
+    our own record of one after a `rename-self` push failed silently."""
+    name = (name or "").strip()[:60]
+    if not match or not name:
+        return {"error": "缺 ssh/id 或新名字", "updated": False}
+    hs = D.hosts()
+    hit = False
+    for h in hs:
+        if h.get("ssh") == match or h.get("id") == match:
+            h["name"] = name
+            hit = True
+    if hit:
+        os.makedirs(D.DISPATCH_DIR, exist_ok=True)
+        json.dump(hs, open(D.HOSTS_FILE, "w"), ensure_ascii=False, indent=2)
+    return {"updated": hit, "hosts": hs}
+
+
+def remove_host(hid):
+    """Drop a Mac from hosts.json: host_rows()/remote_dispatch() stop listing and ssh'ing
+    it right away, since both read the file fresh each call."""
+    if not hid:
+        return {"error": "缺 id", "hosts": D.hosts()}
+    hs = [h for h in D.hosts() if h.get("id") != hid]
+    os.makedirs(D.DISPATCH_DIR, exist_ok=True)
+    json.dump(hs, open(D.HOSTS_FILE, "w"), ensure_ascii=False, indent=2)
+    for p in glob.glob(os.path.join(D.REMOTE_DIR, f"{hid}.down")) + glob.glob(os.path.join(D.REMOTE_DIR, f"{hid}--*.json")):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    return {"hosts": hs}
+
+
+def rename_self(name):
+    """Rename this Mac, then best-effort tell every Mac in our hosts.json so their copy of
+    us stays in sync — matched by our ssh address (stable across the rename, unlike name-
+    derived ids)."""
+    r = set_self_name(name)
+    if r.get("error"):
+        return r
+    name = r["name"]
+    me_ip = D.tailscale_ip() or lan_ip()
+    me_user = os.environ.get("USER") or os.path.basename(D.HOME)
+    me_ssh = f"{me_user}@{me_ip}" if me_ip else ""
+    pushed, failed = [], []
+    if me_ssh:
+        for h in D.hosts():
+            try:
+                remote_dispatch_json(h["ssh"], ["init", "rename-peer", me_ssh, name])
+                pushed.append(h["name"])
+            except Exception:
+                failed.append(h["name"])
+    return {"name": name, "pushed": pushed, "failed": failed}
+
+
 # ---------------------------------------------------------------- agents
 
 CLAUDE_SETTINGS = os.path.join(D.HOME, ".claude", "settings.json")
@@ -1027,6 +1096,12 @@ def main(a):
             res = hub_info()
         elif op == "add-host":
             res = add_host(json.loads(a.args[0]))
+        elif op == "rename-self":
+            res = rename_self(a.args[0] if a.args else "")
+        elif op == "rename-peer":
+            res = rename_peer(a.args[0] if a.args else "", a.args[1] if len(a.args) > 1 else "")
+        elif op == "remove-host":
+            res = remove_host(a.args[0] if a.args else "")
         elif op == "skip":
             res = finish(skipped=True)
         elif op == "finish":
