@@ -79,6 +79,186 @@ class SessionDetailClaude(unittest.TestCase):
         os.unlink(f.name)
 
 
+class SessionDetailBlocks(unittest.TestCase):
+    """The block timeline: thinking, text and tool calls paired with their results, for every agent."""
+
+    def _write(self, lines):
+        f = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
+        for l in lines:
+            f.write(json.dumps(l, ensure_ascii=False) + "\n")
+        f.close()
+        self.addCleanup(os.unlink, f.name)
+        return f.name
+
+    def _ref(self, agent, path):
+        return {"agent": agent, "path": path, "session_id": "s", "cwd": "/x", "title": "", "tasks": {}, "subagents": []}
+
+    def test_claude_blocks_merge_one_message_and_pair_results(self):
+        # Claude writes each content block as its own line, all sharing message.id.
+        lines = [
+            {"type": "user", "timestamp": "2026-09-02T10:00:00Z", "message": {"role": "user", "content": "看一下"}},
+            {"type": "assistant", "timestamp": "2026-09-02T10:00:01Z", "message": {"id": "m1", "role": "assistant", "content": [{"type": "thinking", "thinking": "先读文件", "signature": "x"}]}},
+            {"type": "assistant", "timestamp": "2026-09-02T10:00:02Z", "message": {"id": "m1", "role": "assistant", "content": [{"type": "text", "text": "我先看看。"}]}},
+            {"type": "assistant", "timestamp": "2026-09-02T10:00:03Z", "message": {"id": "m1", "role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls", "description": "list"}}]}},
+            {"type": "user", "timestamp": "2026-09-02T10:00:04Z", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "a.ts\nb.ts"}]}},
+            {"type": "assistant", "timestamp": "2026-09-02T10:00:05Z", "message": {"id": "m2", "role": "assistant", "content": [{"type": "thinking", "thinking": "", "signature": "x"}]}},
+            {"type": "assistant", "timestamp": "2026-09-02T10:00:06Z", "message": {"id": "m2", "role": "assistant", "content": [{"type": "tool_use", "id": "t2", "name": "Read", "input": {"file_path": "/x/a.ts"}}]}},
+            {"type": "user", "timestamp": "2026-09-02T10:00:07Z", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t2", "content": [{"type": "text", "text": "no such file"}], "is_error": True}]}},
+            {"type": "assistant", "timestamp": "2026-09-02T10:00:08Z", "message": {"id": "m3", "role": "assistant", "content": [{"type": "tool_use", "id": "t3", "name": "Bash", "input": {"command": "sleep 99"}}]}},
+        ]
+        path = self._write(lines)
+        d = dispatch.read_session_detail(self._ref("claude-code", path))
+        self.assertEqual([m["role"] for m in d["messages"]], ["user", "assistant", "assistant", "assistant"])
+        m1 = d["messages"][1]
+        self.assertEqual([b["type"] for b in m1["blocks"]], ["thinking", "text", "tool_call"])
+        self.assertEqual(m1["blocks"][0]["text"], "先读文件")
+        self.assertEqual(m1["text"], "我先看看。")
+        self.assertEqual([t["name"] for t in m1["tools"]], ["Bash"])
+        t1 = m1["blocks"][2]
+        self.assertEqual((t1["status"], t1["result"], t1["result_ts"]), ("done", "a.ts\nb.ts", "2026-09-02T10:00:04Z"))
+        self.assertEqual(t1["input"], {"command": "ls", "description": "list"})
+        m2 = d["messages"][2]
+        self.assertIn("note", m2["blocks"][0])  # signature-only thinking is still shown as a step
+        self.assertEqual((m2["blocks"][1]["status"], m2["blocks"][1]["result"]), ("error", "no such file"))
+        # A call that never got its result in a file nobody writes to any more is not "running".
+        self.assertEqual(d["messages"][3]["blocks"][0]["status"], "running")  # the file was just written to
+        os.utime(path, (time.time() - 3600, time.time() - 3600))
+        d = dispatch.read_session_detail(self._ref("claude-code", path))
+        self.assertEqual(d["messages"][3]["blocks"][0]["status"], "incomplete")
+        self.assertEqual(d["offset"], os.path.getsize(path))
+        self.assertEqual(d["tool_counts"], {"Bash": 2, "Read": 1})
+
+    def test_since_reads_only_new_records_and_reports_results_for_earlier_calls(self):
+        first = [
+            {"type": "user", "timestamp": "2026-09-02T10:00:00Z", "message": {"role": "user", "content": "跑测试"}},
+            {"type": "assistant", "timestamp": "2026-09-02T10:00:01Z", "message": {"id": "m1", "role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "npm test"}}]}},
+        ]
+        path = self._write(first)
+        d = dispatch.read_session_detail(self._ref("claude-code", path))
+        self.assertEqual(d["messages"][1]["blocks"][0]["status"], "running")
+        off = d["offset"]
+        with open(path, "a") as f:
+            f.write(json.dumps({"type": "user", "timestamp": "2026-09-02T10:00:09Z", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "42 passed"}]}}) + "\n")
+            f.write(json.dumps({"type": "assistant", "timestamp": "2026-09-02T10:00:10Z", "message": {"id": "m2", "role": "assistant", "content": [{"type": "text", "text": "都过了。"}]}}) + "\n")
+            f.write('{"type":"assistant","timestamp":"2026-09-02T10:00:11Z","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"half')  # still being written
+        d2 = dispatch.read_session_detail(self._ref("claude-code", path), since=off)
+        self.assertTrue(d2["partial"])
+        self.assertEqual(d2["since"], off)
+        self.assertEqual([m["text"] for m in d2["messages"]], ["都过了。"])
+        self.assertEqual(d2["resolved"], [{"id": "t1", "status": "done", "result": "42 passed", "result_ts": "2026-09-02T10:00:09Z"}])
+        self.assertLess(d2["offset"], os.path.getsize(path))  # the unfinished line is left for the next read
+        d3 = dispatch.read_session_detail(self._ref("claude-code", path), since=d2["offset"])
+        self.assertEqual((d3["messages"], d3["resolved"], d3["offset"]), ([], [], d2["offset"]))
+
+    def test_codex_reasoning_and_tool_output(self):
+        lines = [
+            {"type": "response_item", "timestamp": "2026-09-02T10:00:00Z", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "看看目录"}]}},
+            {"type": "response_item", "timestamp": "2026-09-02T10:00:01Z", "payload": {"type": "reasoning", "summary": [{"type": "summary_text", "text": "列出文件"}], "encrypted_content": "x"}},
+            {"type": "response_item", "timestamp": "2026-09-02T10:00:02Z", "payload": {"type": "function_call", "name": "exec_command", "call_id": "c1", "arguments": json.dumps({"cmd": "ls"})}},
+            {"type": "response_item", "timestamp": "2026-09-02T10:00:03Z", "payload": {"type": "function_call_output", "call_id": "c1", "output": "Chunk ID: 1\nWall time: 0.1 seconds\nProcess exited with code 1\nOutput:\nboom"}},
+            {"type": "response_item", "timestamp": "2026-09-02T10:00:04Z", "payload": {"type": "reasoning", "summary": [], "encrypted_content": "x"}},
+            {"type": "response_item", "timestamp": "2026-09-02T10:00:05Z", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "失败了。"}]}},
+        ]
+        d = dispatch.read_session_detail(self._ref("codex", self._write(lines)))
+        self.assertEqual([m["role"] for m in d["messages"]], ["user", "assistant", "assistant"])
+        a1 = d["messages"][1]["blocks"]
+        self.assertEqual([b["type"] for b in a1], ["thinking", "tool_call"])
+        self.assertEqual(a1[0]["text"], "列出文件")
+        self.assertEqual((a1[1]["name"], a1[1]["summary"], a1[1]["status"], a1[1]["result"]), ("exec_command", "ls", "error", "boom"))
+        a2 = d["messages"][2]["blocks"]
+        self.assertEqual([b["type"] for b in a2], ["thinking", "text"])
+        self.assertIn("model_reasoning_summary", a2[0]["note"])
+        self.assertEqual(d["messages"][2]["text"], "失败了。")
+
+    def test_pi_thinking_and_tool_result(self):
+        lines = [
+            {"type": "message", "timestamp": "2026-09-02T10:00:00Z", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+            {"type": "message", "timestamp": "2026-09-02T10:00:01Z", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "看一眼", "thinkingSignature": "s"}, {"type": "toolCall", "id": "p1", "name": "bash", "arguments": {"command": "pwd"}}]}},
+            {"type": "message", "timestamp": "2026-09-02T10:00:02Z", "message": {"role": "toolResult", "toolCallId": "p1", "toolName": "bash", "isError": False, "content": [{"type": "text", "text": "/x"}]}},
+        ]
+        d = dispatch.read_session_detail(self._ref("pi", self._write(lines)))
+        self.assertEqual([m["role"] for m in d["messages"]], ["user", "assistant"])
+        b = d["messages"][1]["blocks"]
+        self.assertEqual([x["type"] for x in b], ["thinking", "tool_call"])
+        self.assertEqual((b[1]["status"], b[1]["result"], b[1]["summary"]), ("done", "/x", "pwd"))
+
+    def test_zcode_parts_become_blocks_with_their_own_status(self):
+        rows = [
+            {"pdata": json.dumps({"type": "text", "text": "改一下", "messageID": "u1"}), "mdata": json.dumps({"role": "user", "id": "u1"}), "ts": 1000, "tu": 1000},
+            {"pdata": json.dumps({"type": "reasoning", "text": "先读再改", "messageID": "a1"}), "mdata": json.dumps({"role": "assistant", "id": "a1"}), "ts": 2000, "tu": 2000},
+            {"pdata": json.dumps({"type": "tool", "tool": "read", "callID": "z1", "state": {"status": "completed", "input": {"filePath": "/x/a.ts"}, "output": "const a"}, "messageID": "a1"}), "mdata": json.dumps({"role": "assistant", "id": "a1"}), "ts": 3000, "tu": 3500},
+            {"pdata": json.dumps({"type": "tool", "tool": "bash", "callID": "z2", "state": {"status": "running", "input": {"command": "npm test"}}, "messageID": "a1"}), "mdata": json.dumps({"role": "assistant", "id": "a1"}), "ts": 4000, "tu": 4000},
+        ]
+        orig = dispatch.zcode_query
+        dispatch.zcode_query = lambda sql, params=(): [r for r in rows if "time_updated >" not in sql or r["tu"] > params[1]]
+        try:
+            d = dispatch.read_zcode_detail({"agent": "zcode", "session_id": "s", "cwd": "/x"}, 400)
+            self.assertEqual([m["role"] for m in d["messages"]], ["user", "assistant"])
+            b = d["messages"][1]["blocks"]
+            self.assertEqual([x["type"] for x in b], ["thinking", "tool_call", "tool_call"])
+            self.assertEqual((b[1]["status"], b[1]["result"]), ("done", "const a"))
+            self.assertEqual(b[2]["status"], "incomplete")  # nobody wrote to this session for a long time
+            self.assertEqual(d["offset"], 4000)
+            d2 = dispatch.read_zcode_detail({"agent": "zcode", "session_id": "s", "cwd": "/x"}, 400, since=3000)
+            self.assertEqual([x["id"] for m in d2["messages"] for x in m["blocks"]], ["z1", "z2"])
+        finally:
+            dispatch.zcode_query = orig
+
+
+class HeadlessSteps(unittest.TestCase):
+    """The discussion's typing bubble learns what a member is on: 想：<thought> / 查：<tool> <what>."""
+
+    def test_claude_stream_events_become_steps(self):
+        events = [
+            {"type": "system", "subtype": "init"},
+            {"type": "stream_event", "event": {"type": "content_block_start", "content_block": {"type": "thinking"}}},
+            {"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "先看板"}}},
+            {"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "上的任务"}}},
+            {"type": "stream_event", "event": {"type": "content_block_stop"}},
+            {"type": "stream_event", "event": {"type": "content_block_start", "content_block": {"type": "tool_use", "name": "Bash"}}},
+            {"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "{\"command\": \"bd list"}}},
+            {"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": " --json\"}"}}},
+            {"type": "stream_event", "event": {"type": "content_block_stop"}},
+            {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t", "content": "[]"}]}},
+            {"type": "stream_event", "event": {"type": "content_block_start", "content_block": {"type": "text"}}},
+            {"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "没有任务。"}}},
+            {"type": "result", "result": "没有任务。", "session_id": "sess-1"},
+        ]
+        tmp = tempfile.mkdtemp()
+        with open(os.path.join(tmp, "events.jsonl"), "w") as f:
+            f.write("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events))
+        fake = os.path.join(tmp, "claude")  # a stand-in `claude -p` that replays the stream
+        with open(fake, "w") as f:
+            f.write(f"#!/usr/bin/env python3\nimport sys\nsys.stdout.write(open({os.path.join(tmp, 'events.jsonl')!r}, encoding='utf-8').read())\n")
+        os.chmod(fake, 0o755)
+        seen = []
+        orig = dispatch.child_env
+        dispatch.child_env = lambda: {**orig(), "PATH": tmp + ":" + orig()["PATH"]}
+        try:
+            res = dispatch.headless_call("claude", "", "hi", tmp, 30000, on_event=lambda status, text, step="": seen.append((status, text, step)))
+        finally:
+            dispatch.child_env = orig
+        self.assertEqual(res["text"], "没有任务。")
+        self.assertIn(("thinking", "", "想：先看板上的任务"), seen)
+        self.assertIn(("thinking", "", "查：Bash bd list --json"), seen)
+        self.assertIn(("thinking", "", ""), seen[seen.index(("thinking", "", "查：Bash bd list --json")):])  # the tool answered
+        self.assertEqual(seen[-2:], [("typing", "没有任务。", ""), ("done", "没有任务。", "")])
+
+    def test_live_file_keeps_the_step(self):
+        orig = dispatch.DISCUSSIONS_DIR
+        dispatch.DISCUSSIONS_DIR = tempfile.mkdtemp()
+        try:
+            live = dispatch.DiscussionLive("task-1", 1, [("claude（opus）", "claude")])
+            live.update("claude（opus）", "thinking", "", "想：先看板")
+            m = json.load(open(live.path))["members"]["claude（opus）"]
+            self.assertEqual((m["status"], m["step"]), ("thinking", "想：先看板"))
+            live.update("claude（opus）", "typing", "好的")
+            m = json.load(open(live.path))["members"]["claude（opus）"]
+            self.assertEqual((m["status"], m["step"], m["text"]), ("typing", "", "好的"))
+        finally:
+            dispatch.DISCUSSIONS_DIR = orig
+
+
 class RulesSync(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()

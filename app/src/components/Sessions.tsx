@@ -1,12 +1,14 @@
 import { linkedSessions } from "../projectModel";
-import { MediaProvider, AttachmentList, ImageGrid } from "./Media";
+import { MediaProvider, AttachmentList } from "./Media";
 import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
 import { ago, actorOf, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
 import { PairDiff, PatchDiff } from "./Diff";
 import { canReadReply, activityLabel, isScriptSession, sessionLifecycle , activityLine } from "../activity";
-import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef, TimelineMsg } from "../types";
+import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef, SessionTail, TimelineMsg } from "../types";
+import { SessionThread } from "./SessionThread";
+import { blocksOf, currentStep, mergeTail, visibleTurns } from "../timeline";
 import { Avatar } from "./ui";
 import { Markdown, Linkified } from "./Markdown";
 import { OpenSessionButton, AdoptButton } from "./SessionActions";
@@ -17,20 +19,11 @@ interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code" };
 
-// The conversation itself, one block per turn. Shared by the session page and the sub-agent viewer.
-export function ChatList({ list, name, showTools }: { list: TimelineMsg[]; name: string; showTools: boolean }) {
-  return <div className="chat">{list.map((x, i) => (
-    <div key={i} className={`tl ${x.synthetic ? "system" : x.role}`}>
-      {x.role === "gap" ? <div className="muted">{x.text}</div> : x.synthetic ? <div className="muted small tl-system" title="不是你发的：Claude Code 的后台任务 / hook 通知，Agent 看到后可能会接一句">系统事件 · {x.text}</div> : (
-        <>
-          <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
-          {x.images && x.images.length > 0 && <ImageGrid ids={x.images} />}
-          {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text"><Linkified text={x.text} /></div>)}
-          {showTools && x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
-        </>
-      )}
-    </div>
-  ))}</div>;
+// The conversation itself, one block per turn (thinking folded, tool cards, text). Shared by the
+// session page and the sub-agent viewer.
+export function ChatList({ list, name, showTools, running }: { list: TimelineMsg[]; name: string; showTools: boolean; running?: boolean }) {
+  const shown = useMemo(() => visibleTurns(list, { brief: false, showTools, showUser: true, showAssistant: true, running: !!running }), [list, showTools, running]);
+  return <SessionThread list={shown} name={name} running={!!running} />;
 }
 
 // A sub-agent's own transcript, opened from the parent's 子 Agent tab. The prompt it was
@@ -44,7 +37,7 @@ export function SubagentDialog({ api, parent, sub, onClose }: { api: Api; parent
   useEffect(() => { let alive = true; api.sessionDetail(key).then((x) => { if (alive) setD(x); }).catch((e) => { if (alive) setErr(String(e)); }); return () => { alive = false; }; }, [api, key]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }; window.addEventListener("keydown", k, true); return () => window.removeEventListener("keydown", k, true); }, [onClose]);
   const nT = d?.messages.reduce((n, x) => n + x.tools.length, 0) ?? 0;
-  const list = d ? d.messages.filter((x) => x.role !== "tool" || tools).filter((x) => x.role !== "assistant" || x.text.trim() || tools) : [];
+  const list = d?.messages ?? [];
   return <div className="overlay media-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
     <div className="media-dialog subagent-dialog" role="dialog" aria-modal="true" aria-label="子 Agent 对话">
       <header><span className="sub-type">{sub.type || "子 Agent"}</span><b>{sub.description || sub.agent_id}</b><span className="muted small mono">{(sub.size / 1e3).toFixed(0)} KB · 深度 {sub.depth}</span><span className="spacer" />
@@ -107,6 +100,10 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
     document.addEventListener('visibilitychange', changed);
     return () => document.removeEventListener('visibilitychange', changed);
   }, []);
+  // Is the agent working in this conversation right now? Then the transcript is tailed (below)
+  // and the full re-read only resyncs every so often.
+  const running = !!current && current.state === 'working' && !current.stale;
+  const runningRef = useRef(running); runningRef.current = running;
   useEffect(() => {
     if (!sel) { setDetail(null); return; }
     let alive = true; let timer = 0;
@@ -117,14 +114,46 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
         catch { if (alive) setLoadError(true); }
         finally { if (alive) setBusy(false); }
       }
-      if (alive) timer = window.setTimeout(refresh, 3000);
+      if (alive) timer = window.setTimeout(refresh, runningRef.current ? 12000 : 3000);
     };
     refresh();
     return () => { alive = false; window.clearTimeout(timer); };
   }, [sel, api]);
+  // Live: every 1.5 s ask `dispatch session --since <offset>` for what was appended and fold it
+  // in — a new thinking step, a tool card turning from running to done, the next paragraph.
+  const detailRef = useRef(detail); detailRef.current = detail;
+  useEffect(() => {
+    if (!sel || !running || !detail || detail.offset === undefined) return;
+    let alive = true; let timer = 0; let inflight = false;
+    const key = `${detail.meta.agent}:${detail.meta.session_id}`; const host = detail.meta.host ?? 'local';
+    const tick = async () => {
+      const d = detailRef.current;
+      if (!inflight && document.visibilityState === 'visible' && d && d.offset !== undefined) {
+        inflight = true;
+        try {
+          const raw = await api.on(host, ['session', key, '--since', String(d.offset), '--json']);
+          const t = JSON.parse(raw.slice(Math.max(0, raw.indexOf('{')))) as SessionTail;
+          if (alive && t.partial) setDetail((prev) => (prev ? mergeTail(prev, t) : prev));
+        } catch { /* the next full read catches up */ }
+        inflight = false;
+      }
+      if (alive) timer = window.setTimeout(tick, 1500);
+    };
+    timer = window.setTimeout(tick, 1500);
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, [sel, running, api, detail?.meta.session_id, detail?.meta.agent, detail?.meta.host, detail?.offset === undefined]);  // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     if (tab === 'timeline' && follow.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
   }, [detail, tab, kinds]);
+  // While the session runs the text streams in after the detail changed (useSmooth): keep the
+  // bottom in view as the thread grows, as long as the person has not scrolled up.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!running || tab !== 'timeline' || !el) return;
+    const ob = new MutationObserver(() => { if (follow.current) el.scrollTop = el.scrollHeight; });
+    ob.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => ob.disconnect();
+  }, [running, tab, detail?.meta.session_id]);
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = tab === 'timeline' ? (follow.current ? scroller.current.scrollHeight : timelineScroll.current) : 0;
   }, [tab]);
@@ -136,6 +165,8 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
     }
   }, [current, detail?.reply_id, atLatest, isVisible, tab, kinds.assistant, onSeen]);
   const latest = () => { follow.current = true; setAtLatest(true); if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; };
+  // The turns the timeline draws (memoized: the thread re-renders every poll while a session runs).
+  const shownTurns = useMemo(() => detail ? visibleTurns(detail.messages, { brief, showTools: kinds.tool && !brief, showUser: kinds.user, showAssistant: kinds.assistant, running }) : [], [detail?.messages, brief, kinds, running]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const items = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -230,7 +261,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                 </div></details>
               </div>
               {current?.summary && <div className="session-summary" title="模型写的总结：目标、做了什么、还差什么"><span className="conversation-caption">总结</span><span className="t"><Linkified text={current.summary} /></span></div>}
-              {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? '更新中断，保留上次记录' : current ? activityLabel(current) : '历史记录'}</strong><span>{current?.activity}</span></div><span className="muted small">{current ? (ago(current.last_at)) : ''}</span></div>}
+              {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? '更新中断，保留上次记录' : current ? activityLabel(current) : '历史记录'}</strong><span>{current?.activity}</span>{running && (() => { const st = currentStep(detail.messages); return st.kind === 'idle' ? null : <span className="live-step small">{st.kind === 'tool' ? `正在调用 ${st.name}…` : st.kind === 'text' ? '正在回复…' : '思考中…'}</span>; })()}</div><span className="muted small">{current ? (ago(current.last_at)) : ''}</span></div>}
               <details className="session-context" key={m.session_id}>
                 <summary>{m.user_msgs} 轮对话 · {m.subagents.length} 个子 Agent<span>会话信息</span></summary>
                 <div className="sess-meta kv">
@@ -253,46 +284,19 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   const nT = detail.messages.reduce((s, x) => s + x.tools.length, 0);
                   return (
                     <span className="kinds" title="怎么看这段对话">
-                      <button className={`chip${brief ? " on" : ""}`} onClick={toggleBrief} title="只显示你的问题和每一轮最后的回复">只看结论</button>
-                      <button className={`chip${kinds.tool ? " on" : ""}`} disabled={brief} onClick={() => flip("tool")} title="显示或隐藏工具调用">工具调用 <span className="mono muted">{nT}</span></button>
+                      <button className={`chip${brief ? " on" : ""}`} onClick={toggleBrief} title="只显示你的问题和每一轮最后的回复，不看思考和工具调用">只看结论</button>
+                      <button className={`chip${kinds.tool ? " on" : ""}`} disabled={brief} onClick={() => flip("tool")} title="显示或隐藏工具调用卡片（正在运行的总会显示）">工具调用 <span className="mono muted">{nT}</span></button>
                     </span>
                   );
                 })()}
               </div>
               {tab === 'timeline' && !atLatest && <button className="follow-latest" onClick={latest}>回到最新 ↓{current?.unread ? ' · 有未读回复' : ''}</button>}
               <div className="sess-body" tabIndex={0} aria-label="会话内容" ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>
-                {tab === "timeline" && (() => {
-                  const showTools = kinds.tool && !brief;
-                  // Harness events (hook output, background-task notices) sit at tool level: visible with tool calls, never in 只看结论.
-                  let list = detail.messages.filter((x) => x.role === "gap" || (x.role === "user" && (x.synthetic ? showTools : kinds.user)) || (x.role === "assistant" && (x.text.trim() ? kinds.assistant : showTools)) || (x.role === "tool" && showTools));
-                  if (brief) {
-                    // Keep each user message and only the last assistant text before the next one.
-                    const keep: typeof list = [];
-                    let lastReply: (typeof list)[number] | null = null;
-                    for (const x of list) {
-                      if (x.role === "user") { if (lastReply) keep.push(lastReply); lastReply = null; keep.push(x); }
-                      else if (x.role === "assistant" && x.text.trim()) lastReply = x;
-                    }
-                    if (lastReply) keep.push(lastReply);
-                    list = keep;
-                  }
-                  return <div className="chat">{list.map((x, i) => (
-                    <div key={i} className={`tl ${x.synthetic ? "system" : x.role}`}>
-                      {x.role === "gap" ? <div className="muted">{x.text}</div> : x.synthetic ? <div className="muted small tl-system" title="不是你发的：Claude Code 的后台任务 / hook 通知，Agent 看到后可能会接一句">系统事件 · {x.text}</div> : (
-                        <>
-                          <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : a?.name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
-                          {x.images && x.images.length > 0 && <ImageGrid ids={x.images} />}
-                          {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text"><Linkified text={x.text} /></div>)}
-                          {showTools && x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
-                        </>
-                      )}
-                    </div>
-                  ))}</div>;
-                })()}
+                {tab === "timeline" && <SessionThread list={shownTurns} name={a?.name ?? m.agent} running={running} />}
                 {tab === "subagents" && (() => {
                   // Who this conversation handed work to: sub-agents from the transcript, plus the
                   // Agent/Task tool calls that dispatched them, in order.
-                  const calls = detail.messages.flatMap((x) => x.tools.filter((t) => /^(Agent|Task|agent|task)$/.test(t.name)).map((t) => ({ ts: x.ts, summary: t.summary })));
+                  const calls = detail.messages.flatMap((x) => blocksOf(x).filter((b) => b.type === "tool_call" && /^(Agent|Task|agent|task)$/.test(b.name)).map((b) => ({ ts: x.ts, summary: b.type === "tool_call" ? b.summary : "" })));
                   return <div className="subagent-view">
                     <p className="muted small">这段会话派出的子 Agent。每个子 Agent 是一段独立的对话，只把结果交回来。</p>
                     {m.subagents.map((s) => <button key={s.agent_id} className="subagent-row opens" onClick={() => setSubView(s)} title="点开看这个子 Agent 的完整对话"><span className="sub-type">{s.type}</span><div><div className="t">{s.description || "（无描述）"}</div><div className="muted small mono">{s.last_at ? fmtTime(new Date(s.last_at * 1000).toISOString()) : ""} · {(s.size / 1e3).toFixed(0)} KB · 深度 {s.depth}</div></div><span className="muted">›</span></button>)}

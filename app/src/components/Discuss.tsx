@@ -32,7 +32,7 @@ export function ideaText(desc: string | undefined): string {
 }
 export const imagePaths = (text: string | undefined) => Array.from((text ?? "").matchAll(/((?:~|\/)[^\s"'`<>()[\]]+?\.(?:png|jpe?g|gif|webp|bmp))/gi)).map((m) => m[1]);
 
-type LiveMember = { kind: string; status: string; text: string; at: number };
+type LiveMember = { kind: string; status: string; text: string; at: number; step?: string };  // step: 想：<thought> / 查：<tool> while thinking
 type Live = { round: number; started: number; at: number; finished?: number; members: Record<string, LiveMember> };
 type Img = { path: string; preview: string };
 

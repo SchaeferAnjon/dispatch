@@ -74,9 +74,17 @@ export interface SessionRef {
   host_name?: string;
   remote?: boolean;
 }
-export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; synthetic?: boolean; text: string; tools: { name: string; summary: string; id?: string }[]; images?: string[] }
+// One step of an assistant turn, the same shape for every agent (field names are the CLI contract).
+export type ToolStatus = "running" | "done" | "error" | "incomplete";
+export type Block =
+  | { type: "thinking"; text: string; note?: string; id?: string }
+  | { type: "text"; text: string; id?: string }
+  | { type: "tool_call"; id: string; name: string; summary: string; input: Record<string, unknown>; status: ToolStatus; ts?: string; result?: string; result_ts?: string };
+export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; synthetic?: boolean; text: string; tools: { name: string; summary: string; id?: string }[]; images?: string[]; blocks?: Block[]; mid?: string }
+// What `dispatch session <id> --since <offset>` returns: only the records appended after `since`.
+export interface SessionTail { partial: true; since: number; offset: number; messages: TimelineMsg[]; resolved: { id: string; status: ToolStatus; result: string; result_ts: string }[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
 export interface FileChange { kind: "edit" | "write" | "patch"; old: string; new: string; ts: string; op?: string; add?: number; del?: number }
-export interface SessionDetail { attachments?: import("./components/Media").Attachment[]; activity_version?: string; reply_id?: string; workspace?: { root: string; files: { path: string; untracked: boolean }[]; patch: string; truncated?: boolean; unavailable?: string }; meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
+export interface SessionDetail { attachments?: import("./components/Media").Attachment[]; activity_version?: string; reply_id?: string; workspace?: { root: string; files: { path: string; untracked: boolean }[]; patch: string; truncated?: boolean; unavailable?: string }; meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number>; offset?: number }
 export interface Memory { key: string; value: string }
 export interface Skill { name: string; path: string; in_pool: boolean; description: string; agents: Record<string, boolean>; mounts?: Record<string, string | null>; usage?: Record<string, number>; last_used?: string }
 export interface SkillImprove { prompt: string; command: string; top: { name: string; usage: Record<string, number>; last_used: string }[] }

@@ -71,7 +71,8 @@ export function fixtureApi(): Api {
       ],
     }),
     taskSessions: async (id) => sessionRefs.filter((r) => r.tasks[id]),
-    sessionActivity: async () => ({ sessions: [], updated_at: Date.now()/1000, unavailable_hosts: [] }),
+    // The first catalog session is "working": the session page tails it (below, `session … --since`) and shows the live steps.
+    sessionActivity: async () => ({ sessions: [{ key: "claude-code:a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", agent: "claude-code", session_id: "a8cd3bf0-b764-4282-9acb-cf5d16f7f2e8", cwd: "/Users/x/Projects/kanban", project: "kanban", title: "任务集中营软件", last_at: Date.now() / 1000 - 5, state: "working", activity: "正在处理", version: "1", events: [], tasks: ["task-9lo"], unread: false, stale: false, tracking_since: now / 1000 - 3600, source: "transcript" }], updated_at: Date.now()/1000, unavailable_hosts: [] }),
     sessionSeen: async () => {},
     sessionList: async () => sessionRefs,
     sessionDetail: async (id) => {
@@ -79,11 +80,22 @@ export function fixtureApi(): Api {
       return {
         meta,
         messages: [
-          { ts: new Date(now - 3600e3).toISOString(), role: "user", text: "我想做一个软件，相当于一个任务集中营，所有的任务都在这里。", tools: [] },
-          { ts: new Date(now - 3500e3).toISOString(), role: "assistant", text: "先按研究复用流程做一轮调研。", tools: [{ name: "Bash", summary: "gh search repos \"kanban agents\"" }] },
-          { ts: new Date(now - 3000e3).toISOString(), role: "assistant", text: "", tools: [{ name: "Edit", summary: "/Users/x/Projects/kanban/app/src/App.tsx" }, { name: "Agent", summary: "Verify Claude Code hook fields" }] },
-          { ts: new Date(now - 120e3).toISOString(), role: "assistant", text: "Done — the new build is installed.", tools: [] },
+          { ts: new Date(now - 3600e3).toISOString(), role: "user", text: "我想做一个软件，相当于一个任务集中营，所有的任务都在这里。", tools: [], blocks: [{ type: "text", text: "我想做一个软件，相当于一个任务集中营，所有的任务都在这里。" }] },
+          { ts: new Date(now - 3500e3).toISOString(), role: "assistant", mid: "m1", text: "先按研究复用流程做一轮调研。", tools: [{ name: "Bash", summary: "gh search repos \"kanban agents\"", id: "t1" }], blocks: [
+            { type: "thinking", text: "用户要的是一个任务集中营。先搜现成实现，80% 能复用就不重写；再看本机有没有 bd。" },
+            { type: "text", text: "先按研究复用流程做一轮调研。" },
+            { type: "tool_call", id: "t1", name: "Bash", summary: "gh search repos \"kanban agents\"", input: { command: "gh search repos \"kanban agents\" --limit 5", description: "Search GitHub" }, status: "done", ts: new Date(now - 3500e3).toISOString(), result: "beads-ui/beads  A kanban for agents\nacme/task-board  Minimal board", result_ts: new Date(now - 3499e3).toISOString() },
+          ] },
+          { ts: new Date(now - 3000e3).toISOString(), role: "assistant", mid: "m2", text: "", tools: [{ name: "Edit", summary: "/Users/x/Projects/kanban/app/src/App.tsx", id: "t2" }, { name: "Agent", summary: "Verify Claude Code hook fields", id: "t3" }], blocks: [
+            { type: "thinking", text: "", note: "内容未记录（模型只留签名）" },
+            { type: "tool_call", id: "t2", name: "Edit", summary: "/Users/x/Projects/kanban/app/src/App.tsx", input: { file_path: "/Users/x/Projects/kanban/app/src/App.tsx", old_string: "const b = 2;", new_string: "const b = 3;" }, status: "error", result: "String to replace not found in file.", result_ts: "" },
+            { type: "tool_call", id: "t3", name: "Agent", summary: "Verify Claude Code hook fields", input: { description: "Verify Claude Code hook fields", prompt: "Read the hooks docs and list the fields…" }, status: "done", result: "Hook payload has session_id, transcript_path, cwd, hook_event_name.", result_ts: "" },
+          ] },
+          { ts: new Date(now - 120e3).toISOString(), role: "assistant", mid: "m3", text: "Done — the new build is installed.", tools: [], blocks: [{ type: "text", text: "Done — the new build is installed." }] },
+          { ts: new Date(now - 20e3).toISOString(), role: "user", text: "再跑一遍测试", tools: [], blocks: [{ type: "text", text: "再跑一遍测试" }] },
+          { ts: new Date(now - 10e3).toISOString(), role: "assistant", mid: "m4", text: "", tools: [{ name: "Bash", summary: "npm test", id: "t4" }], blocks: [{ type: "thinking", text: "跑 vitest 就够了。" }, { type: "tool_call", id: "t4", name: "Bash", summary: "npm test", input: { command: "cd app && npm test" }, status: "running", ts: new Date(now - 10e3).toISOString() }] },
         ],
+        offset: 1000,
         files: [
           { path: "/Users/x/Projects/kanban/app/src/App.tsx", changes: [{ kind: "edit", old: "const a = 1;\nconst b = 2;\nreturn a + b;", new: "const a = 1;\nconst b = 3;\nconst c = 4;\nreturn a + b + c;", ts: "" }] },
           { path: "/Users/x/Projects/kanban/app/scripts/install.sh", changes: [{ kind: "write", old: "", new: "#!/bin/bash\nset -euo pipefail\nnpm run tauri build", ts: "" }] },
@@ -114,6 +126,16 @@ export function fixtureApi(): Api {
     openPath: async () => {},
     hosts: async () => [],
     on: async (_h, args) => {
+      if (args[0] === 'session' && args[2] === '--since') {
+        // The live tail, scripted: the running test finishes, the agent thinks, then answers.
+        const since = Number(args[3]); const t = (ts: number) => new Date(now + ts * 1000).toISOString();
+        const steps: Record<number, unknown> = {
+          1000: { partial: true, since: 1000, offset: 1001, messages: [], resolved: [{ id: "t4", status: "done", result: "Test Files  6 passed (6)\n     Tests  61 passed (61)", result_ts: t(1) }], files: [], tool_counts: {} },
+          1001: { partial: true, since: 1001, offset: 1002, messages: [{ ts: t(2), role: "assistant", mid: "m5", text: "", tools: [], blocks: [{ type: "thinking", text: "全过了，跟用户说一声。" }] }], resolved: [], files: [], tool_counts: {} },
+          1002: { partial: true, since: 1002, offset: 1003, messages: [{ ts: t(3), role: "assistant", mid: "m5", text: "测试全部通过：6 个文件、61 个用例。", tools: [], blocks: [{ type: "text", text: "测试全部通过：6 个文件、61 个用例。" }] }], resolved: [], files: [], tool_counts: {} },
+        };
+        return JSON.stringify(steps[since] ?? { partial: true, since, offset: since, messages: [], resolved: [], files: [], tool_counts: {} });
+      }
       if(args[0]==='task') { const i=find(args[2]); const labels=i.labels??[];
         if(args[1]==='trash'&&!labels.includes('dispatch:trashed')) {i.labels=[...labels,'dispatch:trashed',`dispatch:previous:${i.status}`];i.status='deferred';}
         else if(args[1]==='restore'){i.status=(labels.find(l=>l.startsWith('dispatch:previous:'))?.split(':')[2]||'open') as Status;i.labels=labels.filter(l=>!l.startsWith('dispatch:'));}

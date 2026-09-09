@@ -1677,47 +1677,242 @@ def _block_text(content):
     return "\n".join(parts)
 
 
-def read_zcode_detail(ref, limit):
+# ---- the block timeline ---------------------------------------------------------------
+# Every parsed message carries `blocks`, the same shape for all four agents (field names are
+# a contract with the app, keep them verbatim):
+#   {"type": "thinking",  "text": …}
+#   {"type": "text",      "text": …}
+#   {"type": "tool_call", "id", "name", "summary", "input": {compact}, "status": running|done|error|incomplete,
+#                         "result": short text, "result_ts": ts}
+# `text` and `tools` stay on the message for the older readers (reply box, sibling merge).
+LONG_TEXT = 24000
+LONG_NOTE = "\n（这条消息过长，剩余内容请在原会话查看）"
+RESULT_CHARS = 600
+INPUT_CHARS = 400
+RUNNING_GRACE = 180  # a tool call still unanswered this long after the last write is "incomplete", not "running"
+
+
+def _clip(txt, n=LONG_TEXT):
+    txt = txt or ""
+    return txt[:n] + (LONG_NOTE if len(txt) > n else "")
+
+
+def _result_text(content):
+    """The visible part of a tool result: a string, or the text blocks of a list."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for b in content:
+            if isinstance(b, dict) and b.get("type") == "text":
+                parts.append(b.get("text", ""))
+            elif isinstance(b, dict) and b.get("type") == "image":
+                parts.append("[图片]")
+        return "\n".join(parts)
+    if isinstance(content, dict):
+        return _result_text(content.get("output") or content.get("text") or content.get("content") or "")
+    return "" if content is None else str(content)
+
+
+def _summarize_result(content, limit=RESULT_CHARS):
+    txt = _result_text(content).strip()
+    if len(txt) <= limit:
+        return txt
+    head = txt[: limit // 2].rstrip()
+    tail = txt[-(limit // 4):].lstrip()
+    return f"{head}\n…（省略 {len(txt) - len(head) - len(tail)} 字）…\n{tail}"
+
+
+def _compact_input(inp):
+    """Tool arguments small enough to ship to the UI: strings clipped, nested values summarized."""
+    if not isinstance(inp, dict):
+        return {"value": str(inp)[:INPUT_CHARS]} if inp not in (None, "") else {}
+    out = {}
+    for k, v in list(inp.items())[:12]:
+        if isinstance(v, str):
+            out[k] = v[:INPUT_CHARS] + ("…" if len(v) > INPUT_CHARS else "")
+        elif isinstance(v, (int, float, bool)) or v is None:
+            out[k] = v
+        else:
+            s = json.dumps(v, ensure_ascii=False)
+            out[k] = s[:INPUT_CHARS] + ("…" if len(s) > INPUT_CHARS else "")
+    return out
+
+
+class _Timeline:
+    """Collects messages/blocks while a transcript is read; pairs tool results with their calls."""
+
+    def __init__(self):
+        self.msgs, self.files, self.tool_names = [], {}, {}
+        self.pending = {}    # tool id -> block still waiting for its result
+        self.resolved = []   # results whose call was read before this pass (incremental reads)
+
+    def add(self, ts, role, blocks=None, **extra):
+        blocks = [b for b in (blocks or []) if b.get("type") != "text" or b.get("text", "").strip()]
+        text = "\n".join(b["text"] for b in blocks if b["type"] == "text")
+        tools = [{"name": b["name"], "summary": b["summary"], "id": b["id"]} for b in blocks if b["type"] == "tool_call"]
+        m = {"ts": ts, "role": role, "text": _clip(text), "tools": tools, "blocks": blocks, **extra}
+        self.msgs.append(m)
+        return m
+
+    def tool(self, ts, id_, name, inp, summary):
+        self.tool_names[name] = self.tool_names.get(name, 0) + 1
+        b = {"type": "tool_call", "id": str(id_ or ""), "name": name, "summary": str(summary or "")[:200], "input": _compact_input(inp), "status": "running", "ts": ts}
+        if b["id"]:
+            self.pending[b["id"]] = b
+        return b
+
+    def resolve(self, id_, content, is_error, ts, status=None):
+        status = status or ("error" if is_error else "done")
+        b = self.pending.pop(str(id_ or ""), None)
+        if b is None:
+            if id_:
+                self.resolved.append({"id": str(id_), "status": status, "result": _summarize_result(content), "result_ts": ts})
+            return
+        b["status"], b["result"], b["result_ts"] = status, _summarize_result(content), ts
+
+    def note_file(self, path, kind, old, new, ts):
+        self.files.setdefault(path, []).append({"kind": kind, "old": old or "", "new": new or "", "ts": ts})
+
+    def finish(self, live):
+        for b in self.pending.values():
+            if b["status"] == "running" and not live:
+                b["status"] = "incomplete"
+        self.pending = {}
+
+
+def _thinking_block(text, note=""):
+    text = (text or "").strip()
+    if not text and not note:
+        note = "内容未记录（模型只留签名）"
+    return {"type": "thinking", "text": text[:LONG_TEXT], **({"note": note} if note else {})}
+
+
+def _zcode_status(state):
+    s = (state or {}).get("status") or ""
+    return {"completed": "done", "error": "error", "pending": "running", "running": "running"}.get(s, "done" if s else "running")
+
+
+def read_zcode_detail(ref, limit, since=None):
     sid = ref["session_id"]
-    msgs, files, tool_names = [], {}, {}
-    rows = zcode_query("select p.data pdata, m.data mdata, p.time_created ts from part p join message m on m.id = p.message_id where p.session_id=? order by p.time_created, p.sequence", (sid,))
+    tl = _Timeline()
+    sql = "select p.data pdata, m.data mdata, p.time_created ts, p.time_updated tu from part p join message m on m.id = p.message_id where p.session_id=?"
+    params = [sid]
+    if since:
+        sql += " and p.time_updated > ?"; params.append(int(since))
+    rows = zcode_query(sql + " order by p.time_created, p.sequence", tuple(params))
+    offset = int(since or 0)
+    last, last_mid = None, None
     for r in rows:
         try:
             p = json.loads(r["pdata"]); m = json.loads(r["mdata"])
         except Exception:
             continue
+        offset = max(offset, int(r.get("tu") or r["ts"] or 0))
         ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(r["ts"] / 1000))
-        role = m.get("role", "")
-        if p.get("type") == "text" and p.get("text", "").strip():
-            msgs.append({"ts": ts, "role": "user" if role == "user" else "assistant", "text": p["text"][:600], "tools": []})
-        elif p.get("type") == "tool":
+        role = "user" if m.get("role") == "user" else "assistant"
+        mid = p.get("messageID") or m.get("id")
+        # One assistant turn spans several parts (reasoning, text, tool…): one message with several blocks.
+        if last is None or last_mid != mid or last["role"] != role:
+            last = None
+        t = p.get("type")
+        # OpenCode rewrites a part while it streams; the part id lets a later read replace the earlier copy.
+        if t == "text" and p.get("text", "").strip():
+            block = {"type": "text", "text": p["text"][:LONG_TEXT], **({"id": p["id"]} if p.get("id") else {})}
+        elif t == "reasoning":
+            if not (p.get("text") or "").strip():
+                continue
+            block = {**_thinking_block(p.get("text", "")), **({"id": p["id"]} if p.get("id") else {})}
+        elif t == "tool":
             name = p.get("tool", "")
-            inp = (p.get("state") or {}).get("input") or {}
-            tool_names[name] = tool_names.get(name, 0) + 1
-            summary = inp.get("command") or inp.get("filePath") or inp.get("file_path") or inp.get("description") or inp.get("pattern") or ""
-            msgs.append({"ts": ts, "role": "tool", "text": "", "tools": [{"name": name, "summary": str(summary)[:200]}]})
+            st = p.get("state") or {}
+            inp = st.get("input") or {}
+            summary = inp.get("command") or inp.get("filePath") or inp.get("file_path") or inp.get("description") or inp.get("pattern") or st.get("title") or ""
+            block = tl.tool(ts, p.get("callID") or p.get("id"), name, inp, summary)
+            status = _zcode_status(st)
+            if status != "running":
+                tl.resolve(block["id"], st.get("output") or st.get("error") or "", status == "error", ts, status)
             fp = inp.get("filePath") or inp.get("file_path")
-            if fp and name.lower() in ("edit",):
-                files.setdefault(fp, []).append({"kind": "edit", "old": inp.get("oldString", ""), "new": inp.get("newString", ""), "ts": ts})
-            elif fp and name.lower() in ("write",):
-                files.setdefault(fp, []).append({"kind": "write", "old": "", "new": inp.get("content", ""), "ts": ts})
-    if len(msgs) > limit:
-        msgs = msgs[:40] + [{"ts": "", "role": "gap", "text": f"…省略 {len(msgs) - limit} 条…", "tools": []}] + msgs[-(limit - 40):]
-    return {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in files.items()], "tool_counts": tool_names}
+            if fp and name.lower() == "edit":
+                tl.note_file(fp, "edit", inp.get("oldString", ""), inp.get("newString", ""), ts)
+            elif fp and name.lower() == "write":
+                tl.note_file(fp, "write", "", inp.get("content", ""), ts)
+        else:
+            continue
+        if last is not None and role == "assistant":
+            last["blocks"].append(block)
+            if block["type"] == "text":
+                last["text"] = _clip("\n".join(b["text"] for b in last["blocks"] if b["type"] == "text"))
+            elif block["type"] == "tool_call":
+                last["tools"].append({"name": block["name"], "summary": block["summary"], "id": block["id"]})
+        else:
+            last = tl.add(ts, role, [block], **({"mid": mid} if mid and role == "assistant" else {})); last_mid = mid
+    return _finish_detail(ref, tl, limit, since, offset, live=bool(rows) and time.time() - offset / 1000 < RUNNING_GRACE)
 
 
-def read_session_detail(ref, limit=400):
-    """Parse one transcript into a compact timeline + file changes (from Edit/Write tool calls)."""
+def _finish_detail(ref, tl, limit, since, offset, live):
+    tl.finish(live)
+    msgs = tl.msgs
+    if since is None and len(msgs) > limit:
+        msgs = msgs[:40] + [{"ts": "", "role": "gap", "text": f"…省略 {len(msgs) - limit} 条…", "tools": [], "blocks": []}] + msgs[-(limit - 40):]
+    d = {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in tl.files.items()], "tool_counts": tl.tool_names, "offset": offset}
+    if since is not None:
+        d["partial"] = True
+        d["since"] = since
+        d["resolved"] = tl.resolved
+    return d
+
+
+def read_session_detail(ref, limit=400, since=None):
+    """Parse one transcript into a block timeline + file changes (from Edit/Write tool calls).
+
+    `since` is the byte offset (zcode: time_updated) a previous read stopped at; with it only the
+    new records are parsed and the result carries `partial`, `resolved` (results for tool calls
+    already shown) and the new `offset` to continue from."""
     if ref["agent"] == "zcode":
-        return read_zcode_detail(ref, limit)
-    msgs, files, tool_names = [], {}, {}
+        return read_zcode_detail(ref, limit, since)
+    tl = _Timeline()
     seen_tool_images = []
     path = ref["path"]
-    with open(path, encoding="utf-8", errors="replace") as f:
-        for line in f:
+    last, last_mid = None, None  # the assistant message still being assembled, and its transcript id
+    from activity import user_text, is_synthetic_user, patch_files
+
+    def assistant(ts, mid, blocks, **extra):
+        nonlocal last, last_mid
+        if last is not None and mid and last_mid == mid:
+            last["blocks"].extend(b for b in blocks if b.get("type") != "text" or b.get("text", "").strip())
+            last["text"] = _clip("\n".join(b["text"] for b in last["blocks"] if b["type"] == "text"))
+            last["tools"] = [{"name": b["name"], "summary": b["summary"], "id": b["id"]} for b in last["blocks"] if b["type"] == "tool_call"]
+            return last
+        last = tl.add(ts, "assistant", blocks, **({"mid": mid} if mid else {}), **extra); last_mid = mid
+        return last
+
+    def other(m):
+        nonlocal last
+        last = None
+        return m
+
+    codex_turn = ""
+    offset = int(since or 0)
+    try:
+        st = os.stat(path)
+    except OSError:
+        st = None
+    with open(path, "rb") as f:
+        if offset:
+            f.seek(offset)
+        while True:
+            raw = f.readline()
+            if not raw:
+                break
+            if not raw.endswith(b"\n"):
+                break  # an in-flight record: read it next time
+            offset = f.tell()
             try:
-                d = json.loads(line)
+                d = json.loads(raw.decode("utf-8", "replace"))
             except Exception:
+                continue
+            if not isinstance(d, dict):
                 continue
             t = d.get("type")
             if ref["agent"] == "pi":
@@ -1725,52 +1920,93 @@ def read_session_detail(ref, limit=400):
                     continue
                 m = d.get("message") or {}
                 role, ts, c = m.get("role", ""), d.get("timestamp", ""), m.get("content")
-                blocks = c if isinstance(c, list) else [{"type": "text", "text": c or ""}]
-                txt = "\n".join(b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text")
-                tools = []
-                for b in blocks:
-                    if isinstance(b, dict) and b.get("type") == "toolCall":
+                blocks_in = c if isinstance(c, list) else [{"type": "text", "text": c or ""}]
+                blocks = []
+                for b in blocks_in:
+                    if not isinstance(b, dict):
+                        continue
+                    bt = b.get("type")
+                    if bt == "text":
+                        blocks.append({"type": "text", "text": (b.get("text") or "")[:LONG_TEXT]})
+                    elif bt == "thinking":
+                        blocks.append(_thinking_block(b.get("thinking") or b.get("text") or "", "内容被打码" if b.get("redacted") else ""))
+                    elif bt == "toolCall":
                         name = b.get("name", ""); inp = b.get("arguments") or b.get("input") or {}
-                        tool_names[name] = tool_names.get(name, 0) + 1
-                        tools.append({"name": name, "summary": str(inp.get("command") or inp.get("path") or inp.get("file_path") or "")[:200]})
+                        blocks.append(tl.tool(ts, b.get("id"), name, inp, inp.get("command") or inp.get("path") or inp.get("file_path") or ""))
                         fp = inp.get("path") or inp.get("file_path")
                         if fp and name in ("edit", "write"):
-                            files.setdefault(fp, []).append({"kind": name, "old": inp.get("oldText", ""), "new": inp.get("newText", inp.get("content", "")), "ts": ts})
-                if role in ("user", "assistant") and (txt.strip() or tools):
-                    msgs.append({"ts": ts, "role": role, "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": tools})
+                            tl.note_file(fp, name, inp.get("oldText", ""), inp.get("newText", inp.get("content", "")), ts)
+                    elif bt == "toolResult":
+                        tl.resolve(b.get("toolCallId") or b.get("id"), b.get("content") or b.get("output") or b.get("result"), bool(b.get("isError") or b.get("is_error")), ts)
+                if role == "toolResult":
+                    tl.resolve(m.get("toolCallId") or m.get("id"), c, bool(m.get("isError")), ts)
+                    continue
+                if role in ("user", "assistant") and any(b["type"] != "text" or b["text"].strip() for b in blocks):
+                    if role == "assistant":
+                        assistant(ts, m.get("id") or d.get("id"), blocks)
+                    else:
+                        other(tl.add(ts, "user", blocks))
                 continue
             if ref["agent"] == "codex":
                 # Codex rollouts: {"type":"event_msg"/"response_item", payload:{...}}; content blocks are input_text/output_text.
                 p = d.get("payload", {})
                 ts = d.get("timestamp", "")
-                if t == "response_item" and p.get("type") == "message":
+                pt = p.get("type")
+                if t != "response_item":
+                    continue
+                if last is None:
+                    codex_turn = ts or "turn"
+                if pt == "message":
                     role = p.get("role", "")
                     txt = "\n".join(b.get("text", "") for b in p.get("content") or [] if isinstance(b, dict) and b.get("type") in ("input_text", "output_text", "text"))
                     if role == "user":
-                        from activity import user_text
                         txt = user_text(txt)
-                    if txt.strip() and role in ("user", "assistant"):
-                        msgs.append({"ts": ts, "role": role, "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": []})
-                elif t == "response_item" and p.get("type") in ("function_call", "custom_tool_call"):
+                    if txt.strip() and role == "user":
+                        other(tl.add(ts, "user", [{"type": "text", "text": txt[:LONG_TEXT]}]))
+                    elif txt.strip() and role == "assistant":
+                        assistant(ts, codex_turn, [{"type": "text", "text": txt[:LONG_TEXT]}])
+                elif pt == "reasoning":
+                    summary = p.get("summary") or []
+                    txt = "\n".join((s.get("text") if isinstance(s, dict) else str(s)) or "" for s in summary).strip()
+                    assistant(ts, codex_turn, [_thinking_block(txt) if txt else _thinking_block("", "未开启可读摘要（model_reasoning_summary）")])
+                elif pt in ("function_call", "custom_tool_call"):
                     name = p.get("name", "")
-                    tool_names[name] = tool_names.get(name, 0) + 1
                     args = p.get("arguments", p.get("input", ""))
+                    summary = args
+                    aj = {}
                     try:
-                        aj = json.loads(args) if isinstance(args, str) else args
-                        summary = aj.get("cmd") or aj.get("command") or aj.get("path") or aj.get("file_path") or args
-                        if isinstance(summary, list):
-                            summary = " ".join(map(str, summary))
-                        fp = aj.get("path") or aj.get("file_path")
-                        if name.split(".")[-1] == "apply_patch":
-                            files.setdefault("(apply_patch)", []).append({"kind": "edit", "old": "", "new": str(aj.get("input") or args)[:20000], "ts": ts})
-                        elif fp and name in ("write_file", "edit_file"):
-                            files.setdefault(fp, []).append({"kind": "write", "old": "", "new": str(aj.get("content", ""))[:20000], "ts": ts})
+                        aj = json.loads(args) if isinstance(args, str) else (args or {})
+                        if isinstance(aj, dict):
+                            summary = aj.get("cmd") or aj.get("command") or aj.get("path") or aj.get("file_path") or args
+                            if isinstance(summary, list):
+                                summary = " ".join(map(str, summary))
+                            fp = aj.get("path") or aj.get("file_path")
+                            if name.split(".")[-1] == "apply_patch":
+                                tl.note_file("(apply_patch)", "edit", "", str(aj.get("input") or args)[:20000], ts)
+                            elif fp and name in ("write_file", "edit_file"):
+                                tl.note_file(fp, "write", "", str(aj.get("content", ""))[:20000], ts)
+                        else:
+                            aj = {}
                     except Exception:
-                        summary = args
-                    from activity import patch_files
+                        aj = {}
                     for fp in (patch_files(str(args)) if name.split(".")[-1] == "apply_patch" else []):
-                        files.setdefault(fp, []).append({"kind": "patch", "old": "", "new": str(args)[:20000], "ts": ts})
-                    msgs.append({"ts": ts, "role": "tool", "text": "", "tools": [{"name": name, "summary": str(summary)[:200]}]})
+                        tl.note_file(fp, "patch", "", str(args)[:20000], ts)
+                    block = tl.tool(ts, p.get("call_id") or p.get("id"), name, aj if aj else {"input": str(args)}, summary)
+                    assistant(ts, codex_turn, [block])
+                elif pt in ("function_call_output", "custom_tool_call_output"):
+                    outp = p.get("output")
+                    if isinstance(outp, dict):
+                        is_err = bool(outp.get("is_error")) or (outp.get("metadata") or {}).get("exit_code") not in (None, 0)
+                        outp = outp.get("output") or outp.get("content") or outp
+                    else:
+                        is_err = False
+                    if isinstance(outp, str) and outp.startswith("Chunk ID:"):
+                        # exec_command wraps the output in a header; the exit code is the status.
+                        code = re.search(r"Process exited with code (\d+)", outp)
+                        is_err = is_err or bool(code and code.group(1) != "0")
+                        outp = outp.split("Output:\n", 1)[1] if "Output:\n" in outp else outp
+                    tl.resolve(p.get("call_id"), outp, is_err, ts)
+                    last = None
                 continue
             if t not in ("user", "assistant"):
                 continue
@@ -1782,11 +2018,14 @@ def read_session_detail(ref, limit=400):
             if t == "user":
                 if isinstance(content, list) and content and isinstance(content[0], dict) and content[0].get("type") == "tool_result":
                     seen_tool_images = _block_images(content)  # a picture the agent looked at; shown with the caption turn that follows
-                    continue  # tool results are noise for the timeline
+                    for b in content:
+                        if isinstance(b, dict) and b.get("type") == "tool_result":
+                            tl.resolve(b.get("tool_use_id"), b.get("content"), bool(b.get("is_error")), ts)
+                    continue
                 txt = _block_text(content)
                 if re.fullmatch(r"\s*(\[Image:[^\]]*\]\s*)+", txt) and not _block_images(content):
                     if seen_tool_images:
-                        msgs.append({"ts": ts, "role": "tool", "text": "查看了图片", "tools": [], "images": seen_tool_images})
+                        other(tl.add(ts, "tool", [{"type": "text", "text": "查看了图片"}], images=seen_tool_images))
                     seen_tool_images = []
                     continue
                 # Slash-command echoes and caveats are injected by the CLI, not typed by the user.
@@ -1796,36 +2035,41 @@ def read_session_detail(ref, limit=400):
                 if images:
                     # The "[Image: original …]" caption only describes the picture; show the picture.
                     txt = re.sub(r"\[Image:[^\]]*\]", "", txt).strip()
-                from activity import is_synthetic_user
                 if is_synthetic_user(txt) and not images:
                     # Hook output / background-task notice: shown as a system event, never as "you said".
                     m2 = re.search(r"<summary>([\s\S]*?)</summary>", txt)
-                    msgs.append({"ts": ts, "role": "user", "synthetic": True, "text": (m2.group(1).strip() if m2 else txt.strip())[:600], "tools": []})
+                    other(tl.add(ts, "user", [{"type": "text", "text": (m2.group(1).strip() if m2 else txt.strip())[:600]}], synthetic=True))
                     continue
                 if txt.strip() or images:
-                    msgs.append({"ts": ts, "role": "user", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": [], **({"images": images} if images else {})})
+                    other(tl.add(ts, "user", [{"type": "text", "text": txt[:LONG_TEXT]}], **({"images": images} if images else {})))
             else:
-                txt = _block_text(content)
-                tools = []
-                for b in content if isinstance(content, list) else []:
-                    if isinstance(b, dict) and b.get("type") == "tool_use":
+                blocks = []
+                for b in content if isinstance(content, list) else ([{"type": "text", "text": content}] if isinstance(content, str) else []):
+                    if not isinstance(b, dict):
+                        continue
+                    bt = b.get("type")
+                    if bt == "text":
+                        blocks.append({"type": "text", "text": (b.get("text") or "")[:LONG_TEXT]})
+                    elif bt == "thinking":
+                        blocks.append(_thinking_block(b.get("thinking") or ""))
+                    elif bt == "redacted_thinking":
+                        blocks.append(_thinking_block("", "内容被打码"))
+                    elif bt == "tool_use":
                         name = b.get("name", "")
                         inp = b.get("input") or {}
-                        tool_names[name] = tool_names.get(name, 0) + 1
                         summary = inp.get("command") or inp.get("file_path") or inp.get("description") or inp.get("prompt") or inp.get("pattern") or inp.get("url") or ""
-                        tools.append({"name": name, "summary": str(summary)[:200], "id": b.get("id", "")})
+                        blocks.append(tl.tool(ts, b.get("id", ""), name, inp, summary))
                         fp = inp.get("file_path")
                         if name == "Edit" and fp:
-                            files.setdefault(fp, []).append({"kind": "edit", "old": inp.get("old_string", ""), "new": inp.get("new_string", ""), "ts": ts})
+                            tl.note_file(fp, "edit", inp.get("old_string", ""), inp.get("new_string", ""), ts)
                         elif name == "Write" and fp:
-                            files.setdefault(fp, []).append({"kind": "write", "old": "", "new": inp.get("content", ""), "ts": ts})
+                            tl.note_file(fp, "write", "", inp.get("content", ""), ts)
                         elif name in ("NotebookEdit",) and fp:
-                            files.setdefault(fp, []).append({"kind": "edit", "old": "", "new": inp.get("new_source", ""), "ts": ts})
-                if txt.strip() or tools:
-                    msgs.append({"ts": ts, "role": "assistant", "text": txt[:24000] + ("\n（这条消息过长，剩余内容请在原会话查看）" if len(txt) > 24000 else ""), "tools": tools})
-    if len(msgs) > limit:
-        msgs = msgs[:40] + [{"ts": "", "role": "gap", "text": f"…省略 {len(msgs) - limit} 条…", "tools": []}] + msgs[-(limit - 40):]
-    return {"meta": ref, "messages": msgs, "files": [{"path": p, "changes": c} for p, c in files.items()], "tool_counts": tool_names}
+                            tl.note_file(fp, "edit", "", inp.get("new_source", ""), ts)
+                if any(b["type"] != "text" or b["text"].strip() for b in blocks):
+                    assistant(ts, m.get("id") or d.get("requestId"), blocks)
+    live = bool(st) and time.time() - st.st_mtime < RUNNING_GRACE
+    return _finish_detail(ref, tl, limit, since, offset, live)
 
 
 def remote_session_detail(key):
@@ -2028,6 +2272,13 @@ def cmd_session(a):
         return out(d, a.json, lambda d: print(f"{d['meta']['title']} · {len(d['messages'])} 条 · 改动文件 {len(d['files'])}"))
     refs = resolve(idx, a.key)
     if not refs: refs = resolve(refresh_index(), a.key)
+    since = getattr(a, "since", None)
+    if since is not None:
+        # Live tail: only what was appended after the offset a previous read returned.
+        if not refs:
+            print(f"找不到 {a.key}", file=sys.stderr); sys.exit(1)
+        d = read_session_detail(refs[0], since=max(0, int(since)))
+        return out(d, a.json, lambda d: print(f"+{len(d['messages'])} 条 · 已完成工具 {len(d['resolved'])} · offset {d['offset']}"))
     # Freeze the reply cursor before parsing the displayed content: a concurrently
     # appended reply must never be acknowledged before it was actually returned.
     st = {}
@@ -2067,10 +2318,16 @@ def cmd_session(a):
             print(f"  ✎ {f['path']}  ({len(f['changes'])} 处)")
         print("--- 时间线 ---")
         for x in d["messages"][-30:]:
-            if x["role"] == "tool":
-                print(f"[tool] {x['tools'][0]['name']}: {x['tools'][0]['summary'][:80]}")
-            else:
-                print(f"[{x['role']}] {x['text'][:160].replace(chr(10), ' ')}" + (f"  ⚙ {', '.join(t['name'] for t in x['tools'])}" if x["tools"] else ""))
+            for b in x.get("blocks") or []:
+                if b["type"] == "thinking":
+                    print(f"[{x['role']}] 💭 {(b.get('text') or b.get('note') or '')[:120].replace(chr(10), ' ')}")
+                elif b["type"] == "tool_call":
+                    mark = {"done": "✓", "error": "✗", "running": "…", "incomplete": "?"}.get(b["status"], "")
+                    print(f"[{x['role']}] ⚙ {b['name']} {b['summary'][:80]}  {mark}{(' ' + b['result'][:60].replace(chr(10), ' ')) if b.get('result') else ''}")
+                else:
+                    print(f"[{x['role']}] {b['text'][:160].replace(chr(10), ' ')}")
+            if not x.get("blocks") and x.get("text"):
+                print(f"[{x['role']}] {x['text'][:160].replace(chr(10), ' ')}")
     out(d, a.json, text)
 
 
@@ -4547,8 +4804,10 @@ def headless_prompt(tid, title, round_no, thread, who, question="", topic=False,
 def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", session="", resume=False, on_event=None):
     """One statement from one member. Returns {text, session, error, secs}. The session id is
     what the next round resumes with (claude --resume, codex exec resume, pi --session-id).
-    on_event(status, text_so_far) is called as the reply streams in (claude and pi send text
-    deltas; codex only says when it is thinking and when it is done)."""
+    on_event(status, text_so_far, step) is called as the reply streams in (claude and pi send
+    text deltas; codex only says when it is thinking and when it is done). `step` names what the
+    member is doing besides typing: 想：<the thought so far> or 查：<tool> <what> — the app's
+    bubble shows it as 在想 / 在查."""
     t0 = time.time()
     env = child_env()
     lastfile = ""
@@ -4572,9 +4831,25 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
         argv = ["pi", "-p", "--mode", "json", "--session-dir", sdir, "--session-id", session] + (["--model", model] if model else []) + (["--append-system-prompt", system] if system else []) + ["--"] + [f"@{p}" for p in images] + [prompt]
     else:
         return {"text": "", "session": "", "error": f"{kind} 没有无头模式", "secs": 0}
-    emit = on_event or (lambda status, text: None)
+    raw_emit = on_event or (lambda status, text, step="": None)
+
+    def emit(status, text, step=""):
+        try:
+            raw_emit(status, text, step)
+        except TypeError:  # an older callback that only takes (status, text)
+            raw_emit(status, text)
     emit("thinking", "")
     lines, partial = [], []
+    thought, tool_json, cur = [], [], {"block": ""}  # the thinking / tool-input block being streamed
+
+    def tool_step(name, args):
+        inp = {}
+        try:
+            inp = json.loads(args) if args else {}
+        except Exception:
+            pass
+        what = inp.get("command") or inp.get("file_path") or inp.get("path") or inp.get("pattern") or inp.get("description") or inp.get("prompt") or "" if isinstance(inp, dict) else ""
+        return f"查：{name} {str(what)[:80]}".strip()
 
     def stream_line(line):
         """Live text for the typing bubble; the final parse below reads the whole output again."""
@@ -4583,20 +4858,52 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
         except Exception:
             return
         if kind == "claude" and ev.get("type") == "stream_event":
-            d = (ev.get("event") or {}).get("delta") or {}
-            if d.get("type") == "text_delta" and d.get("text"):
+            e = ev.get("event") or {}
+            d = e.get("delta") or {}
+            et = e.get("type")
+            if et == "content_block_start":
+                cb = e.get("content_block") or {}
+                cur["block"] = cb.get("type", "")
+                if cur["block"] == "thinking":
+                    thought.clear(); emit("thinking", "".join(partial), "想：")
+                elif cur["block"] == "tool_use":
+                    tool_json.clear(); cur["tool"] = cb.get("name", ""); emit("thinking", "".join(partial), tool_step(cur["tool"], ""))
+            elif d.get("type") == "text_delta" and d.get("text"):
                 partial.append(d["text"]); emit("typing", "".join(partial))
+            elif d.get("type") == "thinking_delta" and d.get("thinking"):
+                thought.append(d["thinking"]); emit("thinking", "".join(partial), "想：" + "".join(thought)[-160:])
+            elif d.get("type") == "input_json_delta":
+                tool_json.append(d.get("partial_json") or "")
+                if len(tool_json) % 8 == 0:  # the arguments take shape; refresh the "查：" line now and then
+                    emit("thinking", "".join(partial), tool_step(cur.get("tool", ""), "".join(tool_json)))
+            elif et == "content_block_stop" and cur["block"] == "tool_use":
+                emit("thinking", "".join(partial), tool_step(cur.get("tool", ""), "".join(tool_json)))
         elif kind == "claude" and ev.get("type") == "assistant":
             # a whole message (after tool use the text so far is repeated): start the bubble over
             parts = [c.get("text", "") for c in ((ev.get("message") or {}).get("content") or []) if c.get("type") == "text"]
             if parts and not partial:
                 emit("typing", "".join(parts))
+        elif kind == "claude" and ev.get("type") == "user":
+            # the tool answered; the member reads it and goes on
+            emit("thinking", "".join(partial), "")
         elif kind == "pi" and ev.get("type") == "message_update":
             d = ev.get("assistantMessageEvent") or {}
             if d.get("type") == "text_delta" and d.get("delta"):
                 partial.append(d["delta"]); emit("typing", "".join(partial))
             elif d.get("type") == "text_start":
                 partial.clear()
+            elif d.get("type") == "thinking_start":
+                thought.clear(); emit("thinking", "".join(partial), "想：")
+            elif d.get("type") == "thinking_delta" and d.get("delta"):
+                thought.append(d["delta"]); emit("thinking", "".join(partial), "想：" + "".join(thought)[-160:])
+            elif d.get("type") == "toolcall_start":
+                emit("thinking", "".join(partial), tool_step((d.get("toolCall") or d.get("partial") or {}).get("name") or d.get("name") or "", ""))
+        elif kind == "pi" and ev.get("type") in ("tool_execution_start",):
+            emit("thinking", "".join(partial), tool_step(ev.get("toolName") or "", json.dumps(ev.get("args") or {}, ensure_ascii=False)))
+        elif kind == "codex" and ev.get("type") == "item.started" and (ev.get("item") or {}).get("type") == "command_execution":
+            emit("thinking", "".join(partial), f"查：{str((ev['item'].get('command') or ''))[:80]}")
+        elif kind == "codex" and ev.get("type") == "item.completed" and (ev.get("item") or {}).get("type") == "reasoning":
+            emit("thinking", "".join(partial), "想：" + str(ev["item"].get("text") or "")[-160:])
         elif kind == "codex" and ev.get("type") == "item.completed" and (ev.get("item") or {}).get("type") == "agent_message":
             emit("typing", ev["item"].get("text") or "")
 
@@ -4732,12 +5039,12 @@ class DiscussionLive:
         self.state = {"task": tid, "round": round_no, "started": int(time.time()), "at": int(time.time()), "members": {who: {"kind": kind, "status": "queued", "text": "", "at": int(time.time())} for who, kind in members}}
         self.flush(force=True)
 
-    def update(self, who, status, text):
+    def update(self, who, status, text, step=""):
         with self.lock:
             m = self.state["members"].setdefault(who, {})
-            changed = m.get("status") != status
-            m.update({"status": status, "text": text[-4000:], "at": int(time.time())})
-            self.flush(force=changed)   # a status change lands at once; text deltas are throttled
+            changed = m.get("status") != status or (m.get("step") or "") != (step or "")
+            m.update({"status": status, "text": text[-4000:], "step": (step or "")[:200], "at": int(time.time())})
+            self.flush(force=changed)   # a status / step change lands at once; text deltas are throttled
 
     def flush(self, force=False):
         now = time.time()
@@ -5071,7 +5378,7 @@ def cmd_discuss(a):
             key = f"{kind}:{model}#{i}"
             mem = members.get(key) or {}
             system = discussion_system(who, kind, settings) + ("你是这场讨论的领队：每轮最后发言，先看完其他人说的，再归纳分歧、给出你的决定和下一步；闲聊时不用归纳。" if i == leader_i else "")
-            on_event = (lambda status, text, who=who: live.update(who, status, text)) if live else None
+            on_event = (lambda status, text, step="", who=who: live.update(who, status, text, step)) if live else None
             resumed = bool(mem.get("session")) and mem.get("kind") == kind and (mem.get("model") or "") == (model or "")
             res = None
             if resumed:
@@ -5450,7 +5757,7 @@ def main():
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
     s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
-    s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
+    s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--since", type=int, help="只读上次返回的 offset 之后新增的记录（实时 tail）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash"]); s.add_argument("name", nargs="?"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", choices=["claude", "codex", "all"]); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)

@@ -17,7 +17,7 @@ type Custom =
   | { kind: "round"; n: number }
   | { kind: "empty" }
   | { kind: "say"; actor: string; name: string; leader: boolean; when: string; persona?: string; model?: string }
-  | { kind: "live"; actor: string; name: string; leader: boolean; status: string; persona?: string; model?: string }
+  | { kind: "live"; actor: string; name: string; leader: boolean; status: string; step?: string; persona?: string; model?: string }
   | { kind: "note" | "system" | "hint"; text: string };
 type Msg = ThreadMessageLike & { readonly metadata: { readonly custom: Custom } };
 
@@ -55,7 +55,7 @@ function toMessages(d: Discussion, me: string, personas: Record<string, string>)
   // assistant-ui does not add a placeholder of its own.
   for (const [who, m] of bubbles) {
     const a = actorOf(KIND_ACTOR[m.kind] ?? m.kind, me);
-    out.push({ id: `live:${who}`, role: "assistant", status: m.status === "typing" || m.status === "thinking" ? RUNNING : DONE, content: text(m.text), metadata: { custom: { kind: "live", actor: a?.id ?? who, name: a?.name ?? who, leader: d.isLeaderLive(who), status: m.status, persona: personas[m.kind], model: modelOf(who) } } });
+    out.push({ id: `live:${who}`, role: "assistant", status: m.status === "typing" || m.status === "thinking" ? RUNNING : DONE, content: text(m.text), metadata: { custom: { kind: "live", actor: a?.id ?? who, name: a?.name ?? who, leader: d.isLeaderLive(who), status: m.status, step: m.step, persona: personas[m.kind], model: modelOf(who) } } });
   }
   return out;
 }
@@ -76,14 +76,16 @@ function Bubble({ live }: { live?: boolean }) {
   if (c.kind !== "say" && c.kind !== "live") return null;
   const a = actorOf(c.actor ?? "", "");
   const mine = c.kind === "say" && c.name === "你";
-  const state = c.kind === "live" ? (c.status === "thinking" ? "正在想" : c.status === "typing" ? "正在输入" : "写好了") : relTime(c.kind === "say" ? c.when ?? "" : "");
+  // While a member thinks, the CLI says what it is on: 想：<the thought so far> or 查：<tool> <what>.
+  const step = c.kind === "live" && c.status === "thinking" ? c.step ?? "" : "";
+  const state = c.kind === "live" ? (c.status === "thinking" ? (step.startsWith("查") ? "在查" : step ? "在想" : "正在想") : c.status === "typing" ? "正在输入" : "写好了") : relTime(c.kind === "say" ? c.when ?? "" : "");
   const persona = [c.model, c.persona].filter(Boolean).join(" · ");
   const empty = useAuiState((s) => !s.message.content.some((x) => x.type === "text" && x.text));
   return (
     <MessagePrimitive.Root className={`disc-say${mine ? " mine" : ""}${live ? " disc-live" : ""}`}>
       <Avatar actor={mine ? actorOf(c.actor ?? "", c.actor ?? "") : a} size={28} />
       <div className="disc-bubble" title={persona || undefined}>
-        <div className="l1"><b>{c.name}</b>{c.leader && <span className="chip disc-leader-tag">领队</span>}{!mine && persona && <span className="muted small disc-persona">{persona}</span>}<span className="muted small">{state}</span></div>
+        <div className="l1"><b>{c.name}</b>{c.leader && <span className="chip disc-leader-tag">领队</span>}{!mine && persona && <span className="muted small disc-persona">{persona}</span>}<span className="muted small">{state}</span>{step && <span className="muted small disc-step" title={step}>{step.replace(/^[想查]：/, "")}</span>}</div>
         {live && empty && status === "running" ? <span className="disc-dots"><i /><i /><i /></span> : <MessagePrimitive.Parts components={PARTS} />}
       </div>
     </MessagePrimitive.Root>
