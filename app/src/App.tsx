@@ -302,7 +302,7 @@ export default function App() {
     const summary = async () => { try { const r = await api.insights(14); if (alive) setInsight(r?.findings?.[0] ?? ""); } catch { /* optional */ } };
     const alerts = async () => {
       try {
-        const xs = await api.insightAlerts(3);
+        const xs = await api.insightAlerts(14);  // same window as the card, so "N 条新" matches what it shows
         if (!alive) return;
         setAlertCount(xs.length);
         const unseen = xs.filter((x) => !notifiedAlerts.current.has(x.id));

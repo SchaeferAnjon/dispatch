@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri, type Api, type AgentStartInput } from "../api";
 import type { InsightReport, InsightReportList, Insights } from "../types";
 
@@ -29,6 +29,10 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
   const [open, setOpen] = useState<"asktail" | "correction" | "rules" | null>(null);
   const [tick, setTick] = useState(0);
   const [seenOpen, setSeenOpen] = useState(false);
+  // Arriving from the workbench line: land on the alerts, not the top of the card.
+  const [focusAlerts] = useState<boolean>(() => { try { const f = localStorage.getItem("dispatch-insights-focus") === "alerts"; localStorage.removeItem("dispatch-insights-focus"); return f; } catch { return false; } });
+  const alertsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (focusAlerts && r && alertsRef.current) alertsRef.current.scrollIntoView({ block: "start", behavior: "smooth" }); }, [focusAlerts, r]);
 
   useEffect(() => {
     let alive = true;
@@ -97,6 +101,34 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
   const rows = list?.reports ?? [];
   const latestNative = rows.find((x) => x.source === "claude-code");
 
+  const alertsBlock = (
+    <>
+      {r && (
+        <div className="ins-alerts" ref={alertsRef}>
+          <div className="ins-alerts-head"><b>主动洞察</b><span className="muted small">按会话盯着的信号；新的会在工作台和系统通知里提醒。</span><span className="spacer" />{fresh.length > 0 && <button className="btn sm" onClick={ack}>都看过了（{fresh.length}）</button>}</div>
+          {fresh.length === 0 && <div className="muted small">没有新的告警{seen.length ? "；已看过的在下面" : ""}。</div>}
+          {fresh.slice(0, 8).map((a) => (
+            <div key={a.id} className="ins-alert">
+              <span className={`st sm ${a.kind === "correction" || a.kind === "tool_errors" ? "rev" : "prog"}`}>{KIND_LABEL[a.kind] ?? a.kind}</span>
+              <span className="t">{a.text}</span>
+              {onOpenSession && <button className="link sm" onClick={() => onOpenSession(a.session_id)}>看会话</button>}
+            </div>
+          ))}
+          {seen.length > 0 && <details className="ins-seen" open={seenOpen} onToggle={(e) => setSeenOpen((e.target as HTMLDetailsElement).open)}>
+            <summary className="muted small">已看过的 {seen.length} 条</summary>
+            {seen.slice(0, 30).map((a) => (
+              <div key={a.id} className="ins-alert seen">
+                <span className={`st sm open`}>{KIND_LABEL[a.kind] ?? a.kind}</span>
+                <span className="t">{a.text}</span>
+                {onOpenSession && <button className="link sm" onClick={() => onOpenSession(a.session_id)}>看会话</button>}
+              </div>
+            ))}
+          </details>}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <section className="st-card ins">
       <h4>洞察<span className="muted">{rep ? `报告生成于 ${rep.created_at} · 最近 ${rep.days} 天 · ${rep.session_count} 个会话` : "还没有报告"}</span>
@@ -109,6 +141,7 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
         <button className="btn primary sm" disabled={!r || starting} onClick={improve} title={canStart ? "打开派活窗口：在选定的机器起一个 Claude Code，按报告的建议改规则/技能、把结论写进知识库" : "复制启动命令"}>{starting ? "正在派活…" : canStart ? "✦ 派 Agent 做改进" : "✦ 复制改进命令"}</button>
       </h4>
 
+      {fresh.length > 0 && <>{alertsBlock}</>}
       {!rep && !running && <div className="ins-empty">
         <p>这里放的是跨 Agent 的复盘报告：模型读最近所有 Agent（Claude Code / Codex / pi / ZCode）的会话摘要，写出「在做什么、怎么用、哪里出问题、建议改什么」，结构和 Claude Code 自带的 /insights 一样，但覆盖全部 Agent。</p>
         <p className="muted small">点「生成报告」手动跑一次；「自动」选一个周期后，Dispatch 开着时到期会自己跑。{latestNative ? <>Claude Code 自己的 /insights 报告（{latestNative.created_at}）也在下面的历史里，可以直接打开。</> : null}</p>
@@ -197,29 +230,7 @@ export function InsightsCard({ api, host, onStart, onDelegate, onOpenSession, on
         )}
       </details>
 
-      {r && (
-        <div className="ins-alerts">
-          <div className="ins-alerts-head"><b>主动洞察</b><span className="muted small">按会话盯着的信号；新的会在工作台和系统通知里提醒。</span><span className="spacer" />{fresh.length > 0 && <button className="btn sm" onClick={ack}>都看过了（{fresh.length}）</button>}</div>
-          {fresh.length === 0 && <div className="muted small">没有新的告警{seen.length ? "；已看过的在下面" : ""}。</div>}
-          {fresh.slice(0, 8).map((a) => (
-            <div key={a.id} className="ins-alert">
-              <span className={`st sm ${a.kind === "correction" || a.kind === "tool_errors" ? "rev" : "prog"}`}>{KIND_LABEL[a.kind] ?? a.kind}</span>
-              <span className="t">{a.text}</span>
-              {onOpenSession && <button className="link sm" onClick={() => onOpenSession(a.session_id)}>看会话</button>}
-            </div>
-          ))}
-          {seen.length > 0 && <details className="ins-seen" open={seenOpen} onToggle={(e) => setSeenOpen((e.target as HTMLDetailsElement).open)}>
-            <summary className="muted small">已看过的 {seen.length} 条</summary>
-            {seen.slice(0, 30).map((a) => (
-              <div key={a.id} className="ins-alert seen">
-                <span className={`st sm open`}>{KIND_LABEL[a.kind] ?? a.kind}</span>
-                <span className="t">{a.text}</span>
-                {onOpenSession && <button className="link sm" onClick={() => onOpenSession(a.session_id)}>看会话</button>}
-              </div>
-            ))}
-          </details>}
-        </div>
-      )}
+      {fresh.length === 0 && <>{alertsBlock}</>}
     </section>
   );
 }
