@@ -4,6 +4,7 @@ import { TaskActions, isArchivedTask, isTrashed } from "./components/TaskActions
 import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getApi, isTauri, isServed, type Api, type AgentStartInput } from "./api";
+import { loadViewMod, saveViewMod, viewShortcut, type ViewMod } from "./shortcuts";
 import { Detail } from "./components/Detail";
 import { NewSession, SessionActions } from "./components/SessionActions";
 import { NewTask } from "./components/NewTask";
@@ -38,7 +39,7 @@ const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", b
 const VIEWS: View[] = ["home", "inbox", "board", "table", "graph", "projects", "agents", "settings", "sessions", "stats", "skills", "rules", "pitfalls", "env", "quota", "trash", "archive", "setup", "overview"];
 const BOARD_VIEWS: View[] = ["board", "table"];
 const TASK_VIEWS: View[] = ["board", "table", "trash", "archive"];  // share the 看板/表格/回收站/已归档 switch
-// ⌘1…⌘9 in sidebar order.
+// <modifier>1…9 in sidebar order; the modifier is a per-Mac setting (shortcuts.ts).
 const SHORTCUT_VIEWS: View[] = ["home", "projects", "inbox", "sessions", "board", "graph", "agents", "stats", "pitfalls"];
 
 // ---- Where you are lives in the URL hash: `#/board`, `#/sessions/<id>`, `#/projects/<name>`, `#/board/task/<id>`.
@@ -98,7 +99,7 @@ export default function App() {
         try {
           const snapshot = await api.sessionActivity();
           if (!stopped) { setActivity({ ...snapshot, sessions: snapshot.sessions.map(a => acknowledged.current.get(activityKey(a)) === a.reply_id ? { ...a, unread: false } : a) }); setActivityError(false); }
-        } catch { if (!stopped) setActivityError(true); }
+        } catch (e) { if (!stopped) { setActivityError(true); console.error("activity poll failed:", e); } }
       }
       if (!stopped) timer = window.setTimeout(tick, 3000);
     };
@@ -155,11 +156,13 @@ export default function App() {
   const [sessionShown, setSessionShown] = useState<string | null>(initialPlace.current?.session ?? null);
   // Keep the hash in step with the place. After popstate the hash already equals the new place, so nothing is pushed twice.
   useEffect(() => {
+    if (isTauri) return;  // the desktop window has no address bar, no reload and no back gesture; WKWebView on tauri:// also dislikes pushState
     const here = placeToHash({ view, selected, project: projectSelection, session: view === "sessions" ? sessionShown : null });
     if (window.location.hash === here) return;
     if (window.location.hash && parseHash(window.location.hash)) window.history.pushState(null, "", here); else window.history.replaceState(null, "", here);
   }, [view, selected, projectSelection, sessionShown]);
   useEffect(() => {
+    if (isTauri) return;
     const onPop = () => {
       const p = parseHash(window.location.hash); if (!p) return;
       changeView(p.view); setSelected(p.selected); setBackStack([]);
@@ -179,6 +182,10 @@ export default function App() {
   const [hostFilter, setHostFilter] = useState<string>(() => { try { return localStorage.getItem("dispatch-host") ?? ""; } catch { return ""; } });
   useEffect(() => { try { localStorage.setItem("dispatch-host", hostFilter); } catch { /* ignore */ } }, [hostFilter]);
   const [theme, setTheme] = useState<Theme>(() => { try { return (localStorage.getItem("dispatch-theme") as Theme) ?? ""; } catch { return ""; } });
+  // Digit shortcuts for views: which modifier, or off — this Mac only, since it is about what else is bound here.
+  const [viewMod, setViewModState] = useState<ViewMod>(loadViewMod);
+  const viewModRef = useRef<ViewMod>(viewMod); viewModRef.current = viewMod;
+  const setViewMod = (m: ViewMod) => { saveViewMod(m); setViewModState(m); };
   const searchRef = useRef<HTMLInputElement>(null);
   const allTasks = () => { setFilters(EMPTY_FILTERS); setQuery(""); setView("board"); };
   const toastTimer = useRef<number | undefined>(undefined);
@@ -253,7 +260,7 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); setNewSession(true); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "t") { e.preventDefault(); setCreating(true); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r") { e.preventDefault(); void reload(); }
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) { const v = SHORTCUT_VIEWS[Number(e.key) - 1]; if (v) { e.preventDefault(); v === "board" ? allTasks() : setView(v); } }
+      const n = viewShortcut(e, viewModRef.current); if (n) { const v = SHORTCUT_VIEWS[n - 1]; if (v) { e.preventDefault(); v === "board" ? allTasks() : setView(v); } }
       if (e.key === "Escape" && document.activeElement === searchRef.current) { setQuery(""); searchRef.current?.blur(); }
     };
     window.addEventListener("keydown", onKey);
@@ -657,7 +664,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} viewMod={viewMod} onViewMod={setViewMod} onPhone={phoneLink} hosts={hosts} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "overview" && <OverviewView stats={{ projects: projects.filter((p) => p.name).length, inbox: counts.inbox, sessions: projectRows.length, running: runningSessions, tasks: issuesF.length, open: issuesF.filter((i) => i.status !== "closed").length, agentsOnline: agents.filter((a) => a.online).length, agentsTotal: agents.length, skills: skillCount, wiki: wikiCount, hosts: Math.max(1, hosts.length), rulesSynced: null, version: update?.current ?? "" }} onGo={(v) => (v === "board" ? allTasks() : setView(v))} onTour={() => setTour(true)} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

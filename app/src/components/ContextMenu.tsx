@@ -168,4 +168,5 @@ export function GlobalContextMenu({ issues, sessions }: { issues: Issue[]; sessi
   return null;
 }
 
-export const VIEW_SHORTCUTS: Partial<Record<View, string>> = { home: '⌘1', projects: '⌘2', inbox: '⌘3', sessions: '⌘4', board: '⌘5', graph: '⌘6', agents: '⌘7', stats: '⌘8', pitfalls: '⌘9' };
+// Digit order of the view shortcuts; the modifier comes from shortcuts.ts (per-Mac setting).
+export const VIEW_SHORTCUTS: Partial<Record<View, string>> = { home: '1', projects: '2', inbox: '3', sessions: '4', board: '5', graph: '6', agents: '7', stats: '8', pitfalls: '9' };
