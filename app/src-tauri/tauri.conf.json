@@ -65,6 +65,9 @@
       "../cli/statusline-tee.sh": "cli/statusline-tee.sh",
       "../../agent/skills/task-board/": "agent/skills/task-board/",
       "../dist/": "dist/"
+    },
+    "macOS": {
+      "signingIdentity": "Apple Development: infoschaeferanjon@gmail.com (7HWPBP2869)"
     }
   }
 }
