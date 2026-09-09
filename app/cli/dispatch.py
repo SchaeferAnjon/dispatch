@@ -2865,21 +2865,32 @@ def cmd_begin(a):
     out({"id": tid, "title": a.title, "project": a.project}, a.json, lambda o: print(f"{tid} 已创建并认领。接下来在对话里提到 {tid}，进展用 `dispatch log {tid} \"…\"`，做完 `dispatch done {tid} --reason \"…\"`。"))
 
 
+def tick_acceptance(tid, issue, match=None, who=None):
+    """Mark acceptance items done and sign them: `- [x] text @<who>` — who checked is part of the
+    record (the assignee ticking its own work reads as 自审 in the app, someone else as 复核).
+    match=None ticks every open item; otherwise items containing one of the substrings."""
+    who = who or os.environ.get("BEADS_ACTOR", "schaefer")
+    lines = (issue.get("acceptance_criteria") or "").splitlines()
+    hit = 0
+    for i, line in enumerate(lines):
+        if "[ ]" not in line:
+            continue
+        if match is not None and not any(t.lower() in line.lower() for t in match):
+            continue
+        lines[i] = line.replace("[ ]", "[x]", 1).rstrip() + f" @{who}"
+        hit += 1
+    if hit:
+        bd_json(["update", tid, "--acceptance", "\n".join(lines), "--json"])
+    return hit
+
+
 def cmd_log(a):
     """Progress note on a task — this is the process log, visible to everyone in Dispatch."""
     text = a.text
     if a.tick:
-        # flip matching acceptance items to [x]
         issue = bd_json(["show", a.task, "--json"])
-        ac = issue.get("acceptance_criteria") or ""
-        lines = ac.splitlines()
-        hit = 0
-        for i, line in enumerate(lines):
-            if any(t.lower() in line.lower() for t in a.tick) and "[ ]" in line:
-                lines[i] = line.replace("[ ]", "[x]", 1)
-                hit += 1
+        hit = tick_acceptance(a.task, issue, match=a.tick)
         if hit:
-            bd_json(["update", a.task, "--acceptance", "\n".join(lines), "--json"])
             text = (text + " " if text else "") + f"（勾掉 {hit} 条验收项）"
     if text:
         code, o, err = sh(["bd", "comments", "add", a.task, text])
@@ -2943,6 +2954,11 @@ def cmd_done(a):
     reason = a.reason
     if not a.verified:
         reason = reason + "（未核验）" if "核验" not in reason else reason
+    ticked = 0
+    if a.verified:
+        # --verified says "I checked it": every open acceptance item gets the signature.
+        cur = bd_json(["show", a.task, "--json"])
+        ticked = tick_acceptance(a.task, cur) if cur.get("id") else 0
     bd_json(["close", a.task, "--reason", reason, "--json"])
     if getattr(a, "review_by", None):
         bd_json(["update", a.task, "--add-label", "review-requested", "--add-label", "reviewer:" + a.review_by, "--remove-label", "reviewed", "--json"])
@@ -2984,6 +3000,8 @@ def cmd_done(a):
         msg += f"；后续任务：{', '.join(created)}"
     if retro_key:
         msg += f"；复盘已入知识库 {retro_key}"
+    if ticked:
+        msg += f"；验收 {ticked} 项已勾（署名）"
     if parent_msg:
         msg += "；" + parent_msg
     if commits:

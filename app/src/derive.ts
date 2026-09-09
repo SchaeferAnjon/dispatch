@@ -282,17 +282,21 @@ export function rootsOf(edges: { from: string; to: string; type: string }[]): Ma
   return out;
 }
 
-export interface AcItem { done: boolean; text: string }
+export interface AcItem { done: boolean; text: string; by?: string }
+// `- [x] text @who`: who ticked it travels with the item (the CLI signs on dispatch done --verified
+// and log --tick; the app signs with the person's name).
 export function parseAcceptance(s?: string): AcItem[] {
   if (!s) return [];
   return s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
     const m = l.match(/^[-*]\s*(\[( |x|X)\])?\s*(.*)$/);
     if (!m) return { done: false, text: l };
-    return { done: (m[2] ?? " ").toLowerCase() === "x", text: m[3] };
+    const done = (m[2] ?? " ").toLowerCase() === "x";
+    const sig = m[3].match(/^(.*?)\s+@([\w.-]+)\s*$/);
+    return sig ? { done, text: sig[1], by: sig[2] } : { done, text: m[3] };
   });
 }
 export function serializeAcceptance(items: AcItem[]): string {
-  return items.map((i) => `- [${i.done ? "x" : " "}] ${i.text}`).join("\n");
+  return items.map((i) => `- [${i.done ? "x" : " "}] ${i.text}${i.done && i.by ? ` @${i.by}` : ""}`).join("\n");
 }
 
 // Which Mac a task runs on: the explicit host:<name> label (dispatch begin adds it), else the

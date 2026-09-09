@@ -166,7 +166,8 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
 
   const toggleAc = (idx: number) => {
     const before = serializeAcceptance(ac);
-    const next = ac.map((a, i) => (i === idx ? { ...a, done: !a.done } : a));
+    // Ticking in the app is the person's check; it signs with their name so it reads as 你核对.
+    const next = ac.map((a, i) => (i === idx ? { ...a, done: !a.done, by: a.done ? undefined : me } : a));
     setBusy(true);
     api.update(id, { acceptance: serializeAcceptance(next) })
       .then(() => onDone(next[idx].done ? "已勾上验收项" : "已取消勾选", () => { void api.update(id, { acceptance: before }).then(() => onDone("已撤销")).catch((e) => onError(String(e))); }))
@@ -300,7 +301,7 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
         <div className="sec">
           <h4>验收标准{editAc === null && <button className="btn ghost sm" onClick={() => setEditAc(issue.acceptance_criteria ?? "")}>{ac.length ? "编辑" : "添加"}</button>}</h4>
           {editAc === null ? (
-            ac.length ? <ul className="checks">{ac.map((a, i) => <li key={i}><span className={`box${a.done ? " on" : ""}`} onClick={() => toggleAc(i)} role="checkbox" aria-checked={a.done}>{a.done ? "✓" : ""}</span><span>{a.text}</span></li>)}</ul> : <p className="empty-p" style={{ margin: 0 }}>没有验收标准</p>
+            ac.length ? <ul className="checks">{ac.map((a, i) => { const who = a.done && a.by ? actorOf(a.by, me) : null; const isMe = a.done && !!a.by && (a.by === me || who?.name === "你"); const self = a.done && !!a.by && !isMe && a.by === issue.assignee; return <li key={i}><span className={`box${a.done ? " on" : ""}`} onClick={() => toggleAc(i)} role="checkbox" aria-checked={a.done}>{a.done ? "✓" : ""}</span><span>{a.text}</span>{a.done && a.by && <span className={`ac-by${isMe ? " me" : self ? " self" : " peer"}`} title={`${a.by} 勾的`}>{isMe ? "你核对" : self ? `自审 · ${who?.name ?? a.by}` : `复核 · ${who?.name ?? a.by}`}</span>}{a.done && !a.by && <span className="ac-by muted" title="没有署名：改之前勾的">未署名</span>}</li>; })}</ul> : <p className="empty-p" style={{ margin: 0 }}>没有验收标准</p>
           ) : (
             <textarea className="edit" value={editAc} autoFocus placeholder={"- [ ] 一行一条\n- [x] 已完成的打 x"} onChange={(e) => setEditAc(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") setEditAc(null); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.target as HTMLTextAreaElement).blur(); }}

@@ -469,8 +469,18 @@ class CompletionReviewRequest(unittest.TestCase):
         from unittest.mock import patch
         with patch.object(dispatch, "bd_json", return_value={"labels": []}) as bd, patch.object(dispatch, "out"):
             dispatch.cmd_done(SimpleNamespace(task="task-test", reason="done", verified=True, review_by="pi", next=[], retro=None, json=False))
-            self.assertEqual(bd.call_args_list[0].args[0][0], "close")
-            self.assertIn("reviewer:pi", bd.call_args_list[1].args[0])
+            ops = [c.args[0][0] for c in bd.call_args_list]
+            self.assertIn("close", ops)  # --verified first reads the task to sign its acceptance items
+            self.assertTrue(any("reviewer:pi" in c.args[0] for c in bd.call_args_list))
+
+    def test_verified_done_signs_open_acceptance_items(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        issue = {"id": "task-test", "labels": [], "acceptance_criteria": "- [ ] a\n- [x] b\n- [ ] c"}
+        with patch.object(dispatch, "bd_json", return_value=issue) as bd, patch.object(dispatch, "out"), patch.dict(dispatch.os.environ, {"BEADS_ACTOR": "pi"}):
+            dispatch.cmd_done(SimpleNamespace(task="task-test", reason="done", verified=True, review_by=None, next=[], retro=None, json=False))
+            upd = next(c.args[0] for c in bd.call_args_list if c.args[0][0] == "update" and "--acceptance" in c.args[0])
+            self.assertEqual(upd[upd.index("--acceptance") + 1], "- [x] a @pi\n- [x] b\n- [x] c @pi")
 
 class BeginSessionLink(unittest.TestCase):
     def test_records_explicit_session_for_delivery(self):

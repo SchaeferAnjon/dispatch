@@ -1327,3 +1327,4 @@ a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text
 .tool-result.err{border-color:color-mix(in srgb,var(--s-block) 45%,var(--line));color:var(--s-block)}
 .session-live .live-step{margin-left:6px;color:var(--ink-3)}
 .disc-bubble .l1 .disc-step{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11px}
+.checks .ac-by{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:5px;white-space:nowrap;flex:none;color:var(--ink-3);background:var(--panel-2)}.checks .ac-by.me{color:var(--s-done);background:var(--s-done-bg)}.checks .ac-by.self{color:var(--s-prog);background:var(--s-prog-bg)}.checks .ac-by.peer{color:var(--accent-ink);background:var(--accent-soft)}
