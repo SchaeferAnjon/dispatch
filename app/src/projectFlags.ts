@@ -37,9 +37,14 @@ export function withProjectFlag(flags: ProjectFlags, name: string, change: { sta
 
 // Shared settings live next to the flags, in their own memory (`dispatch settings`).
 export const SETTINGS_KEY = "dispatch-settings";
-export interface DispatchSettings { session_archive_days: number; home_expanded: number; sdk_sessions_scheduled: boolean; workspace_roots: string[]; summary_auto: boolean; summary_model: string }
+export interface DispatchSettings { session_archive_days: number; home_expanded: number; sdk_sessions_scheduled: boolean; workspace_roots: string[]; summary_auto: boolean; summary_model: string; discuss_rules: string; discuss_persona_claude: string; discuss_persona_codex: string; discuss_persona_pi: string }
+// Discussion members: one line of persona each plus the group's length rules — the same defaults
+// as the CLI (dispatch settings), which puts them into each member's system prompt.
+export const DISCUSS_RULES_DEFAULT = "闲聊就闲聊，两句以内；正事默认一两段、150 字左右，要论证再展开；只回应最新消息和别人已经说过的观点，不重复，不为了凑段落写风险和拆分；没有新东西就只回 SKIP。";
+export const DISCUSS_PERSONA_DEFAULT = { claude: "偏架构和验收：先问值不值得做、做完怎么验证，习惯把方案拆成可交付的步骤。", codex: "抠实现细节：关心具体改哪里、边界情况、能不能复用已有代码，不信没验证过的说法。", pi: "短句直给：一次只说最重要的一点，倾向先做最小可验证的版本，看到过度设计会直说。" };
 // Folders whose direct children are projects (~/Projects/<name>/… belongs to <name>).
-export const DEFAULT_SETTINGS: DispatchSettings = { session_archive_days: 30, home_expanded: 2, sdk_sessions_scheduled: true, workspace_roots: ["~/Projects"], summary_auto: true, summary_model: "" };
+export const DEFAULT_SETTINGS: DispatchSettings = { session_archive_days: 30, home_expanded: 2, sdk_sessions_scheduled: true, workspace_roots: ["~/Projects"], summary_auto: true, summary_model: "", discuss_rules: DISCUSS_RULES_DEFAULT, discuss_persona_claude: DISCUSS_PERSONA_DEFAULT.claude, discuss_persona_codex: DISCUSS_PERSONA_DEFAULT.codex, discuss_persona_pi: DISCUSS_PERSONA_DEFAULT.pi };
+const DISCUSS_KEYS = ["discuss_rules", "discuss_persona_claude", "discuss_persona_codex", "discuss_persona_pi"] as const;
 export function parseSettings(memories: Memory[]): DispatchSettings {
   const out = { ...DEFAULT_SETTINGS };
   const raw = memories.find((m) => m.key === SETTINGS_KEY)?.value;
@@ -52,11 +57,12 @@ export function parseSettings(memories: Memory[]): DispatchSettings {
     if (d && typeof d.sdk_sessions_scheduled === "number") out.sdk_sessions_scheduled = d.sdk_sessions_scheduled !== 0;
     if (d && typeof d.summary_auto === "number") out.summary_auto = d.summary_auto !== 0;
     if (d && typeof d.summary_model === "string") out.summary_model = d.summary_model.trim();
+    for (const k of DISCUSS_KEYS) if (d && typeof d[k] === "string") out[k] = d[k].trim();
   } catch { /* keep defaults */ }
   return out;
 }
 // The CLI stores integers only; booleans travel as 0/1.
-export const serializeSettings = (s: DispatchSettings) => JSON.stringify({ home_expanded: s.home_expanded, sdk_sessions_scheduled: s.sdk_sessions_scheduled ? 1 : 0, session_archive_days: s.session_archive_days, workspace_roots: s.workspace_roots, summary_auto: s.summary_auto ? 1 : 0, summary_model: s.summary_model });
+export const serializeSettings = (s: DispatchSettings) => JSON.stringify({ home_expanded: s.home_expanded, sdk_sessions_scheduled: s.sdk_sessions_scheduled ? 1 : 0, session_archive_days: s.session_archive_days, workspace_roots: s.workspace_roots, summary_auto: s.summary_auto ? 1 : 0, summary_model: s.summary_model, ...Object.fromEntries(DISCUSS_KEYS.map((k) => [k, s[k]])) });
 
 export const serializeProjectFlags = (flags: ProjectFlags) => JSON.stringify(Object.fromEntries(Object.keys(flags).sort().map((k) => [k, flags[k]])));
 export const isStarred = (flags: ProjectFlags, name: string) => !!flags[name]?.starred;

@@ -48,6 +48,20 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
         <p className="muted small" style={{ margin: "0 0 8px" }}>有任务、有成果、或手动关联过的才算正式项目；其余只是「目录」，在项目页底部的「其他目录与未归类」里。</p>
       </section>
       <section className="settings-card">
+        <h3>讨论</h3>
+        <p className="muted small" style={{ margin: "0 0 8px" }}>「讨论一个念头」里每个成员的人设和群里的规矩，进它们的系统提示；每轮只再给新消息。空着就用默认。</p>
+        <label className="settings-row">
+          <div><b>群里的规矩</b><p>发言多长、什么时候闲聊、什么时候只回 SKIP（不显示）。</p></div>
+          <textarea className="settings-text" rows={3} value={draft.discuss_rules} onChange={(e) => setDraft({ ...draft, discuss_rules: e.target.value })} />
+        </label>
+        {([["discuss_persona_claude", "Claude 的人设"], ["discuss_persona_codex", "Codex 的人设"], ["discuss_persona_pi", "pi 的人设"]] as const).map(([k, label]) => (
+          <label key={k} className="settings-row">
+            <div><b>{label}</b><p>一句话：关注什么、怎么表达、习惯质疑什么。</p></div>
+            <textarea className="settings-text" rows={2} value={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} />
+          </label>
+        ))}
+      </section>
+      <section className="settings-card">
         <h3>工作台</h3>
         <label className="settings-row">
           <div><b>默认展开前几个项目</b><p>其余项目折叠成一行摘要，点一下展开。有等你回复或等待确认的项目总是展开。</p></div>

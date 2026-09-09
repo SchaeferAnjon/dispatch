@@ -116,15 +116,13 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
   const said = comments.filter((c) => c.text.trimStart().startsWith(TAG)).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const system = comments.filter((c) => c.text.trimStart().startsWith("【系统】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const conclusion = comments.filter((c) => c.text.trimStart().startsWith(CONCLUSION)).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-  // Round markers: the 发起 line opens a round; each agent's first statement after it is round 1, its next is round 2…
-  // Two Claudes with different models share an author name, so rounds are counted by position
-  // within this run (statements arrive in order, one per participant per round); for a thread
-  // reopened later the participant count is unknown and the per-author count is the fallback.
-  const seen = new Map<string, number>();
-  let nth = 0;
-  const thread = said.map((c) => { const body = c.text.trimStart().slice(TAG.length).trim(); const opener = /^发起[:：]/.test(body); let n = 0; if (!opener) { n = task && busy ? Math.floor(nth++ / Math.max(1, parts.length)) + 1 : (seen.get(c.author) ?? 0) + 1; seen.set(c.author, n); } return { c, body, opener, round: n }; });
+  // Rounds: a round is what the members said since the person last spoke (the 发起 line or a
+  // line typed here). Members may skip a round (SKIP never reaches the board), so nothing is
+  // counted per participant.
+  let round = 0;
+  const thread = said.map((c) => { const body = c.text.trimStart().slice(TAG.length).trim(); const opener = /^发起[:：]/.test(body); const mine = !opener && actorOf(c.author, me)?.kind === "human"; if (opener || mine) round += 1; return { c, body, opener, mine, round: Math.max(1, round) }; });
   const roundsSeen = Math.max(0, ...thread.map((t) => t.round));
-  const spoken = thread.filter((t) => !t.opener && t.round === Math.max(1, roundsSeen)).length;
+  const spoken = thread.filter((t) => !t.opener && !t.mine && t.round === Math.max(1, roundsSeen)).length;
   const waiting = busy ? Math.max(0, parts.length - spoken) : 0;
 
   return (

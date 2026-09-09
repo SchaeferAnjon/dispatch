@@ -3222,8 +3222,16 @@ def project_flags_load():
 
 # ---------------------------------------------------------------- settings (shared, one bd memory)
 SETTINGS_KEY = "dispatch-settings"
-SETTING_DEFAULTS = {"session_archive_days": 30, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": ""}
-SETTING_STRINGS = {"summary_model"}   # free-text settings; everything else numeric except workspace_roots
+# Who each discussion member is (one line) and the group's rules on length: stable
+# configuration that goes into the system prompt, so a round's prompt is just the new messages.
+DISCUSS_RULES_DEFAULT = "闲聊就闲聊，两句以内；正事默认一两段、150 字左右，要论证再展开；只回应最新消息和别人已经说过的观点，不重复，不为了凑段落写风险和拆分；没有新东西就只回 SKIP。"
+DISCUSS_PERSONA_DEFAULT = {"claude": "偏架构和验收：先问值不值得做、做完怎么验证，习惯把方案拆成可交付的步骤。",
+                           "codex": "抠实现细节：关心具体改哪里、边界情况、能不能复用已有代码，不信没验证过的说法。",
+                           "pi": "短句直给：一次只说最重要的一点，倾向先做最小可验证的版本，看到过度设计会直说。"}
+SETTING_DEFAULTS = {"session_archive_days": 30, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": "",
+                    "discuss_rules": DISCUSS_RULES_DEFAULT, **{f"discuss_persona_{k}": v for k, v in DISCUSS_PERSONA_DEFAULT.items()}}
+# free-text settings and their length caps; everything else numeric except workspace_roots
+SETTING_STRINGS = {"summary_model": 80, "discuss_rules": 600, "discuss_persona_claude": 300, "discuss_persona_codex": 300, "discuss_persona_pi": 300}
 
 
 def settings_parse(raw):
@@ -3234,9 +3242,9 @@ def settings_parse(raw):
     if not isinstance(d, dict):
         return {}
     out = {k: v for k, v in d.items() if k in SETTING_DEFAULTS and k not in SETTING_STRINGS and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
-    for k in SETTING_STRINGS:
+    for k, cap in SETTING_STRINGS.items():
         if isinstance(d.get(k), str):
-            out[k] = d[k].strip()[:80]
+            out[k] = d[k].strip()[:cap]
     if isinstance(d.get("workspace_roots"), list):
         out["workspace_roots"] = [x.strip() for x in d["workspace_roots"] if isinstance(x, str) and x.strip()]
     return out
@@ -3274,7 +3282,8 @@ def cmd_settings(a):
         cur[a.key] = val
         wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
     shown = {a.key: cur[a.key]} if a.key else cur
-    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选"}
+    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选",
+             "discuss_rules": "讨论群的规矩（发言长度、什么时候 SKIP），进每个成员的系统提示", "discuss_persona_claude": "讨论里 claude 的一句人设", "discuss_persona_codex": "讨论里 codex 的一句人设", "discuss_persona_pi": "讨论里 pi 的一句人设"}
     out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes[k]}）") for k, v in x.items()])
 
 
@@ -4073,13 +4082,24 @@ def discussion_thread(issue, comments):
     return f"主题：{title}\n{desc}\n\n发言（按时间）：\n" + "\n\n".join(discussion_lines(comments))
 
 
+def discussion_system(who, kind, settings):
+    """The member's standing identity — persona from settings, the group's rules, the output
+    contract — injected at system level (claude/pi --append-system-prompt, codex
+    developer_instructions), so no round has to repeat it."""
+    persona = (settings.get(f"discuss_persona_{kind}") or "").strip()
+    rules = (settings.get("discuss_rules") or DISCUSS_RULES_DEFAULT).strip()
+    return (f"你是讨论群里的成员「{who}」，像一个有主见的同事说话，不像表单。" + (f"你的人设：{persona}" if persona else "")
+            + f"群里的规矩：{rules}"
+            "先看最新一条说的是什么：打招呼或闲聊就自然回一两句（问好、问对方想聊什么），不要分析、不要套格式；是一个可以做的提议或问题，才给判断（做 / 不做 / 换个做法）和理由，需要时附做法或拆分建议（每个子任务一行：标题 · 建议谁做 · 为什么）。"
+            "你的输出就是这一条发言的正文：不署名、不加【讨论】、不用 Markdown 标题；不改代码、不认领任务；线程里没有的情况才用工具查。")
+
+
 def headless_prompt(tid, title, round_no, thread, who, question="", topic=False, project="", images=()):
     ctx = ""
     if topic:
         ctx = ("这是一个念头/主题的讨论，不是已定的任务。"
-               + (f" 它挂在项目「{project}」下；线程里没有的项目情况才用工具查（`dispatch project-summary {project}`、`bd list -l project:{project} --json`、`dispatch wiki search {project}`）。" if project else ""))
-    head = (f"你是「{who}」，参加{'主题' if topic else '任务'} {tid}「{title}」的讨论（第 {round_no} 轮）。{ctx}{DISCUSS_GUIDE}"
-            f"线程已经完整贴在下面，不用再读板。直接输出你这一条发言的正文：不署名、不加【讨论】、不用 Markdown 标题；如果这轮没有新东西可补充，只输出 SKIP。"
+               + (f" 它挂在项目「{project}」下（项目现状：`dispatch project-summary {project}`、`bd list -l project:{project} --json`、`dispatch wiki search {project}`）。" if project else ""))
+    head = (f"你参加{'主题' if topic else '任务'} {tid}「{title}」的讨论（第 {round_no} 轮）。{ctx}线程完整贴在下面，不用再读板；回你的发言，没有新东西就只回 SKIP。"
             + (f" 发起人的问题：{question}" if question else "")
             + ("\n附图（发言前用 Read 工具看一遍）：\n" + "\n".join(images) if images else ""))
     return head + "\n\n=== 线程 ===\n" + thread
@@ -4192,8 +4212,7 @@ def discussion_state_save(tid, state):
 
 def headless_followup_prompt(tid, round_no, new_lines, who, question="", images=()):
     """For a member whose session is resumed: only what was said since it last spoke."""
-    return (f"第 {round_no} 轮。你是「{who}」，线程里新增的发言在下面（你自己上一轮说的不再重复）。{DISCUSS_GUIDE}"
-            f"直接输出你这一条发言的正文：不署名、不加【讨论】、不用 Markdown 标题；没有新东西可补充就只输出 SKIP。"
+    return (f"第 {round_no} 轮，新发言在下面（你自己说过的不再重复）；回你的发言，没有新东西就只回 SKIP。"
             + (f" 发起人的问题：{question}" if question else "")
             + ("\n附图（用 Read 工具看）：\n" + "\n".join(images) if images else "")
             + "\n\n=== 新发言 ===\n" + ("\n\n".join(new_lines) if new_lines else "（没有新发言）"))
@@ -4334,8 +4353,12 @@ def cmd_discuss(a):
         project = project or next((l.split(":", 1)[1] for l in issue.get("labels") or [] if l.startswith("project:")), "")
     title = issue.get("title", "")
     cwd = a.cwd or (task_project_dir(issue) if project or not topic else HOME)
-    before = len(discussion_of(bd_comments(a.task)))
-    sh(["bd", "comments", "add", a.task, f"{DISCUSS_TAG}发起：{me} 邀请 {', '.join(kinds)} 讨论" + (f"：{a.question}" if a.question else "")], env={"BEADS_ACTOR": me})
+    existing = discussion_of(bd_comments(a.task))
+    before = len(existing)
+    # The opener line once per thread (or whenever there is a question to put): later rounds are
+    # just the members answering what was said since, no ceremony in between.
+    if a.question or not any((c.get("text") or "")[len(DISCUSS_TAG):].lstrip().startswith("发起") for c in existing):
+        sh(["bd", "comments", "add", a.task, f"{DISCUSS_TAG}发起：{me} 邀请 {', '.join(kinds)} 讨论" + (f"：{a.question}" if a.question else "")], env={"BEADS_ACTOR": me})
     hostargs = ["--host", a.host] if a.host else []
     # Headless (claude -p / codex exec / pi -p) on this Mac is the normal path; --tui or a remote
     # host goes through a Herdr tab per member as before.
@@ -4345,6 +4368,7 @@ def cmd_discuss(a):
     # said and the prompt stays small. --fresh starts everyone over with the whole thread.
     state = {} if getattr(a, "fresh", False) else discussion_state_load(a.task)
     state["task"] = a.task
+    settings = settings_load() if not tui else {}
     members = state.setdefault("members", {})
     panes, missing, skipped, timing = {}, [], [], []
     import threading
@@ -4375,6 +4399,7 @@ def cmd_discuss(a):
             claude = kind == "claude"   # claude reads pictures itself with Read; codex/pi get them attached
             key = f"{kind}:{model}#{i}"
             mem = members.get(key) or {}
+            system = discussion_system(who, kind, settings)
             resumed = bool(mem.get("session")) and mem.get("kind") == kind and (mem.get("model") or "") == (model or "")
             res = None
             if resumed:
@@ -4382,12 +4407,12 @@ def cmd_discuss(a):
                 fresh_cs = [c for c in disc_now if c.get("id") not in seen]
                 imgs = discussion_images(*[c.get("text") for c in fresh_cs])
                 prompt = headless_followup_prompt(a.task, r, discussion_lines(fresh_cs), who, a.question, images=imgs if claude else ())
-                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else imgs, session=mem["session"], resume=True)
+                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else imgs, system=system, session=mem["session"], resume=True)
                 if res["error"] and not res["text"]:
                     resumed = False   # the session is gone (or the CLI could not resume it): start over with the whole thread
             if not resumed:
                 prompt = headless_prompt(a.task, title, r, thread_text, who, a.question, topic=topic, project=project, images=images if claude else ())
-                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else images)
+                res = headless_call(kind, model, prompt, cwd, a.timeout, images=() if claude else images, system=system)
             res["resumed"] = resumed
             # The statement lands on the board the moment it is ready, so the app shows the
             # quick members while the slow one is still thinking.
