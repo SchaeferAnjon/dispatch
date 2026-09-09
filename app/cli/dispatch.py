@@ -17,6 +17,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch insights [--days N] [--alerts] [--ack]   cross-agent signal counts, samples, per-session alerts, an improvement task
   dispatch insights report|list|show|open|schedule|due   the model-written /insights-style report (dated, scheduled, opens as a page)
   dispatch catalog [-q kw]          skills/plugins kept off by default; agents suggest one when it would help
+  dispatch notify "标题" "正文"      push to the phone (ntfy / Bark, keys in `dispatch env`) or a macOS banner
   dispatch --host <id> <any subcommand>   run it on another Mac from hosts.json (ssh; stdin/stdout pass through)
   dispatch env list|get|set|unset|export|import   API keys & secrets (~/.config/dispatch/env, 0600; prime lists names only)
 
@@ -3763,6 +3764,12 @@ def cmd_init(a):
     init_wizard.main(a)
 
 
+def cmd_notify(a):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import notify
+    notify.main(a)
+
+
 def cmd_env(a):
     items = env_read()
     by = {it["name"]: it for it in items}
@@ -4685,6 +4692,12 @@ def cmd_discuss(a):
     elapsed = round(time.time() - t_start, 1)
     result = {"task": a.task, "participants": [f"{k}{':' + m if m else ''}" for k, m in parts], "missing": missing, "skipped": skipped, "rounds": a.rounds, "mode": "tui" if tui else "headless",
               "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic, "elapsed": elapsed, "timing": timing, "quiet_rounds": state.get("quiet_rounds", 0)}
+    try:
+        import notify
+        spoken = "；".join(re.sub(r"\s+", " ", (c.get("text") or "")[len(DISCUSS_TAG):]).strip() for c in spoke)
+        notify.send(f"讨论结束：{title}", (re.sub(r"\s+", " ", conclusion or "").strip() or spoken or "本轮没有新发言")[:100])
+    except Exception:
+        pass
     if a.json:
         print(json.dumps(result, ensure_ascii=False)); return
     print(f"\n讨论结束：{len(new)} 条新发言（含发起），{elapsed}s。" + (f"\n结论：{conclusion}" if conclusion else "") + ("\n连续两轮没有新提议了，可以收尾：dispatch discuss-doc " + a.task if state.get("quiet_rounds", 0) >= 2 else ""))
@@ -4973,6 +4986,7 @@ def main():
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
+    s = sub.add_parser("notify", help="push a message to the phone (ntfy / Bark) or a macOS banner; channels come from dispatch env NTFY_URL / BARK_KEY"); s.add_argument("title"); s.add_argument("body", nargs="?", default=""); s.add_argument("--url", default="", help="link to open when the notification is tapped"); s.add_argument("--level", choices=["normal", "high"], default="normal"); s.add_argument("--key", default="", help="dedup key: the same key inside 5 minutes is sent once"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_notify)
     s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)

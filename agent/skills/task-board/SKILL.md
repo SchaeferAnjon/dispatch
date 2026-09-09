@@ -15,6 +15,7 @@ dispatch done TASK_ID --reason "交付与验证" --verified
 dispatch wiki search "关键词"
 dispatch wiki add --kind pit "现象" --fix "解法" -P 项目
 dispatch facts get "主题"
+dispatch notify "标题" "正文"          # 想让人知道就推一条：ntfy / Bark（dispatch env 配），没配就本机通知
 ```
 
 标题要让几周后冷读的人一眼知道改了什么、为了什么（「会话页 diff 改成可横向滚动：手机上右半截被截掉」），描述写触发原因和期望结果；太短或只有动词的标题 `begin` 会拒绝。提交信息末尾带任务 id（`feat: … (task-abc)`），或在 `done --reason` 里写 commit 哈希：任务页「Git 提交」和 `dispatch commits ID` 靠这个把任务和代码对上；一个任务多个提交就每个都带。`--verified` 只表示亲手验证；未完成的任务不关闭。收尾顺手 `--retro "【技术】…【做对】…【做错】…"`，一两句即可，它会进知识库。`bd show ID --json` 查看任务；`bd update ID` 修改字段（JSON 返回数组）；不用会打开编辑器的 `bd edit`。

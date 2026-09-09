@@ -160,6 +160,15 @@ def main():
         json.dump(rec, f, ensure_ascii=False)
     os.replace(tmp, path)
 
+    # The session just started waiting for the user: push it once, not on every hook event.
+    if attention == "input":
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+            import notify
+            notify.send(f"{agent} 在等你回复", f"{rec['project']}（{rec['source_app']}）", level="high", key=f"presence:{agent}:{sid}")
+        except Exception:
+            pass
+
     # Sweep records whose process is gone (crashes, closed windows) — SessionEnd
     # does not always fire.
     for p in glob.glob(os.path.join(DIR, "*.json")):

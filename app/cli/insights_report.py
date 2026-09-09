@@ -203,6 +203,12 @@ def generate(days, model=None, wait=True):
     json.dump(rec, open(path, "w"), ensure_ascii=False, indent=1)
     if rec["report"]:
         open(path[:-5] + ".html", "w").write(render_html(rec))
+        try:
+            import notify
+            headline = (rec["report"].get("headline") or "报告已生成").strip()
+            notify.send(f"洞察报告好了 · 最近 {days} 天", headline, url=notify.serve_link(f"/insights/{rec['id']}.html"))
+        except Exception:
+            pass
     try:
         os.remove(RUNNING)
     except FileNotFoundError:

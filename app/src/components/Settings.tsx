@@ -2,16 +2,17 @@ import { useEffect, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
 import { isTauri } from "../api";
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; onScreen?: () => void; screenReady?: boolean; hosts?: { name: string; online: boolean; local: boolean; ip: string }[]; onSetup?: () => void; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, onScreen, screenReady, hosts = [], onSetup, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, onScreen, screenReady, hosts = [], onSetup, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   // The version line should not read "v…" forever: look it up once when the page opens.
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   const [applying, setApplying] = useState(false);
+  const [notifying, setNotifying] = useState(false);
   const [draft, setDraft] = useState<DispatchSettings>(settings);
   const [busy, setBusy] = useState(false);
   useEffect(() => { setDraft(settings); }, [settings]);
@@ -38,6 +39,10 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
           <div><b>脚本或其他 Agent 通过 SDK 启动的会话，自动当作定时会话</b><p>定时会话不进「等我」、不发通知、不出现在工作台；会话页「定时」筛选里能看到。对单条会话手动标记过的，以手动为准。</p></div>
           <input type="checkbox" checked={draft.sdk_sessions_scheduled} onChange={(e) => setDraft({ ...draft, sdk_sessions_scheduled: e.target.checked })} />
         </label>
+        {onTestNotify && <div className="settings-row">
+          <div><b>手机通知</b><p>报告生成完、讨论结束、会话变成「等你」时推一条。渠道在「环境」页配：NTFY_URL（ntfy 主题地址）或 BARK_KEY（Bark 的 key）；两个都没配就发这台 Mac 的系统通知。命令行 <span className="mono">dispatch notify &quot;标题&quot; &quot;正文&quot;</span>。</p></div>
+          <button className="btn sm" disabled={notifying} onClick={async () => { setNotifying(true); try { await onTestNotify(); } finally { setNotifying(false); } }}>{notifying ? "发送中…" : "发一条测试通知"}</button>
+        </div>}
       </section>
       <section className="settings-card">
         <h3>项目</h3>

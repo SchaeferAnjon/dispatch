@@ -1,7 +1,11 @@
 import json
+import io
 import os
+import sys
 import tempfile
+import types
 import unittest
+from unittest.mock import patch
 from presence import event_status, install_claude_hooks, classify
 
 class PresenceSignals(unittest.TestCase):
@@ -31,3 +35,30 @@ class PresenceSignals(unittest.TestCase):
             self.assertEqual(first, second)
             self.assertTrue(second["other"])
             self.assertEqual(second["hooks"]["PermissionRequest"][0]["hooks"][0], original)
+
+
+class AttentionNotification(unittest.TestCase):
+    """A session that starts waiting for the user pushes one notification (dedup key per session)."""
+
+    def run_hook(self, event, data):
+        import presence
+        sent = []
+        fake = types.ModuleType("notify")
+        fake.send = lambda *a, **k: (sent.append((a, k)), {"ok": True})[1]
+        with tempfile.TemporaryDirectory() as d, patch.object(presence, "DIR", d), \
+                patch.dict(sys.modules, {"notify": fake}), \
+                patch.object(sys, "argv", ["presence.py", "claude-code", event]), \
+                patch.object(sys, "stdin", io.StringIO(json.dumps(data))):
+            presence.main()
+        return sent
+
+    def test_permission_request_notifies(self):
+        sent = self.run_hook("PermissionRequest", {"session_id": "abc", "cwd": "/tmp/proj"})
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][1]["key"], "presence:claude-code:abc")
+        self.assertEqual(sent[0][1]["level"], "high")
+        self.assertIn("proj", sent[0][0][1])
+
+    def test_tool_use_does_not_notify(self):
+        self.assertEqual(self.run_hook("UserPromptSubmit", {"session_id": "abc", "cwd": "/tmp/proj"}), [])
+        self.assertEqual(self.run_hook("Stop", {"session_id": "abc", "cwd": "/tmp/proj"}), [])
