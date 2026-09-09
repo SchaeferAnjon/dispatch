@@ -59,6 +59,7 @@
       "../cli/move.py": "cli/move.py",
       "../cli/summarize.py": "cli/summarize.py",
       "../cli/notify.py": "cli/notify.py",
+      "../cli/semantic.py": "cli/semantic.py",
       "../cli/VERSION": "cli/VERSION",
       "../cli/board-sync.sh": "cli/board-sync.sh",
       "../cli/statusline-tee.sh": "cli/statusline-tee.sh",

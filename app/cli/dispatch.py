@@ -14,6 +14,8 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch prime [--hook-json]      compact session-start digest: identity, this project's tasks, relevant wiki, who else is in this dir, your quota
   dispatch claim <task> [--force]   claim without stealing: refuses a task another agent is working on
   dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
+  dispatch wiki search "<句子>" --semantic   find entries by meaning (智谱 embedding-3 + sqlite-vec), not spelling
+  dispatch wiki related <task-id>   the pits that mean the same as this task (task page 右栏)
   dispatch pit add|list|show        = wiki --kind pit
   dispatch insights [--days N] [--alerts] [--ack]   cross-agent signal counts, samples, per-session alerts, an improvement task
   dispatch insights report|list|show|open|schedule|due   the model-written /insights-style report (dated, scheduled, opens as a page)
@@ -3339,6 +3341,43 @@ def wiki_line(it, width=170):
     return f"[{lab}] {it['key']}：{body[:width]}{'…' if len(body) > width else ''}"
 
 
+def wiki_related(a, all_items):
+    """`dispatch wiki related <task>`: the entries that mean the same thing as this task.
+    Semantic first (智谱 embedding + sqlite-vec); falls back to the old project tag when the
+    key is missing, the index cannot be built, or the semantic hits are empty."""
+    limit = getattr(a, "limit", 8) or 8
+    tid = (a.text or "").strip()
+    issue = bd_json(["show", tid, "--json"])
+    if not issue or not issue.get("id"):
+        print(f"没有任务 {tid}", file=sys.stderr)
+        sys.exit(1)
+    kind = getattr(a, "kind", "pit") or "pit"
+    proj = next((l.split(":", 1)[1] for l in issue.get("labels") or [] if l.startswith("project:")), "")
+    query = "\n".join(x for x in [issue.get("title") or "", (issue.get("description") or "")[:1200]] if x)
+    rows, why = [], ""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import semantic
+        rows = semantic.related(tid, query, all_items, limit=limit, kind=kind)
+    except Exception as e:
+        why = str(e)[:120]
+    if not rows:
+        rows = [{**it, "score": None} for it in all_items
+                if (kind == "all" or it["kind"] == kind) and (it["task"] == tid or (proj and it["project"].lower() == proj.lower()))]
+        rows.sort(key=lambda it: (it["task"] != tid,))
+        rows = rows[:limit]
+        if why:
+            print(f"语义搜索不可用（{why}），改用项目匹配", file=sys.stderr)
+    semantic_hits = any(it.get("score") is not None for it in rows)
+
+    def text(rs):
+        for it in rs:
+            score = f" {it['score']:.3f}" if it.get("score") is not None else ""
+            print(wiki_line(it, 400) + score)
+        print(f"\n{len(rs)} 条" + ("（语义）" if semantic_hits else "（按项目）"))
+    out(rows, a.json, text)
+
+
 def cmd_wiki(a):
     if a.op == "add":
         kind = a.kind or "pit"
@@ -3352,27 +3391,46 @@ def cmd_wiki(a):
         wiki_store(key, content)
         print(f"已记录 {key}（{WIKI_KINDS[kind]['label']}）。同项目的 Agent 下次会话启动会看到；任何时候 `dispatch wiki search 关键词` 可查。")
         return
-    items = wiki_all()
+    all_items = wiki_all()
     if a.op == "show":
-        for it in items:
+        for it in all_items:
             if it["key"] == a.text or any(it["key"] == k["prefix"] + (a.text or "") for k in WIKI_KINDS.values()):
                 print(it["raw"])
                 return
         print("没有这条", file=sys.stderr)
         sys.exit(1)
+    if a.op == "related":
+        return wiki_related(a, all_items)
+    kind = getattr(a, "kind", "") or ""
     q = (a.text or "").lower()
     if not a.all:
-        items = [it for it in items if it["kind"]]
-    if a.kind:
-        items = [it for it in items if it["kind"] == a.kind]
+        all_items = [it for it in all_items if it["kind"]]
+    items = [it for it in all_items if (not kind or kind == "all" or it["kind"] == kind)]
     if a.project:
         items = [it for it in items if it["project"] == a.project]
-    if q:
-        items = [it for it in items if q in it["raw"].lower() or q in it["key"].lower()]
+    keyword = lambda xs: [it for it in xs if q in it["raw"].lower() or q in it["key"].lower()]
+    if getattr(a, "semantic", False) and q:
+        # Meaning, not spelling: the query is embedded and the nearest entries come back.
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import semantic
+            if not semantic.available():
+                print("没有 ZHIPU_API_KEY，改用关键字匹配", file=sys.stderr)
+                items = keyword(items)
+            else:
+                hits = semantic.search(a.text, all_items, limit=getattr(a, "limit", 8) or 8,
+                                       kind=kind if kind != "all" else "", project=a.project or "")
+                items = hits or keyword(items)
+        except Exception as e:
+            print(f"语义搜索不可用（{str(e)[:120]}），改用关键字匹配", file=sys.stderr)
+            items = keyword(items)
+    elif q:
+        items = keyword(items)
 
     def text(items):
         for it in items:
-            print(wiki_line(it, 400))
+            score = f" {it['score']:.3f}" if it.get("score") is not None else ""
+            print(wiki_line(it, 400) + score)
         print(f"\n{len(items)} 条")
     out(items, a.json, text)
 
@@ -5095,7 +5153,7 @@ def main():
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs", "vaults", "topics", "get", "search", "import"]); s.add_argument("query", nargs="?", default=""); s.add_argument("--apply", action="store_true", help="import: 追加进 FACTS.md"); s.add_argument("--out", default="", help="import: 清单路径"); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
-    s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS)); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
+    s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show", "related"]); s.add_argument("text", nargs="?", help="related: 任务 ID；search: 一句话"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS) + ["all"]); s.add_argument("--semantic", action="store_true", help="search: 按意思找（智谱 embedding-3 + sqlite-vec），不按关键字"); s.add_argument("--limit", type=int, default=8, help="search/related: 最多几条"); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
     s = sub.add_parser("notify", help="push a message to the phone (ntfy / Bark) or a macOS banner; channels come from dispatch env NTFY_URL / BARK_KEY"); s.add_argument("title"); s.add_argument("body", nargs="?", default=""); s.add_argument("--url", default="", help="link to open when the notification is tapped"); s.add_argument("--level", choices=["normal", "high"], default="normal"); s.add_argument("--key", default="", help="dedup key: the same key inside 5 minutes is sent once"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_notify)
@@ -5117,6 +5175,8 @@ def main():
         p.error("需要技能名")
     if a.cmd in ("pit", "wiki") and a.op == "add" and not a.text:
         p.error("需要写内容")
+    if a.cmd == "wiki" and a.op == "related" and not a.text:
+        p.error("需要任务 ID")
     if a.cmd == "env" and a.op in ("get", "set", "unset", "import") and not a.name:
         p.error("需要变量名" if a.op != "import" else "需要文件路径")
     if a.cmd == "wiki" and a.op == "search":

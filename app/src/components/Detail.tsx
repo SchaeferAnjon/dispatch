@@ -49,13 +49,29 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, stamp]);
   const [pits, setPits] = useState<Pitfall[]>([]);
+  // `dispatch wiki related` hits: the pits whose meaning is closest to this task (智谱 embedding
+  // + sqlite-vec), across projects. `null` means semantic search is unavailable right now.
+  const [semPits, setSemPits] = useState<(Pitfall & { score?: number })[] | null>(null);
 
-  // Pitfalls tagged with this task or its project — shown before anyone starts working.
+  // Every pit, kept as the project fallback for when semantic search has no answer.
   useEffect(() => {
     let alive = true;
     api.memories().then((ms) => { if (alive) setPits(ms.map(parsePitfall).filter((p) => p.isPit)); }).catch(() => {});
     return () => { alive = false; };
   }, [id, api]);
+
+  // Meaning, not the project tag: only ask again when the task itself changes.
+  useEffect(() => {
+    let alive = true;
+    setSemPits(null);
+    api.on("local", ["wiki", "related", id, "--json"]).then((raw) => {
+      if (!alive) return;
+      const rows = JSON.parse(raw.slice(Math.max(0, raw.indexOf("[")))) as { key: string; raw: string; score?: number | null }[];
+      setSemPits(rows.map((r) => ({ ...parsePitfall({ key: r.key, value: r.raw }), score: r.score ?? undefined })));
+    }).catch(() => { if (alive) setSemPits(null); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, stamp]);
 
   useEffect(() => {
     let alive = true;
@@ -143,7 +159,9 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
   const events = eventsFrom(history, comments, audit);
 
   const proj = projectOf(issue);
-  const related = pits.filter((p) => p.task === id || (proj && p.project === proj)).sort((a, b) => Number(b.task === id) - Number(a.task === id));
+  const projectPits = pits.filter((p) => p.task === id || (proj && p.project === proj)).sort((a, b) => Number(b.task === id) - Number(a.task === id));
+  const semantic = !!(semPits && semPits.some((p) => p.score != null));
+  const related: (Pitfall & { score?: number })[] = semantic ? semPits! : projectPits;
   const shownPits = allPits ? related : related.slice(0, 3);
 
   const toggleAc = (idx: number) => {
@@ -312,11 +330,11 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
        <div className="dcol dcol-side">
         {related.length > 0 && (
           <details className="sec context-fold">
-            <summary>相关的坑 <span className="muted">{related.length} 条 · {related.some((p) => p.task === id) ? "这条任务和" : ""}项目 {proj} 的经验</span></summary>
+            <summary>相关的坑 <span className="muted">{related.length} 条 · {semantic ? "按这条任务的意思找的，跨项目" : `项目 ${proj} 的经验`}</span></summary>
             <div className="rel-pits">
               {shownPits.map((p) => (
                 <div key={p.key} className="rel-pit">
-                  <div className="l1"><span className="lbl trap">坑</span><span>{p.trap}</span></div>
+                  <div className="l1"><span className="lbl trap">坑</span><span>{p.trap}</span>{semantic && p.score ? <span className="muted small">{p.score.toFixed(2)}</span> : null}</div>
                   {p.fix && <div className="l1"><span className="lbl fix">解法</span><span>{p.fix}</span></div>}
                 </div>
               ))}
