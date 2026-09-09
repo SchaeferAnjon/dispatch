@@ -381,5 +381,5 @@ class DynamicWorkflow(unittest.TestCase):
         cs = [{"text": "普通进展"}, {"text": " 【讨论】codex：拆成两块"}]
         self.assertEqual(dispatch.discussion_of(cs), [cs[1]])
         p1 = dispatch.discuss_prompt("task-1", "标题", 1, "先做哪个")
-        self.assertIn("bd show task-1", p1); self.assertIn("先做哪个", p1); self.assertIn("不要改代码", p1)
+        self.assertIn("bd show task-1", p1); self.assertIn("先做哪个", p1); self.assertIn("不改代码", p1)
         self.assertIn("第 2 轮", dispatch.discuss_prompt("task-1", "标题", 2))

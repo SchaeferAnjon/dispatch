@@ -78,9 +78,23 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
 
   // The person is in the group too: a line typed here lands as a 【讨论】 comment, and「让他们回应」runs one more round.
   const [line, setLine] = useState("");
+  const [full, setFull] = useState(false);
+  // Pictures attached to a reply go the same way as the topic's: saved on this Mac, path in the comment.
+  const [lineImages, setLineImages] = useState<{ path: string; preview: string }[]>([]);
+  const addLineFiles = async (files: File[]) => {
+    for (const f of files.filter((x) => x.type.startsWith("image/"))) {
+      try {
+        const data = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
+        const t = await api.on("local", ["save-image", "--json"], JSON.stringify({ name: f.name || "reply", data }));
+        const r = JSON.parse(t.slice(Math.max(0, t.indexOf("{"))));
+        setLineImages((xs) => [...xs, { path: r.path, preview: data }]);
+      } catch (e) { onError(String(e)); }
+    }
+  };
   const say = async () => {
-    if (!task || !line.trim()) return;
-    try { await api.on("local", ["log", task, `${TAG}${me}：${line.trim()}`]); setLine(""); const cs = await api.comments(task); setComments(cs); }
+    if (!task || (!line.trim() && !lineImages.length)) return;
+    const text = `${TAG}${me}：${line.trim()}` + (lineImages.length ? "\n附图（用 Read 看）：\n" + lineImages.map((x) => x.path).join("\n") : "");
+    try { await api.on("local", ["log", task, text]); setLine(""); setLineImages([]); const cs = await api.comments(task); setComments(cs); }
     catch (e) { onError(String(e)); }
   };
   // The document: the thread condensed into 背景/结论/方案/步骤/风险/验收, written into the task so
@@ -100,6 +114,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
   const delegate = () => { if (!task) return; onDelegate(task, `你接手 ${task}。先 \`bd show ${task} --json\` 读完整描述——里面有一份讨论文档（背景、结论、方案、步骤、风险、验收），按「步骤」和「验收」做，进展用 dispatch log，做完 dispatch done --reason。有疑问先 \`bd comments ${task}\` 看讨论原文。`); onClose(); };
   const recent = issues.filter((i) => i.labels?.includes("dispatch:discussion")).sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8);
   const said = comments.filter((c) => c.text.trimStart().startsWith(TAG)).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const system = comments.filter((c) => c.text.trimStart().startsWith("【系统】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const conclusion = comments.filter((c) => c.text.trimStart().startsWith(CONCLUSION)).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
   // Round markers: the 发起 line opens a round; each agent's first statement after it is round 1, its next is round 2…
   // Two Claudes with different models share an author name, so rounds are counted by position
@@ -114,8 +129,8 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="dialog delegate discuss-dialog" role="dialog" aria-label="讨论一个念头">
-        <h3>讨论一个念头{project ? ` · ${project}` : ""}{task ? <span className="mono muted small"> · {task}</span> : null}</h3>
+      <div className={`dialog delegate discuss-dialog${full ? " full" : ""}`} role="dialog" aria-label="讨论一个念头">
+        <h3>讨论一个念头{project ? ` · ${project}` : ""}{task ? <span className="mono muted small"> · {task}</span> : null}<span className="spacer" /><button className="btn ghost sm" onClick={() => setFull(!full)} title={full ? "缩回窗口" : "占满整页"}>{full ? "⤡ 缩回" : "⤢ 放大"}</button></h3>
         {!task && <>
           <p className="muted small">把一个想法交给几个 Agent 各说一次：值不值得做、怎么做、怎么拆、风险在哪。每个 Agent 读项目现状和坑，只留一条发言就停，总结模型再写一段结论。你看完可以回一句，点「让他们回应」他们就接着讨论；方向定了就「拆分派活」，决定谁来干。</p>
           <label>念头<textarea rows={6} autoFocus placeholder="比如：把洞察报告改成每周自动发到手机；或者：要不要给 Dispatch 做 iOS 原生版。截图直接粘贴进来。" value={topic} onChange={(e) => setTopic(e.target.value)} onPaste={onPaste} disabled={busy} /></label>
@@ -156,12 +171,16 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
               </div>
             ))}
             {thread.filter((t) => t.opener).map(({ c, body }) => <div key={c.id} className="disc-opener muted small">{body}</div>)}
+            {system.map((c) => <div key={c.id} className="disc-system small">{c.text.trimStart().slice(4)}</div>)}
             {busy && waiting > 0 && <div className="disc-waiting muted small">还有 {waiting} 个 Agent 在想……（{parts.map((p) => KINDS.find(([x]) => x === p.kind)?.[1] + (p.model ? ` ${p.model}` : "")).join("、")}）</div>}
             {busy && waiting === 0 && !finished && <div className="disc-waiting muted small">发言都到了，总结模型在写结论……</div>}
           </div>
         )}
         {task && showDoc && (doc || existingDoc) && <div className="disc-doc"><div className="l1"><b>讨论文档</b><span className="muted small">已写进任务描述</span><span className="spacer" /><button className="link sm" onClick={() => setShowDoc(false)}>收起</button></div><Markdown src={doc || existingDoc.replace(/^[^\n]*\n/, "")} className="compact" /></div>}
-        {task && <div className="disc-compose"><input placeholder="你也说一句（会作为发言记进去；然后点「让他们回应」再来一轮）" value={line} disabled={busy} onChange={(e) => setLine(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && line.trim()) void say(); }} /><button className="btn sm" disabled={busy || !line.trim()} onClick={() => void say()}>发言</button></div>}
+        {task && <div className="disc-compose-wrap">
+          {lineImages.length > 0 && <div className="disc-images">{lineImages.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt="" /><button className="x" onClick={() => setLineImages(lineImages.filter((_, j) => j !== i))} aria-label="移除">✕</button></div>)}</div>}
+          <div className="disc-compose"><textarea rows={2} placeholder="你也说一句（回车发言，Shift+回车换行；截图直接粘贴）。然后点「让他们回应」" value={line} disabled={busy} onChange={(e) => setLine(e.target.value)} onPaste={(e) => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); void addLineFiles(files); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (line.trim() || lineImages.length) void say(); } }} /><label className="btn sm disc-img-add" title="附图">🖼<input type="file" accept="image/*" multiple hidden disabled={busy} onChange={(e) => { void addLineFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} /></label><button className="btn sm" disabled={busy || (!line.trim() && !lineImages.length)} onClick={() => void say()}>发言</button></div>
+        </div>}
 
         <div className="foot">
           <button className="btn ghost" disabled={busy} onClick={onClose}>{task ? "关闭" : "取消"}</button>

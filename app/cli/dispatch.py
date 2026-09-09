@@ -417,10 +417,16 @@ def herdr(host, args, timeout=30, raw=False):
         r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", host["ssh"], remote], capture_output=True, text=True, timeout=timeout + 15)
     if raw:
         return r.stdout
-    try:
-        return json.loads(r.stdout)
-    except Exception:
-        return {"error": {"message": (r.stderr or r.stdout).strip()[:400] or f"herdr exit {r.returncode}"}}
+    # Herdr prints its JSON error on stderr with a non-zero exit; keep the error code so callers
+    # can tell "shell not ready yet" (retry) from a real failure.
+    for text in (r.stdout, r.stderr):
+        try:
+            d = json.loads(text)
+            if isinstance(d, dict):
+                return d
+        except Exception:
+            pass
+    return {"error": {"message": (r.stderr or r.stdout).strip()[:400] or f"herdr exit {r.returncode}"}}
 
 
 def herdr_ok(d, what):
@@ -559,7 +565,7 @@ def cmd_agent(a):
         # well over a minute on a loaded Mac: keep asking for ~3 minutes before giving up.
         for attempt in range(70):
             d = herdr(host, sargs, timeout=150)
-            if isinstance(d, dict) and (d.get("error") or {}).get("code") == "agent_pane_busy" and attempt < 69:
+            if isinstance(d, dict) and d.get("error") and "agent_pane_busy" in json.dumps(d.get("error")) and attempt < 69:
                 time.sleep(2.5)
                 continue
             started = herdr_ok(d, "起 Agent").get("agent", {})
@@ -4003,16 +4009,23 @@ def task_project_dir(issue, names=None):
 DISCUSSION_LABEL = "dispatch:discussion"   # a task that exists only to hold a discussion (topic / project)
 
 
-def discuss_prompt(tid, title, round_no, question="", topic=False, project=""):
+DISCUSS_GUIDE = ("说话的规矩：你是讨论群里的一个成员，用自己的身份（Agent 名 + 模型）说话，像一个有主见的同事，不像表单。"
+                 "先看发起人最新说的是什么：如果只是打招呼、闲聊或一句短话，就自然地回一两句（比如问好、问对方想聊什么），不要套任何格式、不要分析、不要写风险和拆分；"
+                 "如果是一个可以做的提议或问题，再给出你的判断（做 / 不做 / 换个做法）和理由，需要时附做法、拆分建议（每个子任务一行：标题 · 建议谁做 · 为什么）和风险，但只写有内容的部分，别为了凑段落硬写。"
+                 "针对别人已经说过的观点回应，不重复；不改代码、不认领任务；一次只留一条评论，写完就停。")
+
+
+def discuss_prompt(tid, title, round_no, question="", topic=False, project="", who=""):
     ctx = ""
     if topic:
-        ctx = (f"这不是一个已定的任务，而是一个念头/主题的讨论：先判断值不值得做、做成什么样、最小可行的第一步是什么。"
-               + (f" 它挂在项目「{project}」下：先 `dispatch project-summary {project}` 看项目现状，`bd list -l project:{project} --json` 看未完成任务，`dispatch wiki search {project}` 看这个项目踩过的坑，再发言。" if project else " 没有指定项目，就按独立的事来想。"))
+        ctx = ("这是一个念头/主题的讨论，不是已定的任务。"
+               + (f" 它挂在项目「{project}」下：需要时用 `dispatch project-summary {project}` 看项目现状、`bd list -l project:{project} --json` 看未完成任务、`dispatch wiki search {project}` 看这个项目踩过的坑。" if project else ""))
+    sign = f" 发言开头署名「{who}」。" if who else ""
     if round_no <= 1:
-        return (f"你参加{'主题' if topic else '任务'} {tid}「{title}」的讨论。{ctx}步骤：1) `bd show {tid}` 读背景{'' if topic else '与验收项'}（描述里若列了附图路径，先用 Read 看图）；2) `bd comments {tid}` 读已有发言（带{DISCUSS_TAG}的）；"
-                f"3) 只写一条评论：`dispatch log {tid} \"{DISCUSS_TAG}<你的身份>：{'判断（做/不做/换个做法）与理由 / 建议的做法 / 拆分建议（每个子任务一行：标题 · 建议谁做 · 为什么）/ 风险' if topic else '方案 / 拆分建议（每个子任务一行：标题 · 建议谁做 · 为什么）/ 风险'}\"`。"
-                f"不要改代码、不要认领任务，写完就停。" + (f" 发起人的问题：{question}" if question else ""))
-    return (f"第 {round_no} 轮：再读一遍 `bd comments {tid}` 里别人的{DISCUSS_TAG}发言，用一条 `dispatch log {tid} \"{DISCUSS_TAG}…\"` 回应：同意什么、反对什么、最终建议{'做不做、怎么做、怎么拆' if topic else '怎么拆'}。写完就停。")
+        return (f"你参加{'主题' if topic else '任务'} {tid}「{title}」的讨论。{ctx}{DISCUSS_GUIDE}{sign}"
+                f"步骤：1) `bd show {tid}` 读背景（描述里若列了附图路径，先用 Read 看图）；2) `bd comments {tid}` 读已有发言（带{DISCUSS_TAG}的，发起人插话也在里面）；"
+                f"3) 只写一条评论：`dispatch log {tid} \"{DISCUSS_TAG}<署名>：…\"`。" + (f" 发起人的问题：{question}" if question else ""))
+    return (f"第 {round_no} 轮：`bd comments {tid}` 再读一遍，特别是发起人最新插的话和别人的{DISCUSS_TAG}发言（发言里若有附图路径，用 Read 看），用一条 `dispatch log {tid} \"{DISCUSS_TAG}<署名>：…\"` 回应。{DISCUSS_GUIDE}{sign}")
 
 
 def discussion_conclude(tid, title, comments):
@@ -4117,7 +4130,7 @@ def cmd_discuss(a):
         # A thought, not a task: make a task to hold the discussion (it can be split later).
         labels = [DISCUSSION_LABEL] + ([f"project:{project}"] if project else [])
         images = [os.path.abspath(os.path.expanduser(x)) for x in (getattr(a, "image", None) or []) if x]
-        desc = a.topic.strip() + (f"\n\n项目：{project}" if project else "") + (f"\n\n发起人的问题：{a.question}" if a.question else "") + ("\n\n附图（发言前用 Read 工具看一遍）：\n" + "\n".join(images) if images else "") + f"\n\n参加：{', '.join(kinds)}。这是一次讨论，结论在评论里；要做就用 dispatch split 拆成子任务。"
+        desc = a.topic.strip() + (f"\n\n项目：{project}" if project else "") + (f"\n\n发起人的问题：{a.question}" if a.question else "") + ("\n\n附图（发言前用 Read 工具看一遍）：\n" + "\n".join(images) if images else "") + f"\n\n参加：{', '.join(f'{k}:{m}' if m else k for k, m in parts)}。这是一次讨论，结论在评论里；要做就用 dispatch split 拆成子任务。"
         issue = bd_json(["create", "【讨论】" + a.topic.strip()[:70], "-t", "task", "-p", "3", "-l", ",".join(labels), "--description", desc, "--json"])
         if not issue.get("id"):
             raise SystemExit("建不了讨论任务")
@@ -4135,13 +4148,15 @@ def cmd_discuss(a):
     before = len(discussion_of(bd_comments(a.task)))
     sh(["bd", "comments", "add", a.task, f"{DISCUSS_TAG}发起：{me} 邀请 {', '.join(kinds)} 讨论" + (f"：{a.question}" if a.question else "")], env={"BEADS_ACTOR": me})
     hostargs = ["--host", a.host] if a.host else []
-    panes = {}
+    panes, missing = {}, []
+    import threading
     for r in range(1, max(1, a.rounds) + 1):
-        for i, (kind, model) in enumerate(parts):
-            who = f"{kind}{'·' + model if model else ''}"
-            prompt = discuss_prompt(a.task, issue.get("title", ""), r, a.question, topic=topic, project=project)
-            if model:
-                prompt += f" 发言开头的身份写「{kind}（{model}）」。"
+        seen_before = {c.get("id") for c in discussion_of(bd_comments(a.task))}
+        results = {}
+
+        def run_one(i, kind, model):
+            who = f"{kind}{'（' + model + '）' if model else ''}"
+            prompt = discuss_prompt(a.task, issue.get("title", ""), r, a.question, topic=topic, project=project, who=who)
             if i not in panes:
                 argv = self_cmd() + ["agent", "start", kind, "--cwd", cwd, "--label", f"讨论 {a.task} · {who}", "-p", prompt, "--auto", "--timeout", str(a.timeout), "--lines", "40", "--json"] + (["--model", model] if model else []) + hostargs
             else:
@@ -4151,20 +4166,39 @@ def cmd_discuss(a):
                 res = json.loads(o[o.find("{"):])
             except Exception:
                 res = {}
+            results[i] = (who, code, res, (err or o).strip()[:300])
+
+        # Everyone speaks at the same time: one Herdr tab per participant, started together.
+        threads = [threading.Thread(target=run_one, args=(i, kind, model), daemon=True) for i, (kind, model) in enumerate(parts)]
+        for t in threads:
+            t.start(); time.sleep(1.5)  # stagger tab creation a little; Herdr serialises it anyway
+        for t in threads:
+            t.join()
+        after = [c for c in discussion_of(bd_comments(a.task)) if c.get("id") not in seen_before]
+        for i, (kind, model) in enumerate(parts):
+            who, code, res, errtxt = results.get(i, (f"{kind}", 1, {}, "没有结果"))
             if code != 0 or not res:
-                print(f"⚠ {who} 第 {r} 轮没跑起来：{(err or o).strip()[:300]}", file=sys.stderr)
+                print(f"⚠ {who} 第 {r} 轮没跑起来：{errtxt}", file=sys.stderr)
+                missing.append({"who": who, "round": r, "reason": errtxt[:160] or "没跑起来"})
                 continue
             panes.setdefault(i, res.get("pane_id"))
+            actor = KIND_ACTOR.get(kind, kind)
+            if not any(c.get("author") == actor for c in after):
+                missing.append({"who": who, "round": r, "reason": "跑完了但没留下发言（可能被权限或登录对话框卡住，或它决定不说）"})
             if not a.json:
                 print(f"· 第 {r} 轮 {who}（Herdr {res.get('pane_id')}）{res.get('status')}" + (f" · {res.get('warning')}" if res.get("warning") else ""))
     comments = discussion_of(bd_comments(a.task))
     new = comments[before:]
-    conclusion = discussion_conclude(a.task, issue.get("title", ""), new) if len(new) > 1 and not getattr(a, "no_conclude", False) else ""
+    substantive = sum(len((c.get("text") or "")) for c in new if not (c.get("text") or "")[len(DISCUSS_TAG):].startswith("发起")) > 400
+    conclusion = discussion_conclude(a.task, issue.get("title", ""), new) if len(new) > 1 and substantive and not getattr(a, "no_conclude", False) else ""
     if a.close:
         for pane in panes.values():
             if pane:
                 sh(self_cmd() + ["agent", "close", pane] + hostargs, timeout=60)
-    result = {"task": a.task, "participants": [f"{k}{':' + m if m else ''}" for k, m in parts], "rounds": a.rounds, "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic}
+    if missing:
+        for m in missing:
+            sh(["bd", "comments", "add", a.task, f"【系统】{m['who']} 第 {m['round']} 轮没有发言：{m['reason']}"], env={"BEADS_ACTOR": "dispatch"})
+    result = {"task": a.task, "participants": [f"{k}{':' + m if m else ''}" for k, m in parts], "missing": missing, "rounds": a.rounds, "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic}
     if a.json:
         print(json.dumps(result, ensure_ascii=False)); return
     print(f"\n讨论结束：{len(new)} 条新发言（含发起）。" + (f"\n结论：{conclusion}" if conclusion else ""))
