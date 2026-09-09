@@ -26,6 +26,8 @@ export function Delegate({ hosts, initialHost, initialTask, initialPrompt, initi
   const [hostId, setHostId] = useState(initialHost ?? (online.find((h) => h.local)?.id ?? online[0]?.id ?? ""));
   const host = hosts.find((h) => h.id === hostId);
   const [kind, setKind] = useState("claude");
+  const [model, setModel] = useState("");
+  const MODELS: Record<string, [string, string][]> = { claude: [["", "默认"], ["claude-fable-5-1", "Fable 5.1（最强）"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku（快、省）"]], codex: [["", "默认"], ["gpt-5.5", "gpt-5.5"], ["gpt-5.6-terra", "gpt-5.6-terra"], ["gpt-6-astra", "gpt-6-astra"]] };
   const [taskId, setTaskId] = useState(initialTask ?? "");
   const task = issues.find((i) => i.id === taskId);
   const suggestedCwd = task ? dirOfProject(projectOf(task)) : "";
@@ -40,7 +42,7 @@ export function Delegate({ hosts, initialHost, initialTask, initialPrompt, initi
     const text = (prompt.trim() || defaultPrompt).trim();
     if (!text || !host) return;
     setBusy(true); setErr("");
-    try { setRes(await onStart({ kind, host: host.local ? "" : host.id, cwd: (cwd.trim() || suggestedCwd) || undefined, task: taskId || undefined, prompt: text, label: initialLabel || (task ? task.title.slice(0, 24) : text.slice(0, 24)) })); }
+    try { setRes(await onStart({ kind, model: model || undefined, host: host.local ? "" : host.id, cwd: (cwd.trim() || suggestedCwd) || undefined, task: taskId || undefined, prompt: text, label: initialLabel || (task ? task.title.slice(0, 24) : text.slice(0, 24)) })); }
     catch (e) { setErr(String(e)); }
     finally { setBusy(false); }
   };
