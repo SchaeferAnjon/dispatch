@@ -114,6 +114,12 @@ export default function App() {
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; err?: boolean; undo?: () => void } | null>(null);
+  // Task ids in any rendered text are links (Markdown.tsx); they arrive here as one event.
+  useEffect(() => {
+    const h = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) setSelected(id); };
+    window.addEventListener("dispatch:open-task", h);
+    return () => window.removeEventListener("dispatch:open-task", h);
+  }, []);
   // Web mode only: the Mac updated underneath this page (served version changed) → offer a refresh.
   const [webUpdate, setWebUpdate] = useState("");
   useEffect(() => {

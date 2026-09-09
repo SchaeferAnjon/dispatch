@@ -1257,3 +1257,4 @@ pre.diff.dv-pre .ln{width:max-content;min-width:100%}pre.diff.dv-pre .ln .tx{fle
 .disc-doc{border:1px solid var(--line);border-radius:10px;background:var(--win);padding:10px 14px;margin-top:8px;max-height:40vh;overflow:auto;font-size:13px}.disc-doc .l1{display:flex;gap:10px;align-items:baseline;margin-bottom:4px}
 .discuss-dialog h3{display:flex;align-items:center;gap:8px}.discuss-dialog.full{width:calc(100vw - 24px);height:calc(100vh - 24px);max-height:none;display:flex;flex-direction:column}.discuss-dialog.full .disc-thread{max-height:none;flex:1}
 .disc-compose textarea{flex:1;min-width:0;resize:vertical;font:inherit}.disc-compose-wrap{margin-top:8px}.disc-system{padding:4px 8px;color:var(--s-block);background:var(--s-block-bg);border-radius:6px}
+a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text-decoration:none;border-bottom:1px dotted var(--accent-ink);cursor:pointer}a.task-link:hover{background:var(--accent-soft)}

@@ -8,7 +8,7 @@ import { PairDiff, PatchDiff } from "./Diff";
 import { canReadReply, activityLabel, isScriptSession, sessionLifecycle , activityLine } from "../activity";
 import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef, TimelineMsg } from "../types";
 import { Avatar } from "./ui";
-import { Markdown } from "./Markdown";
+import { Markdown, Linkified } from "./Markdown";
 import { OpenSessionButton, AdoptButton } from "./SessionActions";
 import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
@@ -25,7 +25,7 @@ export function ChatList({ list, name, showTools }: { list: TimelineMsg[]; name:
         <>
           <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
           {x.images && x.images.length > 0 && <ImageGrid ids={x.images} />}
-          {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text">{x.text}</div>)}
+          {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text"><Linkified text={x.text} /></div>)}
           {showTools && x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
         </>
       )}
@@ -229,7 +229,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)}>复制恢复命令</button>}
                 </div></details>
               </div>
-              {current?.summary && <div className="session-summary" title="模型写的总结：目标、做了什么、还差什么"><span className="conversation-caption">总结</span><span className="t">{current.summary}</span></div>}
+              {current?.summary && <div className="session-summary" title="模型写的总结：目标、做了什么、还差什么"><span className="conversation-caption">总结</span><span className="t"><Linkified text={current.summary} /></span></div>}
               {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? '更新中断，保留上次记录' : current ? activityLabel(current) : '历史记录'}</strong><span>{current?.activity}</span></div><span className="muted small">{current ? (ago(current.last_at)) : ''}</span></div>}
               <details className="session-context" key={m.session_id}>
                 <summary>{m.user_msgs} 轮对话 · {m.subagents.length} 个子 Agent<span>会话信息</span></summary>
@@ -282,7 +282,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                         <>
                           <div className="tl-h"><b>{x.role === "user" ? "你" : x.role === "tool" ? "工具" : a?.name}</b><span className="mono muted small">{x.ts ? fmtTime(x.ts) : ""}</span></div>
                           {x.images && x.images.length > 0 && <ImageGrid ids={x.images} />}
-                          {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text">{x.text}</div>)}
+                          {x.text && (x.role === "assistant" ? <div className="tl-t"><Markdown src={x.text} className="compact" /></div> : <div className="tl-t sel-text"><Linkified text={x.text} /></div>)}
                           {showTools && x.tools.length > 0 && <div className="tl-tools">{x.tools.map((t, j) => <span key={j} className="tool-chip" title={t.summary}><b>{t.name}</b>{t.summary ? ` ${t.summary.slice(0, 80)}` : ""}</span>)}</div>}
                         </>
                       )}
