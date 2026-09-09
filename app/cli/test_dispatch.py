@@ -237,7 +237,7 @@ class BeginSessionLink(unittest.TestCase):
     def test_records_explicit_session_for_delivery(self):
         from types import SimpleNamespace
         from unittest.mock import patch
-        a = SimpleNamespace(title='test', project='kanban', type='task', priority=2, desc=None, acceptance=None, deps=None, json=True, session='session-123456')
+        a = SimpleNamespace(title='test', project='kanban', type='task', priority=2, desc=None, acceptance=None, deps=None, json=True, session='session-123456', force=True)
         with patch.object(dispatch, 'begin_warnings', return_value=[]), patch.object(dispatch, 'local_host_name', return_value='test'), patch.object(dispatch, 'out'), patch.object(dispatch, 'bd_json', side_effect=[{'id':'task-test'},{}]) as bd:
             dispatch.cmd_begin(a)
         self.assertIn('session:session-123456', bd.call_args_list[0].args[0][bd.call_args_list[0].args[0].index('-l')+1])
@@ -246,10 +246,24 @@ class BeginSessionLink(unittest.TestCase):
     def test_invalid_session_cannot_inject_labels(self):
         from types import SimpleNamespace
         from unittest.mock import patch
-        a = SimpleNamespace(title='test', project='kanban', type='task', priority=2, desc=None, acceptance=None, deps=None, json=True, session='bad,reviewed')
+        a = SimpleNamespace(title='test', project='kanban', type='task', priority=2, desc=None, acceptance=None, deps=None, json=True, session='bad,reviewed', force=True)
         with patch.object(dispatch, 'begin_warnings', return_value=[]), patch.object(dispatch, 'local_host_name', return_value='test'), patch.object(dispatch, 'out'), patch.object(dispatch, 'bd_json', side_effect=[{'id':'task-test'},{}]) as bd:
             dispatch.cmd_begin(a)
         self.assertEqual(bd.call_args_list[0].args[0][bd.call_args_list[0].args[0].index('-l')+1], 'project:kanban,host:test')
+
+class BeginTitleRule(unittest.TestCase):
+    def test_vague_title_or_thin_description_is_refused(self):
+        self.assertTrue(dispatch.title_problems("修复", ""))
+        self.assertTrue(dispatch.title_problems("会话页 diff 改成可横向滚动：手机上右半截被截掉", "短"))
+        self.assertEqual(dispatch.title_problems("会话页 diff 改成可横向滚动：手机上右半截被截掉", "用户在手机上看任务页的 diff 时只能看到左半截，期望长行能横向滚动或换行"), [])
+
+    def test_begin_exits_without_creating_when_refused(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        a = SimpleNamespace(title='修复', project='kanban', type='task', priority=2, desc=None, acceptance=None, deps=None, json=True, session=None, force=False)
+        with patch.object(dispatch, 'bd_json') as bd, self.assertRaises(SystemExit):
+            dispatch.cmd_begin(a)
+        bd.assert_not_called()
 
 class ServeSymlink(unittest.TestCase):
     def test_resolves_sibling_server_from_real_cli_path(self):
