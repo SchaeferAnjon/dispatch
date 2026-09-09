@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Api } from "../api";
-import { ago, actorOf, delegatedBy, delegatedTo, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall } from "../derive";
+import { ago, actorOf, delegatedBy, delegatedTo, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall, discussionConclusion } from "../derive";
 import type { Activity, Comment, FileChange, HistoryEntry, Issue, Session, SessionRef } from "../types";
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
@@ -230,7 +230,7 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
           return (
             <section className="sec workflow">
               <h4>讨论与分工 <span className="muted">先让几个 Agent 各说一次，再拆成子任务派出去</span>{onDiscuss && discussion.length > 0 && <button className="btn ghost sm" onClick={() => onDiscuss(id)}>可视化 · 继续讨论</button>}</h4>
-              {(() => { const con = comments.filter((c) => c.text.trimStart().startsWith("【结论】")).sort((a, b) => b.created_at.localeCompare(a.created_at))[0]; return con ? <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">总结模型归纳 · {relTime(con.created_at)}</span></div><Markdown src={con.text.trimStart().slice(4).trim()} className="compact" /></div> : null; })()}
+              {(() => { const con = discussionConclusion(issue.description, comments); return con ? <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">总结模型归纳 · {con.when.includes("T") ? relTime(con.when) : con.when}</span></div><Markdown src={con.text} className="compact" /></div> : null; })()}
               {discussion.length > 0 && <div className="discussion">{discussion.map((c) => { const a = actorOf(c.author, me); return <div key={c.id} className="say"><Avatar actor={a} /><div><div className="l1"><b>{a?.name ?? c.author}</b><span className="ts">{relTime(c.created_at)}</span></div><Markdown src={c.text.trimStart().slice(4)} className="compact" /></div></div>; })}</div>}
               {subtasks.length > 0 && <div className="subtasks">{subtasks.map((d) => { const st = statusLabel(d); const who = actorOf(d.assignee, me); return <button key={d.id} className="subtask" onClick={() => onSelect(d.id)}><span className={`st sm ${st.cls}`}>{st.text}</span><span className="t">{d.title}</span>{who && <span className="muted small">{who.name}</span>}<span className="mono muted small">{d.id}</span></button>; })}</div>}
               {issue.status !== "closed" && wf === "" && <div className="task-links"><button className="btn sm" onClick={() => setWf("discuss")}>发起讨论…</button><button className="btn sm" onClick={() => setWf("split")}>拆分并派活…</button></div>}

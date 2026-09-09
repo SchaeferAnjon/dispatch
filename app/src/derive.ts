@@ -321,3 +321,12 @@ export function sessionEvidence(s: Session): string {
   const source = s.state_source === "transcript" ? "实际会话记录" : s.state_source === "hook" || s.last_event ? `事件上报${s.last_event ? ` · ${s.last_event}` : ""}` : s.registered ? "会话检测" : "仅检测到进程，未接入执行状态";
   return `${source} · ${s.last_at ? `最后活动 ${ago(s.last_at)}` : "无活动时间"}`;
 }
+
+// A discussion's conclusion: one block in the task description (`## 讨论结论（when · model）`),
+// replaced each time it is written; older threads keep it as the last 【结论】 comment.
+export function discussionConclusion(description: string | undefined, comments: { text: string; created_at: string; author: string }[]): { text: string; when: string; by: string } | null {
+  const m = /(?:^|\n\n)## 讨论结论（([^）]*?) · ([^）]*?)）\n([\s\S]*?)(?=\n\n## |$)/.exec(description ?? "");
+  if (m) return { text: m[3].trim(), when: m[1], by: m[2] };
+  const c = comments.filter((x) => x.text.trimStart().startsWith("【结论】")).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  return c ? { text: c.text.trimStart().slice(4).trim(), when: c.created_at, by: c.author } : null;
+}

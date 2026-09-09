@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
 import type { Api } from "../api";
 import type { Comment, Issue } from "../types";
-import { actorOf, relTime } from "../derive";
+import { actorOf, relTime, discussionConclusion } from "../derive";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 import { KINDS } from "./Delegate";
 
-const TAG = "【讨论】", CONCLUSION = "【结论】";
+const TAG = "【讨论】";
 // Model choices per agent kind; "" = the agent's own default. Claude ids are the CLI aliases.
 const MODELS: Record<string, [string, string][]> = {
   claude: [["", "默认"], ["claude-fable-5-1", "Fable 5.1（最强）"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku（快、省）"]],
@@ -46,7 +46,10 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
   const [busy, setBusy] = useState(false);
   const [task, setTask] = useState<string>(initialTask ?? "");
   const [comments, setComments] = useState<Comment[]>([]);
-  const [finished, setFinished] = useState<{ conclusion: string } | null>(null);
+  // Two quiet rounds in a row (everyone skipped or only short acknowledgements): suggest wrapping up.
+  const [quiet, setQuiet] = useState(0);
+  // The conclusion just written by 整理成文档, shown before the issue list catches up.
+  const [freshConclusion, setFreshConclusion] = useState<string>("");
   const timer = useRef<number>(0);
 
   // Watch the task's comments while agents talk (and once more after they stop).
@@ -61,7 +64,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
 
   const go = async () => {
     if (!parts.length || (!task && !topic.trim())) return;
-    setBusy(true); setFinished(null);
+    setBusy(true);
     try {
       let id = task;
       if (!id) {
@@ -70,8 +73,9 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
       }
       const raw = await api.on("local", ["discuss", id, "--with", withArg, "--rounds", "1", ...(question.trim() ? ["--question", question.trim()] : []), "--close", "--json"]);
       const r = JSON.parse(raw.slice(Math.max(0, raw.indexOf("{"))));
-      setFinished({ conclusion: r.conclusion || "" });
-      onDone(`讨论结束：${Math.max(0, (r.comments?.length ?? 1) - 1)} 条发言${r.conclusion ? "，结论已写好" : ""}`);
+      setQuiet(r.quiet_rounds ?? 0);
+      const skipped = (r.skipped?.length ?? 0), spoke = (r.comments ?? []).filter((c: Comment) => !/^【讨论】发起[:：]/.test(c.text.trimStart())).length;
+      onDone(`这轮 ${spoke} 条发言${skipped ? `，${skipped} 人没话说` : ""}${(r.quiet_rounds ?? 0) >= 2 ? "；连续两轮没有新提议了，可以整理成文档收尾" : ""}`);
     } catch (e) { onError(String(e)); }
     finally { setBusy(false); }
   };
@@ -105,17 +109,19 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
   const makeDoc = async () => {
     if (!task) return;
     setDocBusy(true);
-    try { const t = await api.on("local", ["discuss-doc", task, "--json"]); const r = JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); setDoc(r.doc); setShowDoc(true); onDone("讨论文档已写进任务，验收项也填好了"); }
+    try { const t = await api.on("local", ["discuss-doc", task, "--json"]); const r = JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); setDoc(r.doc); if (r.conclusion) setFreshConclusion(r.conclusion); setShowDoc(true); setQuiet(0); onDone("结论和讨论文档已写进任务，验收项也填好了"); }
     catch (e) { onError(String(e)); }
     finally { setDocBusy(false); }
   };
-  const existingDoc = task ? (issues.find((i) => i.id === task)?.description ?? "").split("\n\n## 讨论文档")[1] : "";
+  const issue = task ? issues.find((i) => i.id === task) : undefined;
+  const existingDoc = (issue?.description ?? "").split("\n\n## 讨论文档")[1] ?? "";
   const hasDoc = !!(doc || existingDoc);
   const delegate = () => { if (!task) return; onDelegate(task, `你接手 ${task}。先 \`bd show ${task} --json\` 读完整描述——里面有一份讨论文档（背景、结论、方案、步骤、风险、验收），按「步骤」和「验收」做，进展用 dispatch log，做完 dispatch done --reason。有疑问先 \`bd comments ${task}\` 看讨论原文。`); onClose(); };
   const recent = issues.filter((i) => i.labels?.includes("dispatch:discussion")).sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8);
   const said = comments.filter((c) => c.text.trimStart().startsWith(TAG)).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const system = comments.filter((c) => c.text.trimStart().startsWith("【系统】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const conclusion = comments.filter((c) => c.text.trimStart().startsWith(CONCLUSION)).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const stored = discussionConclusion(issue?.description, comments);
+  const conclusion = freshConclusion ? { text: freshConclusion, when: "刚刚", by: "" } : stored;
   // Rounds: a round is what the members said since the person last spoke (the 发起 line or a
   // line typed here). Members may skip a round (SKIP never reaches the board), so nothing is
   // counted per participant.
@@ -155,7 +161,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
 
         {task && (
           <div className="disc-thread">
-            {conclusion && <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">总结模型归纳 · {relTime(conclusion.created_at)}</span></div><Markdown src={conclusion.text.trimStart().slice(CONCLUSION.length).trim()} className="compact" /></div>}
+            {conclusion && <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">总结模型归纳 · {conclusion.when.includes("T") ? relTime(conclusion.when) : conclusion.when}{conclusion.by ? ` · ${conclusion.by}` : ""}</span></div><Markdown src={conclusion.text} className="compact" /></div>}
             {thread.length === 0 && <div className="empty small">{busy ? "Agent 正在起会话、读上下文……第一条发言通常一两分钟后出现" : "还没有发言"}</div>}
             {Array.from({ length: roundsSeen }, (_, i) => i + 1).map((r) => (
               <div key={r} className="disc-round">
@@ -171,7 +177,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
             {thread.filter((t) => t.opener).map(({ c, body }) => <div key={c.id} className="disc-opener muted small">{body}</div>)}
             {system.map((c) => <div key={c.id} className="disc-system small">{c.text.trimStart().slice(4)}</div>)}
             {busy && waiting > 0 && <div className="disc-waiting muted small">还有 {waiting} 个 Agent 在想……（{parts.map((p) => KINDS.find(([x]) => x === p.kind)?.[1] + (p.model ? ` ${p.model}` : "")).join("、")}）</div>}
-            {busy && waiting === 0 && !finished && <div className="disc-waiting muted small">发言都到了，总结模型在写结论……</div>}
+            {!busy && quiet >= 2 && <div className="disc-waiting muted small">连续 {quiet} 轮没有新提议了——可以「整理成文档」收尾，或者你再说一句把话题推进一步。</div>}
           </div>
         )}
         {task && showDoc && (doc || existingDoc) && <div className="disc-doc"><div className="l1"><b>讨论文档</b><span className="muted small">已写进任务描述</span><span className="spacer" /><button className="link sm" onClick={() => setShowDoc(false)}>收起</button></div><Markdown src={doc || existingDoc.replace(/^[^\n]*\n/, "")} className="compact" /></div>}
@@ -182,11 +188,12 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
 
         <div className="foot">
           <button className="btn ghost" disabled={busy} onClick={onClose}>{task ? "关闭" : "取消"}</button>
-          {task && <button className="btn" disabled={busy || docBusy} onClick={hasDoc && !doc ? () => setShowDoc(true) : makeDoc} title="把讨论整理成一份文档（背景、结论、方案、步骤、风险、验收），写进任务">{docBusy ? "整理中…" : hasDoc ? (showDoc ? "文档已生成" : "看文档") : "整理成文档"}</button>}
+          {task && hasDoc && !showDoc && <button className="btn" disabled={busy || docBusy} onClick={() => setShowDoc(true)}>看文档</button>}
+          {task && <button className="btn" disabled={busy || docBusy} onClick={makeDoc} title="收尾：先写（覆盖）一条结论，再把讨论整理成文档（背景、结论、方案、步骤、风险、验收）写进任务；讨论继续后可以再整理一次">{docBusy ? "整理中…" : hasDoc ? "重新整理" : "整理成文档"}</button>}
           {task && hasDoc && <button className="btn" disabled={busy || docBusy} onClick={delegate} title="选一个 Agent 和模型，读这份文档开工">派 Agent 去做 →</button>}
           {task && <button className="btn" disabled={busy} onClick={() => { onOpened(task, "split"); onClose(); }} title="或者拆成几个子任务分给不同 Agent">拆分</button>}
           {task && !busy && <span className="disc-parts-inline">{parts.map((p, i) => <span key={i} className="chip">{KINDS.find(([x]) => x === p.kind)?.[1]}{p.model ? ` · ${p.model}` : ""}</span>)}</span>}
-          <button className="btn primary" disabled={busy || !parts.length || (!task && !topic.trim())} onClick={() => { if (task) setFinished(null); void go(); }}>{busy ? "讨论中…" : task ? "让他们回应" : `请 ${parts.length} 个 Agent 讨论`}</button>
+          <button className="btn primary" disabled={busy || !parts.length || (!task && !topic.trim())} onClick={() => void go()}>{busy ? "讨论中…" : task ? "让他们回应" : `请 ${parts.length} 个 Agent 讨论`}</button>
         </div>
       </div>
     </div>

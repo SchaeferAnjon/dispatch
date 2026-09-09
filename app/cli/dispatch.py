@@ -4235,27 +4235,82 @@ def is_skip(text):
     return t in ("SKIP", "【SKIP】", "跳过") or (t.startswith("SKIP") and len(t) <= 12)
 
 
-def discussion_conclude(tid, title, comments):
-    """After the rounds: the summary model reads every 【讨论】 comment and writes one 【结论】 —
-    where they agree, where they differ, what the next step is — so the person reads one
-    paragraph, not five."""
+CONCLUSION_HEADING = "## 讨论结论"
+
+
+def description_sections(desc):
+    """(original idea text, conclusion block or "", document block or "") — the three parts a
+    discussion task's description is made of; each block keeps its own heading line."""
+    desc = desc or ""
+    doc = ""
+    if "\n\n## 讨论文档" in desc:
+        desc, doc = desc.split("\n\n## 讨论文档", 1)
+        doc = "## 讨论文档" + doc
+    con = ""
+    if "\n\n" + CONCLUSION_HEADING in desc:
+        desc, con = desc.split("\n\n" + CONCLUSION_HEADING, 1)
+        con = CONCLUSION_HEADING + con
+    elif desc.startswith(CONCLUSION_HEADING):
+        con, desc = desc, ""
+    return desc.rstrip(), con.strip(), doc.strip()
+
+
+def description_join(original, conclusion, doc):
+    return "\n\n".join(x for x in (original.rstrip(), conclusion.strip(), doc.strip()) if x)
+
+
+def conclusion_of(issue, comments=()):
+    """The current conclusion: the single block in the description, else (older threads) the
+    last 【结论】 comment. Returns (text, when, by)."""
+    _, con, _ = description_sections(issue.get("description") or "")
+    if con:
+        head, _, body = con.partition("\n")
+        m = re.search(r"（(.+?) · (.+?)）", head)
+        return body.strip(), (m.group(1) if m else ""), (m.group(2) if m else "")
+    last = [c for c in comments if (c.get("text") or "").lstrip().startswith("【结论】")]
+    if last:
+        c = last[-1]
+        return c["text"].lstrip()[4:].strip(), c.get("created_at", ""), c.get("author", "")
+    return "", "", ""
+
+
+def discussion_conclude(tid, title, comments, issue=None):
+    """The summary model reads every 【讨论】 statement and writes one conclusion — where they
+    agree, where they differ, what the next step is. It is one block in the task's description
+    (## 讨论结论), replaced each time, never a growing pile of stale 【结论】 comments."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import summarize
     p = summarize.provider()
     if not p:
         return ""
-    body = "\n\n".join(f"{c.get('author')}：{(c.get('text') or '')[len(DISCUSS_TAG):].strip()}" for c in comments if (c.get("text") or "").startswith(DISCUSS_TAG))
+    said = [c for c in comments if (c.get("text") or "").startswith(DISCUSS_TAG) and not (c.get("text") or "")[len(DISCUSS_TAG):].lstrip().startswith("发起")]
+    body = "\n\n".join(f"{c.get('author')}：{(c.get('text') or '')[len(DISCUSS_TAG):].strip()}" for c in said)
     if not body.strip():
         return ""
-    prompt = ("你是讨论的记录员。下面是几个 AI Agent 对同一个主题各自的发言。用简体中文写一段不超过 200 字的结论，按顺序：大家一致的判断；分歧在哪、各自理由；建议的下一步（最多三条，每条一句）。"
-              "只归纳发言，不加自己的观点，不用标题、不用引号。")
+    prompt = ("你是讨论的记录员。下面是几个 AI Agent（和发起人）对同一个主题的发言，按时间排列。用简体中文写一段不超过 200 字的结论，按顺序：大家一致的判断；分歧在哪、各自理由；还没定的事和建议的下一步（最多三条，每条一句）。"
+              "只归纳发言，不加自己的观点；Agent 的共识不等于发起人的决定，发起人明确说了的才算定了。不用标题、不用引号。")
     try:
         text = summarize.chat(p, prompt, f"主题：{title}\n\n{body}", timeout=120).strip().replace("\n", " ")[:600]
     except Exception:
         return ""
-    if text:
-        sh(["bd", "comments", "add", tid, "【结论】" + text], env={"BEADS_ACTOR": "dispatch"})
+    if not text:
+        return ""
+    issue = issue or bd_json(["show", tid, "--json"])
+    original, _, doc = description_sections(issue.get("description") or "")
+    block = f"{CONCLUSION_HEADING}（{time.strftime('%Y-%m-%d %H:%M')} · {p['id']}:{p['model']}）\n{text}"
+    bd_json(["update", tid, "--description", description_join(original, block, doc), "--json"])
     return text
+
+
+def cmd_discuss_conclude(a):
+    issue = bd_json(["show", a.task, "--json"])
+    if not issue.get("id"):
+        raise SystemExit(f"没有任务 {a.task}")
+    comments = bd_comments(a.task)
+    text = discussion_conclude(a.task, issue.get("title", ""), comments, issue)
+    if not text:
+        raise SystemExit("写不出结论：没有发言，或没有可用的总结模型（设置里选一个）")
+    out({"task": a.task, "conclusion": text}, a.json, lambda x: print(x["conclusion"]))
 
 
 def split_spec(spec):
@@ -4291,12 +4346,15 @@ def discussion_doc(tid):
         raise SystemExit(f"没有任务 {tid}")
     comments = bd_comments(tid)
     said = [c for c in comments if (c.get("text") or "").startswith(DISCUSS_TAG)]
-    con = [c for c in comments if (c.get("text") or "").startswith("【结论】")]
     if not said:
         raise SystemExit("这个讨论还没有发言")
-    desc = issue.get("description") or ""
-    original = desc.split("\n\n## 讨论文档", 1)[0]
-    body = f"念头：{issue.get('title', '').replace('【讨论】', '')}\n{original}\n\n" + "\n\n".join(f"{c.get('author')}：{(c.get('text') or '')[len(DISCUSS_TAG):].strip()}" for c in said) + ("\n\n结论：" + con[-1]["text"][4:].strip() if con else "")
+    # 收尾 = 先把结论写成一条（覆盖旧的），再整理成文档。
+    conclusion = discussion_conclude(tid, issue.get("title", ""), comments, issue)
+    issue = bd_json(["show", tid, "--json"])
+    original, con_block, _ = description_sections(issue.get("description") or "")
+    if not conclusion:
+        conclusion = conclusion_of(issue, comments)[0]
+    body = f"念头：{issue.get('title', '').replace('【讨论】', '')}\n{original}\n\n" + "\n\n".join(f"{c.get('author')}：{(c.get('text') or '')[len(DISCUSS_TAG):].strip()}" for c in said) + (f"\n\n结论：{conclusion}" if conclusion else "")
     doc = summarize.chat(p, DISCUSSION_DOC_PROMPT, body, timeout=180).strip()
     if doc.startswith("```"):
         doc = re.sub(r"^```\w*\n|\n```$", "", doc).strip()
@@ -4306,12 +4364,12 @@ def discussion_doc(tid):
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, f"{tid}.md")
     open(path, "w").write(doc + "\n")
-    new_desc = original.rstrip() + f"\n\n## 讨论文档（{time.strftime('%Y-%m-%d %H:%M')} · {p['id']}:{p['model']}）\n\n" + doc
+    new_desc = description_join(original, con_block, f"## 讨论文档（{time.strftime('%Y-%m-%d %H:%M')} · {p['id']}:{p['model']}）\n\n" + doc)
     bd_json(["update", tid, "--description", new_desc, "--json"])
     m = re.search(r"##\s*验收\s*\n((?:\s*- \[[ x]\].*\n?)+)", doc)
     if m and not (issue.get("acceptance_criteria") or "").strip():
         bd_json(["update", tid, "--acceptance", m.group(1).strip(), "--json"])
-    return {"task": tid, "path": path, "doc": doc, "by": f"{p['id']}:{p['model']}"}
+    return {"task": tid, "path": path, "doc": doc, "conclusion": conclusion, "by": f"{p['id']}:{p['model']}"}
 
 
 def cmd_discuss_doc(a):
@@ -4482,8 +4540,15 @@ def cmd_discuss(a):
                 print(f"· 第 {r} 轮 {who}（Herdr {res.get('pane_id')}）{res.get('status')}（{secs}s）" + (f" · {res.get('warning')}" if res.get("warning") else ""))
     comments = discussion_of(bd_comments(a.task))
     new = comments[before:]
-    substantive = sum(len((c.get("text") or "")) for c in new if not (c.get("text") or "")[len(DISCUSS_TAG):].startswith("发起")) > 400
-    conclusion = discussion_conclude(a.task, title, new) if len(new) > 1 and substantive and not getattr(a, "no_conclude", False) else ""
+    # A quiet round: nobody had anything new (all skipped, or only short acknowledgements).
+    # Two in a row and the app suggests wrapping up; the conclusion itself is written on demand
+    # (--conclude here, discuss-conclude, or 整理成文档), one block, replaced each time.
+    spoke = [c for c in new if not (c.get("text") or "")[len(DISCUSS_TAG):].lstrip().startswith("发起")]
+    quiet = not tui and (not spoke or all(len((c.get("text") or "")) < 140 for c in spoke))
+    state["quiet_rounds"] = (state.get("quiet_rounds") or 0) + 1 if quiet else 0
+    if not tui:
+        discussion_state_save(a.task, state)
+    conclusion = discussion_conclude(a.task, title, comments) if getattr(a, "conclude", False) and spoke else ""
     if a.close:
         for pane in panes.values():
             if pane:
@@ -4493,10 +4558,10 @@ def cmd_discuss(a):
             sh(["bd", "comments", "add", a.task, f"【系统】{m['who']} 第 {m['round']} 轮没有发言：{m['reason']}"], env={"BEADS_ACTOR": "dispatch"})
     elapsed = round(time.time() - t_start, 1)
     result = {"task": a.task, "participants": [f"{k}{':' + m if m else ''}" for k, m in parts], "missing": missing, "skipped": skipped, "rounds": a.rounds, "mode": "tui" if tui else "headless",
-              "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic, "elapsed": elapsed, "timing": timing}
+              "panes": {f"{parts[i][0]}{':' + parts[i][1] if parts[i][1] else ''}#{i}": p for i, p in panes.items()}, "comments": new, "conclusion": conclusion, "topic": topic, "elapsed": elapsed, "timing": timing, "quiet_rounds": state.get("quiet_rounds", 0)}
     if a.json:
         print(json.dumps(result, ensure_ascii=False)); return
-    print(f"\n讨论结束：{len(new)} 条新发言（含发起），{elapsed}s。" + (f"\n结论：{conclusion}" if conclusion else ""))
+    print(f"\n讨论结束：{len(new)} 条新发言（含发起），{elapsed}s。" + (f"\n结论：{conclusion}" if conclusion else "") + ("\n连续两轮没有新提议了，可以收尾：dispatch discuss-doc " + a.task if state.get("quiet_rounds", 0) >= 2 else ""))
     for c in new:
         print(f"— {c.get('author')}：{re.sub(r'\\s+', ' ', (c.get('text') or '')[len(DISCUSS_TAG):]).strip()[:400]}")
     if panes and not a.close:
@@ -4521,9 +4586,9 @@ def cmd_split(a):
     made = []
     for kind, title, desc in specs:
         argv = ["create", title, "-t", "task", "-p", str(parent.get("priority", 2)), "--deps", f"parent-child:{a.task}", "--json"]
-        if proj:
-            argv += ["-l", f"project:{proj}"]
-        argv += ["--description", (desc + "\n\n" if desc else "") + f"父任务 {a.task}「{parent.get('title', '')}」的分工，由 {me} 按讨论拆出。"]
+        labels = [f"discussed-in:{a.task}"] + ([f"project:{proj}"] if proj else [])
+        argv += ["-l", ",".join(labels)]
+        argv += ["--description", (desc + "\n\n" if desc else "") + f"父任务 {a.task}「{parent.get('title', '')}」的分工，由 {me} 按讨论拆出。\n\ndiscussed-in: {a.task}（`bd comments {a.task}` 看谁说过什么，`bd show {a.task}` 看结论和文档）"]
         sub = bd_json(argv)
         sid = sub.get("id")
         if not sid:
@@ -4749,8 +4814,9 @@ def main():
     s = sub.add_parser("review", help="record independent Agent review and its evidence"); s.add_argument("task"); s.add_argument("--verdict", choices=["pass", "changes"], required=True); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("discuss-conclude", help="write (replace) the discussion's conclusion — one block in the task's description"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_conclude)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)
-    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--no-conclude", action="store_true", help="skip the model-written 【结论】"); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
+    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
     s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
     s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])
