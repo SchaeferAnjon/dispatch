@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Activity, Issue } from '../types';
 import type { Api } from '../api';
 import { UNGROUPED_PROJECT, conversationProject, sessionLifecycle } from '../activity';
@@ -7,7 +7,46 @@ import { isArchived, isStarred, rankProjects, type ProjectFlags } from '../proje
 import { ago, projectColor, projectOf, statusLabel } from '../derive';
 import { ConversationRows } from './Workspace';
 import { Markdown } from './Markdown';
-import { MediaProvider } from './Media';
+import { MediaContext, MediaProvider, type AttachmentData } from './Media';
+
+// A research / review / design write-up found in the project's folders or registered by hand.
+type Doc = { id: string; title: string; kind: string; path: string; url?: boolean; html?: boolean; size?: number; mtime?: number; ext?: string; dir?: string; source?: string };
+const shortPath = (p: string) => p.replace(/^\/(?:Users|home)\/[^/]+/, '~').replace('/Library/Mobile Documents/com~apple~CloudDocs', '/iCloud').replace('/Library/Mobile Documents/iCloud~md~obsidian/Documents', '/Obsidian');
+const openExternal = (url: string) => import('@tauri-apps/plugin-opener').then((o) => o.openUrl(url)).catch(() => { window.open(url, '_blank'); });
+
+// Images referenced relatively inside a document are read through the CLI (it only serves files
+// next to the document); the Markdown component then renders them like conversation pictures.
+function DocMedia({ api, project, id, dir, children }: { api: Api; project: string; id: string; dir?: string; children: ReactNode }) {
+  const read = useCallback((ref: string) => api.on('local', ['docs', 'read', project, id, '--asset', ref, '--json']).then((t) => { const d = JSON.parse(t.slice(Math.max(0, t.indexOf('{')))) as AttachmentData & { error?: string }; if (d.error) throw new Error(d.error); return d; }), [api, project, id]);
+  const open = useCallback((ref: string) => { void api.openPath(/^\//.test(ref) ? ref : `${dir || ''}/${ref}`).catch(() => {}); }, [api, dir]);
+  const value = useMemo(() => ({ read, open, thumb: () => undefined }), [read, open]);
+  return <MediaContext.Provider value={value}>{children}</MediaContext.Provider>;
+}
+
+export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: string; docs: Doc[] | null; onReload: () => void }) {
+  const [opened, setOpened] = useState<{ doc: Doc; text: string; dir?: string } | null>(null);
+  const [err, setErr] = useState(''); const [path, setPath] = useState(''); const [kind, setKind] = useState('调研'); const [busy, setBusy] = useState(false);
+  useEffect(() => { setOpened(null); setErr(''); setPath(''); }, [name]);
+  const parse = (t: string) => { const d = JSON.parse(t.slice(Math.max(0, t.indexOf('{')))) as { error?: string; [k: string]: unknown }; if (d.error) throw new Error(d.error); return d; };
+  const open = async (doc: Doc) => {
+    setErr('');
+    if (doc.url) { void openExternal(doc.path); return; }
+    if (doc.html || doc.ext === 'html' || doc.ext === 'htm') { await api.openPath(doc.path).catch((e) => setErr(String(e))); return; }
+    try { const d = parse(await api.on('local', ['docs', 'read', name, doc.id, '--json'])); setOpened({ doc, text: String(d.text || ''), dir: d.dir as string | undefined }); } catch (e) { setErr(String(e)); }
+  };
+  const add = async () => { setBusy(true); setErr(''); try { parse(await api.on('local', ['docs', 'add', name, path.trim(), '--kind', kind, '--json'])); setPath(''); onReload(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
+  const remove = async (doc: Doc) => { setBusy(true); setErr(''); try { parse(await api.on('local', ['docs', 'rm', name, doc.id, '--json'])); onReload(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
+  const actions = (d: Doc) => <>{d.url ? <button className="btn sm" onClick={() => void openExternal(d.path)}>打开链接</button> : <><button className="btn sm" onClick={() => void api.openPath(d.path).catch(() => {})}>在 Finder 打开</button><button className="btn sm" onClick={() => void api.copy(d.path).catch(() => {})}>复制路径</button></>}{d.source === 'registered' && <button className="btn sm" disabled={busy} onClick={() => void remove(d)}>移除登记</button>}</>;
+  if (opened) {
+    const d = opened.doc;
+    return <div className="doc-reader"><div className="hub-tools"><button className="btn sm" onClick={() => setOpened(null)}>‹ 文档列表</button><span className="chip">{d.kind}</span><b>{d.title}</b><code className="muted small doc-path" title={d.path}>{shortPath(d.path)}</code><span className="spacer" />{actions(d)}</div><DocMedia api={api} project={name} id={d.id} dir={opened.dir}><Markdown src={opened.text} /></DocMedia></div>;
+  }
+  return <div className="docs-tab">
+    <form className="doc-add" onSubmit={(e) => { e.preventDefault(); void add(); }}><input aria-label="文档路径或 URL" placeholder="路径或 URL，例如 design/research-2026-09-09.md" value={path} onChange={(e) => setPath(e.target.value)} /><select aria-label="文档类型" value={kind} onChange={(e) => setKind(e.target.value)}>{['调研', '复审', '设计', '文档', '其他'].map((k) => <option key={k}>{k}</option>)}</select><button className="btn primary sm" disabled={busy || !path.trim()}>登记文档…</button></form>
+    {err && <p className="err">{err}</p>}
+    {docs === null ? <p className="empty">正在扫描这个项目的 design/、docs/、研究/…</p> : docs.length === 0 ? <p className="empty">还没有文档。调研、复审产出写到项目的 design/ 目录，或在这里登记一个路径 / URL。</p> : <div className="doc-list">{docs.map((d) => <div className="hub-task doc-row" key={d.id}><button className="link doc-title" onClick={() => void open(d)}>{d.title}</button><span className="chip">{d.kind}</span><span className="muted small">{d.mtime ? new Date(d.mtime * 1000).toLocaleDateString('zh-CN') : ''}{d.size ? ` · ${d.size >= 1048576 ? `${(d.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(d.size / 1024))} KB`}` : ''}</span><code className="muted small doc-path" title={d.path}>{shortPath(d.path)}</code><span className="spacer" />{actions(d)}</div>)}</div>}
+  </div>;
+}
 
 // One paragraph on the whole project — what it is, where it stands, what is next — written by the
 // summary model from the sessions' summaries and the board. Refreshes itself once a day; the
@@ -40,7 +79,9 @@ function OutcomeEditor({project,rows,tasks,initial,api,onSaved,onCancel}:{projec
 
 type Props={onDiscuss?:(name:string)=>void;archiveDays:number;flags:ProjectFlags;onFlag:(name:string,change:{starred?:boolean;archived?:boolean})=>void;connectionError:boolean;unavailable:string[];rows:Activity[];tasks:Issue[];outcomes:Issue[];api:Api;me:string;selected:string|null;onProject:(name:string|null)=>void;onOpen:(id:string)=>void;onTask:(id:string)=>void;onRead:(a:Activity)=>Promise<void>;onSummarize?:(a:Activity)=>Promise<void>;onReload:()=>void;onNew:(a?:Activity)=>void;loaded:boolean};
 export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,unavailable,rows,tasks,outcomes,api,me,selected,onProject,onOpen,onTask,onRead,onSummarize,onReload,onNew,loaded}:Props){
-  const [tab,setTab]=useState(()=>{const t=new URLSearchParams(location.search).get('section')||'sessions';return ['sessions','tasks','outcomes','unassigned','folders'].includes(t)?t:'sessions';}),[query,setQuery]=useState(''),[scheduled,setScheduled]=useState(false),[archived,setArchived]=useState(false),[editor,setEditor]=useState<Issue|null|false>(false),[showOther,setShowOther]=useState(false),[showArchived,setShowArchived]=useState(false);
+  const [tab,setTab]=useState(()=>{const t=new URLSearchParams(location.search).get('section')||'sessions';return ['sessions','tasks','outcomes','unassigned','folders','docs'].includes(t)?t:'sessions';}),[query,setQuery]=useState(''),[scheduled,setScheduled]=useState(false),[archived,setArchived]=useState(false),[editor,setEditor]=useState<Issue|null|false>(false),[showOther,setShowOther]=useState(false),[showArchived,setShowArchived]=useState(false),[docs,setDocs]=useState<Doc[]|null>(null);
+  const loadDocs=useCallback(()=>{setDocs(null);if(!selected)return;void api.on('local',['docs',selected,'--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));setDocs(Array.isArray(d.docs)?d.docs as Doc[]:[]);}).catch(()=>setDocs([]));},[api,selected]);
+  useEffect(()=>{loadDocs();},[loadDocs]);
   const groups=useMemo(()=>projectGroups(rows,tasks,outcomes),[rows,tasks,outcomes]);
   const primary=(p:typeof groups[number])=>p.items.length>0||p.results.length>0||p.sessions.some(a=>!!a.project_override);
   const ranked=useMemo(()=>rankProjects(groups,flags),[groups,flags]);
@@ -55,12 +96,13 @@ export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,u
   const archivedCount=project.sessions.filter(a=>!a.scheduled&&life(a)==='archived').length;
   const visible=project.sessions.filter(a=>scheduled?!!a.scheduled:!a.scheduled&&(archived?life(a)==='archived':life(a)!=='archived')).sort((x,y)=>Number(!!y.starred)-Number(!!x.starred)||y.last_at-x.last_at).filter(a=>`${a.title} ${a.cwd} ${a.overview||''}`.toLowerCase().includes(query.toLowerCase()));
   const unassigned=project.items.filter(i=>!linkedSessions(i).length);
-  const short=(p:string)=>p.replace(/^\/(?:Users|home)\/[^/]+/,'~').replace('/Library/Mobile Documents/com~apple~CloudDocs','/iCloud').replace('/Library/Mobile Documents/iCloud~md~obsidian/Documents','/Obsidian');
+  const short=shortPath;
   const dirs=[...project.sessions.reduce((m,a)=>{const d=(a.cwd||'').replace(/\/+$/,'');if(!d)return m;const cur=m.get(d)||{count:0,last:0,latest:a};cur.count++;if(a.last_at>cur.last){cur.last=a.last_at;cur.latest=a;}return m.set(d,cur);},new Map<string,{count:number;last:number;latest:Activity}>())].sort((x,y)=>y[1].last-x[1].last);
-  return <div className="project-hub"><button className="link" onClick={()=>{setQuery('');onProject(null);}}>‹ 全部项目</button><header className="hub-heading"><div><h2>{project.name}{starBtn(project.name)}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p><ProjectSummary api={api} name={project.name}/></div><div className="hub-header-actions">{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}<button className="btn primary" onClick={()=>onNew(project.sessions[0])}>在此项目新建会话</button><button className="btn" onClick={()=>onFlag(project.name,{archived:!isArchived(flags,project.name)})} title={isArchived(flags,project.name)?'恢复到工作台和项目列表':'做完了、暂时不用：从工作台和项目列表隐藏，随时可找回'}>{isArchived(flags,project.name)?'取消归档':'归档'}</button></div></header><div className="hub-tabs views">{[['sessions','会话',project.sessions.filter(a=>!a.scheduled).length],['tasks','任务',project.items.length],['outcomes','成果',project.results.length],['unassigned','待归属任务',unassigned.length],['folders','目录',dirs.length]].map(([id,label,n])=><button className={tab===id?'on':''} key={id} onClick={()=>{setTab(String(id));setEditor(false);}}>{label} {n}</button>)}</div>
+  return <div className="project-hub"><button className="link" onClick={()=>{setQuery('');onProject(null);}}>‹ 全部项目</button><header className="hub-heading"><div><h2>{project.name}{starBtn(project.name)}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p><ProjectSummary api={api} name={project.name}/></div><div className="hub-header-actions">{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}<button className="btn primary" onClick={()=>onNew(project.sessions[0])}>在此项目新建会话</button><button className="btn" onClick={()=>onFlag(project.name,{archived:!isArchived(flags,project.name)})} title={isArchived(flags,project.name)?'恢复到工作台和项目列表':'做完了、暂时不用：从工作台和项目列表隐藏，随时可找回'}>{isArchived(flags,project.name)?'取消归档':'归档'}</button></div></header><div className="hub-tabs views">{[['sessions','会话',project.sessions.filter(a=>!a.scheduled).length],['tasks','任务',project.items.length],['outcomes','成果',project.results.length],['unassigned','待归属任务',unassigned.length],['folders','目录',dirs.length],['docs','文档',docs?docs.length:'…']].map(([id,label,n])=><button className={tab===id?'on':''} key={id} onClick={()=>{setTab(String(id));setEditor(false);}}>{label} {n}</button>)}</div>
   {tab==='sessions'&&<><div className="hub-tools"><input aria-label="搜索项目会话" placeholder="搜索这个项目的会话…" value={query} onChange={e=>setQuery(e.target.value)}/><button className={`btn sm${archived?' on':''}`} onClick={()=>{setArchived(!archived);setScheduled(false);}} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>{archived?'返回最近会话':`已归档 ${archivedCount}`}</button><button className="btn sm" onClick={()=>{setScheduled(!scheduled);setArchived(false);}}>{scheduled?'返回普通会话':`定时会话 ${project.sessions.filter(a=>a.scheduled).length}`}</button></div><ConversationRows rows={visible} me={me} onOpen={onOpen} onRead={onRead} onSummarize={onSummarize} taskContent={a=>{const linked=project.items.filter(i=>linkedSessions(i).includes(a.session_id));return <details className="conversation-tasks"><summary>会话任务 · {linked.length} 项{linked.length?` · ${linked.filter(i=>i.status==='closed').length} 已完成`:''}</summary>{linked.length?linked.map(taskRow):<p className="muted small">没有明确关联的任务。可在“待归属任务”中指定；聊天里的提及不自动算作归属。</p>}</details>;}}/>{visible.length===0&&<p className="empty">{archived?'没有归档的会话。':'这个分类没有会话。'}</p>}</>}
   {(tab==='tasks'||tab==='unassigned')&&<><p className="muted">任务显示发起和参与会话；历史任务没有明确关系时保留待归属，不根据提及次数猜测。</p>{(tab==='unassigned'?unassigned:project.items).map(taskRow)}{tab==='unassigned'&&!unassigned.length&&<p className="empty">任务都已有明确关联。</p>}</>}
   {tab==='folders'&&<><p className="muted">这个项目的会话在哪些文件夹里发生过。</p>{dirs.map(([d,info])=><div className="hub-task hub-dir" key={d}><div className="hub-dir-head"><code title={d}>{short(d)}</code><span className="muted small">{info.count} 个会话 · 最近 {ago(info.last)}</span></div><div className="task-links"><button className="btn sm" onClick={()=>onNew(info.latest)}>在此目录新建会话</button><button className="btn sm" onClick={()=>api.openPath(d).catch(()=>{})}>在 Finder 打开</button><button className="btn sm" onClick={()=>api.copy(`cd '${d}'`).catch(()=>{})}>复制 cd</button></div></div>)}{!dirs.length&&<p className="empty">没有记录到工作目录。</p>}</>}
+  {tab==='docs'&&<ProjectDocs api={api} name={project.name} docs={docs} onReload={loadDocs}/>}
   {tab==='outcomes'&&<>{editor!==false?<OutcomeEditor key={editor?.id||"new"} project={project.name} rows={project.sessions} tasks={project.items} initial={editor||undefined} api={api} onCancel={()=>setEditor(false)} onSaved={()=>{setEditor(false);onReload();}}/>:<button className="btn primary" onClick={()=>setEditor(null)}>登记成果</button>}{project.results.map(r=><article className="outcome-card" key={r.id}><div className="hub-heading"><h3>{r.title}</h3><button className="btn sm" onClick={()=>setEditor(r)}>编辑</button></div><MediaProvider api={api} session={rows.find(a=>linkedSessions(r).includes(a.session_id))}><Markdown src={r.description||''}/></MediaProvider><div className="task-links">{sourceTasks(r).map(id=><button key={id} className="chip" onClick={()=>onTask(id)}>任务 · {tasks.find(i=>i.id===id)?.title||id}</button>)}{linkedSessions(r).map(id=><button key={id} className="chip" onClick={()=>onOpen(id)}>会话 · {rows.find(a=>a.session_id===id)?.title||id.slice(0,8)} ↗</button>)}</div></article>)}{!project.results.length&&editor===false&&<p className="empty">还没有登记成果。可以把多个任务、多个会话的交付汇总在这里。</p>}<details className="hub-history"><summary>历史完成记录 · {project.items.filter(i=>i.status==='closed').length} 项</summary><p className="muted small">这些是任务完成说明，尚未整理为独立成果。</p>{project.items.filter(i=>i.status==='closed').map(i=><div className="hub-task" key={i.id}><button className="link" onClick={()=>onTask(i.id)}>{i.title}</button><p>{i.close_reason||'打开任务查看完成说明'}</p></div>)}</details></>}
   </div>;
 }

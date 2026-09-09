@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -122,5 +123,55 @@ class HttpCommands(unittest.TestCase):
         with patch.object(serve,'sh',return_value='{}') as sh:
             serve.commands()['dispatch_on']({'host':'mini','args':['rules','check','--path','/a b.md'],'stdin':'hello\nworld'},'reader')
         self.assertIn('--host',sh.call_args.args[0]);self.assertIn('/a b.md',sh.call_args.args[0]);self.assertEqual(sh.call_args.kwargs['input'],'hello\nworld');self.assertEqual(sh.call_args.kwargs['env']['BEADS_ACTOR'],'reader')
+
+class ProjectDocuments(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
+    def write(self,rel,text='# Title\n'):
+        p=self.root/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text);return p
+    def test_kind_and_title(self):
+        self.assertEqual(dispatch.docs_kind_of('oss-research-2026-09-09.md'),'调研')
+        self.assertEqual(dispatch.docs_kind_of('review-2026-09-08.md'),'复审')
+        self.assertEqual(dispatch.docs_kind_of('调研报告.md'),'调研')
+        self.assertEqual(dispatch.docs_kind_of('ui-mockup.html'),'文档')
+        p=self.write('design/a.md','\n\n# 真标题\nbody\n');self.assertEqual(dispatch.docs_title(str(p)),'真标题')
+        h=self.write('design/b.html','<html><head><title>页面标题</title></head></html>');self.assertEqual(dispatch.docs_title(str(h)),'页面标题')
+        self.assertEqual(dispatch.docs_title(str(self.write('design/c.md','no heading\n'))),'c')
+    def test_scan_depth_and_skips(self):
+        self.write('design/top.md');self.write('design/sub/one.md');self.write('design/sub/deep/two.md');self.write('design/sub/deep/deeper/three.md')
+        self.write('design/node_modules/pkg/x.md');self.write('design/shot.png');self.write('other/not.md')
+        rows=dispatch.docs_scan([str(self.root)])
+        self.assertEqual(sorted(os.path.basename(r['path']) for r in rows),['one.md','top.md','two.md'])
+        self.assertTrue(all(r['id'] for r in rows))
+    def test_merge_prefers_registration_and_sorts(self):
+        p=self.write('design/old.md','# Scanned\n');os.utime(p,(100,100))
+        scanned=dispatch.docs_scan([str(self.root)])
+        reg=dispatch.docs_registered_rows([{'id':'x','path':str(p),'title':'登记标题','kind':'设计','added_at':200}])
+        rows=dispatch.docs_merge(scanned,reg)
+        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['title'],'登记标题');self.assertEqual(rows[0]['kind'],'设计');self.assertEqual(rows[0]['source'],'registered')
+        u=dispatch.docs_registered_rows([{'id':'y','path':'https://example.com/paper.md','title':'','kind':'','added_at':300}])
+        rows=dispatch.docs_merge(scanned,u)
+        self.assertEqual(rows[0]['path'],'https://example.com/paper.md');self.assertTrue(rows[0]['url']);self.assertEqual(rows[0]['kind'],'其他')
+    def test_register_and_remove_roundtrip(self):
+        p=self.write('design/research-2026.md','# 调研\n')
+        store={}
+        def save(project,entries): store[project]=list(entries)
+        def load(project): return store.get(project,[])
+        with patch.object(dispatch,'docs_registered',side_effect=load),patch.object(dispatch,'docs_save',side_effect=save):
+            row=dispatch.docs_register('Proj',str(p))
+            self.assertEqual(row['kind'],'调研');self.assertEqual(store['Proj'][0]['id'],row['id'])
+            self.assertTrue(dispatch.docs_unregister('Proj',row['id']))
+            self.assertFalse(dispatch.docs_unregister('Proj','nope'))
+            self.assertEqual(store['Proj'],[])
+    def test_read_markdown_html_and_asset(self):
+        p=self.write('design/read-me.md','# 读我\n![shot](screenshots/shot.png)\n')
+        (self.root/'design/screenshots').mkdir();(self.root/'design/screenshots/shot.png').write_bytes(b'\x89PNG\r\nimg')
+        html=self.write('design/page.html','<title>Page</title>')
+        with patch.object(dispatch,'docs_list',return_value=[{'id':'m','path':str(p),'title':'读我','kind':'文档','url':False},{'id':'h','path':str(html),'title':'Page','kind':'文档','url':False}]):
+            md=dispatch.docs_read('P','m');self.assertIn('读我',md['text']);self.assertFalse(md['html'])
+            hp=dispatch.docs_read('P','h');self.assertTrue(hp['html']);self.assertEqual(hp['text'],'')
+            a=dispatch.docs_read('P','m','screenshots/shot.png');self.assertTrue(a['data']);self.assertEqual(a['mime'],'image/png')
+        with self.assertRaises(ValueError): dispatch.docs_asset(str(p),'../../etc/passwd')
+
 
 if __name__=='__main__':unittest.main()

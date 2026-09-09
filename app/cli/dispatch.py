@@ -14,6 +14,8 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch prime [--hook-json]      compact session-start digest: identity, this project's tasks, relevant wiki, who else is in this dir, your quota
   dispatch claim <task> [--force]   claim without stealing: refuses a task another agent is working on
   dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
+  dispatch docs <project>           research / review / design documents of a project (design/, docs/, 研究/ + registered ones)
+  dispatch docs add|rm|read <project> …   register a path/URL, remove one, or read its markdown
   dispatch wiki search "<句子>" --semantic   find entries by meaning (智谱 embedding-3 + sqlite-vec), not spelling
   dispatch wiki related <task-id>   the pits that mean the same as this task (task page 右栏)
   dispatch pit add|list|show        = wiki --kind pit
@@ -27,7 +29,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
 Data lives in ~/tasks/.dispatch (session registry, transcript index) and the
 Beads board at $BEADS_DIR. bd remains the tool for tasks themselves.
 """
-import argparse, glob, json, os, re, shutil, subprocess, sys, tarfile, tempfile, time
+import argparse, glob, hashlib, json, os, re, shutil, subprocess, sys, tarfile, tempfile, time
 
 HOME = os.path.expanduser("~")
 DISPATCH_DIR = os.path.join(HOME, "tasks", ".dispatch")
@@ -4188,6 +4190,333 @@ def cmd_task_archive(a):
         lambda x: print(f"已归档 {x['count']} 项完成超过 {x['days']} 天的任务" + ("：" + "、".join(x["archived"]) if x["archived"] else "")))
 
 
+# ---------------------------------------------------------------- project documents (the 文档 tab)
+# A project's research and review write-ups live in its repo (design/, docs/, 研究/), which the
+# project page could not see. This scans those folders and adds explicitly registered paths/URLs
+# (one shared bd memory per project, like dispatch-projects). The app only renders what this returns.
+DOC_DIR_NAMES = ("design", "docs", "研究")
+DOC_EXTS = (".md", ".html", ".htm")
+DOC_KINDS = ("调研", "复审", "设计", "文档", "其他")
+DOCS_KEY_PREFIX = INTERNAL_MEMORY_PREFIX + "docs-"   # dispatch-docs-<project>
+DOC_MAX_READ = 4 * 1024 * 1024
+DOC_MAX_ASSET = 20 * 1024 * 1024
+
+
+def docs_key(project):
+    return DOCS_KEY_PREFIX + (project or "").strip()
+
+
+def docs_id(path):
+    return hashlib.sha256(os.path.expanduser(path).encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def docs_is_url(value):
+    return bool(re.match(r"^[a-zA-Z][\w+.-]*://", (value or "").strip()))
+
+
+def docs_kind_of(name):
+    """research/调研 → 调研, review/复审 → 复审, anything else in a doc folder → 文档."""
+    low = (name or "").lower()
+    if "research" in low or "调研" in name:
+        return "调研"
+    if "review" in low or "复审" in name:
+        return "复审"
+    return "文档"
+
+
+def docs_title(path, limit=80):
+    """First `# heading` (or <title>/<h1>), else the file name without its suffix."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            head = f.read(8192)
+    except OSError:
+        return os.path.splitext(os.path.basename(path))[0][:limit]
+    if path.lower().endswith((".html", ".htm")):
+        m = re.search(r"<title[^>]*>(.*?)</title>", head, re.S | re.I) or re.search(r"<h1[^>]*>(.*?)</h1>", head, re.S | re.I)
+        if m:
+            t = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m.group(1))).strip()
+            if t:
+                return t[:limit]
+    for line in head.splitlines():
+        m = re.match(r"^#\s+(.+?)\s*#*\s*$", line)
+        if m:
+            return m.group(1).strip()[:limit]
+    return os.path.splitext(os.path.basename(path))[0][:limit]
+
+
+def docs_entries_parse(raw):
+    try:
+        rows = json.loads(raw) if raw else []
+    except ValueError:
+        return []
+    if not isinstance(rows, list):
+        return []
+    out = []
+    for r in rows:
+        if not isinstance(r, dict) or not isinstance(r.get("path"), str) or not r["path"].strip():
+            continue
+        kind = r.get("kind") if r.get("kind") in DOC_KINDS else ""
+        out.append({"id": r.get("id") or docs_id(r["path"]), "path": r["path"].strip(),
+                    "title": (r.get("title") or "").strip(), "kind": kind,
+                    "added_at": float(r.get("added_at") or 0)})
+    return out
+
+
+def docs_registered(project):
+    code, o, _ = sh(["bd", "memories", "--json"])
+    if code != 0:
+        return []
+    try:
+        d = json.loads(o[o.find("{"):])
+    except Exception:
+        return []
+    return docs_entries_parse(d.get(docs_key(project), ""))
+
+
+def docs_save(project, entries):
+    wiki_store(docs_key(project), json.dumps(entries, ensure_ascii=False, sort_keys=True))
+
+
+def docs_project_dirs(project):
+    """Where this project's files live: the git roots of its sessions' working directories,
+    plus ~/Projects/<name>. Mirrors task_project_dir, without one bd call per task."""
+    name = (project or "").strip()
+    out, seen = [], set()
+
+    def add(d):
+        d = os.path.abspath(os.path.expanduser(d or ""))
+        if d and d not in seen and os.path.isdir(d):
+            seen.add(d); out.append(d)
+
+    try:
+        names = project_names()
+        roots = settings_load().get("workspace_roots") or []
+        by_cwd = {}
+        for e in load_index().values():
+            cwd = (e.get("cwd") or "").rstrip("/")
+            if not cwd or not os.path.isdir(cwd):
+                continue
+            if cwd not in by_cwd:
+                by_cwd[cwd] = project_of_cwd(cwd, names, roots).lower() == name.lower()
+            if by_cwd[cwd]:
+                add(git_root_of(cwd) or cwd)
+    except Exception:
+        pass
+    add(os.path.join(HOME, "Projects", name))
+    return out
+
+
+def docs_scan(dirs, max_depth=2):
+    """Every .md/.html under design/, docs/ and 研究/ of the given roots, at most two folders deep."""
+    rows, seen = [], set()
+    for base in dirs:
+        for sub in DOC_DIR_NAMES:
+            root = os.path.abspath(os.path.join(base, sub))
+            if not os.path.isdir(root):
+                continue
+            for cur, dnames, fnames in os.walk(root):
+                rel = os.path.relpath(cur, root)
+                depth = 0 if rel == "." else rel.count(os.sep) + 1
+                dnames[:] = [d for d in dnames if d != "node_modules" and not d.startswith(".")]
+                if depth >= max_depth:
+                    dnames[:] = []
+                for fname in fnames:
+                    if os.path.splitext(fname)[1].lower() not in DOC_EXTS:
+                        continue
+                    real = os.path.realpath(os.path.join(cur, fname))
+                    if real in seen:
+                        continue
+                    seen.add(real)
+                    try:
+                        st = os.stat(real)
+                    except OSError:
+                        continue
+                    rows.append({"id": docs_id(real), "title": docs_title(real), "kind": docs_kind_of(fname),
+                                 "path": real, "size": st.st_size, "mtime": st.st_mtime, "source": "scan",
+                                 "ext": os.path.splitext(fname)[1].lower().lstrip("."), "dir": os.path.dirname(real)})
+    return rows
+
+
+def docs_registered_rows(entries):
+    rows = []
+    for e in entries:
+        url = docs_is_url(e["path"])
+        row = {"id": e["id"], "title": e["title"], "kind": e["kind"], "path": e["path"], "url": url,
+               "source": "registered", "mtime": e.get("added_at") or 0}
+        if url:
+            if not row["title"]:
+                row["title"] = e["path"].rstrip("/").rsplit("/", 1)[-1] or e["path"]
+            if not row["kind"]:
+                row["kind"] = "其他"
+        else:
+            path = os.path.abspath(os.path.expanduser(e["path"]))
+            row["path"] = path
+            row["dir"] = os.path.dirname(path)
+            row["ext"] = os.path.splitext(path)[1].lower().lstrip(".")
+            if os.path.isfile(path):
+                try:
+                    st = os.stat(path)
+                    row["size"], row["mtime"] = st.st_size, st.st_mtime
+                except OSError:
+                    pass
+                if not row["title"]:
+                    row["title"] = docs_title(path)
+                if not row["kind"]:
+                    row["kind"] = docs_kind_of(os.path.basename(path))
+            if not row["title"]:
+                row["title"] = os.path.basename(path)
+            if not row["kind"]:
+                row["kind"] = "文档"
+        rows.append(row)
+    return rows
+
+
+def docs_merge(scanned, registered):
+    """Scanned files plus registered paths/URLs, newest first; a registration wins on title/kind."""
+    by = {}
+    for r in scanned:
+        by[os.path.realpath(r["path"])] = r
+    for r in registered:
+        key = r["path"] if r.get("url") else os.path.realpath(r["path"])
+        old = by.get(key)
+        if not old:
+            by[key] = r
+            continue
+        merged = dict(old)
+        for k, v in r.items():
+            if v not in ("", None, 0, 0.0, False) or k in ("url", "size", "mtime"):
+                merged[k] = v
+        merged["source"] = "registered"
+        by[key] = merged
+    rows = list(by.values())
+    rows.sort(key=lambda r: r.get("mtime") or 0, reverse=True)
+    return rows
+
+
+def docs_list(project, dirs=None):
+    name = (project or "").strip()
+    if not name:
+        raise ValueError("请给出项目名")
+    return docs_merge(docs_scan(dirs if dirs is not None else docs_project_dirs(name)),
+                      docs_registered_rows(docs_registered(name)))
+
+
+def docs_register(project, value, title="", kind=""):
+    name = (project or "").strip()
+    if not name:
+        raise ValueError("请给出项目名")
+    value = (value or "").strip().strip("<>")
+    if not value:
+        raise ValueError("请给出文档路径或 URL")
+    if kind and kind not in DOC_KINDS:
+        raise ValueError("类型只能是：" + " / ".join(DOC_KINDS))
+    url = docs_is_url(value)
+    path = value if url else os.path.abspath(os.path.expanduser(value))
+    if not url:
+        if not os.path.isfile(path):
+            raise ValueError("找不到这个文件：" + path)
+        if not title:
+            title = docs_title(path)
+    entry = {"id": docs_id(path), "path": path, "title": (title or "").strip()[:120],
+             "kind": kind or ("其他" if url else docs_kind_of(os.path.basename(path))),
+             "added_at": time.time()}
+    entries = [e for e in docs_registered(name) if e["id"] != entry["id"]]
+    entries.append(entry)
+    docs_save(name, entries)
+    return docs_registered_rows([entry])[0]
+
+
+def docs_unregister(project, doc_id):
+    entries = docs_registered(project)
+    keep = [e for e in entries if e["id"] != doc_id]
+    if len(keep) == len(entries):
+        return False
+    docs_save(project, keep)
+    return True
+
+
+def docs_read(project, doc_id, asset=""):
+    """Markdown body (html/URL stay on disk — the app opens those with openPath)."""
+    row = next((r for r in docs_list(project) if r["id"] == doc_id), None)
+    if not row:
+        raise ValueError("找不到这份文档：" + doc_id)
+    if row.get("url"):
+        if asset:
+            raise ValueError("网页文档没有本地附件")
+        return {**row, "html": True, "text": ""}
+    path = row["path"]
+    if not os.path.isfile(path):
+        raise ValueError("文件不在了：" + path)
+    if asset:
+        return docs_asset(path, asset)
+    if os.path.splitext(path)[1].lower() in (".html", ".htm"):
+        return {**row, "html": True, "text": ""}
+    if os.path.getsize(path) > DOC_MAX_READ:
+        raise ValueError("文档超过 4 MB，请在外部应用打开")
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    return {**row, "html": False, "text": text, "dir": os.path.dirname(path)}
+
+
+def docs_asset(doc_path, rel):
+    """An image/file next to a document, for relative references inside the markdown."""
+    import base64, mimetypes
+    base = os.path.realpath(os.path.dirname(doc_path))
+    target = os.path.realpath(os.path.join(base, (rel or "").split("#")[0].split("?")[0]))
+    if target != base and not target.startswith(base + os.sep):
+        raise ValueError("只允许读取文档同目录下的文件")
+    if not os.path.isfile(target):
+        raise ValueError("文件不在了：" + rel)
+    if os.path.getsize(target) > DOC_MAX_ASSET:
+        raise ValueError("附件超过 20 MB，请在原应用打开")
+    data = open(target, "rb").read()
+    mime = mimetypes.guess_type(target)[0] or "application/octet-stream"
+    if data.startswith(b"\xff\xd8\xff"):
+        mime = "image/jpeg"
+    elif data.startswith(b"\x89PNG\r\n"):
+        mime = "image/png"
+    return {"name": os.path.basename(target), "path": target, "mime": mime,
+            "size": len(data), "data": base64.b64encode(data).decode()}
+
+
+def cmd_docs(a):
+    op = (a.op or "").strip()
+    project, extra = (a.project or "").strip(), list(a.extra or [])
+    if op not in ("add", "rm", "read", "list"):
+        # `dispatch docs <project>` — the project is the first positional argument.
+        extra = ([project] if project else []) + extra
+        project, op = op, "list"
+    try:
+        if op == "list":
+            rows = docs_list(project)
+            result = {"project": project, "docs": rows, "dirs": docs_project_dirs(project)}
+            out(result, a.json, lambda r: print(f"{r['project']}：{len(r['docs'])} 份文档") or [print(f"  {d['kind']} · {d['title']} · {d['path']}") for d in r["docs"]])
+            return
+        if op == "read":
+            if not extra:
+                raise ValueError("用法：dispatch docs read <项目> <文档 id>")
+            row = docs_read(project, extra[0], a.asset or "")
+            out(row, a.json, lambda r: print(r.get("text") or r["path"]))
+            return
+        if op == "add":
+            if not extra:
+                raise ValueError("用法：dispatch docs add <项目> <路径或 URL> [--title …] [--kind …]")
+            row = docs_register(project, extra[0], title=a.title or "", kind=a.kind or "")
+            out(row, a.json, lambda r: print(f"已登记：{r['kind']} · {r['title']} → {r['path']}"))
+            return
+        if not extra:
+            raise ValueError("用法：dispatch docs rm <项目> <文档 id>")
+        removed = docs_unregister(project, extra[0])
+        out({"removed": removed, "project": project}, a.json,
+            lambda r: print(f"已移除 {r['project']} 的登记" if r["removed"] else "没找到这条登记"))
+    except ValueError as e:
+        if a.json:
+            print(json.dumps({"error": str(e)}, ensure_ascii=False))
+        else:
+            print(f"✗ {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def wiki_line(it, width=170):
     lab = WIKI_KINDS[it["kind"]]["label"] if it["kind"] else "记忆"
     body = it["text"]
@@ -6140,6 +6469,7 @@ def main():
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
     s = sub.add_parser("notify", help="push a message to the phone (ntfy / Bark) or a macOS banner; channels come from dispatch env NTFY_URL / BARK_KEY"); s.add_argument("title"); s.add_argument("body", nargs="?", default=""); s.add_argument("--url", default="", help="link to open when the notification is tapped"); s.add_argument("--level", choices=["normal", "high"], default="normal"); s.add_argument("--key", default="", help="dedup key: the same key inside 5 minutes is sent once"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_notify)
+    s = sub.add_parser("docs", help="项目页「文档」：扫描 design/ docs/ 研究/ 下的 .md/.html，加上登记过的路径/URL"); s.add_argument("op", nargs="?", default="", help="add | rm | read（省略时第一个参数就是项目名，列出它的文档）"); s.add_argument("project", nargs="?"); s.add_argument("extra", nargs="*", help="add/read/rm：路径或 URL、文档 id"); s.add_argument("--title", help="add：显示标题（默认取首个 # 行或文件名）"); s.add_argument("--kind", choices=list(DOC_KINDS), help="add：类型"); s.add_argument("--asset", default="", help="read：读文档同目录下的相对文件（图片），返回 base64"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_docs)
     s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
