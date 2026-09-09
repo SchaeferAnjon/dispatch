@@ -4,7 +4,7 @@ import type { Comment, Issue } from "../types";
 import { actorOf, relTime, discussionConclusion } from "../derive";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
-import { KINDS } from "./Delegate";
+import { KINDS, KIND_ACTOR } from "./Delegate";
 
 const TAG = "【讨论】";
 // Model choices per agent kind; "" = the agent's own default. Claude ids are the CLI aliases.
@@ -58,9 +58,26 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
     let alive = true;
     const tick = async () => { try { const cs = await api.comments(task); if (alive) setComments(cs); } catch { /* next tick */ } };
     void tick();
-    if (busy) timer.current = window.setInterval(tick, 5_000);
+    if (busy) timer.current = window.setInterval(tick, 3_000);
     return () => { alive = false; window.clearInterval(timer.current); };
   }, [api, task, busy]);
+  // The typing bubbles: the CLI streams each member's reply into discussions/<task>.live.json
+  // (queued → thinking → typing + text so far → done → posted); poll it while a round runs.
+  type LiveMember = { kind: string; status: string; text: string; at: number };
+  const [live, setLive] = useState<{ round: number; started: number; finished?: number; members: Record<string, LiveMember> } | null>(null);
+  useEffect(() => {
+    if (!task || !busy) { setLive(null); return; }
+    let alive = true;
+    const poll = async () => { try { const t = await api.on("local", ["discuss-live", task, "--json"]); const d = JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); if (alive && d.members) setLive(d); } catch { /* next tick */ } };
+    void poll();
+    const h = window.setInterval(poll, 1_000);
+    return () => { alive = false; window.clearInterval(h); };
+  }, [api, task, busy]);
+  // Once a member's reply is posted, the comment poll shows it; the bubble stays until then.
+  const postedAt = (m: LiveMember) => comments.some((c) => c.text.trimStart().startsWith(TAG) && actorOf(c.author, me)?.id === KIND_ACTOR[m.kind] && Date.parse(c.created_at) / 1000 >= (live?.started ?? 0) - 1);
+  const bubbles = busy && live ? Object.entries(live.members).filter(([, m]) => m.status === "thinking" || m.status === "typing" || m.status === "done" || (m.status === "posted" && !postedAt(m))) : [];
+  const skippedNow = busy && live ? Object.entries(live.members).filter(([, m]) => m.status === "skip").map(([w]) => w) : [];
+  const erroredNow = busy && live ? Object.entries(live.members).filter(([, m]) => m.status === "error") : [];
 
   const go = async () => {
     if (!parts.length || (!task && !topic.trim())) return;
@@ -176,7 +193,17 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
             ))}
             {thread.filter((t) => t.opener).map(({ c, body }) => <div key={c.id} className="disc-opener muted small">{body}</div>)}
             {system.map((c) => <div key={c.id} className="disc-system small">{c.text.trimStart().slice(4)}</div>)}
-            {busy && waiting > 0 && <div className="disc-waiting muted small">还有 {waiting} 个 Agent 在想……（{parts.map((p) => KINDS.find(([x]) => x === p.kind)?.[1] + (p.model ? ` ${p.model}` : "")).join("、")}）</div>}
+            {bubbles.map(([who, m]) => { const a = actorOf(KIND_ACTOR[m.kind] ?? m.kind, me); return (
+              <div key={who} className="disc-say disc-live">
+                <Avatar actor={a} size={28} />
+                <div className="disc-bubble"><div className="l1"><b>{a?.name ?? who}</b><span className="muted small">{m.status === "thinking" ? "正在想" : m.status === "typing" ? "正在输入" : "写好了"}</span></div>
+                  {m.text ? <Markdown src={m.text + (m.status === "typing" ? " ▍" : "")} className="compact" /> : <span className="disc-dots"><i /><i /><i /></span>}
+                </div>
+              </div>
+            ); })}
+            {skippedNow.length > 0 && <div className="disc-opener muted small">{skippedNow.join("、")} 这轮没话说</div>}
+            {erroredNow.map(([who, m]) => <div key={who} className="disc-system small">{who}：{m.text || "没说上话"}</div>)}
+            {busy && waiting > 0 && bubbles.length === 0 && <div className="disc-waiting muted small">{live ? `${live.members ? Object.values(live.members).filter((m) => m.status === "queued").length : waiting} 个成员排队中…` : "正在起会话……"}</div>}
             {!busy && quiet >= 2 && <div className="disc-waiting muted small">连续 {quiet} 轮没有新提议了——可以「整理成文档」收尾，或者你再说一句把话题推进一步。</div>}
           </div>
         )}
