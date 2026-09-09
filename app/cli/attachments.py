@@ -42,6 +42,11 @@ def portable_html(content, parent):
     parser=Embed();parser.feed(content);return ''.join(parser.parts)
 
 
+# A picture named by path alone in a message: a phone photo the reply box attached, a screenshot
+# the agent points at. Only image suffixes, only absolute or ~ paths.
+BARE_IMAGE = re.compile(r'(?<![\w/(\[])(?:/|~/)[^\s"\'()<>\[\]]+?\.(?:png|jpe?g|gif|webp)\b', re.I)
+
+
 def local_path(value, cwd):
     value = unquote(value.strip().strip('<>'))
     if value.startswith('file://'): value = urlparse(value).path
@@ -69,6 +74,7 @@ def scan(ref):
         for m in re.finditer(r'!?\[([^\]\n]*)\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\s*\)', s): add(m[2], ts, label=m[1])
         for m in re.finditer(r'<image\b[^>]*\bpath=["\']([^"\']+)["\']', s): add(m[1], ts)
         for m in re.finditer(r'^## [^\n]+?:\s+((?:/|~/)[^\n]+)$', s, re.M): add(m[1], ts)
+        for m in BARE_IMAGE.finditer(s): add(m[0], ts)
     try:
         with open(ref['path'], encoding='utf-8', errors='replace') as f:
             for line in f:

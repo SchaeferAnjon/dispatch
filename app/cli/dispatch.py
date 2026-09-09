@@ -1672,6 +1672,20 @@ def cmd_list(a):
     out(refs, a.json, text)
 
 
+def _text_images(txt, cwd):
+    """Attachment ids for pictures a message names by path (see attachments.scan)."""
+    import hashlib
+    from attachments import BARE_IMAGE, local_path
+    ids = []
+    for m in BARE_IMAGE.finditer(txt or ""):
+        path = local_path(m[0], cwd)
+        if path and os.path.isfile(path):
+            key = hashlib.sha256(path.encode()).hexdigest()[:24]
+            if key not in ids:
+                ids.append(key)
+    return ids
+
+
 def _block_images(content):
     """Attachment ids for the pictures in a message (pasted, or returned by a tool), matching attachments.scan()."""
     import hashlib
@@ -1908,6 +1922,8 @@ def read_session_detail(ref, limit=400, since=None):
         nonlocal last, last_mid
         if last is not None and mid and last_mid == mid:
             last["blocks"].extend(b for b in blocks if b.get("type") != "text" or b.get("text", "").strip())
+            if extra.get("images"):
+                last["images"] = [*last.get("images", []), *[i for i in extra["images"] if i not in last.get("images", [])]]
             last["text"] = _clip("\n".join(b["text"] for b in last["blocks"] if b["type"] == "text"))
             last["tools"] = [{"name": b["name"], "summary": b["summary"], "id": b["id"]} for b in last["blocks"] if b["type"] == "tool_call"]
             return last
@@ -2062,6 +2078,7 @@ def read_session_detail(ref, limit=400, since=None):
                 if images:
                     # The "[Image: original …]" caption only describes the picture; show the picture.
                     txt = re.sub(r"\[Image:[^\]]*\]", "", txt).strip()
+                images += [i for i in _text_images(txt, ref.get("cwd", "")) if i not in images]
                 if is_synthetic_user(txt) and not images:
                     # Hook output / background-task notice: shown as a system event, never as "you said".
                     m2 = re.search(r"<summary>([\s\S]*?)</summary>", txt)
@@ -2094,7 +2111,8 @@ def read_session_detail(ref, limit=400, since=None):
                         elif name in ("NotebookEdit",) and fp:
                             tl.note_file(fp, "edit", "", inp.get("new_source", ""), ts)
                 if any(b["type"] != "text" or b["text"].strip() for b in blocks):
-                    assistant(ts, m.get("id") or d.get("requestId"), blocks)
+                    shots = _text_images("\n".join(b["text"] for b in blocks if b["type"] == "text"), ref.get("cwd", ""))
+                    assistant(ts, m.get("id") or d.get("requestId"), blocks, **({"images": shots} if shots else {}))
     live = bool(st) and time.time() - st.st_mtime < RUNNING_GRACE
     return _finish_detail(ref, tl, limit, since, offset, live)
 
