@@ -5,6 +5,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
 
   dispatch sessions                 live Agent sessions (who is running where, busy or waiting)
   dispatch find <task-id>           sessions whose transcript mentions the task, with resume commands
+  dispatch commits <task-id>        git commits of a task (id in the commit message, or hash in its close reason)
   dispatch resume <session|task>    print (or --copy) the command that resumes a session
   dispatch focus <session|task>     jump to the Herdr tab running that session
   dispatch adopt <session|pid-N>    take a session running in Warp/iTerm/Terminal into Herdr (stop when idle, resume there)
@@ -1628,6 +1629,74 @@ def cmd_adopt(a):
     out(r, a.json, text)
 
 
+# ---------------------------------------------------------------- commits: what a task became in git
+
+_HASH_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+
+
+def git_root_of(path):
+    code, o, _ = sh(["git", "-C", path, "rev-parse", "--show-toplevel"], timeout=5)
+    return o.strip() if code == 0 else ""
+
+
+def task_commits(tid, issue=None, comments=None):
+    """Commits that belong to a task: those whose message names the task id, plus hashes
+    written into its close reason / comments (`commit 3abefc0`). Looked up in the project's
+    repo (the task's project dir → git root)."""
+    if issue is None:
+        code, o, _ = sh(["bd", "show", tid, "--json"])
+        if code != 0:
+            return {"root": "", "commits": []}
+        d = json.loads(o[o.find("[") if o.find("[") >= 0 and o.find("[") < o.find("{") else o.find("{"):])
+        issue = d[0] if isinstance(d, list) else d
+    if comments is None:
+        comments = bd_comments(tid)
+    root = git_root_of(task_project_dir(issue))
+    if not root:
+        return {"root": "", "commits": []}
+    seen, out = set(), []
+
+    def add(h):
+        code, o, _ = sh(["git", "-C", root, "show", "-s", "--format=%H%x1f%h%x1f%ad%x1f%an%x1f%s", "--date=iso-strict", h], timeout=5)
+        if code != 0 or not o.strip():
+            return
+        full, short, date, author, subject = o.strip().split("\x1f", 4)
+        if full in seen:
+            return
+        seen.add(full)
+        _, st, _ = sh(["git", "-C", root, "show", "--stat=200", "--format=", full], timeout=5)
+        files = [l.split("|")[0].strip() for l in st.splitlines() if "|" in l]
+        m = re.search(r"(\d+) insertion", st); n = re.search(r"(\d+) deletion", st)
+        out.append({"hash": full, "short": short, "date": date, "author": author, "subject": subject, "files": files[:40], "file_count": len(files), "add": int(m.group(1)) if m else 0, "del": int(n.group(1)) if n else 0})
+
+    code, o, _ = sh(["git", "-C", root, "log", "--all", "--format=%H", f"--grep={re.escape(tid)}", "-n", "50"], timeout=10)
+    for h in (o.split() if code == 0 else []):
+        add(h)
+    text = " ".join([issue.get("close_reason") or "", issue.get("notes") or ""] + [c.get("text", "") for c in comments])
+    for h in _HASH_RE.findall(text):
+        if len(h) >= 7 and not h.isdigit():
+            add(h)
+    out.sort(key=lambda c: c["date"], reverse=True)
+    remote = ""
+    code, o, _ = sh(["git", "-C", root, "remote", "get-url", "origin"], timeout=5)
+    if code == 0:
+        u = o.strip()
+        m = re.match(r"(?:git@github\.com:|https://github\.com/)([^/]+/[^/.]+?)(?:\.git)?$", u)
+        remote = f"https://github.com/{m.group(1)}" if m else ""
+    return {"root": root, "remote": remote, "commits": out}
+
+
+def cmd_commits(a):
+    r = task_commits(a.task)
+
+    def text(r):
+        if not r["commits"]:
+            print("没有找到这个任务的提交（提交信息里带任务 id，或在完成说明里写 commit 哈希，就能对上）")
+        for c in r["commits"]:
+            print(f"{c['short']}  {c['date'][:16]}  +{c['add']} −{c['del']}  {c['subject'][:90]}")
+    out(r, a.json, text)
+
+
 def cmd_session_control(a):
     from session_control import command
     command(sys.modules[__name__], a)
@@ -2303,6 +2372,20 @@ def cmd_done(a):
     if getattr(a, "retro", None):
         retro_key = "retro-" + a.task
         wiki_store(retro_key, wiki_compose("retro", a.retro, {}, proj, a.task))
+    # The commits this task became: those in the current repo naming the task id, plus hashes
+    # in the reason. Recorded as a comment so the task page (and anyone reading bd) sees them.
+    commits = []
+    root = git_root_of(os.getcwd())
+    if root:
+        code, o, _ = sh(["git", "-C", root, "log", "--format=%h %s", f"--grep={re.escape(a.task)}", "-n", "20"], timeout=10)
+        commits = [l for l in o.splitlines() if l.strip()] if code == 0 else []
+        for h in _HASH_RE.findall(reason):
+            if len(h) >= 7 and not h.isdigit() and not any(l.startswith(h[:7]) for l in commits):
+                code, o, _ = sh(["git", "-C", root, "log", "-1", "--format=%h %s", h], timeout=5)
+                if code == 0 and o.strip():
+                    commits.append(o.strip())
+        if commits:
+            sh(["bd", "comments", "add", a.task, "提交：\n" + "\n".join(commits[:20])])
     msg = f"{a.task} 已完成" + ("（已核验）" if a.verified else "（未核验，详见完成说明）")
     if getattr(a, "review_by", None):
         msg += f"；等待 {a.review_by} 复核（不会自动启动 Agent）"
@@ -2310,7 +2393,11 @@ def cmd_done(a):
         msg += f"；后续任务：{', '.join(created)}"
     if retro_key:
         msg += f"；复盘已入知识库 {retro_key}"
-    out({"closed": a.task, "next": created, "retro": retro_key}, a.json, lambda o: print(msg))
+    if commits:
+        msg += f"；关联提交 {len(commits)} 个"
+    elif root:
+        msg += "；没找到带任务 id 的提交（提交信息末尾写上任务 id 就能对上）"
+    out({"closed": a.task, "next": created, "retro": retro_key, "commits": commits}, a.json, lambda o: print(msg))
 
 
 # ---------------------------------------------------------------- lineage graph (tasks as a thread)
@@ -3686,9 +3773,10 @@ def workspace_project(cwd, roots=None):
     return ""
 
 
-def project_of_cwd(cwd, names):
+def project_of_cwd(cwd, names, roots=None):
     # Same precedence as the app: workspace root, a known project name on the path, the git repo root.
-    ws = workspace_project(cwd)
+    # Pass `roots` when calling in a loop: looking them up means a `bd memories` round-trip.
+    ws = workspace_project(cwd, roots)
     if ws:
         return ws
     parts = [x.lower() for x in os.path.normpath(cwd).split(os.sep) if x]
@@ -3824,9 +3912,15 @@ def task_project_dir(issue, names=None):
     names = names if names is not None else project_names()
     best = ("", 0)
     try:
+        roots = settings_load().get("workspace_roots") or []
+        by_cwd = {}
         for e in load_index().values():
             cwd = (e.get("cwd") or "").rstrip("/")
-            if cwd and os.path.isdir(cwd) and project_of_cwd(cwd, names).lower() == proj.lower() and e.get("mtime", 0) > best[1]:
+            if not cwd or e.get("mtime", 0) <= best[1]:
+                continue
+            if cwd not in by_cwd:
+                by_cwd[cwd] = os.path.isdir(cwd) and project_of_cwd(cwd, names, roots).lower() == proj.lower()
+            if by_cwd[cwd]:
                 best = (cwd, e.get("mtime", 0))
     except Exception:
         pass
@@ -4135,6 +4229,7 @@ def main():
     s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status", "adopt"]); s.set_defaults(fn=cmd_session_control)
     s = sub.add_parser("adopt", help="take a session running in another terminal (Warp/iTerm/Terminal/VS Code) into Herdr: stop it when idle, resume it in a new Herdr tab"); s.add_argument("key", help="session id, prefix, or pid-<n>"); s.add_argument("--keep", action="store_true", help="leave the old process running (the two will interleave writes)"); s.add_argument("--force", action="store_true", help="adopt even while it is working"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_adopt)
     s = sub.add_parser("reply", help="reply to an exact Agent session"); s.add_argument("op", choices=["status", "send"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
+    s = sub.add_parser("commits", help="git commits that belong to a task (id in the message, or hashes in its close reason / comments)"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_commits)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)

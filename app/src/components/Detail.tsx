@@ -17,6 +17,11 @@ interface Props { rows: Activity[]; onOpenSession: (id: string) => void; id: str
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
 export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
   const [editProperties, setEditProperties] = useState(false);
+  // The right column (diffs, images) is what needs width; the left one can step aside. Remembered per device.
+  const [wide, setWide] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-detail-wide") === "1"; } catch { return false; } });
+  const toggleWide = () => { setWide((w) => { try { localStorage.setItem("dispatch-detail-wide", w ? "0" : "1"); } catch { /* per-device */ } return !w; }); };
+  // Git: commits whose message names this task, or whose hash is written in its close reason / comments.
+  const [commits, setCommits] = useState<{ root: string; remote: string; commits: { hash: string; short: string; date: string; author: string; subject: string; files: string[]; file_count: number; add: number; del: number }[] } | null>(null);
   const [issue, setIssue] = useState<Issue | null>(initial);
   const [comments, setComments] = useState<Comment[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -37,6 +42,12 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issue?.id, issue?.labels?.join(","), refs.map((r) => r.session_id).join(",")]);
+  useEffect(() => {
+    let alive = true;
+    api.on("local", ["commits", id, "--json"]).then((t) => { if (alive) setCommits(JSON.parse(t.slice(Math.max(0, t.indexOf("{"))))); }).catch(() => { if (alive) setCommits({ root: "", remote: "", commits: [] }); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, stamp]);
   const [pits, setPits] = useState<Pitfall[]>([]);
 
   // Pitfalls tagged with this task or its project — shown before anyone starts working.
@@ -145,11 +156,13 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
   };
 
   return (
-    <aside className="detail">
+    <aside className={`detail${wide ? " wide" : ""}`}>
       <div className="dh">
         <button className="btn sm detail-back" onClick={onClose} aria-label="返回">‹ 返回</button>
         <span className="id" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{issue.id}</span><span>·</span><span>{projectOf(issue) || "未分项目"}</span>
         <button className="btn ghost sm" onClick={() => { setEditProperties(v => !v); setClosing(false); }}>{editProperties ? "收起编辑" : "编辑属性"}</button>
+        <span className="spacer" />
+        <button className="btn ghost sm detail-wide" onClick={toggleWide} title={wide ? "显示左栏（属性、描述、验收、活动）" : "收起左栏，让文件改动和产物占满宽度"}>{wide ? "⇤ 显示左栏" : "⇥ 收起左栏"}</button>
 
       </div>
       <div className="dbody">
@@ -310,6 +323,22 @@ export function Detail({ rows, onOpenSession, id, api, me, initial, root, stamp,
             </div>
           </details>
         )}
+
+        <section className="sec git-sec">
+          <h4>Git 提交 <span className="muted">{commits ? `${commits.commits.length} 个` : "…"} · 提交信息里带 {id}，或完成说明里写了哈希的</span></h4>
+          {commits && commits.commits.length === 0 && <p className="empty-p" style={{ margin: 0 }}>{commits.root ? "还没有对上的提交。Agent 提交时在信息末尾写上任务 id，或在完成说明里写 commit 哈希，这里就会列出来。" : "这个项目不在 git 仓库里，或者找不到它的目录。"}</p>}
+          {commits && commits.commits.length > 0 && <div className="git-list">
+            {commits.commits.map((c) => (
+              <details key={c.hash} className="git-commit">
+                <summary><span className="mono hash">{c.short}</span><span className="subj">{c.subject}</span><span className="mono small diffstat"><span className="add">+{c.add}</span> <span className="del">−{c.del}</span></span><span className="muted small">{relTime(c.date)}</span></summary>
+                <div className="git-files">
+                  <div className="muted small">{fmtTime(c.date)} · {c.author} · {c.file_count} 个文件{commits.remote ? <> · <button className="link" onClick={() => api.openPath(`${commits.remote}/commit/${c.hash}`)}>在 GitHub 打开 ↗</button></> : null} · <button className="link" onClick={() => api.copy(c.hash).then(() => onDone("已复制 commit 哈希")).catch(() => {})}>复制哈希</button></div>
+                  {c.files.map((f) => <div key={f} className="mono small git-file">{f}</div>)}
+                </div>
+              </details>
+            ))}
+          </div>}
+        </section>
 
         <section className="sec work-sec">
           <h4>文件修改与产出 <span className="muted">{work.reduce((n, w) => n + w.files.length, 0)} 个文件 · {work.reduce((n, w) => n + w.attachments.length, 0)} 个产物 · 来自明确关联的会话</span></h4>

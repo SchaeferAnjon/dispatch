@@ -1230,3 +1230,12 @@ th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--ink)}t
   .sess-wrap.has-selection .session-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
   .sess-wrap.has-selection .session-tabs button{white-space:nowrap}
 }
+/* task page: fix the work-file frame, collapsible left column, git commits */
+.work-files details.fdiff.file.work-file{display:block;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--win)}.work-files details.fdiff.file.work-file>summary{display:flex}
+.detail .dh .detail-wide{white-space:nowrap}
+@media (min-width:1100px){.detail.wide .dbody{grid-template-columns:minmax(0,1fr)}.detail.wide .dcol-main{display:none}.detail.wide .dcol-side{border-left:0;padding-left:0}}
+@media (max-width:1099px){.detail .dh .detail-wide{display:none}}
+/* diff rows grow to their content so the block scrolls sideways instead of clipping */
+pre.diff.dv-pre .ln{width:max-content;min-width:100%}pre.diff.dv-pre .ln .tx{flex:none;padding-right:16px}
+.git-list{display:flex;flex-direction:column;gap:4px}.git-commit{border:1px solid var(--line);border-radius:8px;background:var(--win)}.git-commit>summary{display:flex;align-items:center;gap:10px;padding:7px 10px;cursor:pointer;list-style:none;font-size:12.5px;min-width:0}.git-commit>summary::-webkit-details-marker{display:none}.git-commit .hash{color:var(--accent-ink);flex:none}.git-commit .subj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.git-commit .diffstat{flex:none}.git-commit .diffstat .add{color:var(--s-done)}.git-commit .diffstat .del{color:var(--s-block)}
+.git-files{padding:4px 10px 8px;border-top:1px solid var(--line)}.git-file{color:var(--ink-2);padding:1px 0;overflow-wrap:anywhere}.git-files .link{color:var(--accent-ink)}
