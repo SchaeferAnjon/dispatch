@@ -12,3 +12,6 @@ app/src-tauri/gen/schemas/
 app/src-tauri/target/
 __pycache__/
 *.pyc
+
+# UX review reports: screenshots of a personal board, keep them local
+design/review-*
