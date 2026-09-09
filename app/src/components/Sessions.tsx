@@ -91,6 +91,10 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
   const toggleBrief = () => { setBrief((b) => { try { localStorage.setItem("dispatch-tl-brief", b ? "0" : "1"); } catch { /* ignore */ } return !b; }); };
   // 实时活动: the tracker's event log docked above the conversation. On by default; the chip hides it.
   const [liveLog, setLiveLog] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tl-live") !== "0"; } catch { return true; } });
+  // On a phone the summary and the activity strip start folded to one line: the conversation gets the screen.
+  const phone = typeof window !== "undefined" && window.innerWidth <= 760;
+  const [summaryOpen, setSummaryOpen] = useState(!phone);
+  const [dockOpen, setDockOpen] = useState(!phone);
   const toggleLiveLog = () => { setLiveLog((b) => { try { localStorage.setItem("dispatch-tl-live", b ? "0" : "1"); } catch { /* ignore */ } return !b; }); };
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -264,7 +268,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
                   {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)}>复制恢复命令</button>}
                 </div></details>
               </div>
-              {current?.summary && <div className="session-summary" title="模型写的总结：目标、做了什么、还差什么"><span className="conversation-caption">总结</span><span className="t"><Linkified text={current.summary} /></span></div>}
+              {current?.summary && <div className={`session-summary${summaryOpen ? "" : " folded"}`} title={summaryOpen ? "模型写的总结：目标、做了什么、还差什么" : "点开看完整总结"} onClick={() => setSummaryOpen((o) => !o)}><span className="conversation-caption">总结</span><span className="t"><Linkified text={current.summary} /></span></div>}
               {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? '更新中断，保留上次记录' : current ? activityLabel(current) : '历史记录'}</strong><span>{current?.activity}</span>{running && (() => { const st = currentStep(detail.messages); return st.kind === 'idle' ? null : <span className="live-step small">{st.kind === 'tool' ? `正在调用 ${st.name}…` : st.kind === 'text' ? '正在回复…' : '思考中…'}</span>; })()}</div><span className="muted small">{current ? (ago(current.last_at)) : ''}</span></div>}
               <details className="session-context" key={m.session_id}>
                 <summary>{m.user_msgs} 轮对话 · {m.subagents.length} 个子 Agent<span>会话信息</span></summary>
@@ -297,7 +301,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
               {tab === 'timeline' && current && liveLog && (() => {
                 const ev = current.events.filter((e) => e.kind !== 'result').slice(-40).reverse();
                 const label = (k: string) => k === 'error' ? '执行失败' : k === 'user' ? '你的消息' : k === 'reply' ? 'Agent 回复' : '进展';
-                return <div className="activity-dock" aria-label="实时活动">{ev.length === 0 ? <div className="muted small">还没有记录到活动</div> : ev.map((e) => <div key={e.id} className={`activity-event ${e.kind}`} title={e.text}><span className="muted mono small">{new Date(e.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false })}</span><b>{e.kind === 'tool' ? e.tool : label(e.kind)}</b><span className="t">{e.text}</span></div>)}</div>;
+                return <div className={`activity-dock${dockOpen ? "" : " folded"}`} aria-label="实时活动" onClick={() => setDockOpen((o) => !o)}>{ev.length === 0 ? <div className="muted small">还没有记录到活动</div> : ev.map((e) => <div key={e.id} className={`activity-event ${e.kind}`} title={e.text}><span className="muted mono small">{new Date(e.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false })}</span><b>{e.kind === 'tool' ? e.tool : label(e.kind)}</b><span className="t">{e.text}</span></div>)}</div>;
               })()}
               {tab === 'timeline' && !atLatest && <button className="follow-latest" onClick={latest}>回到最新 ↓{current?.unread ? ' · 有未读回复' : ''}</button>}
               <div className="sess-body" tabIndex={0} aria-label="会话内容" ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>

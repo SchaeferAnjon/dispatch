@@ -18,20 +18,65 @@ export interface ViewOptions { brief: boolean; showTools: boolean; showUser: boo
 // of every turn, without thinking or tool cards; otherwise tool cards follow the 工具调用 switch,
 // thinking stays folded under the text it led to, and a running session always shows its
 // latest turn so "思考中 / 正在调用" has somewhere to appear.
+export type ToolBlock = Extract<Block, { type: "tool_call" }>;
+
+const SHELL = new Set(["Bash", "bash", "exec_command", "shell", "run_command", "PowerShell"]);
+const READ = new Set(["Read", "read_file", "read", "view", "cat", "NotebookRead"]);
+const SEARCH = new Set(["Grep", "Glob", "grep", "glob", "search", "find", "list_dir", "LS", "ls"]);
+const EDIT = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "edit_file", "write_file", "edit", "write", "patch"]);
+const WEB = new Set(["WebFetch", "WebSearch", "fetch", "web_search"]);
+const AGENT = new Set(["Agent", "Task", "agent", "task"]);
+// "跑了 6 条命令、读了 2 个文件": what a run of calls did, in the order it did it.
+export function foldLabel(tools: ToolBlock[]): string {
+  const counts = new Map<string, number>();
+  const kind = (n: string) => SHELL.has(n) ? "跑了 %d 条命令" : READ.has(n) ? "读了 %d 个文件" : SEARCH.has(n) ? "搜了 %d 次" : EDIT.has(n) ? "改了 %d 处" : WEB.has(n) ? "查了 %d 个网页" : AGENT.has(n) ? "派了 %d 个子 Agent" : `${n} × %d`;
+  for (const t of tools) { const k = kind(t.name.split(".").pop() || t.name); counts.set(k, (counts.get(k) ?? 0) + 1); }
+  const parts = [...counts].map(([k, n]) => k.replace("%d", String(n)).replace(/ × 1$/, ""));
+  const errors = tools.filter((t) => t.status === "error").length;
+  return parts.join("、") + (errors ? ` · ${errors} 个出错` : "");
+}
+
+// Which turns to draw, with the steps each keeps. 只看结论 keeps your messages and the last reply
+// of every turn, without thinking or tool cards. With 工具调用 off, a run of finished calls folds
+// into one line (a tool-only turn joins the fold of the turn before it) and the call that is
+// running right now still shows as a card; with it on, every call is a card. A running session
+// always shows its latest turn so "思考中 / 正在调用" has somewhere to appear.
 export function visibleTurns(messages: TimelineMsg[], o: ViewOptions): TimelineMsg[] {
   const shown: TimelineMsg[] = [];
   const last = messages[messages.length - 1];
+  const fold = !o.showTools && !o.brief;
   for (const x of messages) {
     if (x.role === "gap") { shown.push(x); continue; }
     if (x.role === "user") { if (x.synthetic ? o.showTools && !o.brief : o.showUser) shown.push(x); continue; }
-    if (x.role === "tool") { if (o.showTools && !o.brief) shown.push(x); continue; }
+    if (x.role === "tool") { if (o.showTools && !o.brief) shown.push(x); else if (fold && x.images?.length) shown.push(x); continue; }
     const blocks = blocksOf(x);
     const hasText = blocks.some((b) => b.type === "text" && b.text.trim());
     const live = o.running && x === last && !o.brief;
-    const visible = hasText ? o.showAssistant : (o.showTools && !o.brief) || live;
+    const hasCalls = blocks.some((b) => b.type === "tool_call");
+    const visible = hasText ? o.showAssistant : (o.showTools && !o.brief) || live || (fold && hasCalls);
     if (!visible) continue;
-    // With tool cards off, the live turn still shows the call that is running right now.
-    const keep = blocks.filter((b) => b.type === "text" || (!o.brief && b.type === "thinking") || (!o.brief && b.type === "tool_call" && (o.showTools || (live && b.status === "running"))));
+    let keep: Block[];
+    if (fold) {
+      keep = [];
+      let run: ToolBlock[] | null = null;
+      for (const b of blocks) {
+        if (b.type === "tool_call" && !(live && b.status === "running")) { if (!run) { run = []; keep.push({ type: "tool_fold", tools: run }); } run.push(b); continue; }
+        run = null;
+        // Real thinking stays (folded); a signature-only thinking line says nothing and goes.
+        if (b.type === "text" || b.type === "tool_call" || (b.type === "thinking" && b.text.trim())) keep.push(b);
+      }
+      const prev = shown[shown.length - 1];
+      const pl = prev?.role === "assistant" ? prev.blocks?.[prev.blocks.length - 1] : undefined;
+      if (!hasText && !live && keep[0]?.type === "tool_fold" && pl?.type === "tool_fold" && prev.blocks) {
+        // A tool-only turn after a fold joins it: one "跑了 N 条命令" under the paragraph, not two.
+        const merged: ToolBlock[] = [...pl.tools, ...keep[0].tools];
+        shown[shown.length - 1] = { ...prev, blocks: [...prev.blocks.slice(0, -1), { type: "tool_fold", tools: merged }, ...keep.slice(1)] };
+        continue;
+      }
+    } else {
+      // With tool cards off, the live turn still shows the call that is running right now.
+      keep = blocks.filter((b) => b.type === "text" || (!o.brief && b.type === "thinking") || (!o.brief && b.type === "tool_call" && (o.showTools || (live && b.status === "running"))));
+    }
     shown.push({ ...x, blocks: keep });
   }
   if (!o.brief) return shown;
@@ -69,10 +114,10 @@ export function mergeTail(d: SessionDetail, t: SessionTail): SessionDetail {
     let blocks = blocksOf(m);
     blocks = blocks.filter((b) => {
       if (b.type === "tool_call" && b.id && patch(b.id, b)) return false;
-      if (b.type !== "tool_call" && b.id) {
+      if ((b.type === "text" || b.type === "thinking") && b.id) {
         // A re-emitted text/thinking part: replace the earlier copy.
         for (let i = msgs.length - 1; i >= 0; i--) {
-          const bs = msgs[i].blocks; const j = bs?.findIndex((x) => x.type === b.type && x.id === b.id) ?? -1;
+          const bs = msgs[i].blocks; const j = bs?.findIndex((x) => x.type === b.type && "id" in x && x.id === b.id) ?? -1;
           if (bs && j >= 0) { const nb = bs.map((x, k) => (k === j ? b : x)); msgs[i] = { ...msgs[i], blocks: nb, text: textOf(nb) }; return false; }
         }
       }

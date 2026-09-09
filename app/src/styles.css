@@ -290,7 +290,7 @@ td .t{font-weight:500}
 .reply-receipt{font-size:13px;padding:6px 10px;margin-bottom:8px;border-radius:6px;background:var(--panel);max-height:100px;overflow:auto}
 .reply-receipt span{color:var(--ink-3);font-size:11px}.reply-receipt p{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .reply-error{font-size:12px;color:var(--s-block);margin-top:6px;overflow-wrap:anywhere}.reply-error button{margin-left:8px}
-@media(max-width:760px){.app{height:var(--reply-viewport,100dvh)!important}.session-reply{padding:8px 12px}.session-reply textarea{font-size:16px;max-height:110px}.reply-keyboard .m-nav{display:none}.reply-keyboard .body{padding-bottom:env(safe-area-inset-bottom)}.reply-keyboard .session-context,.reply-keyboard .session-live{display:none}.reply-receipt{max-height:68px}}
+@media(max-width:760px){.app{height:var(--reply-viewport,100dvh)!important}.session-reply{padding:8px 12px}.session-reply textarea{font-size:16px;max-height:110px;flex:1 1 90px}.session-reply .btn{padding:0 10px}.chat .tl{max-width:100%}.chat .tl-t{font-size:15px;line-height:1.7}.tool-fold>summary{font-size:14px}.reply-keyboard .m-nav{display:none}.reply-keyboard .body{padding-bottom:env(safe-area-inset-bottom)}.reply-keyboard .session-context,.reply-keyboard .session-live{display:none}.reply-receipt{max-height:68px}}
 .session-context{flex:none;border-bottom:1px solid var(--line)}
 .session-context summary{cursor:pointer;padding:6px 16px;color:var(--ink-2);font-size:12px}
 .session-context summary span{float:right;color:var(--ink-3)}
@@ -1158,7 +1158,13 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 @media(max-width:760px){.setup{padding:14px}}
 
 /* Conversation as a chat: you on the right, the agent on the left; 只看结论 keeps only the turn endings. */
-.chat{display:flex;flex-direction:column;gap:10px}
+.chat{display:flex;flex-direction:column;gap:12px}
+.chat .tl.assistant,.chat .tl.tool{border-left:0;padding-left:0}
+.chat .tl.cont{margin-top:-4px}
+.chat .tl.assistant .tl-h{margin-bottom:2px}
+.chat .tl-t{font-size:13.5px;line-height:1.65}
+.chat .tl-t .md{white-space:normal;font-size:inherit;line-height:inherit;max-width:none}
+.chat .tl-t .md p{margin:.5em 0}.chat .tl-t .md ul,.chat .tl-t .md ol{margin:.4em 0}.chat .tl-t .md li{margin:.2em 0}
 .chat .tl{max-width:min(80ch,88%)}
 .chat .tl.user{align-self:flex-end;border-left:0;border-right:2px solid var(--ink);padding:4px 10px 4px 0;text-align:left}
 .chat .tl.user .tl-h{justify-content:flex-end}
@@ -1281,7 +1287,9 @@ pre.diff.dv-pre .ln{width:max-content;min-width:100%}pre.diff.dv-pre .ln .tx{fle
 .git-list{display:flex;flex-direction:column;gap:4px}.git-commit{border:1px solid var(--line);border-radius:8px;background:var(--win)}.git-commit>summary{display:flex;align-items:center;gap:10px;padding:7px 10px;cursor:pointer;list-style:none;font-size:12.5px;min-width:0}.git-commit>summary::-webkit-details-marker{display:none}.git-commit .hash{color:var(--accent-ink);flex:none}.git-commit .subj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.git-commit .diffstat{flex:none}.git-commit .diffstat .add{color:var(--s-done)}.git-commit .diffstat .del{color:var(--s-block)}
 .git-files{padding:4px 10px 8px;border-top:1px solid var(--line)}.git-file{color:var(--ink-2);padding:1px 0;overflow-wrap:anywhere}.git-files .link{color:var(--accent-ink)}
 .conversation-preview{cursor:text}.conversation-preview.open{display:block;-webkit-line-clamp:unset;overflow:visible}.conversation-row.compact .conversation-preview.open{display:block;-webkit-line-clamp:unset}
-.session-summary{display:flex;gap:8px;align-items:flex-start;padding:10px 16px;font-size:13px;line-height:1.6;color:var(--ink);background:var(--accent-soft);border-bottom:1px solid var(--line)}.session-summary .t{flex:1;min-width:0;overflow-wrap:anywhere}
+.session-summary{display:flex;gap:8px;align-items:flex-start;padding:10px 16px;font-size:13px;line-height:1.6;color:var(--ink);background:var(--accent-soft);border-bottom:1px solid var(--line);cursor:pointer}.session-summary .t{flex:1;min-width:0;overflow-wrap:anywhere}
+.session-summary.folded{padding:6px 16px}.session-summary.folded .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.activity-dock.folded{max-height:30px;overflow:hidden;cursor:pointer}
 .project-summary{margin-top:8px;max-width:900px}.project-summary .t{margin:0 0 6px;font-size:14px;line-height:1.65;color:var(--ink)}.project-summary-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 /* discussion thread */
 .discuss-dialog{width:min(820px,94vw)}.disc-thread{display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow:auto;padding:4px 2px}
@@ -1341,6 +1349,14 @@ a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text
 .shimmer{color:var(--ink-3);background:linear-gradient(90deg,var(--ink-3) 0%,var(--ink) 45%,var(--ink-3) 90%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 1.6s linear infinite}
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 .tl.assistant.typing{opacity:.85}
+/* 跑了 N 条命令 ›: a run of finished calls, one quiet line until opened. */
+.tool-fold{margin:4px 0}
+.tool-fold>summary{list-style:none;cursor:pointer;display:inline-flex;gap:6px;align-items:center;color:var(--ink-3);font-size:13px;padding:2px 0}
+.tool-fold>summary::-webkit-details-marker{display:none}
+.tool-fold>summary:hover{color:var(--ink-2)}
+.tool-fold .fold-arrow{transition:transform .15s}
+.tool-fold[open] .fold-arrow{transform:rotate(90deg)}
+.tool-fold .fold-body{margin-top:4px}
 .tool-card{margin:3px 0;border:1px solid var(--line);border-radius:7px;background:var(--panel);font-size:12px;max-width:80ch}
 .tool-card summary{list-style:none;cursor:pointer;display:flex;gap:7px;align-items:baseline;padding:4px 8px;min-width:0}
 .tool-card summary::-webkit-details-marker{display:none}

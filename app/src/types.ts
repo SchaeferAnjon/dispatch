@@ -79,7 +79,9 @@ export type ToolStatus = "running" | "done" | "error" | "incomplete";
 export type Block =
   | { type: "thinking"; text: string; note?: string; id?: string }
   | { type: "text"; text: string; id?: string }
-  | { type: "tool_call"; id: string; name: string; summary: string; input: Record<string, unknown>; status: ToolStatus; ts?: string; result?: string; result_ts?: string };
+  | { type: "tool_call"; id: string; name: string; summary: string; input: Record<string, unknown>; status: ToolStatus; ts?: string; result?: string; result_ts?: string }
+  // View-only: a run of finished tool calls folded into one line (timeline.ts makes these; the CLI never sends one).
+  | { type: "tool_fold"; tools: Extract<Block, { type: "tool_call" }>[] };
 export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; synthetic?: boolean; text: string; tools: { name: string; summary: string; id?: string }[]; images?: string[]; blocks?: Block[]; mid?: string }
 // What `dispatch session <id> --since <offset>` returns: only the records appended after `since`.
 export interface SessionTail { partial: true; since: number; offset: number; messages: TimelineMsg[]; resolved: { id: string; status: ToolStatus; result: string; result_ts: string }[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }

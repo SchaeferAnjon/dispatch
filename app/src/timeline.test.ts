@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blocksOf, currentStep, mergeTail, visibleTurns } from "./timeline";
+import { blocksOf, currentStep, foldLabel, mergeTail, visibleTurns } from "./timeline";
 import type { Block, SessionDetail, SessionTail, TimelineMsg, ToolStatus } from "./types";
 
 const tool = (id: string, name: string, status: ToolStatus, extra: Partial<Extract<Block, { type: "tool_call" }>> = {}): Block => ({ type: "tool_call", id, name, summary: name.toLowerCase(), input: {}, status, ...extra });
@@ -20,10 +20,27 @@ describe("visibleTurns", () => {
     msg("assistant", [{ type: "thinking", text: "再答" }, { type: "text", text: "读完了。" }, tool("t2", "Bash", "running")]),
   ];
   const opts = { brief: false, showTools: false, showUser: true, showAssistant: true, running: false };
-  it("hides tool-only turns and tool cards when 工具调用 is off, keeps thinking under the text", () => {
+  it("folds finished calls into one line when 工具调用 is off; real thinking stays, a signature-only line goes", () => {
     const v = visibleTurns(thread, opts);
-    expect(v.map((x) => x.role)).toEqual(["user", "assistant"]);
-    expect(v[1].blocks!.map((b) => b.type)).toEqual(["thinking", "text"]);
+    expect(v.map((x) => x.role)).toEqual(["user", "assistant", "assistant"]);
+    expect(v[1].blocks!.map((b) => b.type)).toEqual(["thinking", "tool_fold"]);
+    expect(v[2].blocks!.map((b) => b.type)).toEqual(["thinking", "text", "tool_fold"]);
+    const bare = visibleTurns([msg("user", [{ type: "text", text: "嗯" }]), msg("assistant", [{ type: "thinking", text: "" }, { type: "text", text: "好" }])], opts);
+    expect(bare[1].blocks!.map((b) => b.type)).toEqual(["text"]);
+  });
+  it("consecutive tool-only turns read as one fold; the running call stays a card", () => {
+    const run = [
+      msg("user", [{ type: "text", text: "跑" }]),
+      msg("assistant", [{ type: "thinking", text: "" }, tool("a", "Bash", "done"), tool("b", "Read", "done")]),
+      msg("assistant", [tool("c", "Bash", "error")]),
+      msg("assistant", [{ type: "text", text: "看到了" }, tool("d", "Grep", "done"), tool("e", "Bash", "running")]),
+    ];
+    const v = visibleTurns(run, { ...opts, running: true });
+    expect(v.length).toBe(3);
+    const f = v[1].blocks![0];
+    expect(f.type).toBe("tool_fold");
+    if (f.type === "tool_fold") { expect(f.tools.map((t) => t.id)).toEqual(["a", "b", "c"]); expect(foldLabel(f.tools)).toBe("跑了 2 条命令、读了 1 个文件 · 1 个出错"); }
+    expect(v[2].blocks!.map((b) => (b.type === "tool_call" ? b.id : b.type))).toEqual(["text", "tool_fold", "e"]);
   });
   it("shows every step with 工具调用 on", () => {
     const v = visibleTurns(thread, { ...opts, showTools: true });
@@ -38,8 +55,8 @@ describe("visibleTurns", () => {
   it("a running session always shows its latest turn, with the call that is running", () => {
     const live = [...thread, msg("assistant", [{ type: "thinking", text: "" }, tool("t3", "Grep", "done"), tool("t4", "Bash", "running")])];
     const v = visibleTurns(live, { ...opts, running: true });
-    expect(v.length).toBe(3);
-    expect(v[2].blocks!.map((b) => (b.type === "tool_call" ? b.id : b.type))).toEqual(["thinking", "t4"]);
+    expect(v.length).toBe(4);
+    expect(v[3].blocks!.map((b) => (b.type === "tool_call" ? b.id : b.type))).toEqual(["tool_fold", "t4"]);
     expect(visibleTurns(live, { ...opts, running: true, brief: true }).length).toBe(2);
   });
   it("system events sit at tool level", () => {
