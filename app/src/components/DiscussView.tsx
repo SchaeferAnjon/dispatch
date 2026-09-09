@@ -5,7 +5,8 @@ import { actorOf, projectOf, relTime } from "../derive";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
 import { KIND_ACTOR } from "./Delegate";
-import { DISCUSSION_LABEL, DiscussCompose, DiscussThread, delegatePrompt, ideaText, imagePaths, partName, partsFromDescription, useDiscussion } from "./Discuss";
+import { DiscussChat } from "./DiscussChat";
+import { DISCUSSION_LABEL, delegatePrompt, ideaText, imagePaths, partName, partsFromDescription, useDiscussion } from "./Discuss";
 
 interface Props {
   api: Api; me: string; issues: Issue[]; initialTask?: string | null;
@@ -108,8 +109,7 @@ export function DiscussView({ api, me, issues, initialTask, onShown, onNew, onOp
             </div>}
           </aside>
           <section className="disc-chat">
-            <DiscussThread d={d} me={me} />
-            <DiscussCompose d={d} onError={onError} />
+            <DiscussChat api={api} d={d} me={me} onError={onError} />
           </section>
         </>
       )}

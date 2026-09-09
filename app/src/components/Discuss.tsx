@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
+import { DiscussChat } from "./DiscussChat";
 import type { Api } from "../api";
 import type { Comment, Issue } from "../types";
-import { actorOf, isMe, relTime, discussionConclusion } from "../derive";
-import { Avatar } from "./ui";
+import { actorOf, isMe, discussionConclusion } from "../derive";
 import { Markdown } from "./Markdown";
 import { KINDS, KIND_ACTOR } from "./Delegate";
 
@@ -144,60 +144,6 @@ export function useDiscussion({ api, me, issues, task, parts, leader, watch, onD
 }
 export type Discussion = ReturnType<typeof useDiscussion>;
 
-// The group chat: rounds of statements, the typing bubbles, system lines, the hints — and the
-// box where the person says a line. Used in the dialog and on the 讨论 page.
-export function DiscussThread({ d, me, showConclusion, compact }: { d: Discussion; me: string; showConclusion?: boolean; compact?: boolean }) {
-  const { running, conclusion, thread, roundsSeen, bubbles, skippedNow, erroredNow, system, waiting, live, queued, quiet, comments } = d;
-  const threadRef = useRef<HTMLDivElement>(null);
-  const growth = comments.length * 100000 + bubbles.length * 10000 + bubbles.map(([, m]) => m.text.length).reduce((a, b) => a + b, 0);
-  useEffect(() => { const el = threadRef.current; if (el) el.scrollTop = el.scrollHeight; }, [growth]);
-  return (
-    <div className={`disc-thread${compact ? " compact" : ""}`} ref={threadRef}>
-      {showConclusion && conclusion && <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">{conclusion.when.includes("T") ? relTime(conclusion.when) : conclusion.when}{conclusion.by ? ` · ${conclusion.by}` : ""}</span></div><Markdown src={conclusion.text} className="compact" /></div>}
-      {thread.filter((t) => t.opener).slice(0, 1).map(({ c, body }) => <div key={c.id} className="disc-opener muted small">{body}</div>)}
-      {thread.length === 0 && <div className="empty small">{running ? "Agent 正在读上下文……第一条发言通常十几秒后出现" : "还没有发言"}</div>}
-      {Array.from({ length: roundsSeen }, (_, i) => i + 1).map((r) => (
-        <div key={r} className="disc-round">
-          {roundsSeen > 1 && <div className="disc-round-h muted small">第 {r} 轮</div>}
-          {thread.filter((t) => t.round === r && !t.opener).map(({ c, body, mine }) => { const a = mine ? actorOf(me, me) : actorOf(c.author, me); return (
-            <div key={c.id} className={`disc-say${mine ? " mine" : ""}`}>
-              <Avatar actor={a} size={28} />
-              <div className="disc-bubble"><div className="l1"><b>{mine ? "你" : a?.name ?? c.author}</b>{!mine && d.isLeaderLine(c, body) && <span className="chip disc-leader-tag">领队</span>}<span className="muted small">{relTime(c.created_at)}</span></div><Markdown src={body.replace(/^[^：:\n]{1,24}[：:]\s*/, "")} className="compact" /></div>
-            </div>
-          ); })}
-        </div>
-      ))}
-      {bubbles.map(([who, m]) => { const a = actorOf(KIND_ACTOR[m.kind] ?? m.kind, me); return (
-        <div key={who} className="disc-say disc-live">
-          <Avatar actor={a} size={28} />
-          <div className="disc-bubble"><div className="l1"><b>{a?.name ?? who}</b>{d.isLeaderLive(who) && <span className="chip disc-leader-tag">领队</span>}<span className="muted small">{m.status === "thinking" ? "正在想" : m.status === "typing" ? "正在输入" : "写好了"}</span></div>
-            {m.text ? <Markdown src={m.text + (m.status === "typing" ? " ▍" : "")} className="compact" /> : <span className="disc-dots"><i /><i /><i /></span>}
-          </div>
-        </div>
-      ); })}
-      {skippedNow.length > 0 && <div className="disc-opener muted small">{skippedNow.join("、")} 这轮没话说</div>}
-      {erroredNow.map(([who, m]) => <div key={who} className="disc-system small">{who}：{m.text || "没说上话"}</div>)}
-      {system.map((c) => <div key={c.id} className="disc-system small">{c.text.trimStart().slice(4)}</div>)}
-      {running && waiting > 0 && bubbles.length === 0 && <div className="disc-waiting muted small">{live ? `${queued} 个成员排队中…` : "正在起会话……"}</div>}
-      {!running && quiet >= 2 && <div className="disc-waiting muted small">连续 {quiet} 轮没有新提议了——可以「整理成文档」收尾，或者你再说一句把话题推进一步。</div>}
-    </div>
-  );
-}
-
-// The person's line, with pictures pasted or picked; Enter sends, Shift+Enter breaks the line.
-export function DiscussCompose({ d, onError }: { d: Discussion; onError: (m: string) => void }) {
-  const [line, setLine] = useState("");
-  const [images, setImages] = useState<Img[]>([]);
-  const add = async (files: File[]) => { for (const f of files.filter((x) => x.type.startsWith("image/"))) { try { const im = await d.saveImage(f, "reply"); setImages((xs) => [...xs, im]); } catch (e) { onError(String(e)); } } };
-  const send = async () => { if (d.saying) return; if (await d.say(line, images)) { setLine(""); setImages([]); } };
-  return (
-    <div className="disc-compose-wrap">
-      {images.length > 0 && <div className="disc-images">{images.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt="" /><button className="x" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label="移除">✕</button></div>)}</div>}
-      <div className="disc-compose"><textarea rows={2} placeholder={d.running ? "你也说一句（回车发言）；他们正在说，你的话会在这轮结束后得到回应" : "你也说一句（回车发言，Shift+回车换行；截图直接粘贴），他们会接着回应"} value={line} disabled={d.saying} onChange={(e) => setLine(e.target.value)} onPaste={(e) => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); void add(files); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!e.repeat && !d.saying && (line.trim() || images.length)) void send(); } }} /><label className="btn sm disc-img-add" title="附图">🖼<input type="file" accept="image/*" multiple hidden disabled={d.saying} onChange={(e) => { void add(Array.from(e.target.files ?? [])); e.target.value = ""; }} /></label><button className="btn sm" disabled={d.saying || (!line.trim() && !images.length)} onClick={() => void send()}>{d.saying ? "发送中…" : "发言"}</button></div>
-    </div>
-  );
-}
-
 export const delegatePrompt = (task: string) => `你接手 ${task}。先 \`bd show ${task} --json\` 读完整描述——里面有一份讨论文档（背景、结论、方案、步骤、风险、验收），按「步骤」和「验收」做，进展用 dispatch log，做完 dispatch done --reason。有疑问先 \`bd comments ${task}\` 看讨论原文。`;
 
 interface Props { api: Api; projects: string[]; issues: Issue[]; me: string; initialProject?: string; initialTask?: string; onClose: () => void; onOpened: (taskId: string, intent?: "split") => void; onDelegate: (taskId: string, prompt: string, leader?: { kind: string; model: string }) => void; onAll?: (taskId?: string) => void; onDone: (m: string) => void; onError: (m: string) => void }
@@ -280,9 +226,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
           {recent.length > 0 && <div className="disc-recent"><div className="muted small">最近的讨论{onAll && <> · <button className="link sm" onClick={() => { onAll(); onClose(); }}>看全部</button></>}</div>{recent.map((i) => <button key={i.id} className="disc-recent-row" onClick={() => { restoreFrom(i.description ?? ""); setTask(i.id); }}><span className="t">{i.title.replace(/^【讨论】/, "")}</span><span className="muted small mono">{i.id}</span></button>)}</div>}
         </>}
 
-        {task && <DiscussThread d={d} me={me} showConclusion />}
-        {task && showDoc && d.hasDoc && <div className="disc-doc"><div className="l1"><b>讨论文档</b><span className="muted small">已写进任务描述</span><span className="spacer" /><button className="link sm" onClick={() => setShowDoc(false)}>收起</button></div><Markdown src={d.docText} className="compact" /></div>}
-        {task && <DiscussCompose d={d} onError={onError} />}
+        {task && <DiscussChat api={api} d={d} me={me} showConclusion onError={onError} between={showDoc && d.hasDoc ? <div className="disc-doc"><div className="l1"><b>讨论文档</b><span className="muted small">已写进任务描述</span><span className="spacer" /><button className="link sm" onClick={() => setShowDoc(false)}>收起</button></div><Markdown src={d.docText} className="compact" /></div> : null} />}
 
         <div className="foot">
           <button className="btn ghost" disabled={busy} onClick={onClose}>{task ? "关闭" : "取消"}</button>
