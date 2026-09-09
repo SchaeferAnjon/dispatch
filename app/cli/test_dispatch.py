@@ -571,3 +571,30 @@ class StatsMerge(unittest.TestCase):
         only = run(True)
         self.assertNotIn("hosts", only)
         self.assertEqual(seen, {})
+
+
+class SkillStats(unittest.TestCase):
+    """Codex reads a skill's SKILL.md with exec; ZCode has a Skill tool. Both must land in the index."""
+
+    def test_codex_counts_skill_file_reads_only(self):
+        lines = [
+            # The system prompt lists every skill path — that is not a use.
+            json.dumps({"timestamp": "2026-09-09T10:00:00Z", "type": "response_item", "payload": {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "- task-board: (file: r0/task-board/SKILL.md)\n- pdf: /Users/x/.agents/skills/pdf/SKILL.md"}]}}),
+            json.dumps({"timestamp": "2026-09-09T10:00:01Z", "type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "arguments": json.dumps({"cmd": "sed -n '1,180p' /Users/x/.agents/skills/task-board/SKILL.md"})}}),
+            json.dumps({"timestamp": "2026-09-09T10:00:02Z", "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec", "input": 'tools.exec_command({cmd:"cat /Users/x/.codex/plugins/cache/vendor/plugin/1.0/skills/pdf/SKILL.md"})'}}),
+            # Tool output quoting the path back is not a second use.
+            json.dumps({"timestamp": "2026-09-09T10:00:03Z", "type": "response_item", "payload": {"type": "function_call_output", "output": "read /Users/x/.agents/skills/other/SKILL.md"}}),
+        ]
+        e = dispatch.stats_fields()
+        dispatch.parse_codex_stats(e, "\n".join(lines), dispatch.re.compile(r'"timestamp":"([^"]+)"'))
+        self.assertEqual(e["skills"], {"task-board": 1, "pdf": 1})
+
+    def test_zcode_counts_skill_tool_calls(self):
+        def fake_query(sql, params=()):
+            if "from part" in sql:
+                return [{"sk": "video-to-notes"}, {"sk": "video-to-notes"}, {"sk": "getnote"}, {"sk": None}]
+            return []
+        e = dispatch.stats_fields()
+        with patch.object(dispatch, "zcode_query", side_effect=fake_query):
+            dispatch.parse_zcode_stats(e, "sess_1")
+        self.assertEqual(e["skills"], {"video-to-notes": 2, "getnote": 1})

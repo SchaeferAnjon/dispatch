@@ -843,7 +843,12 @@ def first_prompt_of(agent, buf):
     return ""
 
 
-STATS_V = 1  # bump to force a full re-parse when the per-session stats shape changes
+STATS_V = 2  # bump to force a full re-parse when the per-session stats shape changes
+
+# A skill is "used" when the agent opens its SKILL.md. Codex has no Skill tool: it expands the
+# skills listed in its system prompt (r0/task-board/SKILL.md) and cats the file. ZCode does have a
+# Skill tool. Both spellings end in skills/<name>/SKILL.md, whatever the root (pool, .agents, plugins).
+RE_SKILL_FILE = re.compile(r'skills/(?:[^/"\s]+/)*([^/"\s]+)/SKILL\.md')
 
 
 def stats_fields():
@@ -969,6 +974,10 @@ def parse_codex_stats(e, buf, re_ts):
             m = re.search(r'"model":"([^"]+)"', line)
             if m:
                 e["models"][m.group(1)] = e["models"].get(m.group(1), 0) + 1
+        elif '"function_call"' in line or '"custom_tool_call"' in line:
+            # Only tool calls count — the system prompt also lists every skill's SKILL.md path.
+            for m in RE_SKILL_FILE.finditer(line):
+                e["skills"][m.group(1)] = e["skills"].get(m.group(1), 0) + 1
         elif '"type":"response_item"' in line and '"type":"message"' in line and ('"role":"user"' in line or '"role":"assistant"' in line):
             m = re_ts.search(line)
             if m:
@@ -995,6 +1004,9 @@ def parse_zcode_stats(e, sid):
             bump_time(e, local_dt_ms(m["time_created"]), 1, tok, (i, o, cr, cw))
         else:
             bump_time(e, local_dt_ms(m["time_created"]), 1, 0)
+    for r in zcode_query("select json_extract(data,'$.state.input.skill') sk from part where session_id=? and json_extract(data,'$.type')='tool' and json_extract(data,'$.tool')='Skill'", (sid,)):
+        if r["sk"]:
+            e["skills"][r["sk"]] = e["skills"].get(r["sk"], 0) + 1
 
 
 def refresh_index():
@@ -2224,8 +2236,9 @@ def all_skills():
 
 
 def skill_usage():
-    """Per-skill invocation counts by agent, from the transcript index (Claude Code records
-    skill/slash-command calls; Codex and ZCode transcripts carry none, so their counts stay 0)."""
+    """Per-skill invocation counts by agent, from the transcript index. Claude Code records
+    Skill tool and slash-command calls; Codex records reads of a skill's SKILL.md (it has no
+    Skill tool); ZCode records its Skill tool calls."""
     usage, last = {}, {}
     for e in (load_index() or {}).values():
         for k, v in (e.get("skills") or {}).items():
