@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchCommands, slashQuery, type SlashCommand } from "./SessionReply";
+import { matchCommands, slashQuery, withImages, type SlashCommand } from "./SessionReply";
 
 const all: SlashCommand[] = [
   { name: "compact", description: "压缩对话上下文", kind: "builtin" },
@@ -28,5 +28,14 @@ describe("reply box slash menu", () => {
     expect(matchCommands(all, "zzz")).toEqual([]);
     expect(matchCommands(all, "", 2)).toHaveLength(2);
     expect(matchCommands(all, "")).toHaveLength(all.length); // everything fits under the default cap
+  });
+});
+
+describe("reply box pictures", () => {
+  it("appends the saved paths on one line so the TUI gets a single submit; pictures alone still say something", () => {
+    expect(withImages("  看这个  ", [])).toBe("看这个");
+    expect(withImages("这是什么", ["/a/1.jpg", "/a/2.png"])).toBe("这是什么 附图（用 Read 看）：/a/1.jpg /a/2.png");
+    expect(withImages("", ["/a/1.jpg"])).toBe("看一下这几张图 附图（用 Read 看）：/a/1.jpg");
+    expect(withImages("   ", [])).toBe("");
   });
 });

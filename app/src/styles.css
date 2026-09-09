@@ -280,6 +280,10 @@ td .t{font-weight:500}
 .reply-slash-loading{padding:8px 12px;font-size:12px;color:var(--ink-3)}
 .session-reply textarea{min-width:0;flex:1;resize:vertical;max-height:160px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--panel);color:var(--ink);font:inherit;line-height:1.45}
 .session-reply .btn{flex:none;min-height:40px}
+.session-reply form{flex-wrap:wrap}
+.session-reply .reply-attach{padding:0 10px;font-size:16px}
+.session-reply textarea{flex:1 1 200px}
+.reply-images{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .reply-receipt{font-size:13px;padding:6px 10px;margin-bottom:8px;border-radius:6px;background:var(--panel);max-height:100px;overflow:auto}
 .reply-receipt span{color:var(--ink-3);font-size:11px}.reply-receipt p{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .reply-error{font-size:12px;color:var(--s-block);margin-top:6px;overflow-wrap:anywhere}.reply-error button{margin-left:8px}

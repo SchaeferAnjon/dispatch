@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react';
 import type { Api } from '../api';
 import type { SessionRef, TimelineMsg } from '../types';
 
@@ -16,6 +16,19 @@ export function matchCommands(all: SlashCommand[], query: string, limit = 40): S
   return [...starts, ...rest].slice(0, limit);
 }
 const readJson = <T,>(raw: string): T => JSON.parse(raw.slice(raw.indexOf('{')));
+interface Attached { path: string; preview: string; name: string }
+/** Phone photos are 3–8 MB; the agent only needs to see them. Fit inside 2000px as JPEG (screenshots stay PNG when small). */
+export async function shrinkImage(file: File, maxSide = 2000): Promise<string> {
+  const dataUrl = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(file); });
+  if (file.size < 600_000 && file.type !== 'image/heic' && file.type !== 'image/heif') return dataUrl;
+  const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('无法读取这张图片')); i.src = dataUrl; });
+  const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.85);
+}
+/** The message the agent reads: the text plus, when there are pictures, where to find them. */
+export const withImages = (text: string, paths: string[]): string => paths.length ? `${text.trim() || '看一下这几张图'} 附图（用 Read 看）：${paths.join(' ')}` : text.trim();
 const messageId = () => {
   // randomUUID is unavailable on HTTP phone connections; getRandomValues is not.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -38,6 +51,23 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   const locked = useRef(false);
   const alive = useRef(true);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const [images, setImages] = useState<Attached[]>([]);
+  const [saving, setSaving] = useState(0);
+  const fileInput = useRef<HTMLInputElement>(null);
+  // Pictures land on the machine the session runs on, so its Read tool can open the path.
+  const addFiles = async (files: File[]) => {
+    for (const f of files.filter(x => x.type.startsWith('image/'))) {
+      setSaving(n => n + 1);
+      try {
+        const data = await shrinkImage(f);
+        const t = await api.on(host, ['save-image', '--json'], JSON.stringify({ name: f.name || 'photo', data }));
+        const saved = readJson<{ path: string }>(t);
+        if (alive.current) setImages(xs => [...xs, { path: saved.path, preview: data, name: f.name || '图片' }]);
+      } catch (e) { if (alive.current) setError(/usage:|invalid choice/.test(String(e)) ? '会话所在机器的 dispatch 太旧，还不会存图片；更新那台机器后再试。' : `图片没传上去：${String(e)}`); }
+      finally { if (alive.current) setSaving(n => n - 1); }
+    }
+  };
+  const onPaste = (e: ReactClipboardEvent) => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); void addFiles(files); } };
   const [commands, setCommands] = useState<SlashCommand[] | null>(null);
   const [cursor, setCursor] = useState(0);
   const [menuClosed, setMenuClosed] = useState('');
@@ -90,8 +120,8 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     return () => { viewport?.removeEventListener('resize', resize); viewport?.removeEventListener('scroll', resize); document.removeEventListener('focusin', resize); document.removeEventListener('focusout', resize); document.body.classList.remove('reply-keyboard'); document.documentElement.style.removeProperty('--reply-viewport'); };
   }, []);
   const send = async (mode: 'queue' | 'interrupt' = 'queue') => {
-    const text = draft.trim();
-    if (locked.current || !text || !connection?.available) return;
+    const text = withImages(draft, images.map(x => x.path));
+    if (locked.current || !text || saving || !connection?.available) return;
     locked.current = true; setBusy(true); setError('');
     const request = attempt.current?.text === text ? attempt.current : { id: messageId(), text };
     attempt.current = request;
@@ -101,7 +131,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
       if (r.state === 'accepted') { try { if ((sessionStorage.getItem(storageKey)||'').trim()===text) sessionStorage.removeItem(storageKey); } catch { /* private browser */ } forgetAttempt(); }
       if (!alive.current) return;
       setReceipt(r);
-      if (r.state === 'accepted') { setDraft(''); onSent(); }
+      if (r.state === 'accepted') { setDraft(''); setImages([]); onSent(); }
       else if (r.state === 'failed') { forgetAttempt(); setError(r.note); }
       else setError(r.note);
       await load();
@@ -127,7 +157,13 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
         </li>)}
       </ul>}
       {query !== null && commands === null && <div className="reply-slash reply-slash-loading">正在读取可用命令…</div>}
-      <textarea ref={textarea} aria-label="回复内容" placeholder={connection?.working ? "它在跑，也可以说话：排队等本轮结束，或打断让它马上看" : "在这里回复，继续这个会话…"} value={draft} maxLength={16000} rows={2} disabled={busy || !!unknown}
+      {(images.length > 0 || saving > 0) && <div className="reply-images">
+        {images.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt={im.name} title={im.path} /><button type="button" className="x" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label="移除图片">✕</button></div>)}
+        {saving > 0 && <span className="muted small">传图中…</span>}
+      </div>}
+      <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={e => { void addFiles(Array.from(e.target.files || [])); e.target.value = ''; }} />
+      <button className="btn reply-attach" type="button" disabled={busy || !!unknown} onClick={() => fileInput.current?.click()} title="发图片：手机可拍照或选相册，电脑也可以直接粘贴" aria-label="添加图片">📷</button>
+      <textarea ref={textarea} onPaste={onPaste} aria-label="回复内容" placeholder={connection?.working ? "它在跑，也可以说话：排队等本轮结束，或打断让它马上看" : images.length ? "说说这张图要干什么（可不填）" : "在这里回复，继续这个会话…"} value={draft} maxLength={16000} rows={2} disabled={busy || !!unknown}
         onChange={e => { setDraft(e.target.value); if (receipt?.state === 'failed') setReceipt(null); }}
         onKeyDown={e => {
           if (e.nativeEvent.isComposing) return;
@@ -138,8 +174,8 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
           else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(menu[Math.min(cursor, menu.length - 1)]); }
           else if (e.key === 'Escape') { e.preventDefault(); setMenuClosed(draft); }
         }} />
-      {connection?.working && <button className="btn" type="button" disabled={busy || !draft.trim() || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title="先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导">打断并发送</button>}
-      <button className="btn primary" type="submit" disabled={busy || !draft.trim() || !connection?.available || !!unknown} title={connection?.working ? '排进队列，本轮结束 Agent 就会看到' : undefined}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : connection?.working ? '排队发送' : '发送'}</button>
+      {connection?.working && <button className="btn" type="button" disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title="先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导">打断并发送</button>}
+      <button className="btn primary" type="submit" disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} title={connection?.working ? '排进队列，本轮结束 Agent 就会看到' : undefined}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : connection?.working ? '排队发送' : '发送'}</button>
     </form>
     {(error || unknown || last?.state==='failed') && <div className="reply-error" role="alert">{error || last?.note}{unknown && <><button className="link" onClick={() => { setReceipt(null); void load(); }}>检查送达状态</button><button className="link" onClick={()=>{setDismissed(last.id);forgetAttempt();setError('');}}>已核对，继续编辑</button></>}</div>}
   </section>;
