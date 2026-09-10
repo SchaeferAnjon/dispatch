@@ -3846,6 +3846,101 @@ def cmd_facts(a):
             print(json.dumps({"path": target, "content": t, "exists": os.path.exists(target)}, ensure_ascii=False) if a.json else t, end="" if (t.endswith("\n") and not a.json) else "\n")
 
 
+# ---------------------------------------------------------------- agent memories (read-only)
+# Each agent keeps its own long-term memory; Dispatch only lists and shows them. pi and Gemini
+# have no memory store (sessions + AGENTS.md/GEMINI.md only), so they never appear here.
+MEMORY_STORES = [
+    ("claude-code", os.path.join(HOME, ".claude", "projects", "*", "memory", "*.md")),
+    ("codex", os.path.join(HOME, ".codex", "memories", "raw_memories.md")),
+    ("zcode", os.path.join(HOME, ".zcode", "cli", "memories", "projects", "*", "memory", "*.md")),
+]
+
+
+def claude_project_dirs():
+    """Claude names each project folder by replacing every non-alphanumeric character of the
+    cwd with "-" (spaces and Chinese included), which is lossy; recover the real path from the
+    cwds the session index knows, and fall back to a readable guess."""
+    known = {}
+    try:
+        for r in session_refs(load_index()):
+            cwd = (r.get("cwd") or "").rstrip("/")
+            if cwd:
+                known.setdefault(re.sub(r"[^A-Za-z0-9]", "-", cwd), cwd)
+    except Exception:
+        pass
+    return known
+
+
+def claude_decode_dir(enc, base="/", depth=0):
+    """Walk the filesystem to undo Claude's lossy encoding: at each level pick the entry whose
+    encoded name is a prefix of what is left. Returns None when no existing directory fits."""
+    if not enc:
+        return base
+    if not enc.startswith("-") or depth > 24:
+        return None
+    rest = enc[1:]
+    try:
+        entries = sorted(os.listdir(base), key=len, reverse=True)
+    except OSError:
+        return None
+    for name in entries:
+        e = re.sub(r"[^A-Za-z0-9]", "-", name)
+        if e and rest.startswith(e) and (len(rest) == len(e) or rest[len(e)] == "-"):
+            full = os.path.join(base, name)
+            if os.path.isdir(full):
+                hit = claude_decode_dir(rest[len(e):], full, depth + 1)
+                if hit:
+                    return hit
+    return None
+
+
+def memory_project(agent, path, known):
+    if agent == "codex":
+        return "全局"
+    folder = os.path.basename(os.path.dirname(os.path.dirname(path)))
+    if agent == "zcode":
+        return re.sub(r"-[0-9a-f]{16}$", "", folder)
+    real = known.get(folder) or claude_decode_dir(folder)
+    if real:
+        return real.replace(HOME, "~", 1)
+    guess = folder.replace("-", "/")
+    guess = re.sub(r"^/Users/" + re.escape(os.path.basename(HOME)) + r"(?=/|$)", "~", guess)
+    return re.sub(r"/{2,}", "/…/", guess).rstrip("/") or "/"
+
+
+def memory_files():
+    import glob
+    rows, known = [], claude_project_dirs()
+    for agent, pat in MEMORY_STORES:
+        for path in sorted(glob.glob(pat)):
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            if st.st_size == 0:
+                continue
+            name = os.path.basename(path)
+            rows.append({"agent": agent, "project": memory_project(agent, path, known), "path": path, "name": name,
+                         "index": name == "MEMORY.md", "size": st.st_size, "mtime": st.st_mtime})
+    rows.sort(key=lambda r: (r["agent"], r["project"], not r["index"], r["name"]))
+    return rows
+
+
+def cmd_memories(a):
+    rows = memory_files()
+    if a.op == "show":
+        want = os.path.realpath(a.path or a.query)
+        hit = next((r for r in rows if os.path.realpath(r["path"]) == want), None)
+        if not hit:
+            print(f"{a.path or a.query} 不在记忆文件列表里（`dispatch memories list`）", file=sys.stderr); sys.exit(2)
+        t = open(hit["path"], encoding="utf-8", errors="replace").read()
+        print(json.dumps({**hit, "content": t}, ensure_ascii=False) if a.json else t, end="" if (t.endswith("\n") and not a.json) else "\n")
+        return
+    if a.agent:
+        rows = [r for r in rows if r["agent"] == a.agent]
+    out(rows, a.json, lambda rs: [print(f"{r['agent']:<12} {r['project']:<40} {r['name']:<36} {r['size']:>6}  {time.strftime('%m-%d %H:%M', time.localtime(r['mtime']))}") for r in rs] or print(f"\n{len(rs)} 个记忆文件"))
+
+
 def rules_text():
     try:
         return open(RULES_FILE, encoding="utf-8").read()
@@ -6650,6 +6745,7 @@ def main():
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs", "vaults", "topics", "get", "search", "import"]); s.add_argument("query", nargs="?", default=""); s.add_argument("--apply", action="store_true", help="import: 追加进 FACTS.md"); s.add_argument("--out", default="", help="import: 清单路径"); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
+    s = sub.add_parser("memories", help="各 Agent 自己的长期记忆文件（Claude Code / Codex / ZCode），只读"); s.add_argument("op", nargs="?", choices=["list", "show"], default="list"); s.add_argument("query", nargs="?", default="", help="show: 文件路径"); s.add_argument("--agent", default="", help="list: claude-code | codex | zcode"); s.add_argument("--path", default="", help="show: 文件路径"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_memories)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show", "related"]); s.add_argument("text", nargs="?", help="related: 任务 ID；search: 一句话"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS) + ["all"]); s.add_argument("--semantic", action="store_true", help="search: 按意思找（智谱 embedding-3 + sqlite-vec），不按关键字"); s.add_argument("--limit", type=int, default=8, help="search/related: 最多几条"); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)

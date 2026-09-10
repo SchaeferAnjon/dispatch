@@ -5,6 +5,7 @@ import { HostPicker, hostReason } from './HostPicker';
 import { useItemMenu, useViewMenuExtras } from './ContextMenu';
 import { Markdown } from './Markdown';
 import { FactsView } from './Facts';
+import { MemoriesView } from './Memories';
 
 interface Doc { path: string; real_path: string; name: string; agents: string[]; active: boolean; exists: boolean; content: string; hash: string; lines: number; bytes: number; references: string[]; referenced_by: string[]; managed: boolean; writable: boolean }
 interface Finding { kind: string; path: string; line: number; message: string; suggestion: string; other?: { path: string; line: number } }
@@ -17,7 +18,7 @@ type Props = { api: Api; hosts: Host[]; hostId?: string; onDone: (m:string)=>voi
 
 export function RulesView(props: Props) {
   const [mode, setMode] = useState('audit');
-  return <div className="instruction-page"><div className="views instruction-modes"><button className={mode === 'audit' ? 'on' : ''} onClick={() => setMode('audit')}>Agent 规则</button><button className={mode === 'facts' ? 'on' : ''} onClick={() => setMode('facts')}>常用资料</button></div>{mode === 'facts' ? <FactsView {...props} /> : <Center {...props} />}</div>;
+  return <div className="instruction-page"><div className="views instruction-modes"><button className={mode === 'audit' ? 'on' : ''} onClick={() => setMode('audit')}>Agent 规则</button><button className={mode === 'facts' ? 'on' : ''} onClick={() => setMode('facts')}>常用资料</button><button className={mode === 'memories' ? 'on' : ''} onClick={() => setMode('memories')}>Agent 记忆</button></div>{mode === 'facts' ? <FactsView {...props} /> : mode === 'memories' ? <MemoriesView {...props} /> : <Center {...props} />}</div>;
 }
 
 // The managed block is generated from GLOBAL.md; while editing it shows as one placeholder
