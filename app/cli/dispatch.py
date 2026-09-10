@@ -1130,6 +1130,15 @@ def parse_zcode_stats(e, sid):
             e["skills"][r["sk"]] = e["skills"].get(r["sk"], 0) + 1
 
 
+# Transcripts left by Dispatch's own headless `claude -p` runs (session / project summaries, before they were
+# started with --no-session-persistence): one prompt beginning with the summarizer's system text.
+INTERNAL_PROMPTS = ("你是会话记录的总结者", "你是项目记录的总结者")
+
+
+def _internal_run(e):
+    return e.get("agent") == "claude-code" and e.get("entrypoint") == "sdk-cli" and (e.get("first_prompt") or "").startswith(INTERNAL_PROMPTS)
+
+
 def refresh_index():
     """Incrementally scan Claude Code / Codex transcripts for task ids, titles, cwd."""
     prefix = task_prefix()
@@ -1158,6 +1167,8 @@ def refresh_index():
         e = idx.get(path) or {"agent": agent, "session_id": "", "cwd": "", "title": "", "mtime": 0, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": "/subagents/" in path, "entrypoint": "", "branch": "", "first_ts": "", "last_ts": "", "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": ""}
         for k, v in (("entrypoint", ""), ("branch", ""), ("first_ts", ""), ("last_ts", ""), ("user_msgs", 0), ("assistant_msgs", 0), ("tools", {}), ("first_prompt", "")):
             e.setdefault(k, v)
+        if not e["subagent"] and _internal_run(e):
+            e["subagent"] = True  # Dispatch's own model calls (summaries) are not conversations: hide them like subagents
         if e.get("stats_v") != STATS_V:
             # Shape changed: re-read the whole file once so the counters start from zero.
             e.update(off=0, mtime=0, tasks={}, claims=[], user_msgs=0, assistant_msgs=0, tools={}, stats_v=STATS_V, **stats_fields())
@@ -1205,6 +1216,8 @@ def refresh_index():
                 e["entrypoint"] = m.group(1)
         if not e["first_prompt"]:
             e["first_prompt"] = first_prompt_of(agent, buf)
+            if not e["subagent"] and _internal_run(e):
+                e["subagent"] = True
         if not e["branch"]:
             m = re_branch.search(buf)
             if m:

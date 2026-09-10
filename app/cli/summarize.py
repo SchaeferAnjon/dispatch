@@ -127,7 +127,10 @@ def chat(p, system, user, timeout=90):
         # Strip the session markers so a summary started from inside a Claude session still saves nothing odd.
         env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
         env["PATH"] = D.PATH_EXTRA + ":" + env.get("PATH", "")
-        r = subprocess.run([CLAUDE_BIN, "-p", system, "--model", p["model"], "--output-format", "text", "--tools", ""], input=user, capture_output=True, text=True, timeout=timeout + 60, env=env, cwd=D.HOME)
+        # --no-session-persistence: a summary run must not leave a transcript behind — otherwise every run
+        # becomes a new "session" under ~ that floods the index (pushing real projects out of the app's
+        # newest-500 window) and then gets summarized itself, on the subscription's quota, for ever.
+        r = subprocess.run([CLAUDE_BIN, "-p", system, "--model", p["model"], "--output-format", "text", "--tools", "", "--no-session-persistence"], input=user, capture_output=True, text=True, timeout=timeout + 60, env=env, cwd=D.HOME)
         if r.returncode != 0 and not r.stdout.strip():
             raise RuntimeError("claude -p 失败：" + (r.stderr or "").strip()[-200:])
         return r.stdout.strip()
