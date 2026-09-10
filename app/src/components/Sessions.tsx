@@ -89,8 +89,9 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
   // 只看结论: your messages plus the last reply of each turn, nothing in between.
   const [brief, setBrief] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tl-brief") === "1"; } catch { return false; } });
   const toggleBrief = () => { setBrief((b) => { try { localStorage.setItem("dispatch-tl-brief", b ? "0" : "1"); } catch { /* ignore */ } return !b; }); };
-  // 实时活动: the tracker's event log docked above the conversation. On by default; the chip hides it.
-  const [liveLog, setLiveLog] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tl-live") !== "0"; } catch { return true; } });
+  // 实时活动: the tracker's event log docked above the conversation. Off by default — the folded
+  // "跑了 N 条命令" lines in the thread already say what happened; the chip turns the strip on.
+  const [liveLog, setLiveLog] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-tl-live") === "1"; } catch { return false; } });
   // On a phone the summary and the activity strip start folded to one line: the conversation gets the screen.
   const phone = typeof window !== "undefined" && window.innerWidth <= 760;
   const [summaryOpen, setSummaryOpen] = useState(!phone);
