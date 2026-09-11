@@ -32,6 +32,15 @@ class SessionControl(unittest.TestCase):
         with self.assertRaises(Rejected): c.directory(self.d, '/nonexistent-dispatch-path')
         with self.assertRaises(Rejected): c.directory(self.d, 'relative')
 
+    def test_tab_is_named_after_project_then_conversation(self):
+        d = SimpleNamespace(git_root_name=lambda cwd: 'kanban' if cwd.endswith('/kanban/app') else '')
+        self.assertEqual(c.tab_label(d, dict(cwd='/x/kanban/app', title='工作台显示 ZCode 会话', prompt='')), 'kanban · 工作台显示 ZCode 会话')
+        # A resumed session without a title still reads as its project, never a generic 恢复会话.
+        self.assertEqual(c.tab_label(d, dict(cwd='/x/谭师', title='', prompt='')), '谭师')
+        self.assertEqual(c.tab_label(d, dict(cwd='/x/谭师', title='', prompt='第一行\t带控制符\n第二行')), '谭师 · 第一行带控制符')
+        self.assertEqual(len(c.tab_label(d, dict(cwd='/x/kanban/app', title='很'*60, prompt=''))), 32)
+        self.assertEqual(c.tab_label(self.d, dict(cwd='', title='', prompt='')), '恢复会话')
+
     def test_same_creation_request_never_spawns_twice(self):
         with patch.object(c.subprocess, 'Popen') as launch:
             first = c.enqueue(self.d, self.data)

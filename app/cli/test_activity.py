@@ -31,6 +31,47 @@ class ActivityTests(unittest.TestCase):
 
     def row(self): return activity_list(self.home, self.store, {})[0]
 
+    def zcode(self, *rows):
+        """A miniature ZCode SQLite store: rows are (session, message, [parts])."""
+        import sqlite3
+        path = os.path.join(self.home, '.zcode/cli/db/db.sqlite')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        z = sqlite3.connect(path)
+        z.executescript('CREATE TABLE IF NOT EXISTS session (id TEXT PRIMARY KEY, parent_id TEXT, directory TEXT, title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER);'
+                        'CREATE TABLE IF NOT EXISTS message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT, sequence INTEGER);'
+                        'CREATE TABLE IF NOT EXISTS part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT, sequence INTEGER);')
+        for sess, msg, parts in rows:
+            z.execute('INSERT OR REPLACE INTO session VALUES (?,?,?,?,?,?,?)', (sess['id'], None, sess['dir'], sess.get('title', ''), sess['at'], sess['updated'], None))
+            if msg:
+                z.execute('INSERT OR REPLACE INTO message VALUES (?,?,?,?,?,?)', (msg['id'], sess['id'], msg['at'], msg['at'], json.dumps(msg['data']), msg.get('seq', 0)))
+                for n, part in enumerate(parts):
+                    z.execute('INSERT OR REPLACE INTO part VALUES (?,?,?,?,?,?,?)', (f"{msg['id']}-{n}", msg['id'], sess['id'], msg['at'] + n, msg['at'] + n, json.dumps(part), n))
+        z.commit(); z.close()
+
+    def test_zcode_sessions_join_the_activity_list(self):
+        ms = lambda t: int(t * 1000)
+        sess = {'id': 'sess_1', 'dir': '/tmp/谭师', 'title': '下载视频', 'at': ms(self.t - 60), 'updated': ms(self.t - 5)}
+        user = {'id': 'm1', 'at': ms(self.t - 60), 'data': {'role': 'user', 'time': {'created': ms(self.t - 60)}}}
+        working = {'id': 'm2', 'at': ms(self.t - 5), 'seq': 1, 'data': {'role': 'assistant', 'time': {'created': ms(self.t - 5)}}}
+        self.zcode((sess, user, [{'type': 'text', 'text': '把全部视频下载下来'}]),
+                   (sess, working, [{'type': 'tool', 'tool': 'Bash', 'state': {'status': 'running', 'input': {'command': 'yt-dlp …'}}}]))
+        rows = activity_list(self.home, self.store, {'zcode:sess_1': {'tasks': {'task-1': 2}, 'entrypoint': 'desktop'}})
+        self.assertEqual([r['agent'] for r in rows], ['zcode'])
+        r = rows[0]
+        self.assertEqual((r['key'], r['path'], r['project'], r['title'], r['tasks'], r['entrypoint']), ('zcode:sess_1', 'zcode:sess_1', '谭师', '下载视频', ['task-1'], 'desktop'))
+        self.assertEqual((r['state'], r['stale'], r['unread']), ('working', False, False))
+        self.assertTrue(r['activity'].startswith('Bash · '))
+        self.assertEqual([e['kind'] for e in r['events']], ['user', 'tool'])
+        # The turn ends with a stopped assistant message: idle, and its text is the unread reply.
+        sess['updated'] = ms(self.t)
+        done = {'id': 'm2', 'at': ms(self.t - 5), 'seq': 1, 'data': {'role': 'assistant', 'time': {'created': ms(self.t - 5), 'completed': ms(self.t)}, 'finish': 'stop'}}
+        self.zcode((sess, done, [{'type': 'tool', 'tool': 'Bash', 'state': {'status': 'completed', 'input': {'command': 'yt-dlp …'}}}, {'type': 'text', 'text': '下载完成，共 12 个'}]))
+        r = activity_list(self.home, self.store, {})[0]
+        self.assertEqual((r['state'], r['activity'], r['unread'], r['reply_preview']), ('idle', '已回复', True, '下载完成，共 12 个'))
+        self.assertAlmostEqual(float(r['reply_id'].split(':')[0]), self.t, delta=0.001)
+        acknowledge(self.store, r['key'], r['reply_id'])
+        self.assertFalse(activity_list(self.home, self.store, {})[0]['unread'])
+
     def test_preferences_persist_independently_of_new_replies(self):
         self.append(record('assistant','first',self.t))
         a=self.row()

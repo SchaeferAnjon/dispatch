@@ -308,6 +308,104 @@ def session_preferences(directory):
         return {key: json.loads(data) for key, data in db.execute('SELECT key,data FROM session_preferences')}
 
 
+# ZCode (an OpenCode-based desktop app) keeps conversations in one SQLite file instead of
+# transcripts. Its sessions are read into the same row shape observe() produces, so the
+# workbench and inbox treat them like every other agent's.
+ZCODE_DB = os.path.join('.zcode', 'cli', 'db', 'db.sqlite')
+ZCODE_PARSER = 1
+
+
+def zcode_state(z, s):
+    sid = s['id']
+    state = {'parser_version': ZCODE_PARSER, 'agent': 'zcode', 'session_id': sid, 'cwd': s['directory'] or '', 'title': (s['title'] or '')[:100],
+             'last_at': s['time_updated'] / 1000, 'state': 'idle', 'activity': '', 'events': [], 'version': f'0:{s["time_updated"]}'}
+    events = state['events']
+    def event(ts, kind, summary, **extra):
+        eid = hashlib.sha256((str(ts) + kind + summary).encode()).hexdigest()[:20]
+        if not any(e['id'] == eid for e in events):
+            events.append(dict(id=eid, ts=ts, kind=kind, text=summary[:400], **extra))
+    parts = {}
+    for r in z.execute("SELECT message_id, data FROM part WHERE session_id=? AND json_extract(data,'$.type') IN ('text','tool') ORDER BY time_created, sequence", (sid,)):
+        try: parts.setdefault(r['message_id'], []).append(json.loads(r['data']))
+        except (ValueError, TypeError): continue
+    for r in z.execute('SELECT id, data FROM message WHERE session_id=? ORDER BY time_created, sequence', (sid,)):
+        try: m = json.loads(r['data'])
+        except (ValueError, TypeError): continue
+        t = m.get('time') or {}
+        created = (t.get('created') or 0) / 1000
+        completed = (t.get('completed') or 0) / 1000
+        if not created: continue
+        text = '\n'.join(p.get('text', '') for p in parts.get(r['id'], []) if p.get('type') == 'text')
+        if m.get('role') == 'user':
+            text = user_text(text)
+            if not text.strip(): continue
+            state['user_at'] = created
+            remember_topic(state, text)
+            state['state'], state['activity'] = 'working', '正在处理你的消息'
+            if not state.get('title'): state['title'] = text.strip().split('\n')[0][:100]
+            event(created, 'user', text)
+            continue
+        for p in parts.get(r['id'], []):
+            if p.get('type') != 'tool': continue
+            name = p.get('tool', ''); st = p.get('state') or {}
+            inp = st.get('input') if isinstance(st.get('input'), dict) else {}
+            summary = operation_summary(name, inp, json.dumps(inp, ensure_ascii=False))
+            paths = [x for x in [inp.get('filePath') or inp.get('file_path') or inp.get('path')] if x] if name.lower() in ('edit', 'write') else []
+            event(created, 'tool', summary, tool=name, paths=paths)
+            status = st.get('status')
+            if status in ('completed', 'error'):
+                failed = status == 'error'
+                event(completed or created, 'error' if failed else 'result', ('失败 · ' if failed else '已返回 · ') + name, paths=paths)
+                if not failed:
+                    for path in paths: state.setdefault('files', {})[path] = completed or created
+                state['activity'] = '工具执行失败' if failed else f'已执行 · {summary[:160]}'
+            else:
+                state['activity'] = f'{name} · {summary[:160]}'
+            state['state'] = 'working'
+        # A turn is over when the model stopped on its own; 'tool-calls' means another step follows.
+        finished = bool(completed) and m.get('finish') != 'tool-calls'
+        if text.strip():
+            event(completed or created, 'reply' if finished else 'message', text)
+            if finished:
+                digest = hashlib.sha256(text.encode()).hexdigest()[:20]
+                if digest != state.get('reply_digest') or state.get('user_at', 0) > state.get('reply_at', 0):
+                    state.update(reply_id=f'{completed}:{digest}', reply_at=completed, reply_digest=digest, reply_preview=text[:280])
+            state['activity'] = '已回复' if finished else '正在回复'
+        if finished:
+            state['state'] = 'idle'
+            if not text.strip(): state['activity'] = '本轮已结束'
+        elif not completed:
+            state['state'] = 'working'
+    state['events'] = events[-80:]
+    return state
+
+
+def zcode_sessions(home, db, limit=60):
+    path = os.path.join(home, ZCODE_DB)
+    if not os.path.exists(path): return []
+    try:
+        z = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=2)
+        z.row_factory = sqlite3.Row
+    except sqlite3.Error: return []
+    rows = []
+    with closing(z):
+        try:
+            sessions = z.execute('SELECT id, directory, title, time_updated FROM session WHERE parent_id IS NULL AND time_archived IS NULL ORDER BY time_updated DESC LIMIT ?', (limit,)).fetchall()
+        except sqlite3.Error: return []
+        for s in sessions:
+            key = 'zcode:' + s['id']
+            cached = db.execute('SELECT off,data FROM streams WHERE path=?', (key,)).fetchone()
+            if cached and cached[0] == s['time_updated']:
+                state = json.loads(cached[1])
+                if state.get('parser_version') == ZCODE_PARSER:
+                    rows.append(state); continue
+            try: state = zcode_state(z, s)
+            except sqlite3.Error: continue
+            db.execute('INSERT OR REPLACE INTO streams VALUES (?,?,?,?,?)', (key, 0, s['time_updated'], s['time_updated'] / 1000, json.dumps(state, ensure_ascii=False)))
+            rows.append(state)
+    return rows
+
+
 def activity_list(home, directory, index):
     paths = []
     for folder, agent in (('.claude/projects', 'claude-code'), ('.codex/sessions', 'codex'), ('.pi/agent/sessions', 'pi')):
@@ -320,10 +418,7 @@ def activity_list(home, directory, index):
     titles = codex_titles(home)
     with closing(connect(directory)) as db, db:
         started_at = db.execute('SELECT value FROM settings WHERE key=?', ('started_at',)).fetchone()[0]
-        for _, path, agent in paths[:120]:
-            try: s = dict(read_stream(db, path, agent))
-            except OSError: continue
-            if not s.get('last_at'): continue
+        def decorate(s, path, agent):
             e = index.get(path, {})
             s['title'] = (titles.get(s['session_id']) if agent == 'codex' else None) or user_text(e.get('title') or '') or user_text(s.get('title') or '') or os.path.basename(s.get('cwd', '')) or '未命名会话'
             s['tasks'] = list(e.get('tasks', {}))
@@ -340,6 +435,13 @@ def activity_list(home, directory, index):
             s['source'] = 'transcript'
             s.pop('topics', None); s.pop('pending', None); s.pop('reply_digest', None)
             rows.append(s)
+        for _, path, agent in paths[:120]:
+            try: s = dict(read_stream(db, path, agent))
+            except OSError: continue
+            if not s.get('last_at'): continue
+            decorate(s, path, agent)
+        for s in zcode_sessions(home, db):
+            if s.get('last_at'): decorate(dict(s), 'zcode:' + s['session_id'], 'zcode')
     # A resumed Codex task can have more than one rollout file with the same id.
     # Keep its newest observation; duplicate React keys otherwise accumulate rows.
     unique = {}

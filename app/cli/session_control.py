@@ -208,6 +208,17 @@ def enqueue(d, data):
     return result
 
 
+def tab_label(d, p):
+    """The Herdr tab is named after the project first, then the conversation, so a restored
+    session reads as `kanban · 工作台显示 ZCode 会话` instead of a generic 恢复会话."""
+    cwd = p.get('cwd') or ''
+    root_name = getattr(d, 'git_root_name', None)
+    project = (root_name(cwd) if root_name else '') or os.path.basename(cwd.rstrip('/'))
+    title = ((p.get('title') or '').strip() or (p.get('prompt') or '').strip()).split('\n')[0]
+    title = ''.join(ch for ch in title if ord(ch) >= 32).strip()
+    return (f'{project} · {title}' if project and title else project or title or '恢复会话')[:32]
+
+
 def unsafe_argument(text):
     """True when Herdr would reject the text as a command-line argument (control characters)."""
     return any(ch in text for ch in '\n\r\t\x00')
@@ -225,8 +236,7 @@ def worker(d, rid):
     p = json.loads(row['payload']); agent = p['agent']; start = time.time()
     try:
         before = {r.get('session_id') for r in d.load_index().values()}
-        # The tab is named after the conversation, so a restored session reads as itself in Herdr.
-        label = (p.get('title') or '')[:32] or p['prompt'][:24] or '恢复会话'
+        label = tab_label(d, p)
         tab = checked(d, ['tab', 'create', '--cwd', directory(d, p['cwd']), '--focus', '--label', label])
         pane = tab.get('root_pane', tab); pid = pane['pane_id']; tid = pane.get('tab_id')
         save(d, rid, pane_id=pid, tab_id=tid, message='已打开终端，正在连接 Agent…')
