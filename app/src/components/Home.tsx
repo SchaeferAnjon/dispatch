@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ago, actorOf, parseAcceptance, projectColor, relTime, sessionStatus } from "../derive";
 import { UNGROUPED_PROJECT, activityKey, conversationProject, conversationSummary, sessionLifecycle } from "../activity";
-import { projectGroups } from "../projectModel";
+import { projectGroups, projectHome } from "../projectModel";
 import { isStarred, rankProjects, type ProjectFlags } from "../projectFlags";
 import type { Activity, Issue, Session, View } from "../types";
 import type { InboxItems } from "./Inbox";
@@ -80,6 +80,7 @@ interface Card {
   sessions: number;
   results: Issue[];
   latest?: Activity;
+  home?: Activity;
 }
 
 // The work is organised by project: a project has conversations, and each
@@ -111,7 +112,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
       const open = p.items.filter((i) => i.status !== "closed").length;
       // Recency is conversation activity: a running session counts as now.
       const lastActive = Math.max(running.length ? Date.now() / 1000 : 0, ...ordinary.map((a) => a.last_at), ...waiting.map((s) => s.last_at), 0);
-      return { name: p.name, last: p.last, lastActive, live: waiting.length + unread.length + running.length + tasks.length + blockedTasks.length + tracked.length > 0, waiting, unread, running, tracked, tasks, blockedTasks, blocked: blockedTasks.length, open, sessions: ordinary.length, results: p.results, latest: ordinary[0] };
+      return { name: p.name, last: p.last, lastActive, live: waiting.length + unread.length + running.length + tasks.length + blockedTasks.length + tracked.length > 0, waiting, unread, running, tracked, tasks, blockedTasks, blocked: blockedTasks.length, open, sessions: ordinary.length, results: p.results, latest: ordinary[0], home: projectHome(ordinary) };
     }).sort((a, b) => b.lastActive - a.lastActive || b.last - a.last);
   }, [rows, issues, outcomes, inbox.unread, inbox.waiting, archiveDays]);
 
@@ -169,7 +170,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
           {c.name !== UNGROUPED && <button className={`star${isStarred(flags, c.name) ? " on" : ""}`} onClick={() => onFlag(c.name, { starred: !isStarred(flags, c.name) })} title={isStarred(flags, c.name) ? "取消收藏" : "收藏：置顶，近期重点关注"} aria-label={isStarred(flags, c.name) ? `取消收藏 ${c.name}` : `收藏 ${c.name}`}>{isStarred(flags, c.name) ? "★" : "☆"}</button>}
           {open ? <span className="counts muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.blocked ? ` · ${c.blocked} 项被卡住` : ""}{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span> : <button className="digest" onClick={() => toggle(c.name, open)}>{digest ? <span className={c.waiting.length + c.unread.length ? "hot" : ""}>{digest}</span> : <span className="muted">{c.latest ? `最近：${c.latest.title}` : "没有会话"}</span>}<span className="muted small"> · {c.lastActive ? `${ago(c.lastActive)}` : ""}</span></button>}
           <span className="spacer" />
-          <button className="btn sm" onClick={() => onNew(c.latest)}>新建会话</button>
+          <button className="btn sm" onClick={() => onNew(c.home)}>新建会话</button>
           <button className="link" onClick={() => onProject(c.name)}>进入项目 ›</button>
         </header>
 

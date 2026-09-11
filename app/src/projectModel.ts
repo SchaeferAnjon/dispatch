@@ -7,6 +7,13 @@ export const linkedSessions = (i:Issue) => [...new Set([originSession(i), ...(i.
 export const sourceTasks = (i:Issue) => (i.labels||[]).filter(l=>l.startsWith('outcome-task:')).map(l=>l.slice(13));
 // Project names the board already knows: task labels and hand-set conversation projects.
 export const knownProjects = (tasks:Issue[], rows:Activity[]=[]) => [...new Set([...tasks.map(projectOf),...rows.map(a=>a.project_override||'')].filter(Boolean))];
+// The folder a project's new session should default to: the cwd most of its sessions live in
+// (ties → most recently active). A single hand-linked session from another folder must not steer it.
+export function projectHome(sessions:Activity[]):Activity|undefined {
+  const dirs=new Map<string,{count:number;last:number;latest:Activity}>();
+  for(const a of sessions){const d=(a.cwd||'').replace(/\/+$/,'');if(!d)continue;const cur=dirs.get(d)||{count:0,last:-1,latest:a};cur.count++;if(a.last_at>cur.last){cur.last=a.last_at;cur.latest=a;}dirs.set(d,cur);}
+  return [...dirs.values()].sort((x,y)=>y.count-x.count||y.last-x.last)[0]?.latest ?? sessions[0];
+}
 export function projectGroups(rows:Activity[], tasks:Issue[], outcomes:Issue[]) {
   const names=[...new Set([...rows.map(conversationProject),...tasks.map(i=>projectOf(i)||UNGROUPED_PROJECT),...outcomes.map(i=>projectOf(i)||UNGROUPED_PROJECT)])];
   return names.map(name=>{

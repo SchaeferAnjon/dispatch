@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Activity, Issue, SessionRef } from './types';
-import { projectConversations, isOutcome, knownProjects, linkedSessions, originSession, projectGroups, sourceTasks } from './projectModel';
+import { projectConversations, isOutcome, knownProjects, linkedSessions, originSession, projectGroups, projectHome, sourceTasks } from './projectModel';
 
 describe('project ownership and outcomes', () => {
   const task = {id:'task-one',labels:['project:demo'],updated_at:'2026-09-07T12:00:00Z'} as Issue;
@@ -39,5 +39,26 @@ describe('known project names', () => {
   it('collects task labels and hand-set conversation projects once', () => {
     const rows=[{project_override:'研究'} as Activity,{project_override:''} as Activity,{project_override:'研究'} as Activity];
     expect(knownProjects([{labels:['project:demo']} as Issue,{labels:[] as string[]} as Issue],rows)).toEqual(['demo','研究']);
+  });
+});
+
+describe('projectHome — default folder for a project\'s new session', () => {
+  const s=(cwd:string,last_at:number,extra:Partial<Activity>={})=>({key:`claude-code:${cwd}:${last_at}`,session_id:`${last_at}`,agent:'claude-code',cwd,project:cwd.split('/').pop(),last_at,...extra} as Activity);
+  const hiwi='/Users/x/iCloud/HIWI', kanban='/Users/x/Projects/kanban';
+  it('prefers the folder most sessions live in, not the most recent session\'s folder', () => {
+    const rows=[s(kanban,500,{project_override:'HIWI'}),s(hiwi,400),s(hiwi,300),s(hiwi,200)];
+    expect(projectHome(rows)?.cwd).toBe(hiwi);
+    expect(projectHome(rows)?.last_at).toBe(400);
+  });
+  it('breaks a count tie by recency', () => {
+    expect(projectHome([s(kanban,500),s(hiwi,400)])?.cwd).toBe(kanban);
+  });
+  it('ignores trailing slashes and sessions without a folder', () => {
+    expect(projectHome([s(`${hiwi}/`,1),s(hiwi,2),s('',9),s(kanban,3)])?.cwd).toBe(hiwi);
+  });
+  it('falls back to the first session when no session has a folder', () => {
+    const rows=[s('',2),s('',1)];
+    expect(projectHome(rows)).toBe(rows[0]);
+    expect(projectHome([])).toBeUndefined();
   });
 });
