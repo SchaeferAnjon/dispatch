@@ -406,6 +406,40 @@ def zcode_sessions(home, db, limit=60):
     return rows
 
 
+def transcript_states(directory, session_ids):
+    """What each transcript last said about a session: {session_id: (state, last_at)}.
+    Read from the parsed-stream cache, so this costs one small query per session."""
+    out = {}
+    if not session_ids: return out
+    with closing(connect(directory)) as db:
+        for sid in session_ids:
+            for (data,) in db.execute('SELECT data FROM streams WHERE path LIKE ?', ('%' + sid + '%',)):
+                try: s = json.loads(data)
+                except ValueError: continue
+                if s.get('session_id') != sid or not s.get('last_at'): continue
+                if sid not in out or s['last_at'] > out[sid][1]: out[sid] = (s.get('state', ''), s['last_at'])
+    return out
+
+
+def hook_presence(directory):
+    """Sessions whose hooks report a live process, by session id. A transcript goes quiet for
+    the whole of a long tool call, but a running pid whose last hook event said working is
+    still working, not stale."""
+    folder = os.path.join(directory, 'sessions')
+    out = {}
+    for name in (os.listdir(folder) if os.path.isdir(folder) else []):
+        try:
+            with open(os.path.join(folder, name)) as f: rec = json.load(f)
+        except (OSError, ValueError): continue
+        pid = rec.get('agent_pid')
+        if not rec.get('session_id') or not isinstance(pid, int) or pid <= 0: continue
+        try: os.kill(pid, 0)
+        except ProcessLookupError: continue
+        except OSError: pass  # alive, owned by someone else
+        out[rec['session_id']] = rec
+    return out
+
+
 def activity_list(home, directory, index):
     paths = []
     for folder, agent in (('.claude/projects', 'claude-code'), ('.codex/sessions', 'codex'), ('.pi/agent/sessions', 'pi')):
@@ -416,6 +450,7 @@ def activity_list(home, directory, index):
     paths.sort(reverse=True)
     rows = []
     titles = codex_titles(home)
+    presence = hook_presence(directory)
     with closing(connect(directory)) as db, db:
         started_at = db.execute('SELECT value FROM settings WHERE key=?', ('started_at',)).fetchone()[0]
         def decorate(s, path, agent):
@@ -431,7 +466,11 @@ def activity_list(home, directory, index):
             receipt = db.execute('SELECT reply_id FROM read_replies WHERE key=? AND reply_id=?', (s['key'], s.get('reply_id'))).fetchone()
             s['unread'] = bool(s.get('reply_at', 0) > max(started_at, s.get('user_at', 0)) and (not receipt or receipt[0] != s.get('reply_id')))
             s['tracking_since'] = started_at
-            s['stale'] = s.get('state') == 'working' and time.time() - s['last_at'] > 180
+            live = presence.get(s['session_id'])
+            quiet = s.get('state') == 'working' and time.time() - s['last_at'] > 180
+            # A quiet transcript with a live process whose hooks still say working is a long tool
+            # call or a long reply being written, not a dead session.
+            s['stale'] = quiet and not (live and live.get('state') == 'working')
             s['source'] = 'transcript'
             s.pop('topics', None); s.pop('pending', None); s.pop('reply_digest', None)
             rows.append(s)

@@ -839,6 +839,7 @@ def live_sessions(local_only=False):
         seen.add(pid)
         seen_sids.add((r.get("agent"), r.get("session_id")))
         sessions.append(r)
+    reconcile_with_transcripts(sessions)
     idx = None
     for pid, (ppid, comm) in table.items():
         base = os.path.basename(comm).lstrip("-")
@@ -867,6 +868,24 @@ def live_sessions(local_only=False):
         sessions.extend(remote_sessions())
     sessions.sort(key=lambda s: (s.get("state") != "working", -(s.get("last_at") or 0)))
     return sessions
+
+
+def reconcile_with_transcripts(sessions):
+    """Hooks miss the end of an interrupted turn (Esc, a closed picker): the record stays
+    'working' for hours while the transcript shows the reply finished. When the transcript's
+    last word is idle and at least as recent as the hook's, the transcript wins."""
+    from activity import transcript_states
+    stuck = [s for s in sessions if s.get("registered") and s.get("state") == "working" and s.get("state_source") == "hook"]
+    if not stuck:
+        return
+    try:
+        states = transcript_states(DISPATCH_DIR, [s["session_id"] for s in stuck])
+    except Exception:
+        return
+    for s in stuck:
+        state, last_at = states.get(s["session_id"], ("", 0))
+        if state == "idle" and last_at >= (s.get("last_at") or 0) - 120:
+            s["state"], s["attention"], s["state_source"] = "idle", None, "transcript"
 
 
 def pid_cwd(pid):

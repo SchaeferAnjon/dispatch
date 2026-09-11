@@ -12,6 +12,9 @@ class PresenceSignals(unittest.TestCase):
     def test_idle_is_not_a_request(self):
         self.assertEqual(event_status("Stop", {}, {"attention": "input"}), ("idle", None))
         self.assertEqual(event_status("Notification", {"notification_type": "idle_prompt"}, {"state": "idle"}), ("idle", None))
+        # An interrupted turn sends no Stop; the later idle_prompt is the sign it is over.
+        self.assertEqual(event_status("Notification", {"notification_type": "idle_prompt"}, {"state": "working"}), ("idle", None))
+        self.assertEqual(event_status("Notification", {"notification_type": "auth_success"}, {"state": "working"}), ("working", None))
     def test_request_and_recovery(self):
         self.assertEqual(event_status("PermissionRequest", {}, {}), ("idle", "input"))
         self.assertEqual(event_status("PostToolUseFailure", {}, {}), ("working", None))

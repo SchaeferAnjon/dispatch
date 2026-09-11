@@ -72,6 +72,37 @@ class ActivityTests(unittest.TestCase):
         acknowledge(self.store, r['key'], r['reply_id'])
         self.assertFalse(activity_list(self.home, self.store, {})[0]['unread'])
 
+    def presence(self, sid, pid, state='working', last_at=None):
+        folder = os.path.join(self.store, 'sessions'); os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, f'claude-code__{sid}.json'), 'w') as f:
+            json.dump({'agent': 'claude-code', 'session_id': sid, 'agent_pid': pid, 'state': state, 'last_at': last_at if last_at is not None else self.t}, f)
+
+    def test_long_tool_call_with_live_heartbeat_is_not_stale(self):
+        # The transcript's last record is a tool call four minutes ago and nothing since.
+        self.append({'timestamp': datetime.datetime.fromtimestamp(self.t - 240, datetime.timezone.utc).isoformat(), 'type': 'response_item',
+                     'payload': {'type': 'function_call', 'call_id': 'c1', 'name': 'shell', 'arguments': '{"command":"make test"}'}})
+        sid = self.row()['session_id']
+        self.assertEqual((self.row()['state'], self.row()['stale']), ('working', True))
+        # Hooks say the process is alive and working: a long tool call, still running.
+        self.presence(sid, os.getpid(), last_at=self.t - 240)
+        self.assertFalse(self.row()['stale'])
+        # The heartbeat may even predate the transcript's last record (metadata lines land after PreToolUse).
+        self.presence(sid, os.getpid(), last_at=self.t - 300)
+        self.assertFalse(self.row()['stale'])
+        # A dead process or an idle heartbeat proves nothing.
+        self.presence(sid, 2 ** 22 + 12345, last_at=self.t)
+        self.assertTrue(self.row()['stale'])
+        self.presence(sid, os.getpid(), state='idle')
+        self.assertTrue(self.row()['stale'])
+
+    def test_transcript_states_answer_for_the_asked_sessions(self):
+        from activity import transcript_states
+        self.append(record('user', '问题', self.t - 50), record('assistant', '答完了', self.t - 40))
+        sid = self.row()['session_id']
+        got = transcript_states(self.store, [sid, 'nobody'])
+        self.assertEqual(list(got), [sid]); self.assertEqual(got[sid][0], 'idle'); self.assertAlmostEqual(got[sid][1], self.t - 40, delta=0.001)
+        self.assertEqual(transcript_states(self.store, []), {})
+
     def test_preferences_persist_independently_of_new_replies(self):
         self.append(record('assistant','first',self.t))
         a=self.row()

@@ -690,6 +690,21 @@ class HumanNote(unittest.TestCase):
         self.assertEqual(dispatch.human_note([], "claude-code"), "")
 
 
+class ReconcileWithTranscripts(unittest.TestCase):
+    def test_hook_stuck_on_working_yields_to_a_finished_transcript(self):
+        rows = [dict(session_id='a', registered=True, state='working', state_source='hook', last_at=1000.0),
+                dict(session_id='b', registered=True, state='working', state_source='hook', last_at=1000.0),
+                dict(session_id='c', registered=True, state='working', state_source='hook', last_at=1000.0),
+                dict(session_id='d', registered=True, state='idle', state_source='hook', last_at=1000.0)]
+        states = {'a': ('idle', 990.0), 'b': ('working', 2000.0), 'c': ('idle', 500.0)}
+        with patch('activity.transcript_states', return_value=states):
+            dispatch.reconcile_with_transcripts(rows)
+        # a: transcript finished around the same time the hook last spoke → idle.
+        self.assertEqual((rows[0]['state'], rows[0]['attention'], rows[0]['state_source']), ('idle', None, 'transcript'))
+        # b: still working; c: transcript far older than the hook's last word (a long tool call) → unchanged.
+        self.assertEqual([r['state'] for r in rows[1:]], ['working', 'working', 'idle'])
+
+
 class SessionLifecycle(unittest.TestCase):
     def test_settings_parse_keeps_known_numeric_keys(self):
         self.assertEqual(dispatch.settings_parse(json.dumps({"session_archive_days": 45, "x": 1, "bad": "no"})), {"session_archive_days": 45})
