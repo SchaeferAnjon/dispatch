@@ -43,7 +43,7 @@ export interface InsightReportList { running: { started: number; days: number } 
 export interface InsightAlert { id: string; kind: string; session_id: string; agent: string; ts: string; text: string; seen: boolean }
 export interface InsightSample { agent: string; session_id: string; ts: string; assistant: string; user: string }
 export interface Insights { days: number; total_sessions: number; per_agent: Record<string, InsightAgent>; sessions: InsightSession[]; samples: { asktail: InsightSample[]; correction: InsightSample[]; overflow: InsightSample[] }; findings: string[]; rules: InsightRule[]; alerts: InsightAlert[]; prompt: string; command: string }
-export interface EnvVar { name: string; note: string; masked: string; length: number }
+export interface EnvVar { name: string; note: string; masked: string; length: number; project?: string }
 export interface RulesStatus { hash: string; source: string; targets: RuleTarget[] }
 
 export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string }

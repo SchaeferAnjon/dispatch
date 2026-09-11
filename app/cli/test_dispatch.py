@@ -337,6 +337,32 @@ class EnvStore(unittest.TestCase):
             self.assertIn("set -gx X 'has space #1'", open(dispatch.ENV_FISH).read())
             self.assertIn("ZHIPU_API_KEY=智谱 GLM", dispatch.env_summary_line())
 
+    def test_project_keys_stay_with_their_project(self):
+        with tempfile.TemporaryDirectory() as d:
+            dispatch.ENV_DIR = d; dispatch.ENV_FILE = os.path.join(d, "env"); dispatch.ENV_FISH = os.path.join(d, "env.fish")
+            dispatch.env_write([{"name": "ZHIPU_API_KEY", "value": "abc123def456", "note": "智谱 GLM"},
+                                {"name": "THBW_NETWAYS_API_KEY", "value": "nw-secret-1", "note": "Netways Managed AI", "project": "HIWI"},
+                                {"name": "OTHER_KEY", "value": "o-1", "note": "", "project": "atrium"}])
+            items = dispatch.env_read()
+            self.assertEqual([(i["name"], i["project"]) for i in items], [("ZHIPU_API_KEY", ""), ("THBW_NETWAYS_API_KEY", "HIWI"), ("OTHER_KEY", "atrium")])
+            self.assertEqual(items[1]["note"], "Netways Managed AI")
+            self.assertIn("# project: HIWI\n# Netways Managed AI\nTHBW_NETWAYS_API_KEY=", open(dispatch.ENV_FILE).read())
+            # prime: machine-wide keys everywhere, a project's keys only in that project
+            self.assertNotIn("THBW_NETWAYS", dispatch.env_summary_line())
+            self.assertNotIn("OTHER_KEY", dispatch.env_summary_line("hiwi"))
+            self.assertIn("THBW_NETWAYS_API_KEY=Netways Manage［本项目］", dispatch.env_summary_line("hiwi"))
+            self.assertIn("ZHIPU_API_KEY", dispatch.env_summary_line("hiwi"))
+            # list -P filters; set -P assigns; set with -P "" clears
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                dispatch.cmd_env(types.SimpleNamespace(op="list", name=None, value=None, note=None, project="HIWI", stdin=False, fish=False, json=True))
+            self.assertEqual([r["name"] for r in json.loads(buf.getvalue())], ["THBW_NETWAYS_API_KEY"])
+            with contextlib.redirect_stdout(io.StringIO()):
+                dispatch.cmd_env(types.SimpleNamespace(op="set", name="ZHIPU_API_KEY", value="abc123def456", note=None, project="kanban", stdin=False, fish=False, json=False))
+                dispatch.cmd_env(types.SimpleNamespace(op="set", name="OTHER_KEY", value="o-1", note=None, project="", stdin=False, fish=False, json=False))
+            by = {i["name"]: i["project"] for i in dispatch.env_read()}
+            self.assertEqual(by, {"ZHIPU_API_KEY": "kanban", "THBW_NETWAYS_API_KEY": "HIWI", "OTHER_KEY": ""})
+
 
 class Guards(unittest.TestCase):
     def test_quota_modes(self):
@@ -560,6 +586,25 @@ class FactsSections(unittest.TestCase):
     def test_no_project_gets_general_only_and_empty_sections_are_dropped(self):
         self.assertEqual([h for h, _ in dispatch.facts_for("", self.DOC)], ["通用"])
         self.assertEqual([h for h, _ in dispatch.facts_for("空节", self.DOC)], ["通用"])
+
+    PROJECT_DOC = "# HIWI 常用信息\n\n## 服务器\n\n**Netways Managed AI**\n- 入口 https://ai.netways.example\n- 首次登录用「Passwort vergessen」\n\n## 联系人\n\n**学院 IT**\n- Rudroff\n"
+
+    def test_project_file_sections_come_after_the_general_ones(self):
+        picked = dispatch.facts_for("hiwi", self.DOC, self.PROJECT_DOC)
+        self.assertEqual([h for h, _ in picked], ["通用", "服务器", "联系人"])
+        hits = dispatch.facts_get("netways", "hiwi", self.DOC, self.PROJECT_DOC)
+        self.assertEqual([(h, t) for h, t, _ in hits], [("服务器", "Netways Managed AI")])
+        self.assertIn("Passwort vergessen", hits[0][2])
+        # another project never sees it; giving only the global text reads no project file
+        self.assertEqual([h for h, _ in dispatch.facts_for("relecture", self.DOC, self.PROJECT_DOC)], ["通用", "relecture（ReLecture · 重讲）", "服务器", "联系人"][:2] + ["服务器", "联系人"])
+        self.assertEqual([h for h, _ in dispatch.facts_for("hiwi", self.DOC)], ["通用"])
+
+    def test_project_facts_path_follows_project_home(self):
+        with patch.object(dispatch, "project_home", return_value="/tmp/proj"):
+            self.assertEqual(dispatch.facts_project_path("hiwi"), "/tmp/proj/FACTS.md")
+        with patch.object(dispatch, "project_home", return_value=""):
+            self.assertEqual(dispatch.facts_project_path("ghost"), "")
+        self.assertEqual(dispatch.facts_project_path(""), "")
 
 
 class ProjectFlags(unittest.TestCase):

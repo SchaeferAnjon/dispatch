@@ -23,6 +23,47 @@ function DocMedia({ api, project, id, dir, children }: { api: Api; project: stri
   return <MediaContext.Provider value={value}>{children}</MediaContext.Provider>;
 }
 
+// The project's own short facts (FACTS.md in its folder: servers, logins, who to ask) and the keys tied to it.
+// Agents read the file only on demand (`dispatch facts … -P <project>`); values of keys never show here.
+type ProjectFactsDoc = { path: string; content: string; exists: boolean; legacy?: { heading: string; body: string }[] };
+type ProjectKey = { name: string; note: string; masked: string; length: number; project?: string };
+const FACTS_TEMPLATE = (name: string) => `# ${name} 常用信息\n\n> 只放这个项目才用的短事实，Agent 需要时 \`dispatch facts get -P ${name} <主题>\` 读。密码和 Key 不写这里，放「规则与资料 → 密钥与 API」并填项目名。\n\n## 服务器\n\n**示例服务**\n- 入口 / 登录方式 / 找谁开账号\n`;
+export function ProjectFactsView({ name, doc, keys, draft, busy, err, onEdit, onChange, onCancel, onSave, onOpenPath, onCopy }: { name: string; doc: ProjectFactsDoc | null; keys: ProjectKey[] | null; draft: string | null; busy: boolean; err: string; onEdit: () => void; onChange: (t: string) => void; onCancel: () => void; onSave: () => void; onOpenPath: (p: string) => void; onCopy: (t: string) => void }) {
+  const hasLegacy = !!doc?.legacy?.length;
+  return <section className="project-facts" aria-label="项目常用信息">
+    <div className="hub-tools"><b>常用信息</b><span className="chip">FACTS.md</span>{doc?.path && <code className="muted small doc-path" title={doc.path}>{shortPath(doc.path)}</code>}<span className="spacer" />
+      {draft === null
+        ? <>{doc?.exists && <button className="btn sm" onClick={() => onOpenPath(doc.path)}>在 Finder 打开</button>}<button className="btn sm" disabled={busy || !doc} onClick={onEdit}>{doc?.exists ? '编辑' : '建一份'}</button></>
+        : <><button className="btn sm" disabled={busy} onClick={onCancel}>取消</button><button className="btn primary sm" disabled={busy} onClick={onSave}>{busy ? '保存中…' : '保存'}</button></>}</div>
+    <p className="muted small">只属于这个项目的短事实：服务器入口、登录方式、找谁。Agent 不会每次注入，需要时才 <span className="mono">dispatch facts get -P {name} 主题</span> 读。</p>
+    {err && <p className="err small" role="alert">{err}</p>}
+    {draft !== null ? <textarea className="project-facts-editor" aria-label="编辑项目常用信息" value={draft} onChange={(e) => onChange(e.target.value)} spellCheck={false} />
+      : doc === null ? <p className="empty">正在读…</p>
+      : doc.content ? <div className="doc-reader"><Markdown src={doc.content} /></div>
+      : <p className="empty">{doc.path ? '还没有 FACTS.md。' : '还不知道这个项目的目录（先在项目目录里开一次会话）。'}{hasLegacy && ' 全局 FACTS.md 里有这个项目的旧节，见下。'}</p>}
+    {hasLegacy && draft === null && <details className="project-facts-legacy"><summary className="muted small">全局 FACTS.md 里的旧项目节 · {doc!.legacy!.length}（可搬进项目 FACTS.md）</summary>{doc!.legacy!.map((l) => <div key={l.heading}><h4>{l.heading}</h4><Markdown src={l.body} /></div>)}</details>}
+    <div className="hub-tools project-keys-head"><b>密钥</b><span className="muted small">{keys ? `${keys.length} 个 · 只列名字和用途，值在「规则与资料 → 密钥与 API」` : '…'}</span></div>
+    {keys && keys.length > 0 && <div className="project-keys">{keys.map((k) => <div className="hub-task project-key" key={k.name}><code className="mono">{k.name}</code><span className="muted small">{k.note || '（没写用途）'}</span><span className="spacer" /><button className="btn sm" title={`dispatch env get ${k.name}`} onClick={() => onCopy(`dispatch env get ${k.name}`)}>复制取用命令</button></div>)}</div>}
+    {keys && keys.length === 0 && <p className="empty small">还没有登记到这个项目的密钥。在「规则与资料 → 密钥与 API」添加时项目填 <span className="mono">{name}</span>，或 <span className="mono">dispatch env set 名 值 -P {name}</span>。</p>}
+  </section>;
+}
+
+export function ProjectFacts({ api, name, onDone }: { api: Api; name: string; onDone?: (m: string) => void }) {
+  const [doc, setDoc] = useState<ProjectFactsDoc | null>(null); const [keys, setKeys] = useState<ProjectKey[] | null>(null);
+  const [draft, setDraft] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const parse = <T,>(t: string, fallback: T): T => { try { const i = Math.min(...[t.indexOf('{'), t.indexOf('[')].filter((x) => x >= 0)); return JSON.parse(t.slice(i)); } catch { return fallback; } };
+  const load = useCallback(async () => {
+    setErr('');
+    const [d, k] = await Promise.allSettled([api.on('local', ['facts', 'show', '-P', name, '--json']), api.on('local', ['env', 'list', '-P', name, '--json'])]);
+    setDoc(d.status === 'fulfilled' ? parse<ProjectFactsDoc>(d.value, { path: '', content: '', exists: false }) : { path: '', content: '', exists: false });
+    setKeys(k.status === 'fulfilled' ? parse<ProjectKey[]>(k.value, []) : []);
+    if (d.status === 'rejected') setErr(String(d.reason));
+  }, [api, name]);
+  useEffect(() => { setDoc(null); setKeys(null); setDraft(null); void load(); }, [load]);
+  const save = async () => { if (draft === null) return; setBusy(true); setErr(''); try { await api.on('local', ['facts', 'write', '-P', name], draft); setDraft(null); onDone?.('已保存 FACTS.md（在项目目录，记得 commit）'); await load(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
+  return <ProjectFactsView name={name} doc={doc} keys={keys} draft={draft} busy={busy} err={err} onEdit={() => setDraft(doc?.content || FACTS_TEMPLATE(name))} onChange={setDraft} onCancel={() => setDraft(null)} onSave={() => void save()} onOpenPath={(p) => void api.openPath(p).catch(() => {})} onCopy={(t) => void api.copy(t).then(() => onDone?.('已复制')).catch(() => {})} />;
+}
+
 export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: string; docs: Doc[] | null; onReload: () => void }) {
   const [opened, setOpened] = useState<{ doc: Doc; text: string; dir?: string } | null>(null);
   const [err, setErr] = useState(''); const [path, setPath] = useState(''); const [kind, setKind] = useState('调研'); const [busy, setBusy] = useState(false);
@@ -102,7 +143,7 @@ export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,u
   {tab==='sessions'&&<><div className="hub-tools"><input aria-label="搜索项目会话" placeholder="搜索这个项目的会话…" value={query} onChange={e=>setQuery(e.target.value)}/><button className={`btn sm${archived?' on':''}`} onClick={()=>{setArchived(!archived);setScheduled(false);}} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>{archived?'返回最近会话':`已归档 ${archivedCount}`}</button><button className="btn sm" onClick={()=>{setScheduled(!scheduled);setArchived(false);}}>{scheduled?'返回普通会话':`定时会话 ${project.sessions.filter(a=>a.scheduled).length}`}</button></div><ConversationRows rows={visible} me={me} onOpen={onOpen} onRead={onRead} onSummarize={onSummarize} taskContent={a=>{const linked=project.items.filter(i=>linkedSessions(i).includes(a.session_id));return <details className="conversation-tasks"><summary>会话任务 · {linked.length} 项{linked.length?` · ${linked.filter(i=>i.status==='closed').length} 已完成`:''}</summary>{linked.length?linked.map(taskRow):<p className="muted small">没有明确关联的任务。可在“待归属任务”中指定；聊天里的提及不自动算作归属。</p>}</details>;}}/>{visible.length===0&&<p className="empty">{archived?'没有归档的会话。':'这个分类没有会话。'}</p>}</>}
   {(tab==='tasks'||tab==='unassigned')&&<><p className="muted">任务显示发起和参与会话；历史任务没有明确关系时保留待归属，不根据提及次数猜测。</p>{(tab==='unassigned'?unassigned:project.items).map(taskRow)}{tab==='unassigned'&&!unassigned.length&&<p className="empty">任务都已有明确关联。</p>}</>}
   {tab==='folders'&&<><p className="muted">这个项目的会话在哪些文件夹里发生过。</p>{dirs.map(([d,info])=><div className="hub-task hub-dir" key={d}><div className="hub-dir-head"><code title={d}>{short(d)}</code><span className="muted small">{info.count} 个会话 · 最近 {ago(info.last)}</span></div><div className="task-links"><button className="btn sm" onClick={()=>onNew(info.latest)}>在此目录新建会话</button><button className="btn sm" onClick={()=>api.openPath(d).catch(()=>{})}>在 Finder 打开</button><button className="btn sm" onClick={()=>api.copy(`cd '${d}'`).catch(()=>{})}>复制 cd</button></div></div>)}{!dirs.length&&<p className="empty">没有记录到工作目录。</p>}</>}
-  {tab==='docs'&&<ProjectDocs api={api} name={project.name} docs={docs} onReload={loadDocs}/>}
+  {tab==='docs'&&<><ProjectFacts api={api} name={project.name}/><ProjectDocs api={api} name={project.name} docs={docs} onReload={loadDocs}/></>}
   {tab==='outcomes'&&<>{editor!==false?<OutcomeEditor key={editor?.id||"new"} project={project.name} rows={project.sessions} tasks={project.items} initial={editor||undefined} api={api} onCancel={()=>setEditor(false)} onSaved={()=>{setEditor(false);onReload();}}/>:<button className="btn primary" onClick={()=>setEditor(null)}>登记成果</button>}{project.results.map(r=><article className="outcome-card" key={r.id}><div className="hub-heading"><h3>{r.title}</h3><button className="btn sm" onClick={()=>setEditor(r)}>编辑</button></div><MediaProvider api={api} session={rows.find(a=>linkedSessions(r).includes(a.session_id))}><Markdown src={r.description||''}/></MediaProvider><div className="task-links">{sourceTasks(r).map(id=><button key={id} className="chip" onClick={()=>onTask(id)}>任务 · {tasks.find(i=>i.id===id)?.title||id}</button>)}{linkedSessions(r).map(id=><button key={id} className="chip" onClick={()=>onOpen(id)}>会话 · {rows.find(a=>a.session_id===id)?.title||id.slice(0,8)} ↗</button>)}</div></article>)}{!project.results.length&&editor===false&&<p className="empty">还没有登记成果。可以把多个任务、多个会话的交付汇总在这里。</p>}<details className="hub-history"><summary>历史完成记录 · {project.items.filter(i=>i.status==='closed').length} 项</summary><p className="muted small">这些是任务完成说明，尚未整理为独立成果。</p>{project.items.filter(i=>i.status==='closed').map(i=><div className="hub-task" key={i.id}><button className="link" onClick={()=>onTask(i.id)}>{i.title}</button><p>{i.close_reason||'打开任务查看完成说明'}</p></div>)}</details></>}
   </div>;
 }

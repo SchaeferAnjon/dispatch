@@ -1416,3 +1416,12 @@ a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text
 .sq-other input{flex:1;min-width:0;border:0;background:transparent;font:inherit;color:var(--ink);outline:none}
 .sq-actions{display:flex;gap:10px;align-items:center;margin-top:10px}
 @media(max-width:760px){.session-question{padding:8px 12px}}
+
+/* project page · 常用信息（FACTS.md）与本项目密钥 */
+.project-facts{margin:0 0 20px;padding:12px 14px;border:1px solid var(--line, #e5e5e5);border-radius:10px}
+.project-facts .hub-tools{margin-bottom:6px}
+.project-facts .project-keys-head{margin-top:12px}
+.project-facts-editor{width:100%;min-height:220px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;padding:8px;border:1px solid var(--line, #e5e5e5);border-radius:8px;resize:vertical}
+.project-key{display:flex;gap:10px;align-items:center}
+.env-project{margin-left:8px;font-weight:400;font-size:11px;vertical-align:middle}
+.project-facts .empty.small{padding:6px 0}

@@ -3614,13 +3614,38 @@ def facts_key(heading):
     return re.split(r"[\s（(·:：,，/]", heading.strip(), maxsplit=1)[0].lower()
 
 
-def facts_for(proj, text=None):
-    """Sections for a session: the general one(s) plus the one whose first word is the project."""
+FACTS_PROJECT_FILE = "FACTS.md"
+
+
+def facts_project_path(proj, names=None, index=None, roots=None):
+    """<project dir>/FACTS.md — facts that belong to one project only (its servers, logins,
+    who to ask). Read on demand with `dispatch facts … -P <project>`; prime lists the topics
+    but never injects the body, so other projects' sessions never carry it."""
+    d = project_home(proj, names, index, roots) if proj else ""
+    return os.path.join(d, FACTS_PROJECT_FILE) if d else ""
+
+
+def facts_project_text(proj, names=None):
+    path = facts_project_path(proj, names)
+    try:
+        return open(path, encoding="utf-8").read() if path else ""
+    except OSError:
+        return ""
+
+
+def facts_for(proj, text=None, project_text=None):
+    """Sections for a session: the general one(s) from the machine-wide FACTS.md, the legacy
+    `## <project>` section there, and every section of the project's own FACTS.md.
+    `text`/`project_text` replace the files (tests); giving only `text` reads no disk."""
     secs = facts_sections(facts_text() if text is None else text)
     want = {k for k in FACTS_GENERAL}
     if proj:
         want.add(proj.lower())
-    return [(h, b) for h, b in secs if facts_key(h) in want and b]
+    picked = [(h, b) for h, b in secs if facts_key(h) in want and b]
+    if proj:
+        ptext = facts_project_text(proj) if (text is None and project_text is None) else (project_text or "")
+        picked += [(h, b) for h, b in facts_sections(ptext) if b]
+    return picked
 
 
 def facts_topics(body):
@@ -3640,12 +3665,12 @@ def facts_topics(body):
     return [(h, b) for h, b in out if b]
 
 
-def facts_get(query, proj="", text=None):
+def facts_get(query, proj="", text=None, project_text=None):
     """Topic blocks whose title contains the query (case-insensitive), from the general
-    section and this project's section."""
+    section, this project's legacy section and the project's own FACTS.md."""
     q = query.strip().lower()
     hits = []
-    for h, b in facts_for(proj, text):
+    for h, b in facts_for(proj, text, project_text):
         for topic, block in facts_topics(b):
             if q in topic.lower() or (not topic and q in h.lower()):
                 hits.append((h, topic, block))
@@ -3696,45 +3721,44 @@ def facts_candidates(sources, existing_text):
 
 
 def facts_docs():
-    """The documents the 常用信息 page edits: the machine-wide FACTS.md plus, for every
-    project label on the board whose directory is known from the session index, that
-    project's own AGENTS.md — every agent reads it natively when working in that directory,
-    so project-specific facts never need to sit in the global file."""
+    """The documents the 常用信息 page edits: the machine-wide FACTS.md plus, for every project
+    the board knows (task labels, or the starred/archived list) whose directory can be found,
+    that project's own FACTS.md. Project facts are read on demand (`dispatch facts … -P`) —
+    not AGENTS.md, which every agent loads whole on every turn."""
     docs = [{"key": "通用", "name": "通用（所有项目）", "path": FACTS_FILE, "dir": "", "exists": os.path.exists(FACTS_FILE),
              "hint": "每个会话都注入（dispatch prime）"}]
     names = project_names()
-    dirs = {}
     try:
-        for r in session_refs(load_index()):
-            cwd = (r.get("cwd") or "").rstrip("/")
-            if not cwd or not os.path.isdir(cwd):
-                continue
-            base = os.path.basename(cwd).lower()
-            if base in names and (base not in dirs or r.get("last_at", 0) > dirs[base][1]):
-                dirs[base] = (cwd, r.get("last_at", 0))
+        for k in project_flags_load():
+            names.setdefault(k.lower(), k)
     except Exception:
         pass
-    # Projects nobody has opened a session in on this Mac yet: look under ~/Projects too,
-    # so a fresh clone shows up before its first session.
     try:
-        for entry in os.listdir(os.path.join(HOME, "Projects")):
-            full = os.path.join(HOME, "Projects", entry)
-            if entry.lower() in names and entry.lower() not in dirs and os.path.isdir(full):
-                dirs[entry.lower()] = (full, 0)
-    except OSError:
-        pass
-    for key in sorted(dirs):
-        d = dirs[key][0]
-        path = os.path.join(d, "AGENTS.md")
+        index, roots = load_index(), (settings_load().get("workspace_roots") or [])
+    except Exception:
+        index, roots = {}, []
+    for key in sorted(names):
+        d = project_home(names[key], names, index, roots)
+        if not d:
+            continue
+        path = os.path.join(d, FACTS_PROJECT_FILE)
         docs.append({"key": key, "name": names[key], "path": path, "dir": d, "exists": os.path.exists(path),
-                     "hint": "只在这个目录的会话里生效（Agent 自己读 AGENTS.md）"})
+                     "hint": f"只属于这个项目，按需读：`dispatch facts show -P {names[key]}` / `get -P {names[key]} <主题>`；不自动注入"})
     return docs
 
 
 def facts_doc_path(a):
-    """--path must be one of facts_docs(); otherwise the page could write anywhere."""
+    """--path must be one of facts_docs(); otherwise the page could write anywhere.
+    `-P <project>` without --path means that project's FACTS.md."""
     if not getattr(a, "path", ""):
-        return FACTS_FILE
+        proj = getattr(a, "project", "")
+        if not proj:
+            return FACTS_FILE
+        path = facts_project_path(proj)
+        if not path:
+            print(f"不知道项目 {proj} 的目录（还没有会话，也不在 ~/Projects）", file=sys.stderr)
+            sys.exit(1)
+        return path
     want = os.path.realpath(a.path)
     for d in facts_docs():
         if os.path.realpath(d["path"]) == want:
@@ -3760,8 +3784,9 @@ def cmd_facts(a):
             rows.append({'id': ident, 'name': path.name, 'path': str(path), 'exists': path.is_dir(), 'open': bool(vault.get('open'))})
         out(rows, a.json, lambda rs: print(json.dumps(rs, ensure_ascii=False)))
     elif a.op == "topics":
-        rows = [{"section": h, "topic": t, "lines": len(b.splitlines())} for h, b in facts_sections(facts_text()) for t, b2 in facts_topics(b) for b in [b2]]
-        out(rows, a.json, lambda rs: [print(f"{r['section']:<10} {r['topic']}") for r in rs])
+        secs = facts_sections(facts_project_text(a.project)) if a.project else facts_sections(facts_text())
+        rows = [{"section": h, "topic": t, "lines": len(b.splitlines())} for h, b in secs for t, b2 in facts_topics(b) for b in [b2]]
+        out(rows, a.json, lambda rs: [print(f"{r['section']:<10} {r['topic']}") for r in rs] or (a.project and not rs and print(f"{a.project} 没有 FACTS.md 或里面没有 **主题**；`dispatch facts show -P {a.project}` 看原文", file=sys.stderr)))
     elif a.op == "get":
         if not a.query:
             print("用法：dispatch facts get <主题词>（`dispatch facts topics` 列主题）", file=sys.stderr); sys.exit(2)
@@ -3775,7 +3800,8 @@ def cmd_facts(a):
     elif a.op == "search":
         if not a.query:
             print("用法：dispatch facts search <关键词>", file=sys.stderr); sys.exit(2)
-        docs = [(d["name"], open(d["path"], encoding="utf-8").read()) for d in facts_docs() if d["exists"]]
+        docs = [(d["name"], open(d["path"], encoding="utf-8").read()) for d in facts_docs()
+                if d["exists"] and (not a.project or d["key"] in (*FACTS_GENERAL, a.project.lower()))]
         rows = facts_search(a.query, docs)
         if a.json:
             print(json.dumps([{"doc": n, "topic": t, "line": l} for n, t, l in rows], ensure_ascii=False)); return
@@ -3840,16 +3866,29 @@ def cmd_facts(a):
         open(target, "w", encoding="utf-8").write(text if text.endswith("\n") else text + "\n")
         print(f"已写入 {target}（{len(text.splitlines())} 行）")
     elif a.op == "sections":
-        rows = [{"heading": h, "key": facts_key(h), "lines": len(b.splitlines())} for h, b in facts_sections(facts_text())]
-        out(rows, a.json, lambda rs: [print(f"{r['key']:<16} {r['lines']:>4} 行  {r['heading']}") for r in rs] or print(f"\n{len(rs)} 节（{FACTS_FILE}）"))
+        src = facts_doc_path(a)
+        rows = [{"heading": h, "key": facts_key(h), "lines": len(b.splitlines())} for h, b in facts_sections(facts_project_text(a.project) if a.project else facts_text())]
+        out(rows, a.json, lambda rs: [print(f"{r['key']:<16} {r['lines']:>4} 行  {r['heading']}") for r in rs] or print(f"\n{len(rs)} 节（{src}）"))
     else:  # show
-        if a.project:
-            picked = facts_for(a.project)
-            text = "\n\n".join(f"## {h}\n{b}" for h, b in picked)
+        if a.project and not a.path:
+            # The project's own file, whole; plus the legacy `## <project>` section of the global file
+            # so nothing written under the old scheme goes missing.
+            path = facts_project_path(a.project)
+            t = facts_project_text(a.project)
+            legacy = [(h, b) for h, b in facts_for(a.project, facts_text(), "") if facts_key(h) not in FACTS_GENERAL]
             if a.json:
-                print(json.dumps([{"heading": h, "body": b} for h, b in picked], ensure_ascii=False))
+                print(json.dumps({"path": path, "content": t, "exists": bool(path) and os.path.exists(path),
+                                  "legacy": [{"heading": h, "body": b} for h, b in legacy]}, ensure_ascii=False))
             else:
-                print(text or f"FACTS.md 里没有 {a.project} 这一节（`dispatch facts sections` 看有哪些）")
+                if t:
+                    print(t, end="" if t.endswith("\n") else "\n")
+                else:
+                    print(f"{a.project} 还没有 FACTS.md（应在 {path or '项目目录'}）。写法：`dispatch facts write -P {a.project} < 文件`，"
+                          f"内容按 `## 节` + `**主题**` 组织，只放这个项目才用的短事实；密钥放 `dispatch env set 名 值 -P {a.project}`。", file=sys.stderr)
+                for h, b in legacy:
+                    print(f"\n## {h}（旧：全局 FACTS.md 里的项目节，可搬进项目 FACTS.md）\n{b}")
+                if not t and not legacy:
+                    sys.exit(1)
         else:
             target = facts_doc_path(a)
             try:
@@ -5086,26 +5125,36 @@ ENV_FISH = os.path.join(ENV_DIR, "env.fish")     # regenerated on every write; f
 _ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
+_ENV_PROJECT = re.compile(r"^(?:project|项目)\s*[:：]\s*(\S.*)$", re.I)
+
+
 def env_read():
-    """[{name, value, note}] in file order. Never reaches bd/Dolt or the wiki."""
-    items, note = [], ""
+    """[{name, value, note, project}] in file order. Never reaches bd/Dolt or the wiki.
+    A `# project: X` line above a key ties it to one project: prime lists it only there,
+    the project page shows it, `dispatch env list -P X` filters to it."""
+    items, note, project = [], "", ""
     if not os.path.exists(ENV_FILE):
         return items
     for line in open(ENV_FILE, encoding="utf-8"):
         line = line.rstrip("\n")
         if not line.strip():
-            note = ""
+            note, project = "", ""
             continue
         if line.lstrip().startswith("#"):
-            note = line.lstrip("# ").strip()
+            comment = line.lstrip("# ").strip()
+            m = _ENV_PROJECT.match(comment)
+            if m:
+                project = m.group(1).strip()
+            else:
+                note = comment
             continue
         if "=" in line:
             k, v = line.split("=", 1)
             v = v.strip()
             if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
                 v = v[1:-1]
-            items.append({"name": k.strip(), "value": v, "note": note})
-            note = ""
+            items.append({"name": k.strip(), "value": v, "note": note, "project": project})
+            note, project = "", ""
     return items
 
 
@@ -5115,6 +5164,8 @@ def env_write(items):
     with open(ENV_FILE, "w", encoding="utf-8") as f:
         f.write("# Dispatch 环境/密钥库：`dispatch env` 维护；Agent 用 `dispatch env get <NAME>` 取值。不要复制到其他文件。\n\n")
         for it in items:
+            if it.get("project"):
+                f.write(f"# project: {it['project']}\n")
             if it.get("note"):
                 f.write(f"# {it['note']}\n")
             f.write(f"{it['name']}={env_quote(it['value'])}\n\n")
@@ -5134,12 +5185,14 @@ def env_mask(v):
     return v if len(v) <= 6 else v[:3] + "…" + v[-3:]
 
 
-def env_summary_line():
-    items = env_read()
+def env_summary_line(proj=""):
+    """The key names a session may fetch: machine-wide ones plus those tied to this project.
+    Keys of other projects are left out, so a project's secrets stay its own."""
+    items = [it for it in env_read() if not it.get("project") or (proj and it["project"].lower() == proj.lower())]
     if not items:
         return ""
     short = lambda n: re.split(r"[（(，,；;]", n)[0][:14]
-    return "Key（`dispatch env get 名`，别让用户重贴）：" + "，".join(f"{it['name']}" + (f"={short(it['note'])}" if it["note"] else "") for it in items)
+    return "Key（`dispatch env get 名`，别让用户重贴）：" + "，".join(f"{it['name']}" + (f"={short(it['note'])}" if it["note"] else "") + ("［本项目］" if it.get("project") else "") for it in items)
 
 
 def cmd_project_summary(a):
@@ -5189,8 +5242,11 @@ def cmd_env(a):
     if a.op == "path":
         print(ENV_FILE)
     elif a.op == "list":
-        rows = [{"name": it["name"], "note": it["note"], "masked": env_mask(it["value"]), "length": len(it["value"])} for it in items]
-        out(rows, a.json, lambda rs: [print(f"{r['name']:<28} {r['masked']:<14} {r['note']}") for r in rs] or print(f"\n{len(rs)} 个（文件 {ENV_FILE}，0600）"))
+        if a.project:
+            items = [it for it in items if (it.get("project") or "").lower() == a.project.lower()]
+        rows = [{"name": it["name"], "note": it["note"], "project": it.get("project", ""), "masked": env_mask(it["value"]), "length": len(it["value"])} for it in items]
+        out(rows, a.json, lambda rs: [print(f"{r['name']:<28} {r['masked']:<14} {('[' + r['project'] + '] ') if r['project'] else ''}{r['note']}") for r in rs]
+            or print(f"\n{len(rs)} 个（文件 {ENV_FILE}，0600）" + (f"，只看项目 {a.project}" if a.project else "")))
     elif a.op == "get":
         if a.name not in by:
             print(f"没有 {a.name}。`dispatch env list` 看有哪些", file=sys.stderr)
@@ -5208,10 +5264,13 @@ def cmd_env(a):
             by[a.name]["value"] = value
             if a.note is not None:
                 by[a.name]["note"] = a.note
+            if a.project is not None:
+                by[a.name]["project"] = a.project
         else:
-            items.append({"name": a.name, "value": value, "note": a.note or ""})
+            items.append({"name": a.name, "value": value, "note": a.note or "", "project": a.project or ""})
         env_write(items)
-        print(f"{a.name} 已保存（{env_mask(value)}）。fish 新开终端自动可用；Agent 用 `dispatch env get {a.name}`。")
+        tag = by.get(a.name, items[-1]).get("project") or ""
+        print(f"{a.name} 已保存（{env_mask(value)}）" + (f"，属于项目 {tag}" if tag else "") + f"。fish 新开终端自动可用；Agent 用 `dispatch env get {a.name}`。")
     elif a.op == "unset":
         if a.name not in by:
             print(f"本来就没有 {a.name}", file=sys.stderr)
@@ -5234,7 +5293,7 @@ def cmd_env(a):
                 if k in by:
                     by[k]["value"] = v
                 else:
-                    items.append({"name": k, "value": v, "note": a.note or f"从 {os.path.basename(a.name)} 导入"})
+                    items.append({"name": k, "value": v, "note": a.note or f"从 {os.path.basename(a.name)} 导入", "project": a.project or ""})
                     by[k] = items[-1]
                 n += 1
         env_write(items)
@@ -5499,31 +5558,45 @@ def self_cmd():
     return [sys.executable, os.path.realpath(__file__)]
 
 
+def project_home(proj, names=None, index=None, roots=None):
+    """The directory a project lives in: its most recently active conversation folder, else
+    ~/Projects/<project>; "" when nothing is known. Pass `index`/`roots` when calling in a
+    loop — each lookup otherwise re-reads the session index and the settings."""
+    if not proj:
+        return ""
+    names = names if names is not None else project_names()
+    # Same rule as the app's projectHome(): the folder with the most sessions, latest activity
+    # breaking ties — so a sub-repo opened once does not become the project's home.
+    stats = {}
+    try:
+        roots = (settings_load().get("workspace_roots") or []) if roots is None else roots
+        index = load_index() if index is None else index
+        mine = {}
+        for e in index.values():
+            cwd = (e.get("cwd") or "").rstrip("/")
+            if not cwd:
+                continue
+            if cwd not in mine:
+                mine[cwd] = os.path.isdir(cwd) and project_of_cwd(cwd, names, roots).lower() == proj.lower()
+            if mine[cwd]:
+                st = stats.setdefault(cwd, [0, 0])
+                st[0] += 1
+                st[1] = max(st[1], e.get("mtime", 0))
+    except Exception:
+        pass
+    if stats:
+        return max(stats, key=lambda c: (stats[c][0], stats[c][1]))
+    guess = os.path.join(HOME, "Projects", proj)
+    return guess if os.path.isdir(guess) else ""
+
+
 def task_project_dir(issue, names=None):
     """Where an agent working on this task should sit: the project's latest conversation
     folder, else ~/Projects/<project>, else here."""
     proj = next((l.split(":", 1)[1] for l in issue.get("labels") or [] if l.startswith("project:")), "")
     if not proj:
         return os.getcwd()
-    names = names if names is not None else project_names()
-    best = ("", 0)
-    try:
-        roots = settings_load().get("workspace_roots") or []
-        by_cwd = {}
-        for e in load_index().values():
-            cwd = (e.get("cwd") or "").rstrip("/")
-            if not cwd or e.get("mtime", 0) <= best[1]:
-                continue
-            if cwd not in by_cwd:
-                by_cwd[cwd] = os.path.isdir(cwd) and project_of_cwd(cwd, names, roots).lower() == proj.lower()
-            if by_cwd[cwd]:
-                best = (cwd, e.get("mtime", 0))
-    except Exception:
-        pass
-    if best[0]:
-        return best[0]
-    guess = os.path.join(HOME, "Projects", proj)
-    return guess if os.path.isdir(guess) else os.getcwd()
+    return project_home(proj, names) or os.getcwd()
 
 
 DISCUSSION_LABEL = "dispatch:discussion"   # a task that exists only to hold a discussion (topic / project)
@@ -6607,6 +6680,7 @@ def cmd_prime(a):
     fx = facts_for(proj)
     if fx:
         lines.append("## 常用信息（跨项目事实只存这里，不写进各自的记忆；改：Dispatch → 规则与资料 → 常用资料）")
+        ptopics = []
         for h, b in fx:
             if facts_key(h) in FACTS_GENERAL:
                 topics = [t for t, _ in facts_topics(b) if t]
@@ -6615,9 +6689,12 @@ def cmd_prime(a):
                 if sayings:
                     lines.append(sayings)
             else:
-                lines.append(f"### {h}")
-                lines.append(b)
-    env_line = env_summary_line()
+                # Project facts stay out of the prompt: the session takes the topic it needs.
+                ptopics += [t for t, _ in facts_topics(b) if t] or [h]
+        if ptopics:
+            lines.append(f"本项目的常用信息（项目目录 FACTS.md，按需读，不自动注入）：" + " · ".join(dict.fromkeys(ptopics))
+                         + f"。要哪个 `dispatch facts get -P {proj} <主题词>`，整份 `dispatch facts show -P {proj}`。")
+    env_line = env_summary_line(proj)
     if env_line:
         lines.append(env_line)
     cat = catalog_line()
@@ -6757,7 +6834,7 @@ def main():
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
-    s = sub.add_parser("facts", help="常用信息（FACTS.md）：服务器/域名/数据库/API 名字、常说的话；prime 按项目注入"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs", "vaults", "topics", "get", "search", "import"]); s.add_argument("query", nargs="?", default=""); s.add_argument("--apply", action="store_true", help="import: 追加进 FACTS.md"); s.add_argument("--out", default="", help="import: 清单路径"); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
+    s = sub.add_parser("facts", help="常用信息：全局 FACTS.md 每个会话注入；项目目录 FACTS.md 只在 -P <项目> 时按需读"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs", "vaults", "topics", "get", "search", "import"]); s.add_argument("query", nargs="?", default=""); s.add_argument("--apply", action="store_true", help="import: 追加进 FACTS.md"); s.add_argument("--out", default="", help="import: 清单路径"); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
     s = sub.add_parser("memories", help="各 Agent 自己的长期记忆文件（Claude Code / Codex / ZCode），只读"); s.add_argument("op", nargs="?", choices=["list", "show"], default="list"); s.add_argument("query", nargs="?", default="", help="show: 文件路径"); s.add_argument("--agent", default="", help="list: claude-code | codex | zcode"); s.add_argument("--path", default="", help="show: 文件路径"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_memories)
     s = sub.add_parser("wiki", help="knowledge base: pits / wins / retros / howtos"); s.add_argument("op", choices=["add", "list", "search", "show", "related"]); s.add_argument("text", nargs="?", help="related: 任务 ID；search: 一句话"); s.add_argument("--kind", "-k", choices=list(WIKI_KINDS) + ["all"]); s.add_argument("--semantic", action="store_true", help="search: 按意思找（智谱 embedding-3 + sqlite-vec），不按关键字"); s.add_argument("--limit", type=int, default=8, help="search/related: 最多几条"); s.add_argument("--fix", help="pit: 解法"); s.add_argument("--why", help="win: 为什么对"); s.add_argument("--tech", help="retro: 技术"); s.add_argument("--good", help="retro: 做对"); s.add_argument("--bad", help="retro: 做错"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true", help="include plain memories"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_wiki)
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
@@ -6769,7 +6846,7 @@ def main():
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)
     s = sub.add_parser("init", help="首次设置向导：装依赖、建/接入任务板、选 Agent、同步规则与技能（无参数=交互式）"); s.add_argument("op", nargs="?", choices=["wizard", "status", "run", "hub-info", "add-host", "rename-self", "rename-peer", "remove-host", "skip", "finish", "reset", "peers"]); s.add_argument("args", nargs="*", help="run: <deps|cli|board|agents|rules|review|reverse-ssh> [参数…]; rename-self <新名字>; rename-peer <ssh或id> <新名字>; remove-host <id>"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_init)
-    s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
+    s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--project", "-P", default=None, help="set/import: 只属于这个项目；list: 只看这个项目的。空串清除归属"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
     s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=4, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()
     if a.cmd == "agent":
