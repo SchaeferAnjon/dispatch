@@ -131,7 +131,7 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
             <label key={u.key} className="settings-row summary-use-row">
               <div><b>{u.name}</b>{u.desc ? <p>{u.desc}</p> : null}</div>
               <span className="summary-use-right">
-                {u.last ? <span className="summary-use-last muted small">最近 {compactTokens(u.last.tokens)} token · {formatSummaryTime(u.last.at)}</span> : null}
+                {u.last ? <span className="summary-use-last muted small">最近{u.last.tokens > 0 ? ` ${compactTokens(u.last.tokens)} token ·` : ""} {formatSummaryTime(u.last.at)}{u.last.model ? ` · ${u.last.model}` : ""}</span> : null}
                 <input type="checkbox" checked={useOn(u)} onChange={(e) => void toggleUse(u.key, e.target.checked)} />
               </span>
             </label>
