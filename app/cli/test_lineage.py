@@ -56,6 +56,23 @@ class HereView(unittest.TestCase):
         self.assertEqual(entries[0]["task"], "t1")
         self.assertTrue(all("task" in e for e in entries))
 
+    def test_timeline_session_belongs_by_claim_or_label_never_by_mention(self):
+        now = time.time()
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+        issues = [{"id": "task-a", "title": "甲", "status": "open", "updated_at": iso, "labels": ["session-origin:s2", "session:s2"]},
+                  {"id": "task-b", "title": "乙", "status": "open", "updated_at": iso, "labels": ["session:s2"]}]
+        idx = {"1": {"session_id": "s1", "agent": "claude-code", "user_msgs": 3, "mtime": now, "cwd": "/p", "title": "只是提到", "tasks": {"task-a": 5}, "claims": []},
+               "2": {"session_id": "s2", "agent": "claude-code", "user_msgs": 3, "mtime": now, "cwd": "/p", "title": "发起甲", "tasks": {"task-b": 1}, "claims": []},
+               "3": {"session_id": "s3", "agent": "claude-code", "user_msgs": 3, "mtime": now, "cwd": "/p", "title": "认领乙", "tasks": {}, "claims": ["task-b"]}}
+        prefs = {f"claude-code:{k}": {"summary": "总结"} for k in ("s1", "s2", "s3")}
+        import activity
+        with patch.object(dispatch, "git_root_of", return_value=""), patch.object(dispatch, "project_names", return_value={}), \
+             patch.object(dispatch, "settings_load", return_value={}), patch.object(dispatch, "load_index", return_value=idx), \
+             patch.object(dispatch, "project_of_cwd", return_value="p"), patch.object(activity, "session_preferences", return_value=prefs):
+            days = lineage.here_timeline("p", issues, {}, 14, "/p")
+        by = {e["ref"]: e["task"] for d in days for e in d["entries"] if e["kind"] == "session"}
+        self.assertEqual(by, {"s1": "", "s2": "task-a", "s3": "task-b"})
+
     def test_here_comments_reads_off_the_export_instead_of_shelling_out(self):
         iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         issues = [

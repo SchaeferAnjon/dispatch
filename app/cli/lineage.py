@@ -105,6 +105,20 @@ def here_comments(issues, since):
     return got
 
 
+def session_task_map(issues):
+    """session id → the task it belongs to on the board: the one it created (`session-origin:`)
+    wins over ones it merely claimed (`session:`); newest task wins among equals."""
+    out, origin = {}, {}
+    for t in sorted(issues, key=lambda x: x.get("created_at") or ""):
+        for l in t.get("labels") or []:
+            if l.startswith("session-origin:"):
+                origin[l.split(":", 1)[1]] = t.get("id", "")
+            elif l.startswith("session:"):
+                out[l.split(":", 1)[1]] = t.get("id", "")
+    out.update(origin)
+    return out
+
+
 def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
     """One line per event, newest first, grouped by local day: task progress, closes, commits,
     session summaries."""
@@ -132,6 +146,7 @@ def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
     prefs = session_preferences(D.DISPATCH_DIR)
     names = D.project_names() if names is None else names
     roots = (D.settings_load().get("workspace_roots") or []) if roots is None else roots
+    by_session = session_task_map(issues)
     for e in (D.load_index() or {}).values():
         if e.get("subagent") or not e.get("user_msgs"):
             continue
@@ -141,8 +156,12 @@ def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
             continue
         if (D.project_of_cwd(e.get("cwd") or "", names, roots) or "").lower() != proj.lower():
             continue
-        claimed = next((x for x in [(e.get("claims") or [None])[-1]] + list((e.get("tasks") or {}).keys()) if x in tids), "")
-        entries.append({"ts": ts, "kind": "session", "ref": e.get("session_id", ""), "task": claimed, "task_title": ttitles.get(claimed, ""), "text": f"会话「{e.get('title') or e.get('session_id', '')}」：{summary.strip()[:200]}"})
+        # Which task a session belongs to: its last claim, else a `session:` label on the board.
+        # A task id merely mentioned in the transcript is not ownership (one planning
+        # conversation names dozens), so such sessions stay in the 未挂任务 group.
+        sid = e.get("session_id", "")
+        claimed = next((x for x in reversed(e.get("claims") or []) if x in tids), "") or by_session.get(sid, "")
+        entries.append({"ts": ts, "kind": "session", "ref": sid, "task": claimed, "task_title": ttitles.get(claimed, ""), "text": f"会话「{e.get('title') or sid}」：{summary.strip()[:200]}"})
     entries.sort(key=lambda x: -x["ts"])
     grouped = []
     for e in entries:
