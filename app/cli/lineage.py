@@ -246,7 +246,7 @@ def cmd_here(a):
     days = max(1, int(getattr(a, "days", 14) or 14))
     names = D.project_names()
     roots = D.settings_load().get("workspace_roots") or []
-    proj = (getattr(a, "project", "") or getattr(a, "project_opt", "") or "").strip() or D.project_of_cwd(cwd, names)
+    proj = (getattr(a, "project", "") or getattr(a, "project_opt", "") or "").strip() or D.project_of_cwd(cwd, names, roots)
     detected = bool(proj)
     proj = proj or os.path.basename(cwd.rstrip("/")) or "?"
     rows = board_export()
@@ -433,9 +433,10 @@ def cmd_lineage(a):
     cwd = os.path.abspath(os.path.expanduser(getattr(a, "dir", "") or os.getcwd()))
     days = max(1, int(getattr(a, "days", 14) or 14))
     names = D.project_names()
-    proj = (getattr(a, "project", "") or getattr(a, "project_opt", "") or "").strip() or D.project_of_cwd(cwd, names)
+    roots = D.settings_load().get("workspace_roots") or []
+    proj = (getattr(a, "project", "") or getattr(a, "project_opt", "") or "").strip() or D.project_of_cwd(cwd, names, roots)
     proj = proj or os.path.basename(cwd.rstrip("/")) or "?"
-    report = lineage_report(proj, days, cwd, names)
+    report = lineage_report(proj, days, cwd, names, roots)
 
     def text(o):
         print(f"# {o['project']} · 脉络（最近 {o['days']} 天）")
