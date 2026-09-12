@@ -59,9 +59,9 @@ function LinSessionRow({ s, me, showRelation }: { s: LinSession; me: string; sho
       {showRelation && s.relation ? <span className="muted small lin-relation">{s.relation}</span> : null}
       {s.verdict ? <span className={`review-verdict${s.verdict === "别关" ? " hold" : ""}`}>{s.verdict}</span> : null}
     </div>
-    {s.summary && <p className="review-summary small">{s.summary}</p>}
-    {s.reason && <p className="review-note muted small">{s.reason}</p>}
-    {!!s.also_count && <p className="muted small lin-also">还涉及 {s.also_count} 个任务{Array.isArray(s.also) && s.also.length ? `：${s.also.slice(0, 3).join("、")}${s.also.length < s.also_count ? "…" : ""}` : ""}</p>}
+    {isDoer(s) && s.summary && <p className="review-summary small">{s.summary}</p>}
+    {isDoer(s) && s.reason && <p className="review-note muted small">{s.reason}</p>}
+    {isDoer(s) && !!s.also_count && <p className="muted small lin-also">还涉及 {s.also_count} 个任务{Array.isArray(s.also) && s.also.length ? `：${s.also.slice(0, 3).join("、")}${s.also.length < s.also_count ? "…" : ""}` : ""}</p>}
   </div>;
 }
 
@@ -386,7 +386,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                         <rect width={s.w} height={s.h} rx={9} className="node-bg" />
                         <rect x={0} y={0} width={4} height={s.h} rx={2} className={`node-stripe ${ss.live ? "prog" : "open"}`} />
                         <foreignObject x={10} y={5} width={s.w - 16} height={s.h - 10}>
-                          <div className="node-body sess-body">
+                          <div className="node-body node-sess">
                             <div className="node-t" style={{ WebkitLineClamp: n.lines }} title={n.label}>{n.label}</div>
                             <div className="node-m">
                               {a && <span className={`av ${a.kind}`} style={{ width: 14, height: 14, fontSize: 7 }}>{a.glyph}</span>}
