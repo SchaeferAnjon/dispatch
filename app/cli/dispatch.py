@@ -53,7 +53,7 @@ ZCODE_DB = os.path.join(HOME, ".zcode", "cli", "db", "db.sqlite")
 # expands to the right column.
 SQLITE_STORES = {
     "zcode": {"db": ZCODE_DB, "proc": "zcode-cli", "app": "ZCode", "seq": "sequence", "entrypoint": "desktop"},
-    "opencode": {"db": os.path.join(HOME, ".local", "share", "opencode", "opencode.db"), "proc": "opencode", "app": "OpenCode", "seq": "id", "entrypoint": "terminal"},
+    "opencode": {"db": os.path.join(HOME, ".local", "share", "opencode", "opencode.db"), "proc": "opencode", "app": "OpenCode", "seq": "id", "entrypoint": "cli"},
 }
 RETIRED_AGENTS = frozenset({"qoder", "qoder-ide", "qodercli"})
 PATH_EXTRA = "/opt/homebrew/bin:/usr/local/bin:" + os.path.join(HOME, ".local", "bin")
