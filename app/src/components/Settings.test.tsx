@@ -1,10 +1,37 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../projectFlags";
-import { SettingsView } from "./Settings";
+import { SettingsView, summaryOptionLabel, withSummaryUses, type SummaryProvider } from "./Settings";
 
 const QR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h1v1z"/></svg>';
 const base = { settings: DEFAULT_SETTINGS, onSave: async () => {}, theme: "" as const, onTheme: () => {} };
+
+describe("SettingsView 总结", () => {
+  const missing: SummaryProvider = { id: "deepseek:deepseek-chat", provider: "deepseek", label: "deepseek-chat（DeepSeek）", env: "DEEPSEEK_API_KEY", configured: false, model: "deepseek-chat", subscription: false };
+
+  it("reveals the key input when the selected provider has no key yet", () => {
+    const html = renderToStaticMarkup(<SettingsView {...base} settings={{ ...DEFAULT_SETTINGS, summary_model: missing.id }} summaryProviders={[missing]} />);
+    expect(html).toContain("缺 Key");
+    expect(html).toContain('type="password"');
+    expect(html).toContain("DEEPSEEK_API_KEY");
+    expect(html).toContain("保存 Key");
+  });
+
+  it("keeps the key input hidden for configured and subscription providers", () => {
+    const configured = { ...missing, id: "zhipu:glm-5.3-flash", provider: "zhipu", label: "glm-5.3-flash（智谱）", configured: true };
+    const sub = { ...missing, id: "claude:haiku", provider: "claude", label: "Claude Haiku（订阅）", subscription: true, configured: true };
+    expect(summaryOptionLabel(configured)).toContain("已配 Key");
+    expect(summaryOptionLabel(sub)).toContain("订阅");
+    const html = renderToStaticMarkup(<SettingsView {...base} settings={{ ...DEFAULT_SETTINGS, summary_model: configured.id }} summaryProviders={[configured]} />);
+    expect(html).not.toContain('type="password"');
+  });
+
+  it("builds the summary_uses patch a toggle saves", () => {
+    expect(withSummaryUses({ ...DEFAULT_SETTINGS, summary_uses: { session: 1, project: 1 } }, "project", false).summary_uses).toEqual({ session: 1, project: 0 });
+    expect(withSummaryUses({ ...DEFAULT_SETTINGS, summary_uses: { session: 0 } }, "session", true).summary_uses).toEqual({ session: 1 });
+    expect(withSummaryUses({ ...DEFAULT_SETTINGS, summary_uses: undefined }, "session", false).summary_uses).toEqual({ session: 0 });
+  });
+});
 
 describe("SettingsView phone access", () => {
   it("shows the CLI QR next to the copy link", () => {

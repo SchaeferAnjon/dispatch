@@ -40,6 +40,14 @@ def db_path():
     return os.path.join(D.DISPATCH_DIR, DB_NAME)
 
 
+def _off():
+    try:
+        import summarize
+        return None if summarize.use_enabled("semantic") else summarize.gate_message("semantic")
+    except Exception:
+        return None
+
+
 def api_key():
     """The 智谱 key from `dispatch env`; empty string means semantic search is off."""
     try:
@@ -49,7 +57,7 @@ def api_key():
 
 
 def available():
-    return bool(api_key())
+    return bool(api_key()) and not _off()
 
 
 def entry_text(it):
@@ -165,6 +173,9 @@ def _vec_table(db, dim):
 
 def sync(items, key=None, force=False, path=None, embed_fn=None):
     """Embed new/changed entries and drop ones that disappeared. Returns a small report."""
+    off = _off()
+    if off:
+        return {"backend": "none", "embedded": 0, "removed": 0, "indexed": 0, "reason": off}
     key = api_key() if key is None else key
     db = connect(path)
     try:
@@ -227,6 +238,8 @@ def _candidates(db, qvec, want, kind=""):
 
 def search(query, items, limit=8, kind="", project="", key=None, path=None, embed_fn=None):
     """Top entries by cosine similarity to `query`. Empty list when semantic search is off."""
+    if _off():
+        return []
     key = api_key() if key is None else key
     query = (query or "").strip()
     if not key or not query:
@@ -259,6 +272,8 @@ def search(query, items, limit=8, kind="", project="", key=None, path=None, embe
 def related(task_id, query, items, limit=8, kind="pit", key=None, path=None, embed_fn=None):
     """What to show next to a task: its own tagged entries first, then the nearest ones.
     Returns [] when there is no key, so the caller can fall back to project matching."""
+    if _off():
+        return []
     key = api_key() if key is None else key
     if not key:
         return []

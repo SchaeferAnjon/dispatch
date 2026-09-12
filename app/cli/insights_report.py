@@ -26,6 +26,14 @@ SECTION_TITLES = {"overview": "一眼看完", "projects": "这段时间在做什
 NATIVE_DIR = os.path.join(D.HOME, ".claude", "usage-data")
 
 
+def _off():
+    try:
+        import summarize
+        return None if summarize.use_enabled("insights") else summarize.gate_message("insights")
+    except Exception:
+        return None
+
+
 def _stamp():
     return time.strftime("%Y-%m-%d_%H%M")
 
@@ -166,6 +174,10 @@ PROMPT = """你是一个复盘分析师。下面（stdin）是一份 JSON 摘要
 
 def generate(days, model=None, wait=True):
     """Run the model once and store JSON + HTML. Returns the stored record."""
+    off = _off()
+    if off:
+        return {"id": "", "created_at": time.strftime("%Y-%m-%d %H:%M"), "days": days, "model": model or "",
+                "report": None, "error": off, "skipped": True, "duration_s": 0}
     os.makedirs(DIR, exist_ok=True)
     started = time.time()
     json.dump({"started": started, "days": days, "pid": os.getpid()}, open(RUNNING, "w"))
@@ -223,6 +235,9 @@ def _model_used(stderr):
 
 def spawn(days, model=None):
     """Generate in a detached process so the app's call returns at once."""
+    off = _off()
+    if off:
+        return {"state": "skipped", "skipped": True, "reason": off, "days": days}
     os.makedirs(DIR, exist_ok=True)
     json.dump({"started": time.time(), "days": days, "pid": 0}, open(RUNNING, "w"))
     args = [sys.executable, os.path.abspath(__file__), "--worker", str(days)] + ([model] if model else [])
@@ -232,6 +247,9 @@ def spawn(days, model=None):
 
 def due():
     """Generate when the cadence says the last report is old enough (called by the app every hour)."""
+    off = _off()
+    if off:
+        return {"due": False, "reason": off}
     sc = schedule_load()
     every = int(sc.get("every_days") or 0)
     if not every:
@@ -357,7 +375,7 @@ def main(a):
         if a.wait:
             rec = generate(a.days, a.model)
             return D.out(rec, a.json, lambda r: print(r["error"] or f"报告已生成：{os.path.join(DIR, r['id'] + '.html')}\n{r['report']['headline']}"))
-        return D.out(spawn(a.days, a.model), a.json, lambda x: print(f"开始生成最近 {x['days']} 天的洞察报告（后台，一般 1-3 分钟）；dispatch insights list 看结果"))
+        return D.out(spawn(a.days, a.model), a.json, lambda x: print(x.get("reason") if x.get("skipped") else f"开始生成最近 {x['days']} 天的洞察报告（后台，一般 1-3 分钟）；dispatch insights list 看结果"))
     if op == "list":
         rows = all_reports()
         st = {"running": running(), "schedule": schedule_load(), "reports": rows}

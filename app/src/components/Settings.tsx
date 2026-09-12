@@ -1,16 +1,35 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DispatchSettings } from "../projectFlags";
-import { isTauri } from "../api";
+import { isTauri, type Api } from "../api";
 import type { Host } from "../types";
 type Theme = "light" | "dark" | "";
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; summaryProviders?: { id: string; label: string }[]; onPhone?: () => void; phoneQr?: string; onScreen?: () => void; screenReady?: boolean; screen?: { url: string; up: boolean; sharing: boolean; issue: string }; onScreenSetup?: () => Promise<ScreenSetupResult | null>; hosts?: Host[]; onSetup?: () => void; onRenameHost?: (host: Host, name: string) => Promise<void>; onDeleteHost?: (host: Host) => Promise<void>; onRedetectHost?: (host: Host) => Promise<void>; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+// A model the summary setting can point at (`dispatch summarize providers --json`). Providers that
+// bill to a subscription carry no env; the rest need a key in the local dispatch env store.
+export interface SummaryProvider { id: string; provider: string; label: string; env: string; configured: boolean; model: string; subscription: boolean }
+// One place summaries are shown (`dispatch summarize uses --json`); the CLI keeps the enabled
+// default and the token count/date of the last summary it wrote there.
+export interface SummaryUse { key: string; name: string; desc: string; enabled: boolean; last: { at: number; tokens: number; model: string } | null }
+// The fixture/fallback shape: only id + label are required, matching the plain `dispatch summarize providers` list.
+export interface SummaryProviderOption { id: string; label: string; provider?: string; env?: string; configured?: boolean; model?: string; subscription?: boolean }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; api?: Api; summaryProviders?: SummaryProviderOption[]; onPhone?: () => void; phoneQr?: string; onScreen?: () => void; screenReady?: boolean; screen?: { url: string; up: boolean; sharing: boolean; issue: string }; onScreenSetup?: () => Promise<ScreenSetupResult | null>; hosts?: Host[]; onSetup?: () => void; onRenameHost?: (host: Host, name: string) => Promise<void>; onDeleteHost?: (host: Host) => Promise<void>; onRedetectHost?: (host: Host) => Promise<void>; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
 // What `dispatch screen setup --json` returns: the steps it walked and the one thing left for the user.
 export interface ScreenSetupResult { ok: boolean; url?: string; error?: string; steps?: { id?: string; title: string; ok: boolean; detail: string }[]; manual?: { id?: string; title: string; detail: string }[]; state?: { url: string; ready: boolean; screen_sharing: boolean; issue: string } }
 
+// The CLI prefixes its JSON with log lines; find the first { or [ (same helper as Env/Stats).
+const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
+// `glm-5.3-flash（智谱） · 已配 Key` / `... · 缺 Key`; subscription models say 订阅 instead.
+export function summaryOptionLabel(p: SummaryProvider): string { return `${p.label} · ${p.subscription ? "订阅" : p.configured ? "已配 Key" : "缺 Key"}`; }
+// A non-subscription provider with no key yet is the only case that needs the inline key box.
+export function missingKeyProvider(p: SummaryProvider | undefined): SummaryProvider | undefined { return p && !p.subscription && !p.configured ? p : undefined; }
+// The settings a use toggle saves: `summary_uses` holds 0/1 (same as the CLI stores it).
+export function withSummaryUses(s: DispatchSettings, key: string, on: boolean): DispatchSettings { return { ...s, summary_uses: { ...(s.summary_uses || {}), [key]: on ? 1 : 0 } }; }
+export function compactTokens(n: number): string { return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${n}`; }
+function formatSummaryTime(at: number): string { const d = new Date(at < 1e12 ? at * 1000 : at); if (Number.isNaN(d.getTime())) return ""; const p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, summaryProviders = [], onPhone, phoneQr, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onRenameHost, onDeleteHost, onRedetectHost, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, api, summaryProviders = [], onPhone, phoneQr, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onRenameHost, onDeleteHost, onRedetectHost, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   // The version line should not read "v…" forever: look it up once when the page opens.
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -20,7 +39,45 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
   const [busy, setBusy] = useState(false);
   const [screenBusy, setScreenBusy] = useState(false);
   const [screenResult, setScreenResult] = useState<ScreenSetupResult | null>(null);
+  const [providers, setProviders] = useState<SummaryProvider[]>([]);
+  const [uses, setUses] = useState<SummaryUse[]>([]);
+  const [keyValue, setKeyValue] = useState("");
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
   useEffect(() => { setDraft(settings); }, [settings]);
+  const loadSummary = useCallback(async () => {
+    if (!api) return;
+    try {
+      const r = parseJson<{ providers?: SummaryProvider[] }>(await api.on("local", ["summarize", "providers", "--json"]), {});
+      if (Array.isArray(r.providers)) setProviders(r.providers);
+    } catch { /* keep the last list */ }
+    try {
+      const r = parseJson<SummaryUse[]>(await api.on("local", ["summarize", "uses", "--json"]), []);
+      if (Array.isArray(r)) setUses(r);
+    } catch { /* keep the last list */ }
+  }, [api]);
+  useEffect(() => { void loadSummary(); }, [loadSummary]);
+  const fallbackProviders = useMemo<SummaryProvider[]>(() => summaryProviders.map((p) => ({ id: p.id, provider: p.provider ?? p.id.split(":")[0] ?? "", label: p.label, env: p.env ?? "", configured: p.configured ?? true, model: p.model ?? "", subscription: p.subscription ?? false })), [summaryProviders]);
+  const options = api ? providers : fallbackProviders;
+  const selectedProvider = options.find((p) => p.id === draft.summary_model);
+  const keyTarget = missingKeyProvider(selectedProvider);
+  const useOn = (u: SummaryUse) => { const v = draft.summary_uses?.[u.key]; return v === undefined ? u.enabled : v !== 0; };
+  const saveKey = async () => {
+    if (!api || !keyTarget || !keyValue.trim()) return;
+    setKeyBusy(true); setSummaryError("");
+    try {
+      const r = parseJson<{ ok?: boolean; error?: string }>(await api.on("local", ["summarize", "set-key", keyTarget.provider], keyValue.trim()), {});
+      if (r.error || !r.ok) { setSummaryError(r.error || "保存 Key 失败"); return; }
+      setKeyValue("");
+      await loadSummary();
+    } catch (e) { setSummaryError(String(e)); }
+    finally { setKeyBusy(false); }
+  };
+  const toggleUse = async (key: string, on: boolean) => {
+    setSummaryError("");
+    try { await onSave(withSummaryUses(draft, key, on)); await loadSummary(); }
+    catch (e) { setSummaryError(String(e)); }
+  };
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
   const num = (k: keyof DispatchSettings, v: string, max: number) => setDraft({ ...draft, [k]: Math.max(0, Math.min(max, Number(v) || 0)) });
   const save = async () => { setBusy(true); try { await onSave(draft); } finally { setBusy(false); } };
@@ -60,14 +117,27 @@ export function SettingsView({ settings, onSave, theme, onTheme, summaryProvider
           <div><b>普通会话多少天没有活动后自动归档</b><p>收藏（追踪中）的会话不受影响；归档的会话在会话页「已归档」和 ⌘K 里还能找到。填 0 表示永不自动归档。</p></div>
           <span className="settings-num"><input type="number" min={0} max={3650} value={draft.session_archive_days} onChange={(e) => num("session_archive_days", e.target.value, 3650)} /> 天</span>
         </label>
-        <label className="settings-row">
-          <div><b>自动给会话写总结</b><p>一轮结束后由模型写一段 120 字的总结，工作台、项目页、会话页都显示它；以前的会话也会逐步补上（每次几段，从最近的往前）。关掉后仍可在会话上手动点「用模型总结」。</p></div>
-          <input type="checkbox" checked={draft.summary_auto} onChange={(e) => setDraft({ ...draft, summary_auto: e.target.checked })} />
+        <label className="settings-row summary-model-row">
+          <div><b>总结用的模型</b><p>订阅模型不用 Key、计入用量；API Key 的来自「环境」页里配的密钥。空着就自动选：设置 → 环境变量 SUMMARY_MODEL → 第一个可用的。下面决定总结显示在哪些地方。</p></div>
+          <select value={draft.summary_model} onChange={(e) => { setDraft({ ...draft, summary_model: e.target.value }); setKeyValue(""); setSummaryError(""); }} aria-label="总结用的模型"><option value="">自动</option>{options.map((p) => <option key={p.id} value={p.id}>{summaryOptionLabel(p)}</option>)}{draft.summary_model && !options.some((p) => p.id === draft.summary_model) && <option value={draft.summary_model}>{draft.summary_model}（当前不可用）</option>}</select>
         </label>
-        <label className="settings-row">
-          <div><b>总结用的模型</b><p>Claude 走你的订阅，不用 Key，但计入用量；API Key 的来自「环境」页里配的密钥。空着就自动选：设置 → 环境变量 SUMMARY_MODEL → 第一个可用的。</p></div>
-          <select value={draft.summary_model} onChange={(e) => setDraft({ ...draft, summary_model: e.target.value })} aria-label="总结用的模型"><option value="">自动</option>{summaryProviders.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}{draft.summary_model && !summaryProviders.some((p) => p.id === draft.summary_model) && <option value={draft.summary_model}>{draft.summary_model}（当前不可用）</option>}</select>
-        </label>
+        {keyTarget && <div className="summary-key-row">
+          <input type="password" autoComplete="off" aria-label={`${keyTarget.provider} 的 API Key`} placeholder={`粘贴 ${keyTarget.env} 的值（只存到本机 dispatch env）`} value={keyValue} onChange={(e) => setKeyValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void saveKey(); }} />
+          <button className="btn sm" disabled={keyBusy || !keyValue.trim()} onClick={() => void saveKey()}>{keyBusy ? "保存中…" : "保存 Key"}</button>
+          {summaryError && <span className="setup-bad">{summaryError}</span>}
+        </div>}
+        {uses.length > 0 && <div className="summary-uses">
+          {uses.map((u) => (
+            <label key={u.key} className="settings-row summary-use-row">
+              <div><b>{u.name}</b>{u.desc ? <p>{u.desc}</p> : null}</div>
+              <span className="summary-use-right">
+                {u.last ? <span className="summary-use-last muted small">最近 {compactTokens(u.last.tokens)} token · {formatSummaryTime(u.last.at)}</span> : null}
+                <input type="checkbox" checked={useOn(u)} onChange={(e) => void toggleUse(u.key, e.target.checked)} />
+              </span>
+            </label>
+          ))}
+        </div>}
+        {!keyTarget && summaryError && <p className="setup-bad" style={{ margin: "0 0 8px" }}>{summaryError}</p>}
         <label className="settings-row">
           <div><b>脚本或其他 Agent 通过 SDK 启动的会话，自动当作定时会话</b><p>定时会话不进「等我」、不发通知、不出现在工作台；会话页「定时」筛选里能看到。对单条会话手动标记过的，以手动为准。</p></div>
           <input type="checkbox" checked={draft.sdk_sessions_scheduled} onChange={(e) => setDraft({ ...draft, sdk_sessions_scheduled: e.target.checked })} />

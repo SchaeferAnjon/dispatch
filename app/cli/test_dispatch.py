@@ -1507,6 +1507,13 @@ class MemoriesPage(unittest.TestCase):
         self.assertFalse(r["cached"])
         self.assertEqual(r["overall"], "重算")
 
+    def test_summary_text_flattens_object_and_list_shapes(self):
+        self.assertEqual(dispatch._summary_text({"偏好": "爱简洁", "反馈": "少废话"}), "**偏好**：爱简洁\n**反馈**：少废话")
+        self.assertEqual(dispatch._summary_text(["一", "二"]), "一\n二")
+        self.assertEqual(dispatch._summary_text("纯文本"), "纯文本")
+        self.assertEqual(dispatch._summary_text(None), "")
+
+
 class Lineage(unittest.TestCase):
     def test_tree_links_sessions_events_and_deps(self):
         issues = [{"id": "task-a", "title": "甲", "status": "in_progress", "acceptance_criteria": "- [x] a\n- [ ] b",
@@ -1538,3 +1545,121 @@ class Lineage(unittest.TestCase):
         self.assertEqual(t["events"][0]["short"][:2], "进展")
         self.assertEqual(t["sessions"][0]["short"], "会话一")
         self.assertEqual(r["counts"]["tasks"], 1)
+
+
+class SummaryUses(unittest.TestCase):
+    """One use table + one model picker: the gate, the settings round-trip and the CLI surface."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ddir = os.path.join(self.tmp, "dispatch")
+        os.makedirs(self.ddir, exist_ok=True)
+        sys.path.insert(0, HERE)
+        import summarize
+        self.summarize = summarize
+        self.sd = summarize.D          # the dispatch instance the summarize module calls into
+        self._ddir = self.sd.DISPATCH_DIR
+        self._env = (self.sd.ENV_DIR, self.sd.ENV_FILE, self.sd.ENV_FISH)
+        self.sd.DISPATCH_DIR = self.ddir
+        self.patch_settings = patch.object(self.sd, "settings_load", return_value={})
+        self.patch_settings.start()
+
+    def tearDown(self):
+        self.patch_settings.stop()
+        self.sd.DISPATCH_DIR = self._ddir
+        self.sd.ENV_DIR, self.sd.ENV_FILE, self.sd.ENV_FISH = self._env
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_use_enabled_uses_explicit_flags_defaults_and_summary_auto(self):
+        with patch.object(self.sd, "settings_load", return_value={"summary_uses": {"session": 0, "project": 1}}):
+            self.assertFalse(self.summarize.use_enabled("session"))
+            self.assertTrue(self.summarize.use_enabled("project"))
+            self.assertTrue(self.summarize.use_enabled("here"))
+        with patch.object(self.sd, "settings_load", return_value={"summary_auto": 0}):
+            self.assertFalse(self.summarize.use_enabled("session"))
+            self.assertTrue(self.summarize.use_enabled("memories"))
+        with patch.object(self.sd, "settings_load", return_value={"summary_uses": {"session": 1}, "summary_auto": 0}):
+            self.assertTrue(self.summarize.use_enabled("session"))
+        with patch.object(self.sd, "settings_load", return_value={}):
+            self.assertTrue(self.summarize.use_enabled("session"))
+
+    def test_settings_parse_keeps_known_use_keys_as_zero_or_one(self):
+        parsed = dispatch.settings_parse(json.dumps({"summary_uses": {"session": 0, "project": 2, "bogus": 1, "here": "x"}}))
+        self.assertEqual(parsed.get("summary_uses"), {"session": 0, "project": 1})
+
+    def test_cmd_settings_round_trips_summary_uses(self):
+        saved = {}
+        with patch.object(dispatch, "settings_load", return_value=dict(dispatch.SETTING_DEFAULTS)), \
+             patch.object(dispatch, "wiki_store", side_effect=lambda k, v: saved.update({k: v})), \
+             contextlib.redirect_stdout(io.StringIO()):
+            dispatch.cmd_settings(types.SimpleNamespace(key="summary_uses", value='{"session": 0}', json=False))
+        self.assertEqual(json.loads(saved[dispatch.SETTINGS_KEY])["summary_uses"], {"session": 0})
+
+    def test_gated_memory_summary_skips_the_model(self):
+        with patch.object(self.sd, "settings_load", return_value={"summary_uses": {"memories": 0}}), \
+             patch.object(self.summarize, "provider") as prov, patch.object(self.summarize, "chat") as chat:
+            with self.assertRaises(RuntimeError) as cm:
+                dispatch.memory_summary()
+        self.assertIn("总结已在设置里关闭", str(cm.exception))
+        prov.assert_not_called()
+        chat.assert_not_called()
+
+    def test_gated_project_summary_reports_skipped(self):
+        with patch.object(self.sd, "settings_load", return_value={"summary_uses": {"project": 0}}):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                dispatch.cmd_project_summary(types.SimpleNamespace(name="x", force=False, if_stale=False, json=True))
+        res = json.loads(buf.getvalue())
+        self.assertTrue(res["skipped"])
+        self.assertIn("总结已在设置里关闭", res["reason"])
+
+    def test_providers_catalog_has_env_and_configured(self):
+        with patch.object(self.sd, "settings_load", return_value={}), \
+             patch.object(self.sd, "env_read", return_value=[{"name": "ZHIPU_API_KEY", "value": "k", "note": "", "project": ""}]):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                dispatch.cmd_summarize(types.SimpleNamespace(op="providers", provider=None, json=True))
+        res = json.loads(buf.getvalue())
+        self.assertEqual(res["current"], "")
+        by = {p["id"]: p for p in res["providers"]}
+        self.assertTrue(all("env" in p and "configured" in p for p in res["providers"]))
+        self.assertTrue(by["zhipu:glm-5.3-flash"]["configured"])
+        self.assertEqual(by["zhipu:glm-5.3-flash"]["env"], "ZHIPU_API_KEY")
+        self.assertFalse(by["deepseek:deepseek-chat"]["configured"])
+
+    def test_set_key_writes_env_without_echoing(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.sd.ENV_DIR = d
+            self.sd.ENV_FILE = os.path.join(d, "env")
+            self.sd.ENV_FISH = os.path.join(d, "env.fish")
+            with patch.object(self.sd, "settings_load", return_value={}), \
+                 patch.object(sys, "stdin", io.StringIO("secret-key-123\n")):
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    dispatch.cmd_summarize(types.SimpleNamespace(op="set-key", provider="zhipu", json=True))
+            printed = buf.getvalue()
+            self.assertNotIn("secret-key-123", printed)
+            self.assertEqual(json.loads(printed), {"ok": True, "provider": "zhipu", "env": "ZHIPU_API_KEY", "configured": True})
+            self.assertEqual({i["name"]: i["value"] for i in self.sd.env_read()}["ZHIPU_API_KEY"], "secret-key-123")
+
+    def test_set_key_rejects_subscription_and_unknown_providers(self):
+        for provider in ("claude", "nope"):
+            with patch.object(self.sd, "settings_load", return_value={}), \
+                 patch.object(sys, "stdin", io.StringIO("k")), \
+                 self.assertRaises(SystemExit) as cm:
+                dispatch.cmd_summarize(types.SimpleNamespace(op="set-key", provider=provider, json=False))
+            self.assertEqual(cm.exception.code, 2)
+
+    def test_uses_json_reflects_the_usage_log(self):
+        with open(os.path.join(self.ddir, "summary-usage.json"), "w", encoding="utf-8") as f:
+            json.dump({"session": {"at": 1700000000, "tokens": 42, "model": "zhipu:glm-5.3-flash"}}, f)
+        with patch.object(self.sd, "settings_load", return_value={}):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                dispatch.cmd_summarize(types.SimpleNamespace(op="uses", provider=None, json=True))
+        rows = json.loads(buf.getvalue())
+        by = {r["key"]: r for r in rows}
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(by["session"]["last"], {"at": 1700000000, "tokens": 42, "model": "zhipu:glm-5.3-flash"})
+        self.assertTrue(by["session"]["enabled"])
+        self.assertIsNone(by["project"]["last"])

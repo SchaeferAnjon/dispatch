@@ -4258,20 +4258,23 @@ PROFILE_INVENTORY_PROMPT = ("你是设备清单整理者。下面（用户消息
 
 
 def profile_inventory_generate(actor="dispatch", timeout=30):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import summarize
+    if not summarize.use_enabled("profile_inventory"):
+        print(summarize.gate_message("profile_inventory"), file=sys.stderr)
+        sys.exit(1)
     at = int(time.time())
     at_text = time.strftime("%Y-%m-%d %H:%M", time.localtime(at))
     targets = profile_inventory_targets()
     results, dumps = profile_inventory_collect(targets, timeout=timeout)
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import summarize
-    p = summarize.provider(HERE_MODEL)
+    p = summarize.provider("")
     if not p:
         print("盘点需要一个模型：在 dispatch env 里放 ZHIPU_API_KEY（或 SUMMARY_MODEL），或装 Claude Code 用订阅", file=sys.stderr)
         sys.exit(1)
     text = profile_text()
     old = next((b for h, b in profile_sections(text) if profile_section_match(h, "设备与服务现状")), "")
     tried = "\n".join(f"- {t['name']}（{t['kind']}）：{'ok' if t['state'] == 'ok' else t['error']}" for t in results)
-    body = summarize.chat(p, PROFILE_INVENTORY_PROMPT, f"现有内容：\n{old}\n\n每台机器结果：\n{tried}\n\n实测输出：\n{dumps}", timeout=180).strip()
+    body = summarize.chat(p, PROFILE_INVENTORY_PROMPT, f"现有内容：\n{old}\n\n每台机器结果：\n{tried}\n\n实测输出：\n{dumps}", timeout=180, use="profile_inventory").strip()
     # The model sometimes leads with its own `# 设备与服务现状`; the section already has a heading.
     body = re.sub(r"^(?:#+\s*[^\n]*\n+)+", "", body).strip()
     if not body:
@@ -4668,11 +4671,25 @@ def _memory_summary_json(text):
         return {}
 
 
+def _summary_text(v):
+    """A summary value may be a string, a list of lines, or a {category: text} object
+    (Claude tends to nest the four categories); flatten it to markdown."""
+    if isinstance(v, str):
+        return v.strip()
+    if isinstance(v, dict):
+        return "\n".join(f"**{k}**：{_summary_text(x)}" for k, x in v.items()).strip()
+    if isinstance(v, list):
+        return "\n".join(_summary_text(x) for x in v).strip()
+    return str(v).strip() if v else ""
+
+
 def memory_summary(project="", force=False):
     """One model call writes the overall + per-project one-liners; the result is cached against a
     fingerprint of the entries, so the page only pays for a call when a memory actually changed."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import summarize
+    if not summarize.use_enabled("memories"):
+        raise RuntimeError(summarize.gate_message("memories"))
     rows = memory_entries()
     feed = [r for r in rows if not project or r["project"] == project]
     fp = memory_entry_fingerprint(feed)
@@ -4686,14 +4703,14 @@ def memory_summary(project="", force=False):
         projects = {k: v for k, v in (cache.get("projects") or {}).items() if k in valid}
         return {"at": cache.get("at", 0), "model": cache.get("model", ""), "cached": True,
                 "fingerprint": fp, "overall": cache.get("overall", ""), "projects": projects}
-    p = summarize.provider(HERE_MODEL)
+    p = summarize.provider("")
     if not p:
         raise RuntimeError("没有可用的模型：在 dispatch env 里放 ZHIPU_API_KEY（智谱 glm），或用 Claude 订阅")
-    text = summarize.chat(p, MEMORY_SUMMARY_PROMPT, _memory_summary_material(feed), timeout=180, max_tokens=4000)
+    text = summarize.chat(p, MEMORY_SUMMARY_PROMPT, _memory_summary_material(feed), timeout=180, max_tokens=4000, use="memories")
     parsed = _memory_summary_json(text or "")
-    overall = (parsed.get("overall") or "").strip()
-    projects = {k: v.strip() for k, v in (parsed.get("projects") or {}).items()
-                if isinstance(v, str) and v.strip() and k in valid}
+    overall = _summary_text(parsed.get("overall"))
+    projects = {k: _summary_text(v) for k, v in (parsed.get("projects") or {}).items() if k in valid}
+    projects = {k: v for k, v in projects.items() if v}
     model = f"{p['id']}:{p['model']}"
     rec = {"at": int(time.time()), "model": model, "fingerprint": fp, "overall": overall, "projects": projects}
     try:
@@ -4986,8 +5003,8 @@ DISCUSS_RULES_DEFAULT = "闲聊就闲聊，两句以内；正事默认一两段�
 DISCUSS_PERSONA_DEFAULT = {"claude": "偏架构和验收：先问值不值得做、做完怎么验证，习惯把方案拆成可交付的步骤。",
                            "codex": "抠实现细节：关心具体改哪里、边界情况、能不能复用已有代码，不信没验证过的说法。",
                            "pi": "短句直给：一次只说最重要的一点，倾向先做最小可验证的版本，看到过度设计会直说。"}
-SETTING_DEFAULTS = {"session_archive_days": 30, "task_archive_days": 0, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": "",
-                    "discuss_rules": DISCUSS_RULES_DEFAULT, **{f"discuss_persona_{k}": v for k, v in DISCUSS_PERSONA_DEFAULT.items()}}
+SETTING_DEFAULTS = {"session_archive_days": 30, "task_archive_days": 0, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": "", "summary_uses": {},
+                     "discuss_rules": DISCUSS_RULES_DEFAULT, **{f"discuss_persona_{k}": v for k, v in DISCUSS_PERSONA_DEFAULT.items()}}
 # free-text settings and their length caps; everything else numeric except workspace_roots
 SETTING_STRINGS = {"summary_model": 80, "discuss_rules": 600, "discuss_persona_claude": 300, "discuss_persona_codex": 300, "discuss_persona_pi": 300}
 
@@ -4999,12 +5016,18 @@ def settings_parse(raw):
         return {}
     if not isinstance(d, dict):
         return {}
-    out = {k: v for k, v in d.items() if k in SETTING_DEFAULTS and k not in SETTING_STRINGS and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
+    out = {k: v for k, v in d.items() if k in SETTING_DEFAULTS and k not in SETTING_STRINGS and k != "summary_uses" and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
     for k, cap in SETTING_STRINGS.items():
         if isinstance(d.get(k), str):
             out[k] = d[k].strip()[:cap]
     if isinstance(d.get("workspace_roots"), list):
         out["workspace_roots"] = [x.strip() for x in d["workspace_roots"] if isinstance(x, str) and x.strip()]
+    if isinstance(d.get("summary_uses"), dict):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import summarize as S
+        known = {k for k, _, _, _ in S.SUMMARY_USES}
+        out["summary_uses"] = {k: int(bool(v)) for k, v in d["summary_uses"].items()
+                               if k in known and isinstance(v, (int, float)) and not isinstance(v, bool)}
     return out
 
 
@@ -5027,6 +5050,15 @@ def cmd_settings(a):
     if a.key and a.value is not None:
         if a.key == "workspace_roots":
             val = [x.strip() for x in a.value.split(",") if x.strip()]
+        elif a.key == "summary_uses":
+            try:
+                raw = json.loads(a.value)
+            except ValueError:
+                raw = None
+            if not isinstance(raw, dict):
+                print('summary_uses 需要一个 JSON 对象，如 {"session": 1, "project": 0}', file=sys.stderr)
+                sys.exit(2)
+            val = settings_parse(json.dumps({"summary_uses": raw})).get("summary_uses", {})
         elif a.key in SETTING_STRINGS:
             val = a.value.strip()
         else:
@@ -5040,7 +5072,7 @@ def cmd_settings(a):
         cur[a.key] = val
         wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
     shown = {a.key: cur[a.key]} if a.key else cur
-    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "task_archive_days": "天，已完成任务超过这些天自动打 dispatch:archived 标签；0=不自动", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选",
+    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "task_archive_days": "天，已完成任务超过这些天自动打 dispatch:archived 标签；0=不自动", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选", "summary_uses": '各用途的开关，JSON 如 {"session": 0}；键见 `dispatch summarize uses`',
              "discuss_rules": "讨论群的规矩（发言长度、什么时候 SKIP），进每个成员的系统提示", "discuss_persona_claude": "讨论里 claude 的一句人设", "discuss_persona_codex": "讨论里 codex 的一句人设", "discuss_persona_pi": "讨论里 pi 的一句人设"}
     out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes[k]}）") for k, v in x.items()])
 
@@ -5945,6 +5977,8 @@ def env_summary_line(proj=""):
 def cmd_project_summary(a):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import summarize
+    if not summarize.use_enabled("project"):
+        return out({"skipped": True, "reason": summarize.gate_message("project")}, a.json, lambda x: print(x["reason"]))
     try:
         r = summarize.project_summary(a.name, force=a.force, if_stale=a.if_stale)
     except Exception as e:
@@ -5959,12 +5993,22 @@ def cmd_session_summary(a):
     summarize.main(a)
 
 
+def cmd_summarize(a):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import summarize
+    summarize.cli(a)
+
+
+def summary_off(key):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import summarize
+    return None if summarize.use_enabled(key) else summarize.gate_message(key)
+
+
 # ---------------------------------------------------------------- here: one project on one screen
 # What happened, what is left, and which live conversations in this directory are safe to close.
-# The project paragraph uses 智谱 glm-5.3-flash on purpose: it is the cheap key meant for this
-# housekeeping, and the shared SUMMARY_MODEL (often the Claude subscription) stays untouched.
+# The project paragraph uses whatever model 设置 picked for summaries.
 
-HERE_MODEL = "zhipu:glm-5.3-flash"
 HERE_SKIP_NOTES = ("【讨论】", "【分工】", "提交：")
 
 
@@ -6202,13 +6246,16 @@ def cmd_here(a):
     if not getattr(a, "no_summary", False):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import summarize
-        model = getattr(a, "summary_model", "") or HERE_MODEL
-        try:
-            r = summarize.project_summary(proj, force=getattr(a, "refresh_summary", False),
-                                          if_stale=not getattr(a, "refresh_summary", False), model=model)
-            summary = {"text": r.get("summary", ""), "at": r.get("at", 0), "by": r.get("by", ""), "cached": r.get("cached", False)}
-        except Exception as e:
-            summary = {"text": "", "error": str(e)}
+        if not summarize.use_enabled("here"):
+            summary = {"text": "", "skipped": True, "reason": summarize.gate_message("here")}
+        else:
+            model = getattr(a, "summary_model", "") or ""
+            try:
+                r = summarize.project_summary(proj, force=getattr(a, "refresh_summary", False),
+                                              if_stale=not getattr(a, "refresh_summary", False), model=model, use="here")
+                summary = {"text": r.get("summary", ""), "at": r.get("at", 0), "by": r.get("by", ""), "cached": r.get("cached", False)}
+            except Exception as e:
+                summary = {"text": "", "error": str(e)}
     base = project_base(proj, cwd, names, roots)
     report = {"project": proj, "detected": detected, "cwd": base, "timeline_days": days, "summary": summary,
               "timeline": here_timeline(proj, issues, comments, days, base, names, roots),
@@ -6219,7 +6266,10 @@ def cmd_here(a):
         print(f"# {o['project']}" + ("" if o["detected"] else "（任务板上没认出这个项目，按目录看）") + f" · {o['cwd']}")
         s = o["summary"]
         print("\n## 现状")
-        print(s.get("text") or ("（还没有项目总结：" + (s.get("error") or f"`dispatch project-summary {o['project']}` 生成") + "）"))
+        if s.get("skipped"):
+            print(s.get("reason") or "总结已在设置里关闭")
+        else:
+            print(s.get("text") or ("（还没有项目总结：" + (s.get("error") or f"`dispatch project-summary {o['project']}` 生成") + "）"))
         print(f"\n## 最近 {o['timeline_days']} 天")
         if o["timeline"]:
             tag = {"task": "进展", "done": "完成", "commit": "提交", "session": "会话"}
@@ -7354,6 +7404,8 @@ def discussion_writer(issue, comments=(), leader=None):
     answers, else the summary model. Returns (chat(system, user, timeout) -> text, label)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import summarize
+    if not summarize.use_enabled("discuss"):
+        return None, ""
     kind, model = leader if leader is not None else discussion_leader(issue)
     if kind in HEADLESS_KINDS:
         label = f"{kind}:{model or 'default'}（领队）"
@@ -7364,12 +7416,12 @@ def discussion_writer(issue, comments=(), leader=None):
             if text:
                 return text
             p = summarize.provider()
-            return summarize.chat(p, system, user, timeout=timeout) if p else ""
+            return summarize.chat(p, system, user, timeout=timeout, use="discuss") if p else ""
         return chat, label
     p = summarize.provider()
     if not p:
         return None, ""
-    return (lambda system, user, timeout=180: summarize.chat(p, system, user, timeout=timeout)), f"{p['id']}:{p['model']}"
+    return (lambda system, user, timeout=180: summarize.chat(p, system, user, timeout=timeout, use="discuss")), f"{p['id']}:{p['model']}"
 
 
 def discussion_conclude(tid, title, comments, issue=None, leader=None):
@@ -7407,7 +7459,7 @@ def cmd_discuss_conclude(a):
     comments = bd_comments(a.task)
     text = discussion_conclude(a.task, issue.get("title", ""), comments, issue)
     if not text:
-        raise SystemExit("写不出结论：没有发言，或没有可用的总结模型（设置里选一个）")
+        raise SystemExit(summary_off("discuss") or "写不出结论：没有发言，或没有可用的总结模型（设置里选一个）")
     out({"task": a.task, "conclusion": text}, a.json, lambda x: print(x["conclusion"]))
 
 
@@ -7440,7 +7492,7 @@ def discussion_doc(tid):
     comments = bd_comments(tid)
     chat, by = discussion_writer(issue, comments)
     if not chat:
-        raise SystemExit("没有可用的模型：设置里选一个总结模型，或给讨论指定领队")
+        raise SystemExit(summary_off("discuss") or "没有可用的模型：设置里选一个总结模型，或给讨论指定领队")
     said = [c for c in comments if (c.get("text") or "").startswith(DISCUSS_TAG)]
     if not said:
         raise SystemExit("这个讨论还没有发言")
@@ -8057,9 +8109,10 @@ def main():
     s = sub.add_parser("docs", help="项目页「文档」：扫描 design/ docs/ 研究/ 下的 .md/.html，加上登记过的路径/URL"); s.add_argument("op", nargs="?", default="", help="add | rm | read（省略时第一个参数就是项目名，列出它的文档）"); s.add_argument("project", nargs="?"); s.add_argument("extra", nargs="*", help="add/read/rm：路径或 URL、文档 id"); s.add_argument("--title", help="add：显示标题（默认取首个 # 行或文件名）"); s.add_argument("--kind", choices=list(DOC_KINDS), help="add：类型"); s.add_argument("--asset", default="", help="read：读文档同目录下的相对文件（图片），返回 base64"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_docs)
     s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
     for _here_name in ("here", "project-view"):
-        s = sub.add_parser(_here_name, help="一个项目此刻的样子：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话能不能关（默认当前目录）"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir", help="看这个目录（默认当前目录）"); s.add_argument("--days", type=int, default=14, help="时间线回看天数（默认 14）"); s.add_argument("--no-summary", action="store_true", help="不调模型，跳过现状一段话"); s.add_argument("--refresh-summary", action="store_true", help="现状重新生成，不用缓存"); s.add_argument("--summary-model", default="", help=f"现状用哪个模型（默认 {HERE_MODEL}）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_here)
+        s = sub.add_parser(_here_name, help="一个项目此刻的样子：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话能不能关（默认当前目录）"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir", help="看这个目录（默认当前目录）"); s.add_argument("--days", type=int, default=14, help="时间线回看天数（默认 14）"); s.add_argument("--no-summary", action="store_true", help="不调模型，跳过现状一段话"); s.add_argument("--refresh-summary", action="store_true", help="现状重新生成，不用缓存"); s.add_argument("--summary-model", default="", help="现状用哪个模型（默认设置里的总结模型）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_here)
     s = sub.add_parser("lineage", help="项目→任务→会话→进展：谁在哪个会话做哪个任务、做到哪、能不能关"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir"); s.add_argument("--days", type=int, default=14); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_lineage)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
+    s = sub.add_parser("summarize", help="总结用的模型与各用途开关：providers（可选模型）/ set-key（从 stdin 存 Key）/ uses（用途表）"); s.add_argument("op", nargs="?", default="providers", choices=["providers", "set-key", "uses"]); s.add_argument("provider", nargs="?", help="set-key: zhipu | deepseek | kimi | minimax | openai"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_summarize)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)
     s = sub.add_parser("init", help="首次设置向导：装依赖、建/接入任务板、选 Agent、同步规则与技能（无参数=交互式）"); s.add_argument("op", nargs="?", choices=["wizard", "status", "run", "hub-info", "add-host", "rename-self", "rename-peer", "remove-host", "skip", "finish", "reset", "peers"]); s.add_argument("args", nargs="*", help="run: <deps|cli|board|agents|rules|review|reverse-ssh> [参数…]; rename-self <新名字>; rename-peer <ssh或id> <新名字>; remove-host <id>"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_init)

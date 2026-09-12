@@ -23,8 +23,71 @@ PROVIDERS = [
 PROMPT = ("你是会话记录的总结者。下面是用户和一个编程 Agent 的对话摘录。用简体中文写一段不超过 120 字的总结，三层意思按顺序连成一段话：用户想要什么；Agent 实际做了什么、结果如何；还没做完或在等用户的事（没有就不写）。"
           "只写事实，不评价，不用「用户」「Agent」之外的称呼，不加标题、不用列表、不用引号。")
 
+SUMMARY_USES = [
+    ("session", "会话总结", "一轮结束后给会话写一段摘要，显示在工作台/会话列表/项目页", 1),
+    ("project", "项目现状", "项目页「现状」那段话", 1),
+    ("here", "dispatch here", "在终端跑 dispatch here 时的现状与结论", 1),
+    ("discuss", "讨论结论", "多 Agent 讨论后由 leader 写的结论与文档", 1),
+    ("insights", "洞察报告", "跨 Agent 的 /insights 复盘报告", 1),
+    ("memories", "记忆总结", "Agent 记忆页的总体与项目总结", 1),
+    ("profile_inventory", "设备盘点", "把各机器实测写成人话", 1),
+    ("semantic", "语义搜索索引", "wiki 语义搜索的 embedding（只认 ZHIPU_API_KEY）", 1),
+]
+DEFAULT_USES = {k: d for k, _, _, d in SUMMARY_USES}
+
+
+def use_name(key):
+    return next((n for k, n, _, _ in SUMMARY_USES if k == key), key)
+
+
+def gate_message(key):
+    return f"总结已在设置里关闭（{use_name(key)}）"
+
+
+def use_enabled(key):
+    """A use is on unless the shared setting says otherwise; session falls back to the old summary_auto."""
+    s = D.settings_load()
+    uses = s.get("summary_uses") or {}
+    if key in uses:
+        return bool(uses[key])
+    if key == "session" and "summary_auto" in s:
+        return bool(s["summary_auto"])
+    return bool(DEFAULT_USES.get(key, 1))
+
+
+USAGE_FILE = "summary-usage.json"
+
+
+def usage_path():
+    return os.path.join(D.DISPATCH_DIR, USAGE_FILE)
+
+
+def usage_load():
+    try:
+        with open(usage_path(), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def record_use(use, tokens, model):
+    """Remember the last model call per use. Best-effort: a logging failure never breaks the call."""
+    if not use:
+        return
+    try:
+        data = usage_load()
+        data[use] = {"at": int(time.time()), "tokens": int(tokens or 0), "model": model or ""}
+        os.makedirs(D.DISPATCH_DIR, exist_ok=True)
+        with open(usage_path(), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass
+
 
 CLAUDE_BIN = next((p for p in (os.path.join(D.HOME, ".local", "bin", "claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude") if os.path.exists(p)), "")
+PROVIDER_ENV = {p: key for key, p, _, _ in PROVIDERS}
+PROVIDER_LABELS = {"zhipu": "智谱", "deepseek": "DeepSeek", "kimi": "Kimi", "minimax": "MiniMax", "openai": "OpenAI"}
 
 
 def provider(model=""):
@@ -66,13 +129,25 @@ def providers():
     return out
 
 
+def model_catalog():
+    """Every model the settings page can pick — Claude subscription first, then each provider —
+    with its env key and whether it is usable on this machine right now."""
+    env = {i["name"]: i["value"] for i in D.env_read()}
+    rows = [{"id": f"claude:{m}", "provider": "claude", "label": lbl, "env": "", "configured": bool(CLAUDE_BIN), "model": m, "subscription": True}
+            for m, lbl in (("haiku", "Claude Haiku（订阅）"), ("sonnet", "Claude Sonnet（订阅）"))]
+    for key, p, base, model in PROVIDERS:
+        rows.append({"id": f"{p}:{model}", "provider": p, "label": f"{model}（{PROVIDER_LABELS.get(p, p)}）", "env": key,
+                     "configured": bool(env.get(key)), "model": model, "subscription": False})
+    return rows
+
+
 def auto(limit=2):
     """Summarize the conversations a person will actually look at, newest first, a few per call:
     fresh replies get a summary within minutes; older sessions fill in over time. Skips scheduled
     and archived sessions and anything summarized since it last changed."""
     from activity import session_preferences, set_preferences
-    if not D.settings_load().get("summary_auto", 1):
-        return {"done": [], "reason": "自动总结已关闭"}
+    if not use_enabled("session"):
+        return {"done": [], "tried": 0, "skipped": True, "reason": gate_message("session")}
     prefs = session_preferences(D.DISPATCH_DIR)
     idx = D.load_index() or D.refresh_index()
     rows = [(k, e) for k, e in idx.items() if not e.get("subagent") and (e.get("user_msgs") or 0) > 0 and e.get("agent") in ("claude-code", "codex", "pi", "zcode")]
@@ -125,7 +200,7 @@ def transcript_excerpt(key, limit=12000):
     return text, d.get("meta", {}), (d.get("reply_id") or d.get("activity_version") or "")
 
 
-def chat(p, system, user, timeout=90, max_tokens=None):
+def chat(p, system, user, timeout=90, max_tokens=None, use=None):
     if p["id"] == "claude":
         # Headless Claude Code: the prompt is the system text, the transcript comes on stdin.
         # Strip the session markers so a summary started from inside a Claude session still saves nothing odd.
@@ -137,6 +212,7 @@ def chat(p, system, user, timeout=90, max_tokens=None):
         r = subprocess.run([CLAUDE_BIN, "-p", system, "--model", p["model"], "--output-format", "text", "--tools", "", "--no-session-persistence"], input=user, capture_output=True, text=True, timeout=timeout + 60, env=env, cwd=D.HOME)
         if r.returncode != 0 and not r.stdout.strip():
             raise RuntimeError("claude -p 失败：" + (r.stderr or "").strip()[-200:])
+        record_use(use, 0, f"{p['id']}:{p['model']}")
         return r.stdout.strip()
     req_body = {"model": p["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "temperature": 0.2, "max_tokens": max_tokens or 400}
     if p["id"] == "zhipu" and p["model"].startswith("glm-5"):
@@ -146,11 +222,14 @@ def chat(p, system, user, timeout=90, max_tokens=None):
     req = urllib.request.Request(p["base"].rstrip("/") + "/chat/completions", data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {p['key']}"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         d = json.load(r)
+    record_use(use, (d.get("usage") or {}).get("total_tokens") or 0, f"{p['id']}:{p['model']}")
     return (d.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
 
 
 def summarize(key, force=False):
     from activity import set_preferences, session_preferences
+    if not use_enabled("session"):
+        raise RuntimeError(gate_message("session"))
     p = provider()
     if not p:
         raise RuntimeError("没有可用的模型：装了 Claude Code 就能用订阅（SUMMARY_MODEL=claude:haiku），或在 dispatch env 里放 DEEPSEEK_API_KEY / ZHIPU_API_KEY / KIMI_API_KEY / MINIMAX_API_KEY / OPENAI_API_KEY 之一")
@@ -162,7 +241,7 @@ def summarize(key, force=False):
     prefs = session_preferences(D.DISPATCH_DIR).get(key, {})
     if not force and prefs.get("summary") and prefs.get("summary_version") == version:
         return {"key": key, "summary": prefs["summary"], "cached": True, "provider": prefs.get("summary_by", "")}
-    text = chat(p, PROMPT, f"会话标题：{meta.get('title', '')}\n项目目录：{meta.get('cwd', '')}\n\n{excerpt}")
+    text = chat(p, PROMPT, f"会话标题：{meta.get('title', '')}\n项目目录：{meta.get('cwd', '')}\n\n{excerpt}", use="session")
     text = text.strip().strip('"“”').replace("\n", " ")[:300]
     if not text:
         raise RuntimeError("模型没有返回内容")
@@ -190,6 +269,52 @@ def main(a):
             print(json.dumps({"error": str(e)}, ensure_ascii=False) if a.json else f"✗ {e}")
             sys.exit(1)
     print(json.dumps(res, ensure_ascii=False, indent=2) if a.json else (res.get("summary") or json.dumps(res, ensure_ascii=False)))
+
+
+def cli(a):
+    """`dispatch summarize providers|set-key|uses`: the settings page's model picker and use table."""
+    op = getattr(a, "op", "providers") or "providers"
+    if op == "providers":
+        res = {"current": (D.settings_load().get("summary_model") or ""), "providers": model_catalog()}
+        if a.json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+        else:
+            print(f"当前：{res['current'] or '自动选择'}")
+            for x in res["providers"]:
+                print(f"{x['id']:<28} {x['label']:<22} {'已配置' if x['configured'] else '未配置'}")
+        return
+    if op == "set-key":
+        env_key = PROVIDER_ENV.get(getattr(a, "provider", "") or "")
+        if not env_key:
+            print("set-key 需要一个 API Key 提供方：zhipu | deepseek | kimi | minimax | openai（claude 是订阅，不用 Key）", file=sys.stderr)
+            sys.exit(2)
+        key = sys.stdin.read().strip()
+        if not key:
+            print("没有从 stdin 读到 Key", file=sys.stderr)
+            sys.exit(2)
+        items = D.env_read()
+        hit = next((it for it in items if it["name"] == env_key), None)
+        if hit:
+            hit["value"] = key
+        else:
+            items.append({"name": env_key, "value": key, "note": f"{PROVIDER_LABELS.get(a.provider, a.provider)} API Key", "project": ""})
+        D.env_write(items)
+        res = {"ok": True, "provider": a.provider, "env": env_key, "configured": True}
+        print(json.dumps(res, ensure_ascii=False) if a.json else f"已保存 {env_key}（值不显示）")
+        return
+    if op == "uses":
+        usage = usage_load()
+        res = [{"key": k, "name": n, "desc": d, "enabled": use_enabled(k), "last": usage.get(k) or None} for k, n, d, _ in SUMMARY_USES]
+        if a.json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+        else:
+            for x in res:
+                last = x["last"] or {}
+                when = time.strftime("%m-%d %H:%M", time.localtime(last["at"])) if last.get("at") else "从未"
+                print(f"{'✓' if x['enabled'] else '✗'} {x['name']:<12} {x['desc']}（上次：{when}）")
+        return
+    print(f"未知操作：{op}", file=sys.stderr)
+    sys.exit(2)
 
 
 # ---------------------------------------------------------------- project summary: the whole project in a paragraph
@@ -239,7 +364,9 @@ def project_material(name):
             "text": "## 最近的会话\n" + "\n".join(lines) + "\n\n## 未完成的任务\n" + "\n".join(open_t[:15]) + "\n\n## 最近完成的任务\n" + "\n".join(t for _, t in closed_t[:10])}
 
 
-def project_summary(name, force=False, if_stale=False, model=""):
+def project_summary(name, force=False, if_stale=False, model="", use="project"):
+    if not use_enabled(use):
+        raise RuntimeError(gate_message(use))
     key = D.INTERNAL_MEMORY_PREFIX + "project-summary-" + name
     code, o, _ = D.sh(["bd", "memories", "--json"])
     old = None
@@ -260,7 +387,7 @@ def project_summary(name, force=False, if_stale=False, model=""):
     m = project_material(name)
     if not m["sessions"] and not m["open"] and not m["closed"]:
         raise RuntimeError("这个项目还没有会话或任务")
-    text = chat(p, PROJECT_PROMPT, f"项目：{name}\n\n{m['text']}", timeout=120).strip().strip('"“”').replace("\n", " ")[:500]
+    text = chat(p, PROJECT_PROMPT, f"项目：{name}\n\n{m['text']}", timeout=120, use=use).strip().strip('"“”').replace("\n", " ")[:500]
     if not text:
         raise RuntimeError("模型没有返回内容")
     rec = {"summary": text, "at": int(time.time()), "by": f"{p['id']}:{p['model']}", "sessions": m["sessions"], "open": m["open"], "closed": m["closed"]}

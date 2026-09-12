@@ -548,6 +548,19 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .settings-qr{margin-top:10px;display:inline-block;padding:8px;background:#fff;border:1px solid var(--line);border-radius:10px;line-height:0}
 .settings-qr svg{display:block;width:176px;height:176px}
 .settings-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.summary-key-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px}
+.summary-key-row input{flex:1 1 220px;min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--win);color:var(--ink);font-family:var(--mono);font-size:12px}
+.summary-key-row .setup-bad{flex-basis:100%}
+.summary-uses{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.summary-uses .summary-use-row{border-top:1px solid var(--line)}
+.summary-uses .summary-use-row:first-child{border-top:0}
+.summary-use-right{display:inline-flex;align-items:center;gap:10px;white-space:nowrap;flex:none}
+.summary-use-last{font-variant-numeric:tabular-nums}
+@media(max-width:760px){
+  .settings-row.summary-model-row,.settings-row.summary-use-row{flex-wrap:wrap;gap:8px}
+  .summary-model-row select{max-width:100%}
+  .summary-use-right{white-space:normal;text-align:right}
+}
 .home-projects{display:flex;flex-direction:column;gap:14px}
 .home-project{border:1px solid var(--line);border-radius:14px;background:var(--win);box-shadow:var(--card-shadow);padding:14px 18px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .home-project.quiet{background:var(--panel)}
