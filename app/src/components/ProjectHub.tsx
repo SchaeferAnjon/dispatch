@@ -94,7 +94,7 @@ export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: str
 // two weeks as a day-grouped timeline, unfinished tasks, and the live sessions in this directory
 // with a close-or-not verdict. Read-only; the CLI caches the model-written summary.
 type ReviewKind = 'task' | 'done' | 'commit' | 'session';
-type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string };
+type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string; task?: string; task_title?: string };
 type ReviewDay = { day: string; weekday: string; entries: ReviewEntry[] };
 type ReviewTask = { id: string; title: string; status: string; assignee: string; acceptance_done: number; acceptance_total: number; last_at: number; last_note: string };
 type ReviewSession = { agent: string; session_id: string; title: string; pane_id?: string; cwd?: string; source_app?: string; summary: string; state: string; last_at?: number; tasks: { id: string; title: string; status: string }[]; tasks_all_done: boolean; files_count: number; verdict: string; reason: string };
@@ -103,47 +103,96 @@ const REVIEW_KIND: Record<string, string> = { task: '进展', done: '完成', co
 const REVIEW_STATE: Record<string, string> = { working: '在跑', idle: '等你', unknown: '未登记' };
 const reviewStatus = (s: string) => s === 'closed' ? '已完成' : s === 'in_progress' ? '进行中' : s === 'blocked' ? '阻塞' : s === 'deferred' ? '搁置' : '待办';
 
+const entryDate = (ts: number) => { const d = new Date(ts * 1000); const p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+
 function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; onOpen: (id: string) => void; onTask: (id: string) => void }) {
   const [days, setDays] = useState(14);
+  const [mode, setMode] = useState<'task' | 'time'>('task');
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   // Newest-first is the contract, but sort defensively so the default-open day is always the latest.
   const sorted = useMemo(() => [...timeline].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0)), [timeline]);
   const newest = sorted.length ? sorted[0].day : '';
   const shown = sorted.slice(0, days);
   const hidden = Math.max(0, sorted.length - shown.length);
+  const groups = useMemo(() => {
+    const order: string[] = [];
+    const map = new Map<string, { task: string; title: string; entries: ReviewEntry[] }>();
+    const loose: ReviewEntry[] = [];
+    for (const day of sorted.slice(0, days)) for (const e of day.entries) {
+      if (!e.task) { loose.push(e); continue; }
+      let g = map.get(e.task);
+      if (!g) { g = { task: e.task, title: e.task_title || '', entries: [] }; map.set(e.task, g); order.push(e.task); }
+      if (!g.title && e.task_title) g.title = e.task_title;
+      g.entries.push(e);
+    }
+    const list = order.map((k) => map.get(k)!);
+    for (const g of list) g.entries.sort((a, b) => b.ts - a.ts);
+    loose.sort((a, b) => b.ts - a.ts);
+    if (loose.length) list.push({ task: '', title: '未挂任务', entries: loose });
+    return list;
+  }, [sorted, days]);
   if (sorted.length === 0) return <p className="muted small">这段时间没有记录。</p>;
+  const row = (e: ReviewEntry, key: string, withDate: boolean) => {
+    const go = e.ref && (e.kind === 'session' || e.kind === 'task' || e.kind === 'done')
+      ? () => (e.kind === 'session' ? onOpen(e.ref!) : onTask(e.ref!)) : null;
+    return <li className={`review-entry${go ? ' clickable' : ''}`} key={key}
+      role={go ? 'button' : undefined} tabIndex={go ? 0 : undefined}
+      title={go ? (e.kind === 'session' ? '打开这段会话' : '打开这个任务') : undefined}
+      onClick={go || undefined}
+      onKeyDown={go ? (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } } : undefined}>
+      <span className={`review-kind k-${e.kind}`}>{REVIEW_KIND[e.kind] || e.kind}</span>
+      {withDate && <span className="review-date mono">{entryDate(e.ts)}</span>}
+      {e.kind === 'commit' && e.ref ? <code className="review-ref mono">{String(e.ref).slice(0, 7)}</code> : null}
+      <span className="review-text clamp-2" title={e.text}>{e.text}</span>
+    </li>;
+  };
   return <>
     <div className="review-seg-row">
       <span className="review-seg-label">最近</span>
       <div className="review-seg" role="group" aria-label="时间线显示范围">
         {[3, 7, 14].map((d) => <button key={d} type="button" className={days === d ? 'on' : ''} aria-pressed={days === d} onClick={() => setDays(d)}>{d} 天</button>)}
       </div>
+      <span className="spacer" />
+      <span className="review-seg-label">分组</span>
+      <div className="review-seg" role="group" aria-label="时间线分组方式">
+        <button type="button" className={mode === 'task' ? 'on' : ''} aria-pressed={mode === 'task'} onClick={() => setMode('task')}>按任务</button>
+        <button type="button" className={mode === 'time' ? 'on' : ''} aria-pressed={mode === 'time'} onClick={() => setMode('time')}>按时间</button>
+      </div>
     </div>
-    <div className="review-timeline">{shown.map((day) => {
-      const open = openDays[day.day] ?? (day.day === newest);
-      const expanded = !!expandedDays[day.day];
-      const entries = expanded ? day.entries : day.entries.slice(0, 4);
-      return <details className="review-day" key={day.day} open={open} onToggle={(e) => { const now = e.currentTarget.open; setOpenDays((prev) => (prev[day.day] === now ? prev : { ...prev, [day.day]: now })); }}>
-        <summary className="review-day-head"><span className="mono">{day.day}</span><span className="muted small">{day.weekday}</span><span className="muted small review-day-count">· {day.entries.length} 条</span></summary>
-        <ol className="review-entries">{entries.map((e, i) => {
-          const go = e.ref && (e.kind === 'session' || e.kind === 'task' || e.kind === 'done')
-            ? () => (e.kind === 'session' ? onOpen(e.ref!) : onTask(e.ref!)) : null;
-          return <li className={`review-entry${go ? ' clickable' : ''}`} key={`${e.ts}-${i}`}
-            role={go ? 'button' : undefined} tabIndex={go ? 0 : undefined}
-            title={go ? (e.kind === 'session' ? '打开这段会话' : '打开这个任务') : undefined}
-            onClick={go || undefined}
-            onKeyDown={go ? (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } } : undefined}>
-            <span className={`review-kind k-${e.kind}`}>{REVIEW_KIND[e.kind] || e.kind}</span>
-            {e.kind === 'commit' && e.ref ? <code className="review-ref mono">{String(e.ref).slice(0, 7)}</code> : null}
-            <span className="review-text clamp-2" title={e.text}>{e.text}</span>
-          </li>;
-        })}</ol>
-        {day.entries.length > 4 && (expanded
-          ? <button type="button" className="review-more" onClick={() => setExpandedDays((p) => ({ ...p, [day.day]: false }))}>收起</button>
-          : <button type="button" className="review-more" onClick={() => setExpandedDays((p) => ({ ...p, [day.day]: true }))}>展开剩余 {day.entries.length - 4} 条</button>)}
-      </details>;
-    })}</div>
+    {mode === 'time'
+      ? <div className="review-timeline">{shown.map((day) => {
+        const open = openDays[day.day] ?? (day.day === newest);
+        const expanded = !!expandedDays[day.day];
+        const entries = expanded ? day.entries : day.entries.slice(0, 4);
+        return <details className="review-day" key={day.day} open={open} onToggle={(e) => { const now = e.currentTarget.open; setOpenDays((prev) => (prev[day.day] === now ? prev : { ...prev, [day.day]: now })); }}>
+          <summary className="review-day-head"><span className="mono">{day.day}</span><span className="muted small">{day.weekday}</span><span className="muted small review-day-count">· {day.entries.length} 条</span></summary>
+          <ol className="review-entries">{entries.map((e, i) => row(e, `${e.ts}-${i}`, false))}</ol>
+          {day.entries.length > 4 && (expanded
+            ? <button type="button" className="review-more" onClick={() => setExpandedDays((p) => ({ ...p, [day.day]: false }))}>收起</button>
+            : <button type="button" className="review-more" onClick={() => setExpandedDays((p) => ({ ...p, [day.day]: true }))}>展开剩余 {day.entries.length - 4} 条</button>)}
+        </details>;
+      })}</div>
+      : <div className="review-timeline">{groups.map((g) => {
+        const key = g.task || '__none__';
+        const open = openGroups[key] ?? true;
+        const expanded = !!expandedGroups[key];
+        const entries = expanded ? g.entries : g.entries.slice(0, 4);
+        return <details className="review-day" key={key} open={open} onToggle={(e) => { const now = e.currentTarget.open; setOpenGroups((prev) => (prev[key] === now ? prev : { ...prev, [key]: now })); }}>
+          <summary className="review-day-head">
+            {g.task
+              ? <button type="button" className="link task-title review-group-title" title="打开这个任务" onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); onTask(g.task); }}>{g.title || g.task}</button>
+              : <span className="review-group-title">{g.title}</span>}
+            <span className="muted small review-day-count">· {g.entries.length} 条</span>
+          </summary>
+          <ol className="review-entries">{entries.map((e, i) => row(e, `${e.ts}-${i}`, true))}</ol>
+          {g.entries.length > 4 && (expanded
+            ? <button type="button" className="review-more" onClick={() => setExpandedGroups((p) => ({ ...p, [key]: false }))}>收起</button>
+            : <button type="button" className="review-more" onClick={() => setExpandedGroups((p) => ({ ...p, [key]: true }))}>展开剩余 {g.entries.length - 4} 条</button>)}
+        </details>;
+      })}</div>}
     {hidden > 0 && <button type="button" className="review-more review-hidden" onClick={() => setDays(14)}>还有更早的 {hidden} 天 · 显示全部</button>}
   </>;
 }
@@ -239,11 +288,12 @@ function OutcomeEditor({project,rows,tasks,initial,api,onSaved,onCancel}:{projec
   return <form className="outcome-editor" onSubmit={e=>{e.preventDefault();void save();}}><h3>{initial?'编辑成果':'登记成果'}</h3><label>成果名称<input aria-label="成果名称" required maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：Dispatch 新版 · 项目工作台"/></label><label>交付内容与查看入口<textarea aria-label="交付内容与查看入口" required rows={5} value={body} onChange={e=>setBody(e.target.value)} placeholder="写明交付了什么，附上文档、截图、版本或代码链接（支持 Markdown）"/></label><div className="outcome-sources"><details open><summary>来源任务 · 可选多个</summary><div className="relation-options">{tasks.map(i=><label key={i.id}><input type="checkbox" checked={taskIds.includes(i.id)} onChange={e=>setTaskIds(old=>e.target.checked?[...old,i.id]:old.filter(x=>x!==i.id))}/>{i.title}</label>)}</div></details><details><summary>补充来源会话 · 已选任务的会话会一并关联</summary><div className="relation-options">{rows.map(a=><label key={a.key}><input type="checkbox" checked={sessionIds.includes(a.session_id)} onChange={e=>setSessionIds(old=>e.target.checked?[...old,a.session_id]:old.filter(x=>x!==a.session_id))}/>{a.title}</label>)}</div></details></div>{error&&<p role="alert">保存失败：{error}</p>}<button className="btn primary" disabled={busy||!title.trim()||!body.trim()}>保存成果</button><button className="btn" type="button" disabled={busy} onClick={onCancel}>取消</button></form>;
 }
 
-type Props={onDiscuss?:(name:string)=>void;archiveDays:number;flags:ProjectFlags;onFlag:(name:string,change:{starred?:boolean;archived?:boolean})=>void;connectionError:boolean;unavailable:string[];rows:Activity[];tasks:Issue[];outcomes:Issue[];api:Api;me:string;selected:string|null;onProject:(name:string|null)=>void;onOpen:(id:string)=>void;onTask:(id:string)=>void;onRead:(a:Activity)=>Promise<void>;onSummarize?:(a:Activity)=>Promise<void>;onReload:()=>void;onNew:(a?:Activity)=>void;loaded:boolean};
-export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,unavailable,rows,tasks,outcomes,api,me,selected,onProject,onOpen,onTask,onRead,onSummarize,onReload,onNew,loaded}:Props){
-  const [tab,setTab]=useState(()=>{const t=new URLSearchParams(location.search).get('section')||'review';return ['review','sessions','tasks','outcomes','unassigned','folders','docs'].includes(t)?t:'review';}),[query,setQuery]=useState(''),[scheduled,setScheduled]=useState(false),[archived,setArchived]=useState(false),[editor,setEditor]=useState<Issue|null|false>(false),[showOther,setShowOther]=useState(false),[showArchived,setShowArchived]=useState(false),[docs,setDocs]=useState<Doc[]|null>(null);
+type Props={onDiscuss?:(name:string)=>void;focusSection?:{section:"review"|"sessions";token:number}|null;onSectionDone?:()=>void;archiveDays:number;flags:ProjectFlags;onFlag:(name:string,change:{starred?:boolean;archived?:boolean})=>void;connectionError:boolean;unavailable:string[];rows:Activity[];tasks:Issue[];outcomes:Issue[];api:Api;me:string;selected:string|null;onProject:(name:string|null)=>void;onOpen:(id:string)=>void;onTask:(id:string)=>void;onRead:(a:Activity)=>Promise<void>;onSummarize?:(a:Activity)=>Promise<void>;onReload:()=>void;onNew:(a?:Activity)=>void;loaded:boolean};
+export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,flags,onFlag,connectionError,unavailable,rows,tasks,outcomes,api,me,selected,onProject,onOpen,onTask,onRead,onSummarize,onReload,onNew,loaded}:Props){
+  const [tab,setTab]=useState(()=>{const s=focusSection?.section;const t=s||new URLSearchParams(location.search).get('section')||'review';return ['review','sessions','tasks','outcomes','unassigned','folders','docs'].includes(t)?t:'review';}),[query,setQuery]=useState(''),[scheduled,setScheduled]=useState(false),[archived,setArchived]=useState(false),[editor,setEditor]=useState<Issue|null|false>(false),[showOther,setShowOther]=useState(false),[showArchived,setShowArchived]=useState(false),[docs,setDocs]=useState<Doc[]|null>(null);
   const loadDocs=useCallback(()=>{setDocs(null);if(!selected)return;void api.on('local',['docs',selected,'--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));setDocs(Array.isArray(d.docs)?d.docs as Doc[]:[]);}).catch(()=>setDocs([]));},[api,selected]);
   useEffect(()=>{loadDocs();},[loadDocs]);
+  useEffect(()=>{if(!focusSection)return;if(['review','sessions','tasks','outcomes','unassigned','folders','docs'].includes(focusSection.section)){setTab(focusSection.section);setEditor(false);}onSectionDone?.();},[focusSection]);
   const [review,setReview]=useState<ReviewData|null>(null),[reviewBusy,setReviewBusy]=useState(false),[reviewErr,setReviewErr]=useState('');
   const loadReview=useCallback(()=>{setReview(null);setReviewErr('');setReviewBusy(true);if(!selected)return;void api.on('local',['here',selected,'--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))) as ReviewData&{error?:string};if(d.error)setReviewErr(d.error);else setReview(d);}).catch((e)=>setReviewErr(String(e))).finally(()=>setReviewBusy(false));},[api,selected]);
   useEffect(()=>{loadReview();},[loadReview]);

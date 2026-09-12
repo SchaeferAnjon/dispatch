@@ -5973,6 +5973,17 @@ def iso_epoch(ts):
     return dt.timestamp() if dt else 0.0
 
 
+def project_base(proj, cwd, names=None, roots=None):
+    """Where a project's git log and sessions live: the current directory when it is that
+    project, else the project's home — so `dispatch here -P atrium` run from anywhere still
+    reads atrium's repo, not the caller's."""
+    names = project_names() if names is None else names
+    roots = (settings_load().get("workspace_roots") or []) if roots is None else roots
+    if (project_of_cwd(cwd, names, roots) or "").lower() == proj.lower():
+        return cwd
+    return project_home(proj, names, roots=roots) or cwd
+
+
 def acceptance_progress(issue):
     text = issue.get("acceptance_criteria") or ""
     done = text.count("- [x]") + text.count("- [X]")
@@ -6025,6 +6036,8 @@ def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
     """One line per event, newest first, grouped by local day: task progress, closes, commits,
     session summaries."""
     since = time.time() - days * 86400
+    tids = {t.get("id", "") for t in issues}
+    ttitles = {t.get("id", ""): t.get("title", "") for t in issues}
     entries = []
     for t in issues:
         title = t.get("title") or t.get("id", "")
@@ -6033,12 +6046,12 @@ def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
             ts = iso_epoch(c.get("created_at"))
             if not body or body.startswith(HERE_SKIP_NOTES) or ts < since:
                 continue
-            entries.append({"ts": ts, "kind": "task", "ref": t.get("id", ""), "text": f"{title}：{body[:200]}"})
+            entries.append({"ts": ts, "kind": "task", "ref": t.get("id", ""), "task": t.get("id", ""), "task_title": title, "text": f"{title}：{body[:200]}"})
         if t.get("status") == "closed":
             ts = iso_epoch(t.get("closed_at"))
             reason = re.sub(r"\s+", " ", t.get("close_reason") or "").strip()
             if ts >= since:
-                entries.append({"ts": ts, "kind": "done", "ref": t.get("id", ""), "text": f"完成「{title}」" + (f"：{reason[:200]}" if reason else "")})
+                entries.append({"ts": ts, "kind": "done", "ref": t.get("id", ""), "task": t.get("id", ""), "task_title": t.get("title", ""), "text": f"完成「{title}」" + (f"：{reason[:200]}" if reason else "")})
     root = git_root_of(cwd)
     if root:
         code, o, _ = sh(["git", "-C", root, "log", f"--since={days} days ago", "--date=iso-strict", "--pretty=%h%x1f%cI%x1f%s"], timeout=20)
@@ -6049,7 +6062,8 @@ def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
                     continue
                 ts = iso_epoch(parts[1])
                 if ts >= since:
-                    entries.append({"ts": ts, "kind": "commit", "ref": parts[0], "text": parts[2][:200]})
+                    found = next((x for x in re.findall(r"task-[a-z0-9]{4,}", parts[2]) if x in tids), "")
+                    entries.append({"ts": ts, "kind": "commit", "ref": parts[0], "task": found, "task_title": ttitles.get(found, ""), "text": parts[2][:200]})
     from activity import session_preferences
     prefs = session_preferences(DISPATCH_DIR)
     names = project_names() if names is None else names
@@ -6063,7 +6077,8 @@ def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
             continue
         if (project_of_cwd(e.get("cwd") or "", names, roots) or "").lower() != proj.lower():
             continue
-        entries.append({"ts": ts, "kind": "session", "ref": e.get("session_id", ""), "text": f"会话「{e.get('title') or e.get('session_id', '')}」：{summary.strip()[:200]}"})
+        claimed = next((x for x in [(e.get("claims") or [None])[-1]] + list((e.get("tasks") or {}).keys()) if x in tids), "")
+        entries.append({"ts": ts, "kind": "session", "ref": e.get("session_id", ""), "task": claimed, "task_title": ttitles.get(claimed, ""), "text": f"会话「{e.get('title') or e.get('session_id', '')}」：{summary.strip()[:200]}"})
     entries.sort(key=lambda x: -x["ts"])
     grouped = []
     for e in entries:
@@ -6185,10 +6200,11 @@ def cmd_here(a):
             summary = {"text": r.get("summary", ""), "at": r.get("at", 0), "by": r.get("by", ""), "cached": r.get("cached", False)}
         except Exception as e:
             summary = {"text": "", "error": str(e)}
-    report = {"project": proj, "detected": detected, "cwd": cwd, "timeline_days": days, "summary": summary,
-              "timeline": here_timeline(proj, issues, comments, days, cwd, names, roots),
+    base = project_base(proj, cwd, names, roots)
+    report = {"project": proj, "detected": detected, "cwd": base, "timeline_days": days, "summary": summary,
+              "timeline": here_timeline(proj, issues, comments, days, base, names, roots),
               "open_tasks": here_open_tasks(issues, comments),
-              "sessions": here_sessions(proj, detected, cwd, issues, names, roots)}
+              "sessions": here_sessions(proj, detected, base, issues, names, roots)}
 
     def text(o):
         print(f"# {o['project']}" + ("" if o["detected"] else "（任务板上没认出这个项目，按目录看）") + f" · {o['cwd']}")
@@ -6227,6 +6243,165 @@ def cmd_here(a):
             print(f"   结论：{x['verdict']}" + (f"：{x['reason']}" if x["reason"] else ""))
         if not o["sessions"]:
             print("（本目录没有活会话）")
+
+    out(report, a.json, text)
+
+
+# ---------------------------------------------------------------- lineage: who is doing which task in which conversation
+
+def lineage_report(proj, days=14, cwd="", names=None, roots=None):
+    """Project → tasks → sessions → progress/commits. Task↔session links come from explicit
+    `session:` labels plus task ids the transcript index saw; a session that spans several tasks
+    shows up under each with the others listed in `also`. Live status and the close-or-not
+    verdict reuse `here`."""
+    issues = project_issues(proj)
+    tids = {t.get("id", "") for t in issues}
+    since = time.time() - days * 86400
+    comments = here_comments(issues, since)
+    names = project_names() if names is None else names
+    roots = (settings_load().get("workspace_roots") or []) if roots is None else roots
+    base = project_base(proj, cwd, names, roots)
+    live = here_sessions(proj, True, base, issues, names, roots)
+    live_by_sid = {s["session_id"]: s for s in live}
+
+    # Strong links (claims / explicit `session:` labels) drive the tree; transcript mentions are
+    # kept separate, because one planning conversation can mention dozens of tasks and would
+    # otherwise attach itself to every node.
+    strong, mentions, sess_meta = {}, {}, {}
+    for e in (load_index() or {}).values():
+        if e.get("subagent") or not e.get("session_id"):
+            continue
+        sid = e["session_id"]
+        for x in (e.get("claims") or []):
+            if x in tids:
+                strong.setdefault(sid, set()).add(x)
+        for x in (e.get("tasks") or {}):
+            if x in tids and x not in (strong.get(sid) or set()):
+                mentions.setdefault(sid, set()).add(x)
+        sess_meta.setdefault(sid, {"agent": e.get("agent", ""), "title": e.get("title") or "", "last_at": e.get("mtime", 0)})
+    for t in issues:
+        for l in t.get("labels") or []:
+            if l.startswith("session:") or l.startswith("session-origin:"):
+                strong.setdefault(l.split(":", 1)[1], set()).add(t["id"])
+
+    commits_by_task, loose_commits = {}, []
+    root = git_root_of(base)
+    if root:
+        code, o, _ = sh(["git", "-C", root, "log", f"--since={days} days ago", "--date=iso-strict", "--pretty=%h%x1f%cI%x1f%s"], timeout=20)
+        if code == 0:
+            for line in o.splitlines():
+                parts = line.split("\x1f")
+                if len(parts) != 3:
+                    continue
+                ts = iso_epoch(parts[1])
+                if ts < since:
+                    continue
+                found = next((x for x in re.findall(r"task-[a-z0-9]{4,}", parts[2]) if x in tids), "")
+                rec = {"ts": ts, "kind": "commit", "ref": parts[0], "text": parts[2][:200]}
+                (commits_by_task.setdefault(found, []) if found else loose_commits).append(rec)
+
+    def deps_of(t):
+        rows = []
+        for d in t.get("dependencies") or []:
+            other = d.get("depends_on_id")
+            if other:
+                rows.append({"type": d.get("type", ""), "label": {"parent-child": "包含", "blocks": "依赖", "discovered-from": "衍生"}.get(d.get("type"), d.get("type") or ""), "id": other})
+        for l in t.get("labels") or []:
+            if l.startswith("discussed-in:"):
+                rows.append({"type": "discussed-in", "label": "拆分自", "id": l.split(":", 1)[1]})
+        return rows
+
+    order = {"in_progress": 0, "open": 1, "blocked": 2, "deferred": 3, "closed": 4}
+    tasks_out = []
+    for t in sorted(issues, key=lambda x: (order.get(x.get("status"), 5), -(iso_epoch(x.get("updated_at")) or 0))):
+        tid = t.get("id", "")
+        done, total = acceptance_progress(t)
+        events = []
+        for c in comments.get(tid) or []:
+            body = re.sub(r"\s+", " ", c.get("text") or "").strip()
+            ts = iso_epoch(c.get("created_at"))
+            if body and not body.startswith(HERE_SKIP_NOTES) and ts >= since:
+                events.append({"ts": ts, "kind": "task", "ref": tid, "text": body[:200], "by": c.get("author") or ""})
+        if t.get("status") == "closed":
+            ts = iso_epoch(t.get("closed_at"))
+            if ts >= since:
+                events.append({"ts": ts, "kind": "done", "ref": tid, "by": t.get("assignee") or "", "text": (re.sub(r"\s+", " ", t.get("close_reason") or "").strip() or "已完成")[:200]})
+        events += [dict(c, by="") for c in commits_by_task.get(tid, [])]
+        events.sort(key=lambda e: -e["ts"])
+
+        def title_of(x):
+            return next((i.get("title", "") for i in issues if i.get("id") == x), x)
+
+        def session_row(sid, relation):
+            lv, meta = live_by_sid.get(sid) or {}, sess_meta.get(sid) or {}
+            also = sorted((strong.get(sid) or set()) - {tid})
+            return {"session_id": sid, "agent": lv.get("agent") or meta.get("agent", ""),
+                    "title": lv.get("title") or meta.get("title", ""), "summary": lv.get("summary", ""),
+                    "state": lv.get("state") or "ended", "live": bool(lv), "relation": relation,
+                    "verdict": lv.get("verdict", ""), "reason": lv.get("reason", ""),
+                    "also": [title_of(a) for a in also[:3]], "also_count": len(also),
+                    "last_at": lv.get("last_at") or meta.get("last_at") or 0}
+
+        sids = {sid for sid, s_tids in strong.items() if tid in s_tids}
+        for s in live:
+            if any(x["id"] == tid for x in s["tasks"]):
+                sids.add(s["session_id"])
+        sessions_out = [session_row(sid, "在做") for sid in sids]
+        mention_sids = [sid for sid, s_tids in mentions.items() if tid in s_tids and sid not in sids]
+        sessions_out += [session_row(sid, "提到") for sid in mention_sids[:8]]
+        sessions_out.sort(key=lambda s: (s["relation"] != "在做", not s["live"], -(s["last_at"] or 0)))
+        tasks_out.append({"id": tid, "title": t.get("title", ""), "status": t.get("status", ""),
+                          "assignee": t.get("assignee") or "", "acceptance_done": done, "acceptance_total": total,
+                          "last_at": iso_epoch(t.get("updated_at")), "deps": deps_of(t),
+                          "mentions_count": len(mention_sids), "sessions": sessions_out, "events": events})
+
+    assigned = {s["session_id"] for t in tasks_out for s in t["sessions"]}
+    unassigned = [s for s in live if s["session_id"] not in assigned]
+    return {"project": proj, "days": days, "cwd": base,
+            "counts": {"tasks": len(tasks_out), "live_sessions": len(live), "unassigned_sessions": len(unassigned)},
+            "tasks": tasks_out, "unassigned_sessions": unassigned,
+            "unassigned_events": sorted(loose_commits, key=lambda e: -e["ts"])}
+
+
+def cmd_lineage(a):
+    cwd = os.path.abspath(os.path.expanduser(getattr(a, "dir", "") or os.getcwd()))
+    days = max(1, int(getattr(a, "days", 14) or 14))
+    names = project_names()
+    proj = (getattr(a, "project", "") or getattr(a, "project_opt", "") or "").strip() or project_of_cwd(cwd, names)
+    proj = proj or os.path.basename(cwd.rstrip("/")) or "?"
+    report = lineage_report(proj, days, cwd, names)
+
+    def text(o):
+        print(f"# {o['project']} · 脉络（最近 {o['days']} 天）")
+        c = o["counts"]
+        print(f"{c['tasks']} 个任务 · {c['live_sessions']} 个活会话 · {c['unassigned_sessions']} 个未挂任务的会话")
+        tag = {"task": "进展", "done": "完成", "commit": "提交", "session": "会话"}
+        for t in o["tasks"]:
+            acc = f" {t['acceptance_done']}/{t['acceptance_total']}" if t["acceptance_total"] else ""
+            who = f" · {t['assignee']}" if t["assignee"] else ""
+            when = f" · {ago(t['last_at'])}前" if t["last_at"] else ""
+            print(f"\n{'◐' if t['status'] == 'in_progress' else '○'} 「{t['title']}」（{t['id']}）{acc}{who}{when}")
+            if t["deps"]:
+                print("   关系：" + "、".join(f"{d['label']} {d['id']}" for d in t["deps"]))
+            for s in t["sessions"]:
+                if s["relation"] == "提到":
+                    print(f"   （提到）{s['agent']} {s['session_id'][:8]} 「{s['title']}」")
+                    continue
+                st = {"working": "在跑", "idle": "等你"}.get(s["state"], "已结束")
+                verdict = (f" · {s['verdict']}" + (f"：{s['reason']}" if s["reason"] else "")) if s["live"] else ""
+                also = (f"（也在做 {'、'.join(s['also'])}" + (f" 等 {s['also_count']} 个" if s["also_count"] > len(s["also"]) else "") + "）") if s["also"] else ""
+                print(f"   {s['agent']} {s['session_id'][:8]} 「{s['title']}」 · {st}{verdict}{also}")
+            if t["mentions_count"] > 8:
+                print(f"   …另有 {t['mentions_count'] - 8} 个会话提到过")
+            for e in t["events"][:6]:
+                print(f"     [{tag.get(e['kind'], e['kind'])}] {e['text']}")
+            if len(t["events"]) > 6:
+                print(f"     …还有 {len(t['events']) - 6} 条")
+        if o["unassigned_sessions"]:
+            print(f"\n## 未挂任务的会话（{len(o['unassigned_sessions'])}）")
+            for s in o["unassigned_sessions"]:
+                st = {"working": "在跑", "idle": "等你"}.get(s["state"], "未登记")
+                print(f"{'◐' if s['state'] == 'working' else '○'} {s['agent']} {s['session_id'][:8]} 「{s['title']}」 · {st} · {s['verdict']}")
 
     out(report, a.json, text)
 
@@ -7871,6 +8046,7 @@ def main():
     s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
     for _here_name in ("here", "project-view"):
         s = sub.add_parser(_here_name, help="一个项目此刻的样子：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话能不能关（默认当前目录）"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir", help="看这个目录（默认当前目录）"); s.add_argument("--days", type=int, default=14, help="时间线回看天数（默认 14）"); s.add_argument("--no-summary", action="store_true", help="不调模型，跳过现状一段话"); s.add_argument("--refresh-summary", action="store_true", help="现状重新生成，不用缓存"); s.add_argument("--summary-model", default="", help=f"现状用哪个模型（默认 {HERE_MODEL}）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_here)
+    s = sub.add_parser("lineage", help="项目→任务→会话→进展：谁在哪个会话做哪个任务、做到哪、能不能关"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir"); s.add_argument("--days", type=int, default=14); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_lineage)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)

@@ -54,6 +54,7 @@ interface Props {
   onProject: (name: string) => void;
   onView: (v: View) => void;
   onNew: (a?: Activity) => void;
+  onLocate?: (projectName: string, section: "review" | "sessions") => void;
   onDiscuss?: () => void;
   onPhone?: () => void;
   onScreen?: () => void;
@@ -87,7 +88,7 @@ interface Card {
 // conversation spins off tasks. This page shows every project's present state
 // at once — what waits for me, what is running, which tasks are mid-way, what
 // got delivered — and points into the 项目 view for the full history.
-export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onPhone, onScreen, screenReady }: Props) {
+export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectionError, unavailable, rows, issues, outcomes, inbox, progress, flags, archiveDays, expandedDefault, onFlag, onOpen, onFocus, onTask, onProject, onView, onNew, onLocate, onPhone, onScreen, screenReady }: Props) {
   // The count chips narrow this page instead of leaving it.
   const [focus, setFocus] = useState<"" | "unread" | "waiting" | "blocked" | "running">("");
   // How the project cards are ordered; starred ones stay on top either way.
@@ -159,7 +160,12 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
 
   const renderCard = (c: Card, index = 0) => {
     const open = isOpen(c, index);
-    const digest = [c.waiting.length + c.unread.length ? `等你 ${c.waiting.length + c.unread.length}` : "", c.running.length ? `在跑 ${c.running.length}` : "", c.tracked.length ? `追踪 ${c.tracked.length}` : "", c.tasks.length ? `任务 ${c.tasks.length}` : "", c.blockedTasks.length ? `卡住 ${c.blockedTasks.length}` : ""].filter(Boolean).join(" · ");
+    const digest: { key: string; label: string; hot?: boolean; locate?: "review" | "sessions" }[] = [];
+    if (c.waiting.length + c.unread.length) digest.push({ key: "wait", label: `等你 ${c.waiting.length + c.unread.length}`, hot: true, locate: "sessions" });
+    if (c.running.length) digest.push({ key: "run", label: `在跑 ${c.running.length}` });
+    if (c.tracked.length) digest.push({ key: "track", label: `追踪 ${c.tracked.length}` });
+    if (c.tasks.length) digest.push({ key: "task", label: `任务 ${c.tasks.length}`, locate: "review" });
+    if (c.blockedTasks.length) digest.push({ key: "block", label: `卡住 ${c.blockedTasks.length}` });
     const more = Math.max(0, c.waiting.length + c.unread.length - 3) + Math.max(0, c.running.length - 3) + Math.max(0, c.tasks.length - 3);
     return (
       <article key={c.name} data-project={c.name} className={`home-project${c.live ? "" : " quiet"}${open ? "" : " folded"}`}>
@@ -168,7 +174,10 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
           <span className="proj" style={{ background: projectColor(c.name) }} />
           <button className="name" onClick={() => onProject(c.name)}>{c.name}</button>
           {c.name !== UNGROUPED && <button className={`star${isStarred(flags, c.name) ? " on" : ""}`} onClick={() => onFlag(c.name, { starred: !isStarred(flags, c.name) })} title={isStarred(flags, c.name) ? "取消收藏" : "收藏：置顶，近期重点关注"} aria-label={isStarred(flags, c.name) ? `取消收藏 ${c.name}` : `收藏 ${c.name}`}>{isStarred(flags, c.name) ? "★" : "☆"}</button>}
-          {open ? <span className="counts muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.blocked ? ` · ${c.blocked} 项被卡住` : ""}{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span> : <button className="digest" onClick={() => toggle(c.name, open)}>{digest ? <span className={c.waiting.length + c.unread.length ? "hot" : ""}>{digest}</span> : <span className="muted">{c.latest ? `最近：${c.latest.title}` : "没有会话"}</span>}<span className="muted small"> · {c.lastActive ? `${ago(c.lastActive)}` : ""}</span></button>}
+          {open ? <span className="counts muted small">{c.sessions} 个会话 · {c.open} 项未完成{c.blocked ? ` · ${c.blocked} 项被卡住` : ""}{c.results.length ? ` · ${c.results.length} 项成果` : ""}</span> : digest.length > 0 ? <span className="digest-chips">
+            {digest.map((p) => <button key={p.key} type="button" className={`digest-chip${p.hot ? " hot" : ""}`} onClick={(e) => { if (p.locate && onLocate) { e.stopPropagation(); onLocate(c.name, p.locate); } else toggle(c.name, open); }}>{p.label}</button>)}
+            <span className="muted small">{c.lastActive ? ago(c.lastActive) : ""}</span>
+          </span> : <button className="digest" onClick={() => toggle(c.name, open)}><span className="muted">{c.latest ? `最近：${c.latest.title}` : "没有会话"}</span><span className="muted small"> · {c.lastActive ? `${ago(c.lastActive)}` : ""}</span></button>}
           <span className="spacer" />
           <button className="btn sm" onClick={() => onNew(c.home)}>新建会话</button>
           <button className="link" onClick={() => onProject(c.name)}>进入项目 ›</button>
@@ -177,7 +186,9 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
         {open && <>
         {(!focus || focus === "waiting" || focus === "unread") && (c.waiting.length > 0 || c.unread.length > 0) && (
           <div className="home-group">
-            <div className="home-group-h hot">等你 <b>{c.waiting.length + c.unread.length}</b></div>
+            {onLocate
+              ? <button type="button" className="home-group-h hot home-group-link" onClick={() => onLocate(c.name, "sessions")} title="去项目页的会话看看">等你 <b>{c.waiting.length + c.unread.length}</b></button>
+              : <div className="home-group-h hot">等你 <b>{c.waiting.length + c.unread.length}</b></div>}
             {c.waiting.slice(0, 3).map((s) => {
               const who = actorOf(s.agent, me);
               return (
@@ -255,7 +266,9 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
 
         {!focus && c.tasks.length > 0 && (
           <div className="home-group">
-            <div className="home-group-h">进行中的任务 <b>{c.tasks.length}</b></div>
+            {onLocate
+              ? <button type="button" className="home-group-h home-group-link" onClick={() => onLocate(c.name, "review")} title="去项目页的回顾看看">进行中的任务 <b>{c.tasks.length}</b></button>
+              : <div className="home-group-h">进行中的任务 <b>{c.tasks.length}</b></div>}
             {c.tasks.slice(0, 3).map((i) => {
               const ac = parseAcceptance(i.acceptance_criteria);
               const done = ac.filter((x) => x.done).length;

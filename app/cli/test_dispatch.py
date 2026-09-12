@@ -1315,6 +1315,8 @@ class HereView(unittest.TestCase):
         self.assertIn("完成「完成的」", texts)
         self.assertNotIn("不该进时间线", texts)
         self.assertTrue(all(len(d["entries"]) >= 1 for d in days))
+        self.assertEqual(entries[0]["task"], "t1")
+        self.assertTrue(all("task" in e for e in entries))
 
     def test_here_comments_reads_off_the_export_instead_of_shelling_out(self):
         iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -1504,3 +1506,32 @@ class MemoriesPage(unittest.TestCase):
         self.assertEqual(chat.call_count, 1)
         self.assertFalse(r["cached"])
         self.assertEqual(r["overall"], "重算")
+
+class Lineage(unittest.TestCase):
+    def test_tree_links_sessions_events_and_deps(self):
+        issues = [{"id": "task-a", "title": "甲", "status": "in_progress", "acceptance_criteria": "- [x] a\n- [ ] b",
+                   "assignee": "claude-code", "updated_at": "2026-09-02T00:00:00Z", "labels": ["session:s1", "project:p"],
+                   "comments": [{"created_at": "2026-09-02T00:00:00Z", "text": "进展一"}],
+                   "dependencies": [{"issue_id": "task-a", "depends_on_id": "task-b", "type": "blocks", "dependency_count": 1}]}]
+        live = [{"session_id": "s1", "agent": "claude-code", "title": "会话一", "summary": "在做甲", "state": "idle",
+                 "last_at": 1, "verdict": "可关", "reason": "", "files_count": 0,
+                 "tasks": [{"id": "task-a", "title": "甲", "status": "in_progress"}]}]
+        idx = {"p": {"agent": "claude-code", "session_id": "s1", "tasks": {"task-a": 2}, "claims": ["task-a"],
+                     "cwd": "/x", "mtime": 1, "title": "会话一"}}
+        with patch.object(dispatch, "project_issues", return_value=issues), \
+             patch.object(dispatch, "here_comments", return_value={"task-a": [{"created_at": "2026-09-02T00:00:00Z", "text": "进展一"}]}), \
+             patch.object(dispatch, "project_names", return_value={}), \
+             patch.object(dispatch, "settings_load", return_value={}), \
+             patch.object(dispatch, "here_sessions", return_value=live), \
+             patch.object(dispatch, "load_index", return_value=idx), \
+             patch.object(dispatch, "git_root_of", return_value=""), \
+             patch.object(dispatch, "project_base", return_value="/x"):
+            r = dispatch.lineage_report("p", 14, "/x")
+        t = r["tasks"][0]
+        self.assertEqual((t["id"], t["acceptance_done"], t["acceptance_total"]), ("task-a", 1, 2))
+        self.assertEqual([s["session_id"] for s in t["sessions"]], ["s1"])
+        self.assertEqual(t["sessions"][0]["verdict"], "可关")
+        self.assertEqual(t["events"][0]["kind"], "task")
+        self.assertIn("进展一", t["events"][0]["text"])
+        self.assertEqual(t["deps"], [{"type": "blocks", "label": "依赖", "id": "task-b"}])
+        self.assertEqual(r["counts"]["tasks"], 1)
