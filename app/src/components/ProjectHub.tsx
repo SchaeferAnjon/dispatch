@@ -102,6 +102,51 @@ const REVIEW_KIND: Record<string, string> = { task: '进展', done: '完成', co
 const REVIEW_STATE: Record<string, string> = { working: '在跑', idle: '等你', unknown: '未登记' };
 const reviewStatus = (s: string) => s === 'closed' ? '已完成' : s === 'in_progress' ? '进行中' : s === 'blocked' ? '阻塞' : s === 'deferred' ? '搁置' : '待办';
 
+function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; onOpen: (id: string) => void; onTask: (id: string) => void }) {
+  const [days, setDays] = useState(14);
+  const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+  // Newest-first is the contract, but sort defensively so the default-open day is always the latest.
+  const sorted = useMemo(() => [...timeline].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0)), [timeline]);
+  const newest = sorted.length ? sorted[0].day : '';
+  const shown = sorted.slice(0, days);
+  const hidden = Math.max(0, sorted.length - shown.length);
+  if (sorted.length === 0) return <p className="muted small">这段时间没有记录。</p>;
+  return <>
+    <div className="review-seg-row">
+      <span className="review-seg-label">最近</span>
+      <div className="review-seg" role="group" aria-label="时间线显示范围">
+        {[3, 7, 14].map((d) => <button key={d} type="button" className={days === d ? 'on' : ''} aria-pressed={days === d} onClick={() => setDays(d)}>{d} 天</button>)}
+      </div>
+    </div>
+    <div className="review-timeline">{shown.map((day) => {
+      const open = openDays[day.day] ?? (day.day === newest);
+      const expanded = !!expandedDays[day.day];
+      const entries = expanded ? day.entries : day.entries.slice(0, 4);
+      return <details className="review-day" key={day.day} open={open} onToggle={(e) => { const now = e.currentTarget.open; setOpenDays((prev) => (prev[day.day] === now ? prev : { ...prev, [day.day]: now })); }}>
+        <summary className="review-day-head"><span className="mono">{day.day}</span><span className="muted small">{day.weekday}</span><span className="muted small review-day-count">· {day.entries.length} 条</span></summary>
+        <ol className="review-entries">{entries.map((e, i) => {
+          const go = e.ref && (e.kind === 'session' || e.kind === 'task' || e.kind === 'done')
+            ? () => (e.kind === 'session' ? onOpen(e.ref!) : onTask(e.ref!)) : null;
+          return <li className={`review-entry${go ? ' clickable' : ''}`} key={`${e.ts}-${i}`}
+            role={go ? 'button' : undefined} tabIndex={go ? 0 : undefined}
+            title={go ? (e.kind === 'session' ? '打开这段会话' : '打开这个任务') : undefined}
+            onClick={go || undefined}
+            onKeyDown={go ? (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } } : undefined}>
+            <span className={`review-kind k-${e.kind}`}>{REVIEW_KIND[e.kind] || e.kind}</span>
+            {e.kind === 'commit' && e.ref ? <code className="review-ref mono">{String(e.ref).slice(0, 7)}</code> : null}
+            <span className="review-text clamp-2" title={e.text}>{e.text}</span>
+          </li>;
+        })}</ol>
+        {day.entries.length > 4 && (expanded
+          ? <button type="button" className="review-more" onClick={() => setExpandedDays((p) => ({ ...p, [day.day]: false }))}>收起</button>
+          : <button type="button" className="review-more" onClick={() => setExpandedDays((p) => ({ ...p, [day.day]: true }))}>展开剩余 {day.entries.length - 4} 条</button>)}
+      </details>;
+    })}</div>
+    {hidden > 0 && <button type="button" className="review-more review-hidden" onClick={() => setDays(14)}>还有更早的 {hidden} 天 · 显示全部</button>}
+  </>;
+}
+
 export function ProjectReview({ api, name, me, onOpen, onTask }: { api: Api; name: string; me: string; onOpen: (id: string) => void; onTask: (id: string) => void }) {
   const [data, setData] = useState<ReviewData | null>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   useEffect(() => {
@@ -128,15 +173,7 @@ export function ProjectReview({ api, name, me, onOpen, onTask }: { api: Api; nam
     </section>
     <section className="review-block">
       <h3>最近 {data.timeline_days} 天</h3>
-      {data.timeline.length === 0 ? <p className="muted small">这段时间没有记录。</p>
-        : <div className="review-timeline">{data.timeline.map((day) => <div className="review-day" key={day.day}>
-          <div className="review-day-head"><span className="mono">{day.day}</span><span className="muted small">{day.weekday}</span></div>
-          <ol className="review-entries">{day.entries.map((e, i) => <li className="review-entry" key={`${e.ts}-${i}`}>
-            <span className={`review-kind k-${e.kind}`}>{REVIEW_KIND[e.kind] || e.kind}</span>
-            {e.kind === 'commit' && e.ref ? <code className="review-ref mono">{String(e.ref).slice(0, 7)}</code> : null}
-            <span className="review-text">{e.text}</span>
-          </li>)}</ol>
-        </div>)}</div>}
+      <ReviewTimeline key={name} timeline={data.timeline} onOpen={onOpen} onTask={onTask} />
     </section>
     <section className="review-block">
       <h3>还没做完 <span className="review-count">{data.open_tasks.length}</span></h3>
