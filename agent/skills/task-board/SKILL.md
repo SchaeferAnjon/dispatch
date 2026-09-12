@@ -17,8 +17,15 @@ dispatch editing [--dir <cwd>]   # 谁在改哪些文件；两个以上会话改
 dispatch here [--dir <cwd>] [-P 项目]   # 这个项目/目录此刻：现状一段话、最近 14 天时间线、没做完的任务、活会话能不能关（别名 project-view）
 dispatch wiki add --kind pit "现象" --fix "解法" -P 项目
 dispatch facts get "主题"
+dispatch profile show            # 关于我：现状 / 未来安排 / 已发生（~/.agents/rules/PROFILE.md）
+dispatch profile add "事实"        # 记一条关于用户本人的新信息（自动带日期和你的名字）
+dispatch profile upcoming "2026-09-20|下次回国|待办" "事项"   # 记一件将来会发生的事
+dispatch profile done <关键词>     # 处理完了：从「将来」移到「已发生」
+dispatch profile inventory --refresh   # 重新盘点各机器现状并改写「设备与服务现状」
 dispatch notify "标题" "正文"          # 想让人知道就推一条：ntfy / Bark（dispatch env 配），没配就本机通知
 ```
+
+对话里得知关于我本人、我的设备或将来安排的新信息，直接用 `dispatch profile add|upcoming` 记进 PROFILE.md，不用问我；其余照旧。
 
 标题要让几周后冷读的人一眼知道改了什么、为了什么（「会话页 diff 改成可横向滚动：手机上右半截被截掉」），描述写触发原因和期望结果；太短或只有动词的标题 `begin` 会拒绝，超过 40 字自动截断。任务在 prime、会话列表和 Herdr 标签里都以标题显示，task-id 只作括号后缀。提交信息末尾带任务 id（`feat: … (task-abc)`），或在 `done --reason` 里写 commit 哈希：任务页「Git 提交」和 `dispatch commits ID` 靠这个把任务和代码对上；一个任务多个提交就每个都带。`--verified` 只表示亲手验证，它会把还没勾的验收项全部打勾并署上你的名字（界面显示「自审 · 你」）；分项核过就随手 `dispatch log ID --tick 关键词`，同样署名。未完成的任务不关闭。收尾顺手 `--retro "【技术】…【做对】…【做错】…"`，一两句即可，它会进知识库。`bd show ID --json` 查看任务；`bd update ID` 修改字段（JSON 返回数组）；不用会打开编辑器的 `bd edit`。
 规则同步用 `dispatch rules status|sync`；技能挂载用 `dispatch skills list --json` 和 `enable|disable NAME --agent claude|codex`。其他参数查对应 `--help`。

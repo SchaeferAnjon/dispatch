@@ -330,11 +330,13 @@ export default function App() {
     };
     // The scheduled report: the CLI decides whether the cadence is due; we just ask hourly.
     const due = () => api.insightDue().catch(() => {});
-    const first = window.setTimeout(() => { void summary(); void alerts(); void due(); }, 4_000);
+    const profileDue = () => api.profileDue().catch(() => {});
+    const first = window.setTimeout(() => { void summary(); void alerts(); void due(); void profileDue(); }, 4_000);
     const t = window.setInterval(summary, 30 * 60_000);
     const t2 = window.setInterval(() => void alerts(), 10 * 60_000);
     const t3 = window.setInterval(() => void due(), 60 * 60_000);
-    return () => { alive = false; window.clearTimeout(first); window.clearInterval(t); window.clearInterval(t2); window.clearInterval(t3); };
+    const t4 = window.setInterval(() => void profileDue(), 60 * 60_000);
+    return () => { alive = false; window.clearTimeout(first); window.clearInterval(t); window.clearInterval(t2); window.clearInterval(t3); window.clearInterval(t4); };
   }, [api]);
 
   // The Macs on the tailnet (this one + hosts.json), for the 机器 strip on the Agents view.

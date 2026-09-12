@@ -52,6 +52,7 @@ export interface Api {
   insightGenerate(days: number): Promise<void>;
   insightSchedule(every: number): Promise<void>;
   insightDue(): Promise<void>;
+  profileDue(): Promise<void>;
   envList(): Promise<EnvVar[]>;
   envGet(name: string): Promise<string>;
   envSet(name: string, value: string, note: string): Promise<void>;
@@ -157,6 +158,7 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "notify" | "tra
     insightGenerate: async (days) => { await call("dispatch_on", { host: null, args: ["insights", "report", "--days", String(days), "--json"], stdin: null }); },
     insightSchedule: async (every) => { await call("dispatch_on", { host: null, args: ["insights", "schedule", "--every", String(every), "--json"], stdin: null }); },
     insightDue: async () => { await call("dispatch_on", { host: null, args: ["insights", "due", "--json"], stdin: null }); },
+    profileDue: async () => { await call("dispatch_on", { host: null, args: ["profile", "inventory", "--due", "--json"], stdin: null }); },
     envList: async () => parse<EnvVar[]>(await call("env_list"), []),
     envGet: (name) => call("env_get", { name }),
     envSet: async (name, value, note) => void (await call("env_set", { name, value, note })),
