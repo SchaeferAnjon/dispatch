@@ -31,21 +31,25 @@ class ActivityTests(unittest.TestCase):
 
     def row(self): return activity_list(self.home, self.store, {})[0]
 
-    def zcode(self, *rows):
-        """A miniature ZCode SQLite store: rows are (session, message, [parts])."""
+    def zcode(self, *rows, agent='zcode'):
+        """A miniature ZCode / OpenCode SQLite store: rows are (session, message, [parts]).
+        OpenCode's tables have no `sequence` column."""
         import sqlite3
-        path = os.path.join(self.home, '.zcode/cli/db/db.sqlite')
+        from activity import SQLITE_STORES
+        seq = agent == 'zcode'
+        path = os.path.join(self.home, SQLITE_STORES[agent][0])
         os.makedirs(os.path.dirname(path), exist_ok=True)
         z = sqlite3.connect(path)
+        extra = ', sequence INTEGER' if seq else ''
         z.executescript('CREATE TABLE IF NOT EXISTS session (id TEXT PRIMARY KEY, parent_id TEXT, directory TEXT, title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER);'
-                        'CREATE TABLE IF NOT EXISTS message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT, sequence INTEGER);'
-                        'CREATE TABLE IF NOT EXISTS part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT, sequence INTEGER);')
+                        f'CREATE TABLE IF NOT EXISTS message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT{extra});'
+                        f'CREATE TABLE IF NOT EXISTS part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT{extra});')
         for sess, msg, parts in rows:
             z.execute('INSERT OR REPLACE INTO session VALUES (?,?,?,?,?,?,?)', (sess['id'], None, sess['dir'], sess.get('title', ''), sess['at'], sess['updated'], None))
             if msg:
-                z.execute('INSERT OR REPLACE INTO message VALUES (?,?,?,?,?,?)', (msg['id'], sess['id'], msg['at'], msg['at'], json.dumps(msg['data']), msg.get('seq', 0)))
+                z.execute(f'INSERT OR REPLACE INTO message VALUES (?,?,?,?,?{",?" if seq else ""})', (msg['id'], sess['id'], msg['at'], msg['at'], json.dumps(msg['data'])) + ((msg.get('seq', 0),) if seq else ()))
                 for n, part in enumerate(parts):
-                    z.execute('INSERT OR REPLACE INTO part VALUES (?,?,?,?,?,?,?)', (f"{msg['id']}-{n}", msg['id'], sess['id'], msg['at'] + n, msg['at'] + n, json.dumps(part), n))
+                    z.execute(f'INSERT OR REPLACE INTO part VALUES (?,?,?,?,?,?{",?" if seq else ""})', (f"{msg['id']}-{n}", msg['id'], sess['id'], msg['at'] + n, msg['at'] + n, json.dumps(part)) + ((n,) if seq else ()))
         z.commit(); z.close()
 
     def test_zcode_sessions_join_the_activity_list(self):
@@ -71,6 +75,17 @@ class ActivityTests(unittest.TestCase):
         self.assertAlmostEqual(float(r['reply_id'].split(':')[0]), self.t, delta=0.001)
         acknowledge(self.store, r['key'], r['reply_id'])
         self.assertFalse(activity_list(self.home, self.store, {})[0]['unread'])
+
+    def test_opencode_sessions_join_the_activity_list_from_their_own_store(self):
+        """OpenCode proper (~/.local/share/opencode/opencode.db, no `sequence` column) is read like ZCode, as agent opencode."""
+        ms = lambda t: int(t * 1000)
+        sess = {'id': 'ses_oc1', 'dir': '/tmp/atrium', 'title': 'Greeting', 'at': ms(self.t - 60), 'updated': ms(self.t)}
+        done = {'id': 'm2', 'at': ms(self.t - 5), 'data': {'role': 'assistant', 'time': {'created': ms(self.t - 5), 'completed': ms(self.t)}, 'finish': 'stop'}}
+        self.zcode((sess, {'id': 'm1', 'at': ms(self.t - 60), 'data': {'role': 'user', 'time': {'created': ms(self.t - 60)}}}, [{'type': 'text', 'text': 'hi'}]),
+                   (sess, done, [{'type': 'text', 'text': '你好！有什么可以帮你的？'}]), agent='opencode')
+        rows = activity_list(self.home, self.store, {})
+        self.assertEqual([(r['agent'], r['key'], r['project'], r['title']) for r in rows], [('opencode', 'opencode:ses_oc1', 'atrium', 'Greeting')])
+        self.assertEqual((rows[0]['state'], rows[0]['unread'], rows[0]['reply_preview']), ('idle', True, '你好！有什么可以帮你的？'))
 
     def presence(self, sid, pid, state='working', last_at=None):
         folder = os.path.join(self.store, 'sessions'); os.makedirs(folder, exist_ok=True)

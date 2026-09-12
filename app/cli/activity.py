@@ -312,12 +312,14 @@ def session_preferences(directory):
 # transcripts. Its sessions are read into the same row shape observe() produces, so the
 # workbench and inbox treat them like every other agent's.
 ZCODE_DB = os.path.join('.zcode', 'cli', 'db', 'db.sqlite')
-ZCODE_PARSER = 1
+# OpenCode proper (terminal) keeps the same tables in its own file, minus ZCode's `sequence` column.
+SQLITE_STORES = {'zcode': (ZCODE_DB, 'sequence'), 'opencode': (os.path.join('.local', 'share', 'opencode', 'opencode.db'), 'id')}
+ZCODE_PARSER = 2
 
 
-def zcode_state(z, s):
+def zcode_state(z, s, agent='zcode', seq='sequence'):
     sid = s['id']
-    state = {'parser_version': ZCODE_PARSER, 'agent': 'zcode', 'session_id': sid, 'cwd': s['directory'] or '', 'title': (s['title'] or '')[:100],
+    state = {'parser_version': ZCODE_PARSER, 'agent': agent, 'session_id': sid, 'cwd': s['directory'] or '', 'title': (s['title'] or '')[:100],
              'last_at': s['time_updated'] / 1000, 'state': 'idle', 'activity': '', 'events': [], 'version': f'0:{s["time_updated"]}'}
     events = state['events']
     def event(ts, kind, summary, **extra):
@@ -325,10 +327,10 @@ def zcode_state(z, s):
         if not any(e['id'] == eid for e in events):
             events.append(dict(id=eid, ts=ts, kind=kind, text=summary[:400], **extra))
     parts = {}
-    for r in z.execute("SELECT message_id, data FROM part WHERE session_id=? AND json_extract(data,'$.type') IN ('text','tool') ORDER BY time_created, sequence", (sid,)):
+    for r in z.execute(f"SELECT message_id, data FROM part WHERE session_id=? AND json_extract(data,'$.type') IN ('text','tool') ORDER BY time_created, {seq}", (sid,)):
         try: parts.setdefault(r['message_id'], []).append(json.loads(r['data']))
         except (ValueError, TypeError): continue
-    for r in z.execute('SELECT id, data FROM message WHERE session_id=? ORDER BY time_created, sequence', (sid,)):
+    for r in z.execute(f'SELECT id, data FROM message WHERE session_id=? ORDER BY time_created, {seq}', (sid,)):
         try: m = json.loads(r['data'])
         except (ValueError, TypeError): continue
         t = m.get('time') or {}
@@ -380,8 +382,9 @@ def zcode_state(z, s):
     return state
 
 
-def zcode_sessions(home, db, limit=60):
-    path = os.path.join(home, ZCODE_DB)
+def zcode_sessions(home, db, limit=60, agent='zcode'):
+    rel, seq = SQLITE_STORES[agent]
+    path = os.path.join(home, rel)
     if not os.path.exists(path): return []
     try:
         z = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=2)
@@ -393,13 +396,13 @@ def zcode_sessions(home, db, limit=60):
             sessions = z.execute('SELECT id, directory, title, time_updated FROM session WHERE parent_id IS NULL AND time_archived IS NULL ORDER BY time_updated DESC LIMIT ?', (limit,)).fetchall()
         except sqlite3.Error: return []
         for s in sessions:
-            key = 'zcode:' + s['id']
+            key = f'{agent}:{s["id"]}'
             cached = db.execute('SELECT off,data FROM streams WHERE path=?', (key,)).fetchone()
             if cached and cached[0] == s['time_updated']:
                 state = json.loads(cached[1])
                 if state.get('parser_version') == ZCODE_PARSER:
                     rows.append(state); continue
-            try: state = zcode_state(z, s)
+            try: state = zcode_state(z, s, agent, seq)
             except sqlite3.Error: continue
             db.execute('INSERT OR REPLACE INTO streams VALUES (?,?,?,?,?)', (key, 0, s['time_updated'], s['time_updated'] / 1000, json.dumps(state, ensure_ascii=False)))
             rows.append(state)
@@ -479,8 +482,9 @@ def activity_list(home, directory, index):
             except OSError: continue
             if not s.get('last_at'): continue
             decorate(s, path, agent)
-        for s in zcode_sessions(home, db):
-            if s.get('last_at'): decorate(dict(s), 'zcode:' + s['session_id'], 'zcode')
+        for agent in SQLITE_STORES:
+            for s in zcode_sessions(home, db, agent=agent):
+                if s.get('last_at'): decorate(dict(s), f'{agent}:{s["session_id"]}', agent)
     # A resumed Codex task can have more than one rollout file with the same id.
     # Keep its newest observation; duplicate React keys otherwise accumulate rows.
     unique = {}

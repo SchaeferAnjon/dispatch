@@ -193,7 +193,7 @@ class SessionDetailBlocks(unittest.TestCase):
             {"pdata": json.dumps({"type": "tool", "tool": "bash", "callID": "z2", "state": {"status": "running", "input": {"command": "npm test"}}, "messageID": "a1"}), "mdata": json.dumps({"role": "assistant", "id": "a1"}), "ts": 4000, "tu": 4000},
         ]
         orig = dispatch.zcode_query
-        dispatch.zcode_query = lambda sql, params=(): [r for r in rows if "time_updated >" not in sql or r["tu"] > params[1]]
+        dispatch.zcode_query = lambda sql, params=(), agent="zcode": [r for r in rows if "time_updated >" not in sql or r["tu"] > params[1]]
         try:
             d = dispatch.read_zcode_detail({"agent": "zcode", "session_id": "s", "cwd": "/x"}, 400)
             self.assertEqual([m["role"] for m in d["messages"]], ["user", "assistant"])
@@ -1000,7 +1000,7 @@ class SkillStats(unittest.TestCase):
         self.assertEqual(e["skills"], {"task-board": 1, "pdf": 1})
 
     def test_zcode_counts_skill_tool_calls(self):
-        def fake_query(sql, params=()):
+        def fake_query(sql, params=(), agent="zcode"):
             if "from part" in sql:
                 return [{"sk": "video-to-notes"}, {"sk": "video-to-notes"}, {"sk": "getnote"}, {"sk": None}]
             return []

@@ -5,7 +5,7 @@ import type { Host } from '../types';
 type Target = { session_id: string; agent: string; host?: string; host_name?: string };
 interface Launch { request_id: string; state: string; message: string; session_id?: string; agent: string; cwd: string }
 interface Folders { path: string; parent: string; children: { name: string; path: string }[]; recent: string[]; truncated: boolean }
-const names: Record<string,string> = { codex: 'Codex', 'claude-code': 'Claude Code', pi: 'pi', zcode: 'ZCode' };
+const names: Record<string,string> = { codex: 'Codex', 'claude-code': 'Claude Code', pi: 'pi', zcode: 'ZCode', opencode: 'OpenCode' };
 const id = () => {
   const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
   const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
@@ -46,7 +46,7 @@ export function OpenSessionButton({ session, compact = false }: { session: Targe
   const ctx = useContext(Context);
   const [busy, setBusy] = useState(false);
   const request = useRef<string | null>(null);
-  const supported = ['codex', 'claude-code', 'pi', 'zcode'].includes(session.agent) && !session.session_id.startsWith('pid-');
+  const supported = ['codex', 'claude-code', 'pi', 'zcode', 'opencode'].includes(session.agent) && !session.session_id.startsWith('pid-');
   const open = async () => {
     if (!ctx?.api || busy) return;
     setBusy(true);
@@ -179,7 +179,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
     <header><div><h3>新建会话</h3><p>选择工作目录，直接开始一段新对话。</p></div><button className="btn ghost" aria-label="关闭新建会话" onClick={onClose}>✕</button></header>
     {!launch && <><div className="new-session-selects">
       <label>运行电脑<select aria-label="运行电脑" value={host} disabled={locked} onChange={e => setHost(e.target.value)}>{hosts.length ? hosts.map(h => <option key={h.id} value={h.local ? 'local' : h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? ' · 离线' : ''}</option>) : <option value="local">本机</option>}</select></label>
-      <label>Agent<select aria-label="Agent" title="能在 Dispatch 里看到对话并回复的 Agent；派活对话框里的 Gemini CLI / OpenCode 只能派，看不到" value={agent} disabled={locked} onChange={e => setAgent(e.target.value)}>{Object.entries(names).filter(([k]) => k !== 'zcode').map(([k,n]) => <option key={k} value={k}>{n}</option>)}</select></label>
+      <label>Agent<select aria-label="Agent" title="能在 Dispatch 里看到对话并回复的 Agent；派活对话框里的 Gemini CLI 只能派，看不到" value={agent} disabled={locked} onChange={e => setAgent(e.target.value)}>{Object.entries(names).filter(([k]) => k !== 'zcode').map(([k,n]) => <option key={k} value={k}>{n}</option>)}</select></label>
     </div>
     <label>工作文件夹<div className="folder-path"><input aria-label="工作文件夹" value={path} disabled={locked} onChange={e => setPath(e.target.value)} placeholder="输入完整路径，或从下方选择" /><button className="btn sm" type="button" disabled={locked || browseBusy} onClick={() => browse(path)}>前往</button></div></label>
     <div className="folder-picker" aria-busy={browseBusy}>

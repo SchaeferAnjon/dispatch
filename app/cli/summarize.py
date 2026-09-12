@@ -150,7 +150,7 @@ def auto(limit=2):
         return {"done": [], "tried": 0, "skipped": True, "reason": gate_message("session")}
     prefs = session_preferences(D.DISPATCH_DIR)
     idx = D.load_index() or D.refresh_index()
-    rows = [(k, e) for k, e in idx.items() if not e.get("subagent") and (e.get("user_msgs") or 0) > 0 and e.get("agent") in ("claude-code", "codex", "pi", "zcode")]
+    rows = [(k, e) for k, e in idx.items() if not e.get("subagent") and (e.get("user_msgs") or 0) > 0 and e.get("agent") in ("claude-code", "codex", "pi", "zcode", "opencode")]
     rows.sort(key=lambda kv: kv[1].get("mtime", 0), reverse=True)
     done, tried = [], 0
     for path, e in rows:

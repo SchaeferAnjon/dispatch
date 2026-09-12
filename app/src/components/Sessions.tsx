@@ -221,7 +221,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
             {(counts.scheduled > 0 || scriptCount > 0) && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="不是你在终端里开的：定时任务、脚本或别的 Agent 通过程序接口启动的会话">定时或脚本 {Math.max(counts.scheduled, scriptCount)}</button>}
           </div>
           <div className="sess-filter-row">
-            <select className="sess-agent" aria-label="按 Agent 筛选" value={agent} onChange={(e) => setAgent(e.target.value)} title="按 Agent 筛选">{[["", "全部 Agent"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <select className="sess-agent" aria-label="按 Agent 筛选" value={agent} onChange={(e) => setAgent(e.target.value)} title="按 Agent 筛选">{[["", "全部 Agent"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"], ["opencode", "OpenCode"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             <span className="muted small" title="当前筛选下的会话数">{items.length} 条</span>
           </div>
         </div>

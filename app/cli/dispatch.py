@@ -47,6 +47,14 @@ AGENT_SKILL_DIRS = {
 CC_SWITCH_DB = os.path.join(HOME, ".cc-switch", "cc-switch.db")
 HERDR = next((p for p in (os.path.join(HOME, ".local", "bin", "herdr"), "/opt/homebrew/bin/herdr", "/usr/local/bin/herdr") if os.path.exists(p)), os.path.join(HOME, ".local", "bin", "herdr"))
 ZCODE_DB = os.path.join(HOME, ".zcode", "cli", "db", "db.sqlite")
+# OpenCode and ZCode (an OpenCode-based desktop app) keep conversations in one SQLite file each, with
+# the same session / message / part tables; every query below runs against either store by agent name.
+# `seq` — ZCode added a `sequence` column for ordering parts; OpenCode orders by id. `{seq}` in a query
+# expands to the right column.
+SQLITE_STORES = {
+    "zcode": {"db": ZCODE_DB, "proc": "zcode-cli", "app": "ZCode", "seq": "sequence", "entrypoint": "desktop"},
+    "opencode": {"db": os.path.join(HOME, ".local", "share", "opencode", "opencode.db"), "proc": "opencode", "app": "OpenCode", "seq": "id", "entrypoint": "terminal"},
+}
 RETIRED_AGENTS = frozenset({"qoder", "qoder-ide", "qodercli"})
 PATH_EXTRA = "/opt/homebrew/bin:/usr/local/bin:" + os.path.join(HOME, ".local", "bin")
 
@@ -118,13 +126,16 @@ def herdr_agents():
         return []
 
 
-def zcode_query(sql, params=()):
-    """ZCode (OpenCode-based desktop app) keeps everything in one SQLite file; read-only."""
-    if not os.path.exists(ZCODE_DB):
+def zcode_query(sql, params=(), agent="zcode"):
+    """Read-only query against ZCode's or OpenCode's SQLite (see SQLITE_STORES); [] when the store
+    is missing or the query fails (a table one store does not have, a locked file)."""
+    store = SQLITE_STORES.get(agent) or SQLITE_STORES["zcode"]
+    if not os.path.exists(store["db"]):
         return []
+    sql = sql.replace("{seq}", store["seq"])
     try:
         import sqlite3
-        con = sqlite3.connect(f"file:{ZCODE_DB}?mode=ro", uri=True, timeout=2)
+        con = sqlite3.connect(f"file:{store['db']}?mode=ro", uri=True, timeout=2)
         con.row_factory = sqlite3.Row
         rows = [dict(r) for r in con.execute(sql, params)]
         con.close()
@@ -134,17 +145,19 @@ def zcode_query(sql, params=()):
 
 
 def zcode_live(table):
-    """ZCode has no hooks; a session updated in the last few minutes counts as live."""
-    pids = [pid for pid, (_, comm) in table.items() if os.path.basename(comm) == "zcode-cli"]
-    if not pids:
-        return []
+    """ZCode / OpenCode have no hooks; while their process runs, a session updated in the last few
+    minutes counts as live (working if it wrote within 90 s)."""
     now = time.time()
-    rows = zcode_query("select id, directory, title, time_created, time_updated from session where parent_id is null and time_archived is null and time_updated > ? order by time_updated desc", ((now - 30 * 60) * 1000,))
     out = []
-    for r in rows:
-        last = r["time_updated"] / 1000
-        state = "working" if now - last < 90 else "idle"
-        out.append({"agent": "zcode", "session_id": r["id"], "cwd": r["directory"], "project": os.path.basename(r["directory"].rstrip("/")), "agent_pid": pids[0], "source_kind": "desktop", "source_app": "ZCode", "entrypoint": "", "started_at": r["time_created"] / 1000, "last_at": last, "state": state, "prompts": 0, "alive": True, "registered": True, "title": r["title"]})
+    for agent, store in SQLITE_STORES.items():
+        pids = [pid for pid, (_, comm) in table.items() if os.path.basename(comm) == store["proc"]]
+        if not pids:
+            continue
+        rows = zcode_query("select id, directory, title, time_created, time_updated from session where parent_id is null and time_archived is null and time_updated > ? order by time_updated desc", ((now - 30 * 60) * 1000,), agent=agent)
+        for r in rows:
+            last = r["time_updated"] / 1000
+            state = "working" if now - last < 90 else "idle"
+            out.append({"agent": agent, "session_id": r["id"], "cwd": r["directory"], "project": os.path.basename(r["directory"].rstrip("/")), "agent_pid": pids[0], "source_kind": store["entrypoint"], "source_app": store["app"], "entrypoint": "", "started_at": r["time_created"] / 1000, "last_at": last, "state": state, "prompts": 0, "alive": True, "registered": True, "title": r["title"]})
     return out
 
 
@@ -415,7 +428,7 @@ def host_rows(local_only=False):
 
 # ---------------------------------------------------------------- hand work to another agent through Herdr
 
-KIND_ACTOR = {"claude": "claude-code", "codex": "codex", "pi": "pi", "opencode": "zcode", "gemini": "gemini", "cursor": "cursor", "kimi": "kimi", "amp": "amp"}
+KIND_ACTOR = {"claude": "claude-code", "codex": "codex", "pi": "pi", "opencode": "opencode", "gemini": "gemini", "cursor": "cursor", "kimi": "kimi", "amp": "amp"}
 PANE_RE = re.compile(r"^w\d+:p\w+$")
 
 
@@ -1142,8 +1155,8 @@ def parse_codex_stats(e, buf, re_ts):
                 bump_time(e, local_dt(m.group(1)), 1, 0)
 
 
-def parse_zcode_stats(e, sid):
-    for m in zcode_query("select data, time_created from message where session_id=?", (sid,)):
+def parse_zcode_stats(e, sid, agent="zcode"):
+    for m in zcode_query("select data, time_created from message where session_id=?", (sid,), agent=agent):
         try:
             d = json.loads(m["data"])
         except Exception:
@@ -1162,7 +1175,7 @@ def parse_zcode_stats(e, sid):
             bump_time(e, local_dt_ms(m["time_created"]), 1, tok, (i, o, cr, cw))
         else:
             bump_time(e, local_dt_ms(m["time_created"]), 1, 0)
-    for r in zcode_query("select json_extract(data,'$.state.input.skill') sk from part where session_id=? and json_extract(data,'$.type')='tool' and json_extract(data,'$.tool')='Skill'", (sid,)):
+    for r in zcode_query("select json_extract(data,'$.state.input.skill') sk from part where session_id=? and json_extract(data,'$.type')='tool' and json_extract(data,'$.tool')='Skill'", (sid,), agent=agent):
         if r["sk"]:
             e["skills"][r["sk"]] = e["skills"].get(r["sk"], 0) + 1
 
@@ -1283,31 +1296,32 @@ def refresh_index():
         (parse_codex_stats if agent == "codex" else parse_pi_stats if agent == "pi" else parse_claude_stats)(e, buf, re_ts)
         e["off"], e["mtime"], e["size"] = st.st_size, st.st_mtime, st.st_size
         idx[path] = e
-    # ZCode sessions live in SQLite, not files; key them as zcode:<id>.
-    for r in zcode_query("select id, parent_id, directory, title, time_created, time_updated from session where parent_id is null"):
-        key = "zcode:" + r["id"]
+    # ZCode / OpenCode sessions live in SQLite, not files; key them as <agent>:<id>.
+    for agent, store in SQLITE_STORES.items():
+      for r in zcode_query("select id, parent_id, directory, title, time_created, time_updated from session where parent_id is null", agent=agent):
+        key = f"{agent}:{r['id']}"
         seen.add(key)
         mtime = r["time_updated"] / 1000
         e = idx.get(key)
         if e and e.get("mtime") == mtime and e.get("stats_v") == STATS_V:
             continue
-        e = {"agent": "zcode", "session_id": r["id"], "cwd": r["directory"], "title": r["title"], "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": "desktop", "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(r["time_created"] / 1000)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": "", "stats_v": STATS_V, **stats_fields()}
-        parse_zcode_stats(e, r["id"])
-        fp = zcode_query("select p.data from part p join message m on m.id=p.message_id where p.session_id=? and json_extract(m.data,'$.role')='user' and json_extract(p.data,'$.type')='text' order by p.time_created limit 1", (r["id"],))
+        e = {"agent": agent, "session_id": r["id"], "cwd": r["directory"], "title": r["title"], "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": store["entrypoint"], "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(r["time_created"] / 1000)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": "", "stats_v": STATS_V, **stats_fields()}
+        parse_zcode_stats(e, r["id"], agent)
+        fp = zcode_query("select p.data from part p join message m on m.id=p.message_id where p.session_id=? and json_extract(m.data,'$.role')='user' and json_extract(p.data,'$.type')='text' order by p.time_created limit 1", (r["id"],), agent=agent)
         if fp:
             try:
                 e["first_prompt"] = (json.loads(fp[0]["data"]).get("text") or "").strip()[:240]
             except Exception:
                 pass
-        for m in zcode_query("select json_extract(data,'$.role') role, count(*) n from message where session_id=? group by role", (r["id"],)):
+        for m in zcode_query("select json_extract(data,'$.role') role, count(*) n from message where session_id=? group by role", (r["id"],), agent=agent):
             if m["role"] == "user":
                 e["user_msgs"] = m["n"]
             elif m["role"] == "assistant":
                 e["assistant_msgs"] = m["n"]
-        for t in zcode_query("select json_extract(data,'$.tool') tool, count(*) n from part where session_id=? and json_extract(data,'$.type')='tool' group by tool", (r["id"],)):
+        for t in zcode_query("select json_extract(data,'$.tool') tool, count(*) n from part where session_id=? and json_extract(data,'$.type')='tool' group by tool", (r["id"],), agent=agent):
             if t["tool"]:
                 e["tools"][t["tool"]] = t["n"]
-        blob = "\n".join(p["data"] for p in zcode_query("select data from part where session_id=? and json_extract(data,'$.type') in ('text','tool')", (r["id"],)))
+        blob = "\n".join(p["data"] for p in zcode_query("select data from part where session_id=? and json_extract(data,'$.type') in ('text','tool')", (r["id"],), agent=agent))
         for m in re_task.finditer(blob):
             e["tasks"][m.group(0)] = e["tasks"].get(m.group(0), 0) + 1
         for m in re_claim.finditer(blob):
@@ -1349,7 +1363,7 @@ def resume_command(agent, sid, cwd):
         # ZCode is a desktop app without a resume CLI; the session id identifies it inside the app.
         return f"open -a ZCode  # 会话 {sid}"
     cd = f"cd '{cwd.replace(chr(39), chr(39) + chr(92) + chr(39) + chr(39))}' && " if cwd else ""
-    return f"{cd}{'codex resume' if agent == 'codex' else 'pi --session' if agent == 'pi' else 'claude --resume'} {sid}"
+    return f"{cd}{'codex resume' if agent == 'codex' else 'pi --session' if agent == 'pi' else 'opencode --session' if agent == 'opencode' else 'claude --resume'} {sid}"
 
 
 def subagents_of(path):
@@ -1359,6 +1373,10 @@ def subagents_of(path):
         sid = path[6:]
         rows = zcode_query("select s.id, s.title, s.time_updated, s.summary_files, l.agent_type, l.label, l.depth from session s left join session_task_link l on l.child_session_id = s.id where s.parent_id = ? order by s.time_created", (sid,))
         return [{"agent_id": r["id"], "type": r["agent_type"] or "子会话", "description": r["label"] or r["title"], "tool_use_id": "", "depth": r["depth"] or 1, "size": 0, "last_at": r["time_updated"] / 1000, "path": "zcode:" + r["id"]} for r in rows]
+    if path.startswith("opencode:"):
+        # OpenCode has the child sessions but not ZCode's task-link table.
+        rows = zcode_query("select id, title, time_updated from session where parent_id = ? order by time_created", (path[9:],), agent="opencode")
+        return [{"agent_id": r["id"], "type": "子会话", "description": r["title"], "tool_use_id": "", "depth": 1, "size": 0, "last_at": r["time_updated"] / 1000, "path": "opencode:" + r["id"]} for r in rows]
     base = os.path.splitext(path)[0]
     res = []
     for meta in sorted(glob.glob(os.path.join(base, "subagents", "*.meta.json"))):
@@ -1377,7 +1395,7 @@ def ref_of(path, e, task_id=None):
     if e['agent'] == 'codex':
         from activity import codex_titles, user_text
         e = dict(e, title=codex_titles(HOME).get(e['session_id']) or user_text(e.get('title', '')))
-    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": git_root_name(e["cwd"]) or os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode") else []}
+    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": git_root_name(e["cwd"]) or os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode", "opencode") else []}
 
 
 _KNOWN_IDS = None
@@ -1891,7 +1909,7 @@ def read_zcode_detail(ref, limit, since=None):
     params = [sid]
     if since:
         sql += " and p.time_updated > ?"; params.append(int(since))
-    rows = zcode_query(sql + " order by p.time_created, p.sequence", tuple(params))
+    rows = zcode_query(sql + " order by p.time_created, p.{seq}", tuple(params), agent=ref.get("agent") or "zcode")
     offset = int(since or 0)
     last, last_mid = None, None
     for r in rows:
@@ -1960,7 +1978,7 @@ def read_session_detail(ref, limit=400, since=None):
     `since` is the byte offset (zcode: time_updated) a previous read stopped at; with it only the
     new records are parsed and the result carries `partial`, `resolved` (results for tool calls
     already shown) and the new `offset` to continue from."""
-    if ref["agent"] == "zcode":
+    if ref["agent"] in SQLITE_STORES:
         return read_zcode_detail(ref, limit, since)
     tl = _Timeline()
     seen_tool_images = []
@@ -5536,7 +5554,7 @@ def quota_line(actor):
     return f"额度（{actor}）：" + " · ".join(parts) + "。", worst
 
 
-AGENT_ACTORS = {"claude-code", "claude", "codex", "pi", "zcode", "cursor"}
+AGENT_ACTORS = {"claude-code", "claude", "codex", "pi", "zcode", "opencode", "cursor"}
 
 
 def bd_comments(tid):
@@ -6816,7 +6834,7 @@ def main():
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
-    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
+    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--since", type=int, help="只读上次返回的 offset 之后新增的记录（实时 tail）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
@@ -6827,7 +6845,7 @@ def main():
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; this is not independent peer review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.add_argument("--review-by", help="request peer review from this Agent, without launching it"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("review", help="record independent Agent review and its evidence"); s.add_argument("task"); s.add_argument("--verdict", choices=["pass", "changes"], required=True); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
-    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--local", action="store_true", help="this Mac only (other Macs are merged in by default)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--local", action="store_true", help="this Mac only (other Macs are merged in by default)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("discuss-live", help="what each discussion member is doing right now (the typing bubbles): discussions/<task>.live.json"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_live)
     s = sub.add_parser("discuss-conclude", help="write (replace) the discussion's conclusion — one block in the task's description"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_conclude)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)

@@ -542,7 +542,7 @@ export default function App() {
       for (const x of notificationInbox.waiting) {
         if (notified.current.has(key(x))) continue;
         notified.current.add(key(x));
-        api.notify(`${x.agent === 'codex' ? 'Codex' : x.agent === 'zcode' ? 'ZCode' : 'Claude Code'} 等待确认`, `${x.herdr?.title || x.title || x.project || x.cwd} · ${x.host_name || '本机'} · 请打开会话查看确认请求`).catch(() => {});
+        api.notify(`${x.agent === 'codex' ? 'Codex' : x.agent === 'zcode' ? 'ZCode' : x.agent === 'opencode' ? 'OpenCode' : 'Claude Code'} 等待确认`, `${x.herdr?.title || x.title || x.project || x.cwd} · ${x.host_name || '本机'} · 请打开会话查看确认请求`).catch(() => {});
       }
     }, 8000);
     return () => window.clearTimeout(timer);
@@ -555,7 +555,7 @@ export default function App() {
     const unread = activityRows.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)).length;
     // Quota in the menu bar: this Mac's worst window per agent, as one letter and a percent.
     const local = quota.filter((q) => !q.remote && q.windows.length);
-    const names: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", pi: "pi", zcode: "ZCode" };
+    const names: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", pi: "pi", zcode: "ZCode", opencode: "OpenCode" };
     const until = (epoch: number | null) => { if (!epoch) return ""; const m = Math.round((epoch * 1000 - Date.now()) / 60_000); return m <= 0 ? "" : m < 60 ? `${m}m 后重置` : m < 48 * 60 ? `${Math.floor(m / 60)}h 后重置` : `${Math.round(m / 1440)}d 后重置`; };
     // The title stays short; each agent's quota goes into the click menu, one line per window.
     const quotaLines = local.flatMap((q) => q.windows.map((w) => `${names[q.agent] ?? q.agent} · ${w.label} ${w.used_percent === null ? "—" : Math.round(w.used_percent) + "%"}${until(w.resets_at) ? ` · ${until(w.resets_at)}` : ""}`));
