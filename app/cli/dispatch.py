@@ -5973,6 +5973,15 @@ def iso_epoch(ts):
     return dt.timestamp() if dt else 0.0
 
 
+def short_name(text, n=12):
+    """A node-sized name: keep what is before the first colon (the `why` after it is for the
+    detail panel), drop parenthesised asides, then cut to length."""
+    s = re.split(r"[：:]", text or "", 1)[0]
+    s = re.sub(r"[（(][^）)]*[）)）]", "", s).strip()
+    return (s or (text or "").strip())[:n]
+def short_step(text, n=10):
+    """The first sentence of a progress note, cut short — what a step node shows."""
+    return re.split(r"[。！？!?\n]", (text or "").strip())[0][:n]
 def project_base(proj, cwd, names=None, roots=None):
     """Where a project's git log and sessions live: the current directory when it is that
     project, else the project's home — so `dispatch here -P atrium` run from anywhere still
@@ -6305,7 +6314,7 @@ def lineage_report(proj, days=14, cwd="", names=None, roots=None):
         for d in t.get("dependencies") or []:
             other = d.get("depends_on_id")
             if other:
-                rows.append({"type": d.get("type", ""), "label": {"parent-child": "包含", "blocks": "依赖", "discovered-from": "衍生"}.get(d.get("type"), d.get("type") or ""), "id": other})
+                rows.append({"type": d.get("type", ""), "label": {"parent-child": "包含", "blocks": "解锁", "discovered-from": "派生出"}.get(d.get("type"), d.get("type") or ""), "id": other})
         for l in t.get("labels") or []:
             if l.startswith("discussed-in:"):
                 rows.append({"type": "discussed-in", "label": "拆分自", "id": l.split(":", 1)[1]})
@@ -6321,12 +6330,13 @@ def lineage_report(proj, days=14, cwd="", names=None, roots=None):
             body = re.sub(r"\s+", " ", c.get("text") or "").strip()
             ts = iso_epoch(c.get("created_at"))
             if body and not body.startswith(HERE_SKIP_NOTES) and ts >= since:
-                events.append({"ts": ts, "kind": "task", "ref": tid, "text": body[:200], "by": c.get("author") or ""})
+                events.append({"ts": ts, "kind": "task", "ref": tid, "text": body[:200], "short": short_step(body), "by": c.get("author") or ""})
         if t.get("status") == "closed":
             ts = iso_epoch(t.get("closed_at"))
             if ts >= since:
-                events.append({"ts": ts, "kind": "done", "ref": tid, "by": t.get("assignee") or "", "text": (re.sub(r"\s+", " ", t.get("close_reason") or "").strip() or "已完成")[:200]})
-        events += [dict(c, by="") for c in commits_by_task.get(tid, [])]
+                done_text = (re.sub(r"\s+", " ", t.get("close_reason") or "").strip() or "已完成")[:200]
+                events.append({"ts": ts, "kind": "done", "ref": tid, "by": t.get("assignee") or "", "text": done_text, "short": short_step(done_text)})
+        events += [dict(c, by="", short=short_step(c["text"])) for c in commits_by_task.get(tid, [])]
         events.sort(key=lambda e: -e["ts"])
 
         def title_of(x):
@@ -6335,8 +6345,10 @@ def lineage_report(proj, days=14, cwd="", names=None, roots=None):
         def session_row(sid, relation):
             lv, meta = live_by_sid.get(sid) or {}, sess_meta.get(sid) or {}
             also = sorted((strong.get(sid) or set()) - {tid})
+            stitle = lv.get("title") or meta.get("title", "")
             return {"session_id": sid, "agent": lv.get("agent") or meta.get("agent", ""),
-                    "title": lv.get("title") or meta.get("title", ""), "summary": lv.get("summary", ""),
+                    "title": stitle, "short": short_name(stitle or sid),
+                    "summary": lv.get("summary", ""),
                     "state": lv.get("state") or "ended", "live": bool(lv), "relation": relation,
                     "verdict": lv.get("verdict", ""), "reason": lv.get("reason", ""),
                     "also": [title_of(a) for a in also[:3]], "also_count": len(also),
@@ -6350,13 +6362,13 @@ def lineage_report(proj, days=14, cwd="", names=None, roots=None):
         mention_sids = [sid for sid, s_tids in mentions.items() if tid in s_tids and sid not in sids]
         sessions_out += [session_row(sid, "提到") for sid in mention_sids[:8]]
         sessions_out.sort(key=lambda s: (s["relation"] != "在做", not s["live"], -(s["last_at"] or 0)))
-        tasks_out.append({"id": tid, "title": t.get("title", ""), "status": t.get("status", ""),
+        tasks_out.append({"id": tid, "title": t.get("title", ""), "short": short_name(t.get("title", "")), "status": t.get("status", ""),
                           "assignee": t.get("assignee") or "", "acceptance_done": done, "acceptance_total": total,
                           "last_at": iso_epoch(t.get("updated_at")), "deps": deps_of(t),
                           "mentions_count": len(mention_sids), "sessions": sessions_out, "events": events})
 
     assigned = {s["session_id"] for t in tasks_out for s in t["sessions"]}
-    unassigned = [s for s in live if s["session_id"] not in assigned]
+    unassigned = [dict(s, short=short_name(s.get("title") or s["session_id"])) for s in live if s["session_id"] not in assigned]
     return {"project": proj, "days": days, "cwd": base,
             "counts": {"tasks": len(tasks_out), "live_sessions": len(live), "unassigned_sessions": len(unassigned)},
             "tasks": tasks_out, "unassigned_sessions": unassigned,

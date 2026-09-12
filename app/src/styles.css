@@ -1564,5 +1564,28 @@ button.review-verdict:hover{filter:brightness(.96)}
 .lineage-dep>summary::-webkit-details-marker{display:none}
 .lineage-dep>summary::before{content:'▸';margin-right:8px;font-size:10px;color:var(--ink-3)}
 .lineage-dep[open]>summary::before{content:'▾'}
-.lineage-dep-body{height:420px;border-top:1px solid var(--line);overflow:hidden}
-@media(max-width:760px){.lineage{grid-template-columns:1fr;grid-template-rows:auto 1fr}.lineage-side{border-right:0;border-bottom:1px solid var(--line);max-height:180px}.lineage-top{padding:12px 12px 0}.lineage-tools{padding:10px 12px}.lineage-tree{padding:12px 12px 20px}.lineage-projects{flex-direction:row;flex-wrap:wrap}.lineage-proj{width:auto}.lineage-dep-body{height:340px}}
+.lineage-body{flex:1;display:flex;min-height:0;min-width:0}
+.lineage-body>.lineage-tree{flex:1}
+.lineage-graph{flex:1;display:flex;min-width:0;min-height:0}
+.lineage-graph>.graph-wrap{flex:1;min-width:0}
+.node-panel{flex:none;width:320px;border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.np-head{display:flex;align-items:center;gap:8px}
+.np-kind{font-size:11px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;font-weight:500}
+.np-close{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:18px;line-height:1;cursor:pointer;padding:0 4px;border-radius:5px}
+.np-close:hover{color:var(--ink);background:var(--panel-2)}
+.np-title{margin:2px 0 0;font-size:14px;font-weight:600;line-height:1.4;overflow-wrap:anywhere}
+.np-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.np-open{align-self:flex-start;margin-top:4px}
+.np-text{margin:0;font-size:13px;line-height:1.6}
+.node-t.one{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:initial}
+.node.kind-session .node-bg{stroke:var(--line-2)}
+.node.kind-session .node-body{padding-left:2px;gap:2px}
+.node.kind-session .lin-state{font-size:10px;padding:0 6px}
+.node.kind-step .node-bg{stroke:var(--line)}
+.node.kind-step.k-task .step-bg{stroke:var(--s-prog);fill:var(--s-prog-bg)}
+.node.kind-step.k-done .step-bg{stroke:var(--s-done);fill:var(--s-done-bg)}
+.node.kind-step.k-commit .step-bg{stroke:var(--accent);fill:var(--accent-soft)}
+.node.kind-step .review-kind{padding:0 4px;min-width:0;font-size:10px}
+.step-body{display:flex;align-items:center;gap:5px;height:100%;font-family:var(--sans);font-size:11px;color:var(--ink);min-width:0}
+.step-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:760px){.lineage{grid-template-columns:1fr;grid-template-rows:auto 1fr}.lineage-side{border-right:0;border-bottom:1px solid var(--line);max-height:180px}.lineage-top{padding:12px 12px 0}.lineage-tools{padding:10px 12px}.lineage-tree{padding:12px 12px 20px}.lineage-projects{flex-direction:row;flex-wrap:wrap}.lineage-proj{width:auto}.lineage-dep-body{height:340px}.lineage-body{flex-direction:column}.lineage-graph{flex-direction:column}.node-panel{width:auto;border-left:0;border-top:1px solid var(--line);max-height:42vh}}
