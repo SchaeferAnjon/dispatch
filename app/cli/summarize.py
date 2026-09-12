@@ -125,7 +125,7 @@ def transcript_excerpt(key, limit=12000):
     return text, d.get("meta", {}), (d.get("reply_id") or d.get("activity_version") or "")
 
 
-def chat(p, system, user, timeout=90):
+def chat(p, system, user, timeout=90, max_tokens=None):
     if p["id"] == "claude":
         # Headless Claude Code: the prompt is the system text, the transcript comes on stdin.
         # Strip the session markers so a summary started from inside a Claude session still saves nothing odd.
@@ -138,10 +138,10 @@ def chat(p, system, user, timeout=90):
         if r.returncode != 0 and not r.stdout.strip():
             raise RuntimeError("claude -p 失败：" + (r.stderr or "").strip()[-200:])
         return r.stdout.strip()
-    req_body = {"model": p["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "temperature": 0.2, "max_tokens": 400}
+    req_body = {"model": p["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "temperature": 0.2, "max_tokens": max_tokens or 400}
     if p["id"] == "zhipu" and p["model"].startswith("glm-5"):
         # GLM-5 always reasons and spends max_tokens on it; ask for as little as it allows.
-        req_body["reasoning_effort"] = "low"; req_body["max_tokens"] = 1200
+        req_body["reasoning_effort"] = "low"; req_body["max_tokens"] = max_tokens or 1200
     body = json.dumps(req_body).encode()
     req = urllib.request.Request(p["base"].rstrip("/") + "/chat/completions", data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {p['key']}"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
