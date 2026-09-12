@@ -452,12 +452,12 @@ def cmd_lineage(a):
                 print("   关系：" + "、".join(f"{d['label']} {d['id']}" for d in t["deps"]))
             for s in t["sessions"]:
                 if s["relation"] == "提到":
-                    print(f"   （提到）{s['agent']} {s['session_id'][:8]} 「{s['title']}」")
+                    print(f"   （提到）{s['agent']} {s['session_id'][:8]} 「{s['title'] or s['session_id'][:8]}」")
                     continue
                 st = {"working": "在跑", "idle": "等你"}.get(s["state"], "已结束")
                 verdict = (f" · {s['verdict']}" + (f"：{s['reason']}" if s["reason"] else "")) if s["live"] else ""
                 also = (f"（也在做 {'、'.join(s['also'])}" + (f" 等 {s['also_count']} 个" if s["also_count"] > len(s["also"]) else "") + "）") if s["also"] else ""
-                print(f"   [{s['relation']}] {s['agent']} {s['session_id'][:8]} 「{s['title']}」 · {st}{verdict}{also}")
+                print(f"   [{s['relation']}] {s['agent']} {s['session_id'][:8]} 「{s['title'] or s['session_id'][:8]}」 · {st}{verdict}{also}")
             if t["mentions_count"] > 8:
                 print(f"   …另有 {t['mentions_count'] - 8} 个会话提到过")
             for e in t["events"][:6]:
