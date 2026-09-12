@@ -95,8 +95,8 @@ def provider(model=""):
     runs `claude -p` on the Claude Code subscription — no API key, counts against its usage
     limits, a few seconds per call. Otherwise the first API key found, 智谱 first.
 
-    `model` (provider:model) forces one for this call, before the shared setting — `dispatch here`
-    uses it so its project paragraph always comes from 智谱 glm-5.3-flash."""
+    `model` (provider:model) forces one for this call, before the shared setting (`dispatch here
+    --summary-model`)."""
     env = {i["name"]: i["value"] for i in D.env_read()}
     # An explicit request wins, then the app's 设置 (shared through the board), then the env file,
     # then whatever is available.
