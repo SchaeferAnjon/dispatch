@@ -111,6 +111,7 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState(false);   // 放大：去掉时间线框的高度上限，整页滚动
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   // Newest-first is the contract, but sort defensively so the default-open day is always the latest.
   const sorted = useMemo(() => [...timeline].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0)), [timeline]);
@@ -158,6 +159,7 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
         {[3, 7, 14].map((d) => <button key={d} type="button" className={days === d ? 'on' : ''} aria-pressed={days === d} onClick={() => setDays(d)}>{d} 天</button>)}
       </div>
       <span className="spacer" />
+      <button type="button" className={`chip${expanded ? ' on' : ''}`} aria-pressed={expanded} onClick={() => setExpanded((v) => !v)} title={expanded ? '收回到小框里' : '去掉高度限制，整页滚动看'}>{expanded ? '还原' : '放大'}</button>
       <span className="review-seg-label">分组</span>
       <div className="review-seg" role="group" aria-label="时间线分组方式">
         <button type="button" className={mode === 'task' ? 'on' : ''} aria-pressed={mode === 'task'} onClick={() => setMode('task')}>按任务</button>
@@ -165,7 +167,7 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
       </div>
     </div>
     {mode === 'time'
-      ? <div className="review-timeline">{shown.map((day) => {
+      ? <div className={`review-timeline${expanded ? " expanded" : ""}`}>{shown.map((day) => {
         const open = openDays[day.day] ?? (day.day === newest);
         const expanded = !!expandedDays[day.day];
         const entries = expanded ? day.entries : day.entries.slice(0, 4);
@@ -177,7 +179,7 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
             : <button type="button" className="review-more" onClick={() => setExpandedDays((p) => ({ ...p, [day.day]: true }))}>展开剩余 {day.entries.length - 4} 条</button>)}
         </details>;
       })}</div>
-      : <div className="review-timeline">{groups.map((g) => {
+      : <div className={`review-timeline${expanded ? " expanded" : ""}`}>{groups.map((g) => {
         const key = g.task || '__none__';
         const open = openGroups[key] ?? true;
         const expanded = !!expandedGroups[key];
