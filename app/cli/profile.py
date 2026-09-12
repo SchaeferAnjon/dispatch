@@ -361,7 +361,7 @@ def profile_inventory_generate(actor="dispatch", timeout=30):
     section = heading + "\n\n" + body[:6000]
     profile_write_content(profile_replace_section(text, "设备与服务现状", section))
     os.makedirs(D.DISPATCH_DIR, exist_ok=True)
-    json.dump({"at": at}, open(PROFILE_INVENTORY_STATE, "w"), ensure_ascii=False)
+    json.dump({"at": at}, open(PROFILE_INVENTORY_STATE, "w"), ensure_ascii=False)   # a success clears `tried`
     return {"path": PROFILE_FILE, "at": at, "at_text": at_text, "model": f"{p['id']}:{p['model']}", "targets": results, "section": section}
 
 
@@ -374,16 +374,34 @@ def profile_inventory_spawn():
         pass
 
 
-def profile_inventory_due(now=None):
-    now = time.time() if now is None else now
-    last = 0
+def profile_inventory_state():
     try:
         with open(PROFILE_INVENTORY_STATE, encoding="utf-8") as f:
-            last = int(json.load(f).get("at") or 0)
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
     except Exception:
-        last = 0
+        return {}
+
+
+def profile_inventory_due(now=None):
+    """Called by the app every hour: start a background inventory when the last one is a day
+    old. Nothing is spawned when the use is switched off or no model can write the section
+    (the sweep ssh-es every machine, so a doomed run is not free), and a failed attempt is not
+    retried for six hours."""
+    now = time.time() if now is None else now
+    st = profile_inventory_state()
+    last, tried = int(st.get("at") or 0), int(st.get("tried") or 0)
     if last and now - last < 86400:
         return {"due": False, "reason": f"不到一天前盘点过（{D.ago(last)}）"}
+    if tried and now - tried < 6 * 3600:
+        return {"due": False, "reason": f"上次盘点没成功（{D.ago(tried)}前），6 小时内不重试"}
+    summarize = D._mod("summarize")
+    if not summarize.use_enabled("profile_inventory"):
+        return {"due": False, "reason": summarize.gate_message("profile_inventory")}
+    if not summarize.provider(""):
+        return {"due": False, "reason": "没有可用的模型：设置里选一个总结模型后才会自动盘点"}
+    os.makedirs(D.DISPATCH_DIR, exist_ok=True)
+    json.dump({**st, "tried": int(now)}, open(PROFILE_INVENTORY_STATE, "w"), ensure_ascii=False)
     profile_inventory_spawn()
     return {"due": True, "reason": "已开始盘点"}
 

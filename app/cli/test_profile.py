@@ -148,6 +148,28 @@ class ProfileDoc(unittest.TestCase):
             with patch.object(profile, "PROFILE_SSH_CONFIG", p):
                 self.assertEqual(profile.profile_ssh_config_hosts(), ["a", "b", "c"])
 
+    def test_due_skips_without_model_and_backs_off_after_a_failed_try(self):
+        state = os.path.join(self.tmp, "inventory.json")
+        summarize = dispatch._mod("summarize")
+        with patch.object(profile, "PROFILE_INVENTORY_STATE", state), patch.object(profile, "profile_inventory_spawn") as spawn:
+            with patch.object(summarize, "use_enabled", return_value=True), patch.object(summarize, "provider", return_value=None):
+                r = profile.profile_inventory_due(now=1000)
+                self.assertFalse(r["due"]); self.assertIn("模型", r["reason"]); spawn.assert_not_called()
+                self.assertFalse(os.path.exists(state))
+            with patch.object(summarize, "use_enabled", return_value=True), patch.object(summarize, "provider", return_value={"id": "zhipu", "model": "glm"}):
+                r = profile.profile_inventory_due(now=1000)
+                self.assertTrue(r["due"]); spawn.assert_called_once()
+                self.assertEqual(json.load(open(state))["tried"], 1000)
+                r = profile.profile_inventory_due(now=1000 + 3600)      # the spawned run failed: no `at` yet
+                self.assertFalse(r["due"]); self.assertIn("不重试", r["reason"]); spawn.assert_called_once()
+                r = profile.profile_inventory_due(now=1000 + 7 * 3600)
+                self.assertTrue(r["due"]); self.assertEqual(spawn.call_count, 2)
+                json.dump({"at": 5000}, open(state, "w"))
+                self.assertFalse(profile.profile_inventory_due(now=5000 + 3600)["due"])
+            with patch.object(summarize, "use_enabled", return_value=False):
+                r = profile.profile_inventory_due(now=99999999)
+                self.assertFalse(r["due"]); self.assertIn("关闭", r["reason"]); self.assertEqual(spawn.call_count, 2)
+
     def test_inventory_requires_refresh_or_due(self):
         with self.assertRaises(SystemExit) as e:
             self.run_op("inventory")

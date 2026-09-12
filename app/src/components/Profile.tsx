@@ -41,7 +41,13 @@ export function ProfileView({ api, hosts, onDone, onError, hostId = "" }: Props)
 
   const inventory = async () => {
     setScanning(true); setBusy(true); setError("");
-    try { await api.on(host, ["profile", "inventory", "--refresh", "--json"]); await load(); onDone("已重新盘点四台机器的现状"); }
+    try {
+      const r = parseJson<{ targets?: { name: string; state: string; error?: string }[] }>(await api.on(host, ["profile", "inventory", "--refresh", "--json"]), {});
+      const targets = r.targets ?? [];
+      const bad = targets.filter((t) => t.state !== "ok");
+      await load();
+      onDone(`已重新盘点 ${targets.length - bad.length} 台机器${bad.length ? `，${bad.map((t) => t.name).join("、")} 没连上` : ""}`);
+    }
     catch (e) { onError(String(e)); } finally { setScanning(false); setBusy(false); }
   };
 
