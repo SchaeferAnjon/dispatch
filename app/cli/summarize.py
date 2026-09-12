@@ -27,13 +27,17 @@ PROMPT = ("你是会话记录的总结者。下面是用户和一个编程 Agent
 CLAUDE_BIN = next((p for p in (os.path.join(D.HOME, ".local", "bin", "claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude") if os.path.exists(p)), "")
 
 
-def provider():
+def provider(model=""):
     """Which model writes summaries. `SUMMARY_MODEL=claude:haiku` (or sonnet / a full model id)
     runs `claude -p` on the Claude Code subscription — no API key, counts against its usage
-    limits, a few seconds per call. Otherwise the first API key found, 智谱 first."""
+    limits, a few seconds per call. Otherwise the first API key found, 智谱 first.
+
+    `model` (provider:model) forces one for this call, before the shared setting — `dispatch here`
+    uses it so its project paragraph always comes from 智谱 glm-5.3-flash."""
     env = {i["name"]: i["value"] for i in D.env_read()}
-    # The app's 设置 wins (shared through the board), then the env file, then whatever is available.
-    pick = (D.settings_load().get("summary_model") or "").strip() or env.get("SUMMARY_MODEL", "")
+    # An explicit request wins, then the app's 设置 (shared through the board), then the env file,
+    # then whatever is available.
+    pick = (model or "").strip() or (D.settings_load().get("summary_model") or "").strip() or env.get("SUMMARY_MODEL", "")
     if pick and ":" in pick:
         pid, model = pick.split(":", 1)
         if pid == "claude" and CLAUDE_BIN:
@@ -235,7 +239,7 @@ def project_material(name):
             "text": "## 最近的会话\n" + "\n".join(lines) + "\n\n## 未完成的任务\n" + "\n".join(open_t[:15]) + "\n\n## 最近完成的任务\n" + "\n".join(t for _, t in closed_t[:10])}
 
 
-def project_summary(name, force=False, if_stale=False):
+def project_summary(name, force=False, if_stale=False, model=""):
     key = D.INTERNAL_MEMORY_PREFIX + "project-summary-" + name
     code, o, _ = D.sh(["bd", "memories", "--json"])
     old = None
@@ -244,11 +248,13 @@ def project_summary(name, force=False, if_stale=False):
         old = json.loads(raw) if raw else None
     except (ValueError, AttributeError):
         old = None
-    if old and not force and not (if_stale and time.time() - old.get("at", 0) > 86400):
+    p = provider(model)
+    want = f"{p['id']}:{p['model']}" if p else ""
+    other_model = bool(old and want and old.get("by") != want)
+    if old and not force and not other_model and not (if_stale and time.time() - old.get("at", 0) > 86400):
         return {**old, "cached": True}
     if if_stale and not force and old is None and not D.settings_load().get("summary_auto", 1):
         return {"summary": "", "cached": True}
-    p = provider()
     if not p:
         raise RuntimeError("没有可用的模型：设置里选一个总结模型")
     m = project_material(name)

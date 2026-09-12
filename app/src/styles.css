@@ -1309,7 +1309,6 @@ pre.diff.dv-pre .ln{width:max-content;min-width:100%}pre.diff.dv-pre .ln .tx{fle
 .session-summary{display:flex;gap:8px;align-items:flex-start;padding:10px 16px;font-size:13px;line-height:1.6;color:var(--ink);background:var(--accent-soft);border-bottom:1px solid var(--line);cursor:pointer}.session-summary .t{flex:1;min-width:0;overflow-wrap:anywhere}
 .session-summary.folded{padding:6px 16px}.session-summary.folded .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .activity-dock.folded{max-height:30px;overflow:hidden;cursor:pointer}
-.project-summary{margin-top:8px;max-width:900px}.project-summary .t{margin:0 0 6px;font-size:14px;line-height:1.65;color:var(--ink)}.project-summary-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 /* discussion thread */
 .discuss-dialog{width:min(820px,94vw)}.disc-thread{display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow:auto;padding:4px 2px}
 .disc-conclusion{border:1px solid var(--accent);background:var(--accent-soft);border-radius:10px;padding:10px 14px;font-size:13.5px;line-height:1.6}.disc-conclusion .l1{display:flex;gap:10px;align-items:baseline;margin-bottom:4px}
@@ -1425,3 +1424,37 @@ a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text
 .project-key{display:flex;gap:10px;align-items:center}
 .env-project{margin-left:8px;font-weight:400;font-size:11px;vertical-align:middle}
 .project-facts .empty.small{padding:6px 0}
+
+/* project page · 项目回顾 (dispatch here): 现状 · 时间线 · 未完成任务 · 活会话 */
+.review-block{margin:0 0 22px}
+.review-block>h3{margin:0 0 10px;font-size:14px;font-weight:600;display:flex;gap:8px;align-items:baseline}
+.review-count{font-size:12px;font-weight:400;color:var(--ink-3)}
+.review-summary{margin:0;font-size:14px;line-height:1.7;color:var(--ink);max-width:900px;overflow-wrap:anywhere}
+.review-summary.small{font-size:13px;line-height:1.6;color:var(--ink-2);margin-top:6px}
+.review-summary+.muted{margin-top:8px}
+.review-timeline{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--win);padding:4px 14px 10px}
+.review-day{padding:8px 0}
+.review-day+.review-day{border-top:1px solid var(--line)}
+.review-day-head{display:flex;gap:8px;align-items:baseline;position:sticky;top:0;background:var(--win);padding:4px 0 6px;z-index:1}
+.review-day-head .mono{font-size:12px;color:var(--ink-2)}
+.review-entries{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.review-entry{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.55;min-width:0}
+.review-kind{flex:none;min-width:34px;text-align:center;font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--panel-2);color:var(--ink-2)}
+.review-kind.k-task{color:var(--s-prog);background:var(--s-prog-bg)}
+.review-kind.k-done{color:var(--s-done);background:var(--s-done-bg)}
+.review-kind.k-commit{color:var(--accent-ink);background:var(--accent-soft)}
+.review-kind.k-session{color:var(--ink-2);background:var(--panel-2)}
+.review-ref{flex:none;font-size:11.5px}
+.review-text{min-width:0;overflow-wrap:anywhere;color:var(--ink-2)}
+.review-tasks,.review-sessions{display:flex;flex-direction:column;gap:10px}
+.review-task,.review-session{border:1px solid var(--line);background:var(--win);border-radius:10px;padding:12px 14px;min-width:0;overflow-wrap:anywhere}
+.review-task-head,.review-session-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-width:0}
+.review-task-head .task-title,.review-session-head .task-title{font-weight:600;text-align:left}
+.review-mark{flex:none;font-size:13px;line-height:1.3;color:var(--ink-3)}
+.review-mark.prog{color:var(--s-prog)}
+.review-task-meta,.review-links{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.review-task-meta .chip{cursor:default}
+.review-note{margin:6px 0 0;line-height:1.55;overflow-wrap:anywhere}
+.review-verdict{flex:none;margin-left:auto;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--s-done-bg);color:var(--s-done)}
+.review-verdict.hold{background:var(--s-prog-bg);color:var(--s-prog)}
+@media(max-width:700px){.review-timeline{max-height:none}.review-task,.review-session{padding:10px 12px}.review-verdict{margin-left:0}}

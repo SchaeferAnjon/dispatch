@@ -1136,3 +1136,39 @@ class ReplySlashCommands(unittest.TestCase):
             self.assertIn({"name": "skill:brain", "description": "知识库", "kind": "skill"}, rows)
             self.assertEqual(rows[0]["name"], "compact")
             self.assertEqual(session_reply.commands(d, {"agent": "zcode", "cwd": ""}), [])
+
+
+class HereView(unittest.TestCase):
+    def test_acceptance_progress_counts_both_cases(self):
+        self.assertEqual(dispatch.acceptance_progress({"acceptance_criteria": "- [x] a\n- [ ] b\n- [X] c"}), (2, 3))
+        self.assertEqual(dispatch.acceptance_progress({}), (0, 0))
+
+    def test_open_tasks_in_progress_first_with_acceptance_and_last_note(self):
+        issues = [
+            {"id": "t1", "title": "A", "status": "open", "updated_at": "2026-09-01T00:00:00Z", "acceptance_criteria": "- [x] a\n- [ ] b"},
+            {"id": "t2", "title": "B", "status": "in_progress", "updated_at": "2026-09-02T00:00:00Z", "acceptance_criteria": "- [ ] a\n- [ ] b"},
+            {"id": "t3", "title": "C", "status": "closed", "updated_at": "2026-09-03T00:00:00Z"},
+        ]
+        comments = {"t1": [{"created_at": "2026-09-02T00:00:00Z", "text": "最新进展一句话"}]}
+        rows = dispatch.here_open_tasks(issues, comments)
+        self.assertEqual([r["id"] for r in rows], ["t2", "t1"])
+        self.assertEqual((rows[1]["acceptance_done"], rows[1]["acceptance_total"]), (1, 2))
+        self.assertEqual(rows[1]["last_note"], "最新进展一句话")
+
+    def test_timeline_groups_by_day_and_skips_discussion_chatter(self):
+        now = time.time()
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+        issues = [{"id": "t1", "title": "标题", "status": "open", "updated_at": iso},
+                  {"id": "t2", "title": "完成的", "status": "closed", "closed_at": iso, "close_reason": "做完了"}]
+        comments = {"t1": [{"created_at": iso, "text": "进展一句话"}, {"created_at": iso, "text": "【讨论】不该进时间线"}]}
+        with patch.object(dispatch, "git_root_of", return_value=""), \
+             patch.object(dispatch, "project_names", return_value={}), \
+             patch.object(dispatch, "settings_load", return_value={}), \
+             patch.object(dispatch, "load_index", return_value={}):
+            days = dispatch.here_timeline("p", issues, comments, 14, "")
+        entries = [e for d in days for e in d["entries"]]
+        texts = " ".join(e["text"] for e in entries)
+        self.assertIn("进展一句话", texts)
+        self.assertIn("完成「完成的」", texts)
+        self.assertNotIn("不该进时间线", texts)
+        self.assertTrue(all(len(d["entries"]) >= 1 for d in days))

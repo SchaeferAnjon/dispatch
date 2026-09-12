@@ -4,7 +4,7 @@ import type { Api } from '../api';
 import { UNGROUPED_PROJECT, conversationProject, sessionLifecycle } from '../activity';
 import { linkedSessions, originSession, projectGroups, projectHome, sourceTasks } from '../projectModel';
 import { isArchived, isStarred, rankProjects, type ProjectFlags } from '../projectFlags';
-import { ago, projectColor, projectOf, statusLabel } from '../derive';
+import { actorOf, ago, projectColor, projectOf, statusLabel } from '../derive';
 import { ConversationRows } from './Workspace';
 import { Markdown } from './Markdown';
 import { MediaContext, MediaProvider, type AttachmentData } from './Media';
@@ -89,17 +89,92 @@ export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: str
   </div>;
 }
 
-// One paragraph on the whole project — what it is, where it stands, what is next — written by the
-// summary model from the sessions' summaries and the board. Refreshes itself once a day; the
-// button forces it.
-function ProjectSummary({api,name}:{api:Api;name:string}) {
-  const [s,setS]=useState<{summary:string;at?:number;by?:string;sessions?:number;open?:number;closed?:number;cached?:boolean}|null>(null);
-  const [busy,setBusy]=useState(false);const [err,setErr]=useState('');
-  const run=async(force:boolean)=>{setBusy(true);setErr('');try{const t=await api.on('local',['project-summary',name,force?'--force':'--if-stale','--json']);const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));if(d.error)setErr(d.error);else setS(d);}catch(e){setErr(String(e));}finally{setBusy(false);}};
-  useEffect(()=>{setS(null);void run(false);},[name]);  // eslint-disable-line react-hooks/exhaustive-deps
-  return <div className="project-summary">
-    {s?.summary?<p className="t">{s.summary}</p>:<p className="muted small">{busy?'正在读这个项目的会话和任务，写总结…':err||'还没有总结'}</p>}
-    <div className="project-summary-foot"><button className="btn sm" disabled={busy} onClick={()=>void run(true)}>{busy?'总结中…':s?.summary?'✦ 重新总结':'✦ 总结这个项目'}</button>{s?.at?<span className="muted small">{new Date(s.at*1000).toLocaleString('zh-CN',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})} · {s.by} · 读了 {s.sessions} 段会话、{(s.open??0)+(s.closed??0)} 个任务</span>:null}{err&&s?.summary?<span className="err small">{err}</span>:null}</div>
+// 项目回顾: `dispatch here <project> --json` — one paragraph on where the project stands, the last
+// two weeks as a day-grouped timeline, unfinished tasks, and the live sessions in this directory
+// with a close-or-not verdict. Read-only; the CLI caches the model-written summary.
+type ReviewKind = 'task' | 'done' | 'commit' | 'session';
+type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string };
+type ReviewDay = { day: string; weekday: string; entries: ReviewEntry[] };
+type ReviewTask = { id: string; title: string; status: string; assignee: string; acceptance_done: number; acceptance_total: number; last_at: number; last_note: string };
+type ReviewSession = { agent: string; session_id: string; title: string; summary: string; state: string; last_at?: number; tasks: { id: string; title: string; status: string }[]; tasks_all_done: boolean; files_count: number; verdict: string; reason: string };
+type ReviewData = { project: string; detected: boolean; cwd: string; timeline_days: number; summary: { text: string; at?: number; by?: string; cached?: boolean; error?: string }; timeline: ReviewDay[]; open_tasks: ReviewTask[]; sessions: ReviewSession[] };
+const REVIEW_KIND: Record<string, string> = { task: '进展', done: '完成', commit: '提交', session: '会话' };
+const REVIEW_STATE: Record<string, string> = { working: '在跑', idle: '等你', unknown: '未登记' };
+const reviewStatus = (s: string) => s === 'closed' ? '已完成' : s === 'in_progress' ? '进行中' : s === 'blocked' ? '阻塞' : s === 'deferred' ? '搁置' : '待办';
+
+export function ProjectReview({ api, name, me, onOpen, onTask }: { api: Api; name: string; me: string; onOpen: (id: string) => void; onTask: (id: string) => void }) {
+  const [data, setData] = useState<ReviewData | null>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  useEffect(() => {
+    let alive = true;
+    setData(null); setErr(''); setBusy(true);
+    void api.on('local', ['here', name, '--json']).then((t) => {
+      const d = JSON.parse(t.slice(Math.max(0, t.indexOf('{')))) as ReviewData & { error?: string };
+      if (!alive) return;
+      if (d.error) setErr(d.error); else setData(d);
+    }).catch((e) => { if (alive) setErr(String(e)); }).finally(() => { if (alive) setBusy(false); });
+    return () => { alive = false; };
+  }, [api, name]);
+  if (busy && !data) return <p className="empty">正在读这个项目此刻的样子…</p>;
+  if (err && !data) return <p className="err" role="alert">{err}</p>;
+  if (!data) return null;
+  const summary = data.summary || {};
+  return <div className="review">
+    <section className="review-block">
+      <h3>现状</h3>
+      {summary.error ? <p className="muted small">还没有项目总结：{summary.error}</p>
+        : summary.text ? <p className="review-summary">{summary.text}</p>
+        : <p className="muted small">还没有项目总结。</p>}
+      {!data.detected && <p className="muted small">任务板上没认出 <span className="mono">{data.project}</span>，按目录 {shortPath(data.cwd)} 看。</p>}
+    </section>
+    <section className="review-block">
+      <h3>最近 {data.timeline_days} 天</h3>
+      {data.timeline.length === 0 ? <p className="muted small">这段时间没有记录。</p>
+        : <div className="review-timeline">{data.timeline.map((day) => <div className="review-day" key={day.day}>
+          <div className="review-day-head"><span className="mono">{day.day}</span><span className="muted small">{day.weekday}</span></div>
+          <ol className="review-entries">{day.entries.map((e, i) => <li className="review-entry" key={`${e.ts}-${i}`}>
+            <span className={`review-kind k-${e.kind}`}>{REVIEW_KIND[e.kind] || e.kind}</span>
+            {e.kind === 'commit' && e.ref ? <code className="review-ref mono">{String(e.ref).slice(0, 7)}</code> : null}
+            <span className="review-text">{e.text}</span>
+          </li>)}</ol>
+        </div>)}</div>}
+    </section>
+    <section className="review-block">
+      <h3>还没做完 <span className="review-count">{data.open_tasks.length}</span></h3>
+      {data.open_tasks.length === 0 ? <p className="muted small">没有未完成任务。</p>
+        : <div className="review-tasks">{data.open_tasks.map((t) => <div className="review-task" key={t.id}>
+          <div className="review-task-head">
+            <span className={`review-mark${t.status === 'in_progress' ? ' prog' : ''}`} aria-hidden>{t.status === 'in_progress' ? '◐' : '○'}</span>
+            <button className="link task-title" onClick={() => onTask(t.id)}>{t.title}</button>
+            <code className="muted small review-ref">{t.id}</code>
+          </div>
+          <div className="review-task-meta">
+            {t.acceptance_total > 0 && <span className="chip">{t.acceptance_done}/{t.acceptance_total} 验收</span>}
+            {t.assignee && <span className="muted small">{actorOf(t.assignee, me)?.name || t.assignee}</span>}
+            {t.last_at ? <span className="muted small">{ago(t.last_at)}</span> : null}
+          </div>
+          {t.last_note && <p className="review-note muted small">{t.last_note}</p>}
+        </div>)}</div>}
+    </section>
+    <section className="review-block">
+      <h3>本目录活会话 <span className="review-count">{data.sessions.length}</span></h3>
+      {data.sessions.length === 0 ? <p className="muted small">这个目录下没有正在运行的会话。</p>
+        : <div className="review-sessions">{data.sessions.map((s) => <div className="review-session" key={`${s.agent}:${s.session_id}`}>
+          <div className="review-session-head">
+            <span className={`review-mark${s.state === 'working' ? ' prog' : ''}`} aria-hidden>{s.state === 'working' ? '◐' : '○'}</span>
+            <button className="link task-title" onClick={() => onOpen(s.session_id)}>{s.title || s.session_id.slice(0, 8)}</button>
+            <span className={`review-verdict${s.verdict === '别关' ? ' hold' : ''}`}>{s.verdict}</span>
+          </div>
+          <div className="review-task-meta">
+            <span className="chip">{s.agent}</span>
+            <span className="muted small">{REVIEW_STATE[s.state] || s.state}</span>
+            {s.last_at ? <span className="muted small">{ago(s.last_at)}</span> : null}
+            {s.files_count > 0 && <span className="muted small">动过 {s.files_count} 个文件</span>}
+          </div>
+          {s.summary && <p className="review-summary small">{s.summary}</p>}
+          {s.reason && <p className="review-note muted small">{s.reason}</p>}
+          {s.tasks.length > 0 && <div className="review-links">{s.tasks.map((t) => <button key={t.id} className="chip" onClick={() => onTask(t.id)}>{t.title} · {reviewStatus(t.status)}</button>)}</div>}
+        </div>)}</div>}
+    </section>
   </div>;
 }
 
@@ -120,7 +195,7 @@ function OutcomeEditor({project,rows,tasks,initial,api,onSaved,onCancel}:{projec
 
 type Props={onDiscuss?:(name:string)=>void;archiveDays:number;flags:ProjectFlags;onFlag:(name:string,change:{starred?:boolean;archived?:boolean})=>void;connectionError:boolean;unavailable:string[];rows:Activity[];tasks:Issue[];outcomes:Issue[];api:Api;me:string;selected:string|null;onProject:(name:string|null)=>void;onOpen:(id:string)=>void;onTask:(id:string)=>void;onRead:(a:Activity)=>Promise<void>;onSummarize?:(a:Activity)=>Promise<void>;onReload:()=>void;onNew:(a?:Activity)=>void;loaded:boolean};
 export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,unavailable,rows,tasks,outcomes,api,me,selected,onProject,onOpen,onTask,onRead,onSummarize,onReload,onNew,loaded}:Props){
-  const [tab,setTab]=useState(()=>{const t=new URLSearchParams(location.search).get('section')||'sessions';return ['sessions','tasks','outcomes','unassigned','folders','docs'].includes(t)?t:'sessions';}),[query,setQuery]=useState(''),[scheduled,setScheduled]=useState(false),[archived,setArchived]=useState(false),[editor,setEditor]=useState<Issue|null|false>(false),[showOther,setShowOther]=useState(false),[showArchived,setShowArchived]=useState(false),[docs,setDocs]=useState<Doc[]|null>(null);
+  const [tab,setTab]=useState(()=>{const t=new URLSearchParams(location.search).get('section')||'review';return ['review','sessions','tasks','outcomes','unassigned','folders','docs'].includes(t)?t:'review';}),[query,setQuery]=useState(''),[scheduled,setScheduled]=useState(false),[archived,setArchived]=useState(false),[editor,setEditor]=useState<Issue|null|false>(false),[showOther,setShowOther]=useState(false),[showArchived,setShowArchived]=useState(false),[docs,setDocs]=useState<Doc[]|null>(null);
   const loadDocs=useCallback(()=>{setDocs(null);if(!selected)return;void api.on('local',['docs',selected,'--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));setDocs(Array.isArray(d.docs)?d.docs as Doc[]:[]);}).catch(()=>setDocs([]));},[api,selected]);
   useEffect(()=>{loadDocs();},[loadDocs]);
   const groups=useMemo(()=>projectGroups(rows,tasks,outcomes),[rows,tasks,outcomes]);
@@ -128,7 +203,7 @@ export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,u
   const ranked=useMemo(()=>rankProjects(groups,flags),[groups,flags]);
   const project=groups.find(p=>p.name===selected);
   const starBtn=(name:string)=><button className={`star${isStarred(flags,name)?' on':''}`} onClick={e=>{e.stopPropagation();onFlag(name,{starred:!isStarred(flags,name)});}} title={isStarred(flags,name)?'取消收藏':'收藏：置顶，近期重点关注'} aria-label={isStarred(flags,name)?`取消收藏 ${name}`:`收藏 ${name}`}>{isStarred(flags,name)?'★':'☆'}</button>;
-  const open=(name:string)=>{setTab('sessions');setQuery('');setScheduled(false);onProject(name);};
+  const open=(name:string)=>{setTab('review');setQuery('');setScheduled(false);onProject(name);};
   const taskRow=(i:Issue)=><div className="hub-task" key={i.id}><button className="link task-title" onClick={()=>onTask(i.id)}>{i.title}</button><span className="st sm">{statusLabel(i).text}</span><TaskRelations issue={i} rows={rows} api={api} onSaved={onReload} onOpen={onOpen}/></div>;
   if(!project)return <div className="project-hub"><header className="hub-heading"><div><h2>从项目继续工作</h2><p>项目 → 会话 → 任务 → 成果</p><span className="muted small">{connectionError?"更新中断，正在重新连接":loaded?"每 3 秒同步会话活动":"正在连接…"}</span></div><div className="hub-header-actions"><button className="btn primary" onClick={()=>onNew()}>新建会话</button></div></header>{unavailable.length>0&&<p className="connection-note">{unavailable.join("、")} 暂时无法连接，保留已读取记录。</p>}<label className="search"><input placeholder="搜索项目…" value={query} onChange={e=>setQuery(e.target.value)}/></label>{!loaded&&<p className="empty">正在读取项目与会话…</p>}{(()=>{const list=(showArchived?ranked.archived:ranked.active).filter(p=>(showArchived||showOther||query.trim()||primary(p))&&p.name.toLowerCase().includes(query.toLowerCase()));const WEEK=7*86400,now=Date.now()/1000;const info=(p:typeof list[number])=>{const active=p.sessions.filter(a=>!a.scheduled&&sessionLifecycle(a,archiveDays)!=='archived');const unread=active.filter(a=>a.unread).length;const doing=p.items.find(i=>i.status==='in_progress');const openCount=p.items.filter(i=>i.status!=='closed').length;const live=unread>0||!!doing||active.some(a=>a.state==='working'&&!a.stale)||(p.last>0&&now-p.last<WEEK);
     // One line that says what the project is up to, never a raw chat reply.
@@ -139,7 +214,8 @@ export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,u
   const unassigned=project.items.filter(i=>!linkedSessions(i).length);
   const short=shortPath;
   const dirs=[...project.sessions.reduce((m,a)=>{const d=(a.cwd||'').replace(/\/+$/,'');if(!d)return m;const cur=m.get(d)||{count:0,last:0,latest:a};cur.count++;if(a.last_at>cur.last){cur.last=a.last_at;cur.latest=a;}return m.set(d,cur);},new Map<string,{count:number;last:number;latest:Activity}>())].sort((x,y)=>y[1].last-x[1].last);
-  return <div className="project-hub"><button className="link" onClick={()=>{setQuery('');onProject(null);}}>‹ 全部项目</button><header className="hub-heading"><div><h2>{project.name}{starBtn(project.name)}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p><ProjectSummary api={api} name={project.name}/></div><div className="hub-header-actions">{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}<button className="btn primary" onClick={()=>onNew(projectHome(project.sessions))}>在此项目新建会话</button><button className="btn" onClick={()=>onFlag(project.name,{archived:!isArchived(flags,project.name)})} title={isArchived(flags,project.name)?'恢复到工作台和项目列表':'做完了、暂时不用：从工作台和项目列表隐藏，随时可找回'}>{isArchived(flags,project.name)?'取消归档':'归档'}</button></div></header><div className="hub-tabs views">{[['sessions','会话',project.sessions.filter(a=>!a.scheduled).length],['tasks','任务',project.items.length],['outcomes','成果',project.results.length],['unassigned','待归属任务',unassigned.length],['folders','目录',dirs.length],['docs','文档',docs?docs.length:'…']].map(([id,label,n])=><button className={tab===id?'on':''} key={id} onClick={()=>{setTab(String(id));setEditor(false);}}>{label} {n}</button>)}</div>
+  return <div className="project-hub"><button className="link" onClick={()=>{setQuery('');onProject(null);}}>‹ 全部项目</button><header className="hub-heading"><div><h2>{project.name}{starBtn(project.name)}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p></div><div className="hub-header-actions">{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}<button className="btn primary" onClick={()=>onNew(projectHome(project.sessions))}>在此项目新建会话</button><button className="btn" onClick={()=>onFlag(project.name,{archived:!isArchived(flags,project.name)})} title={isArchived(flags,project.name)?'恢复到工作台和项目列表':'做完了、暂时不用：从工作台和项目列表隐藏，随时可找回'}>{isArchived(flags,project.name)?'取消归档':'归档'}</button></div></header><div className="hub-tabs views">{[['review','项目回顾'],['sessions','会话',project.sessions.filter(a=>!a.scheduled).length],['tasks','任务',project.items.length],['outcomes','成果',project.results.length],['unassigned','待归属任务',unassigned.length],['folders','目录',dirs.length],['docs','文档',docs?docs.length:'…']].map(([id,label,n])=><button className={tab===id?'on':''} key={id} onClick={()=>{setTab(String(id));setEditor(false);}}>{label}{n!=null?` ${n}`:''}</button>)}</div>
+  {tab==='review'&&<ProjectReview api={api} name={project.name} me={me} onOpen={onOpen} onTask={onTask}/>}
   {tab==='sessions'&&<><div className="hub-tools"><input aria-label="搜索项目会话" placeholder="搜索这个项目的会话…" value={query} onChange={e=>setQuery(e.target.value)}/><button className={`btn sm${archived?' on':''}`} onClick={()=>{setArchived(!archived);setScheduled(false);}} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>{archived?'返回最近会话':`已归档 ${archivedCount}`}</button><button className="btn sm" onClick={()=>{setScheduled(!scheduled);setArchived(false);}}>{scheduled?'返回普通会话':`定时会话 ${project.sessions.filter(a=>a.scheduled).length}`}</button></div><ConversationRows rows={visible} me={me} onOpen={onOpen} onRead={onRead} onSummarize={onSummarize} taskContent={a=>{const linked=project.items.filter(i=>linkedSessions(i).includes(a.session_id));return <details className="conversation-tasks"><summary>会话任务 · {linked.length} 项{linked.length?` · ${linked.filter(i=>i.status==='closed').length} 已完成`:''}</summary>{linked.length?linked.map(taskRow):<p className="muted small">没有明确关联的任务。可在“待归属任务”中指定；聊天里的提及不自动算作归属。</p>}</details>;}}/>{visible.length===0&&<p className="empty">{archived?'没有归档的会话。':'这个分类没有会话。'}</p>}</>}
   {(tab==='tasks'||tab==='unassigned')&&<><p className="muted">任务显示发起和参与会话；历史任务没有明确关系时保留待归属，不根据提及次数猜测。</p>{(tab==='unassigned'?unassigned:project.items).map(taskRow)}{tab==='unassigned'&&!unassigned.length&&<p className="empty">任务都已有明确关联。</p>}</>}
   {tab==='folders'&&<><p className="muted">这个项目的会话在哪些文件夹里发生过。</p>{dirs.map(([d,info])=><div className="hub-task hub-dir" key={d}><div className="hub-dir-head"><code title={d}>{short(d)}</code><span className="muted small">{info.count} 个会话 · 最近 {ago(info.last)}</span></div><div className="task-links"><button className="btn sm" onClick={()=>onNew(info.latest)}>在此目录新建会话</button><button className="btn sm" onClick={()=>api.openPath(d).catch(()=>{})}>在 Finder 打开</button><button className="btn sm" onClick={()=>api.copy(`cd '${d}'`).catch(()=>{})}>复制 cd</button></div></div>)}{!dirs.length&&<p className="empty">没有记录到工作目录。</p>}</>}

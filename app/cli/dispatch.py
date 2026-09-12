@@ -625,7 +625,8 @@ def cmd_agent(a):
 
         def text(rows):
             for r in rows:
-                print(f"{r['pane_id']:<8} {r['agent']:<10} {r['status']:<8} {(r['cwd'] or '').replace(HOME, '~'):<40} {r['title']}")
+                name = (r["title"] or r["pane_id"])[:48]
+                print(f"{name:<48} {r['agent']:<10} {r['status']:<8} {(r['cwd'] or '').replace(HOME, '~')}" + (f"  （{r['pane_id']}）" if r["title"] else ""))
             if not rows:
                 print(f"{where} 的 Herdr 里没有 Agent")
         return out(rows, a.json, text)
@@ -682,7 +683,9 @@ def cmd_agent(a):
             sh(["bd", "update", a.task, "--add-label", f"delegated-by:{me}", "--add-label", f"delegated-to:{actor}", "--json"], env={"BEADS_ACTOR": me})
             note = f"{me} 通过 dispatch agent 派给 {actor}（Herdr {pane} @ {where}，目录 {cwd}）"
             sh(["bd", "comments", "add", a.task, note], env={"BEADS_ACTOR": me})
-        res = {"host": where, "pane_id": pane, "tab_id": tab_id, "name": name, "kind": kind, "actor": actor, "cwd": cwd, "status": started.get("agent_status"), "task": a.task or "", "output": ""}
+        res = {"host": where, "pane_id": pane, "tab_id": tab_id, "name": name, "kind": kind, "actor": actor, "cwd": cwd, "status": started.get("agent_status"), "task": a.task or "", "task_title": "", "output": ""}
+        if a.task:
+            res["task_title"] = bd_json(["show", a.task, "--json"]).get("title") or ""
         if a.prompt:
             # Prompts to an unfocused tab are dropped, and a prompt typed before the agent's
             # input box exists (self-update, trust dialogs) is swallowed: wait for both.
@@ -715,7 +718,7 @@ def cmd_agent(a):
                 res["status"] = (d.get("result") or {}).get("agent", {}).get("agent_status")
 
         def text(r):
-            print(f"已在 {r['host']} 起了 {r['kind']}（{r['actor']}）· Herdr {r['pane_id']} · {r['cwd']}" + (f" · 认领 {r['task']}" if r["task"] else ""))
+            print(f"已在 {r['host']} 起了 {r['kind']}（{r['actor']}）· Herdr {r['pane_id']} · {r['cwd']}" + (f" · 认领「{r.get('task_title') or r['task']}」（{r['task']}）" if r["task"] else ""))
             if r["output"]:
                 print(r["output"].rstrip())
             elif a.prompt:
@@ -923,7 +926,9 @@ def cmd_sessions(a):
         for x in s:
             h = x.get("herdr") or {}
             st = {"working": "在跑", "idle": "等你", "unknown": "未登记"}.get(x.get("state"), x.get("state"))
-            print(f"{x['agent']:<12} {st:<4} {x.get('project') or '?':<18} {x.get('source_app', ''):<14} {ago(x.get('last_at'))!s:<5} {x['session_id']}" + (f"  [Herdr {h.get('tab_id')}] {h.get('title', '')}" if h else ""))
+            title = h.get("title") or x.get("title") or ""
+            name = f"「{title}」（{x['session_id'][:8]}）" if title else x["session_id"]
+            print(f"{x['agent']:<12} {st:<4} {x.get('project') or '?':<18} {x.get('source_app', ''):<14} {ago(x.get('last_at'))!s:<5} {name}" + (f"  [Herdr {h.get('tab_id')}]" if h else ""))
     out(s, a.json, text)
 
 
@@ -3132,7 +3137,7 @@ def begin_warnings(title, project, cwd):
             if project and proj and proj != project:
                 continue
             if similar(title, t.get("title", "")) >= 0.5:
-                warns.append(f"进行中的 {t['id']}「{t.get('title', '')}」（{t.get('assignee') or '?'}）和这个很像——先 `bd show {t['id']}`，是同一件事就 `dispatch claim {t['id']}` 或和对方分工。")
+                warns.append(f"进行中的「{t.get('title', '')}」（{t['id']}，{t.get('assignee') or '?'}）和这个很像——先 `bd show {t['id']}`，是同一件事就 `dispatch claim {t['id']}` 或和对方分工。")
     except Exception:
         pass
     for s_ in neighbours(cwd)[:4]:
@@ -3145,11 +3150,12 @@ def cmd_claim(a):
     issue = bd_json(["show", a.task, "--json"])
     actor = os.environ.get("BEADS_ACTOR") or ""
     owner = issue.get("assignee") or ""
+    name = issue.get("title") or a.task
     if owner and owner != actor and issue.get("status") == "in_progress" and not a.force:
-        print(f"{a.task} 已由 {owner} 认领并在进行中。要接手先和它分工（`dispatch find {a.task}` 看是哪个会话），确实要抢用 --force。", file=sys.stderr)
+        print(f"「{name}」（{a.task}）已由 {owner} 认领并在进行中。要接手先和它分工（`dispatch find {a.task}` 看是哪个会话），确实要抢用 --force。", file=sys.stderr)
         sys.exit(3)
     bd_json(["update", a.task, "--claim", "--json"])
-    print(f"{a.task} 已认领" + (f"（从 {owner} 手里接过来）" if owner and owner != actor else ""))
+    print(f"「{name}」（{a.task}）已认领" + (f"（从 {owner} 手里接过来）" if owner and owner != actor else ""))
 
 
 # A task card is read by a person weeks later, cold. The title must say what changes and why;
@@ -3177,7 +3183,11 @@ def title_problems(title, desc):
 
 def cmd_begin(a):
     """Create + claim a task in one go: the first thing an Agent does once it knows what it is doing."""
-    probs = title_problems(a.title, a.desc)
+    title = (a.title or "").strip()
+    if len(title) > 40:
+        title = title[:40]
+        print(f"⚠ 标题超过 40 字，已截为「{title}」（完整交代放描述里）", file=sys.stderr)
+    probs = title_problems(title, a.desc)
     if probs and not getattr(a, "force", False):
         print("任务没建：先把标题和描述写清楚（或加 --force 硬建）", file=sys.stderr)
         for pr in probs:
@@ -3185,13 +3195,13 @@ def cmd_begin(a):
         sys.exit(2)
     for pr in probs:
         print("⚠ " + pr, file=sys.stderr)
-    for w in begin_warnings(a.title, a.project, os.getcwd()):
+    for w in begin_warnings(title, a.project, os.getcwd()):
         print("⚠ " + w, file=sys.stderr)
     labels = [f"project:{a.project}"] if a.project else []
     labels.append(f"host:{local_host_name()}")  # which Mac this work runs on — Dispatch filters by it
     sid = getattr(a, 'session', None) or os.environ.get('CODEX_THREAD_ID') or os.environ.get('CLAUDE_SESSION_ID') or os.environ.get('CLAUDE_CODE_SESSION_ID')
     if sid and re.fullmatch(r'[A-Za-z0-9_-]{8,120}', sid): labels.extend(['session:' + sid, 'session-origin:' + sid])
-    argv = ["create", a.title, "-t", a.type, "-p", str(a.priority), "--json"]
+    argv = ["create", title, "-t", a.type, "-p", str(a.priority), "--json"]
     if labels:
         argv += ["-l", ",".join(labels)]
     if a.desc:
@@ -3206,7 +3216,7 @@ def cmd_begin(a):
         print("创建失败", file=sys.stderr)
         sys.exit(1)
     bd_json(["update", tid, "--claim", "--json"])
-    out({"id": tid, "title": a.title, "project": a.project}, a.json, lambda o: print(f"{tid} 已创建并认领。接下来在对话里提到 {tid}，进展用 `dispatch log {tid} \"…\"`，做完 `dispatch done {tid} --reason \"…\"`。"))
+    out({"id": tid, "title": title, "project": a.project}, a.json, lambda o: print(f"「{title}」（{tid}）已创建并认领。接下来在对话里提到 {tid}，进展用 `dispatch log {tid} \"…\"`，做完 `dispatch done {tid} --reason \"…\"`。"))
 
 
 def tick_acceptance(tid, issue, match=None, who=None):
@@ -3231,8 +3241,8 @@ def tick_acceptance(tid, issue, match=None, who=None):
 def cmd_log(a):
     """Progress note on a task — this is the process log, visible to everyone in Dispatch."""
     text = a.text
+    issue = bd_json(["show", a.task, "--json"])
     if a.tick:
-        issue = bd_json(["show", a.task, "--json"])
         hit = tick_acceptance(a.task, issue, match=a.tick)
         if hit:
             text = (text + " " if text else "") + f"（勾掉 {hit} 条验收项）"
@@ -3241,7 +3251,7 @@ def cmd_log(a):
         if code != 0:
             print(err.strip(), file=sys.stderr)
             sys.exit(code)
-    print(f"{a.task} 已记录")
+    print(f"「{issue.get('title') or a.task}」（{a.task}）已记录")
 
 
 def cmd_review(a):
@@ -3267,7 +3277,7 @@ def cmd_review(a):
     else:
         args += ["--status", "open", "--remove-label", "reviewed", "--add-label", "review-changes"]
     bd_json(args + ["--json"])
-    print(f"{a.task} 复核已记录：{a.verdict}")
+    print(f"「{issue.get('title') or a.task}」（{a.task}）复核已记录：{a.verdict}")
 
 
 def parent_autoclose(tid, issue):
@@ -3337,7 +3347,7 @@ def cmd_done(a):
     # A child of a split: when it was the last open sibling, the parent is done too — unless the
     # parent still has unchecked acceptance items, in which case it only gets a nudge.
     parent_msg = parent_autoclose(a.task, issue)
-    msg = f"{a.task} 已完成" + ("（已核验）" if a.verified else "（未核验，详见完成说明）")
+    msg = f"「{issue.get('title') or a.task}」（{a.task}）已完成" + ("（已核验）" if a.verified else "（未核验，详见完成说明）")
     if getattr(a, "review_by", None):
         msg += f"；等待 {a.review_by} 复核（不会自动启动 Agent）"
     if created:
@@ -5231,6 +5241,254 @@ def cmd_session_summary(a):
     summarize.main(a)
 
 
+# ---------------------------------------------------------------- here: one project on one screen
+# What happened, what is left, and which live conversations in this directory are safe to close.
+# The project paragraph uses 智谱 glm-5.3-flash on purpose: it is the cheap key meant for this
+# housekeeping, and the shared SUMMARY_MODEL (often the Claude subscription) stays untouched.
+
+HERE_MODEL = "zhipu:glm-5.3-flash"
+HERE_SKIP_NOTES = ("【讨论】", "【分工】", "提交：")
+
+
+def iso_epoch(ts):
+    dt = local_dt(ts or "")
+    return dt.timestamp() if dt else 0.0
+
+
+def acceptance_progress(issue):
+    text = issue.get("acceptance_criteria") or ""
+    done = text.count("- [x]") + text.count("- [X]")
+    return done, done + text.count("- [ ]")
+
+
+def project_issues(name):
+    """Board items labeled project:<name>, minus outcomes and recycled tasks."""
+    code, o, _ = sh(["bd", "list", "--all", "--json"], timeout=30)
+    if code != 0:
+        return []
+    try:
+        rows = json.loads(o[o.find("["):])
+    except Exception:
+        return []
+    want = f"project:{name.lower()}"
+    keep = []
+    for t in rows:
+        labels = t.get("labels") or []
+        if not any(l.lower() == want for l in labels):
+            continue
+        if "dispatch:outcome" in labels or "dispatch:trashed" in labels:
+            continue
+        keep.append(t)
+    return keep
+
+
+def here_comments(issues, since):
+    """Comments for open tasks (their last progress matters) and anything touched in the window."""
+    got = {}
+    for t in issues:
+        if (t.get("status") != "closed" or iso_epoch(t.get("updated_at")) >= since
+                or iso_epoch(t.get("closed_at")) >= since):
+            got[t["id"]] = bd_comments(t["id"])
+    return got
+
+
+def here_timeline(proj, issues, comments, days, cwd):
+    """One line per event, newest first, grouped by local day: task progress, closes, commits,
+    session summaries."""
+    since = time.time() - days * 86400
+    entries = []
+    for t in issues:
+        title = t.get("title") or t.get("id", "")
+        for c in comments.get(t["id"]) or []:
+            body = re.sub(r"\s+", " ", c.get("text") or "").strip()
+            ts = iso_epoch(c.get("created_at"))
+            if not body or body.startswith(HERE_SKIP_NOTES) or ts < since:
+                continue
+            entries.append({"ts": ts, "kind": "task", "ref": t.get("id", ""), "text": f"{title}：{body[:200]}"})
+        if t.get("status") == "closed":
+            ts = iso_epoch(t.get("closed_at"))
+            reason = re.sub(r"\s+", " ", t.get("close_reason") or "").strip()
+            if ts >= since:
+                entries.append({"ts": ts, "kind": "done", "ref": t.get("id", ""), "text": f"完成「{title}」" + (f"：{reason[:200]}" if reason else "")})
+    root = git_root_of(cwd)
+    if root:
+        code, o, _ = sh(["git", "-C", root, "log", f"--since={days} days ago", "--date=iso-strict", "--pretty=%h%x1f%cI%x1f%s"], timeout=20)
+        if code == 0:
+            for line in o.splitlines():
+                parts = line.split("\x1f")
+                if len(parts) != 3:
+                    continue
+                ts = iso_epoch(parts[1])
+                if ts >= since:
+                    entries.append({"ts": ts, "kind": "commit", "ref": parts[0], "text": parts[2][:200]})
+    from activity import session_preferences
+    prefs = session_preferences(DISPATCH_DIR)
+    names, roots = project_names(), settings_load().get("workspace_roots") or []
+    for e in (load_index() or {}).values():
+        if e.get("subagent") or not e.get("user_msgs"):
+            continue
+        summary = (prefs.get(f"{e.get('agent')}:{e.get('session_id')}") or {}).get("summary") or ""
+        ts = e.get("mtime") or 0
+        if not summary.strip() or ts < since:
+            continue
+        if (project_of_cwd(e.get("cwd") or "", names, roots) or "").lower() != proj.lower():
+            continue
+        entries.append({"ts": ts, "kind": "session", "ref": e.get("session_id", ""), "text": f"会话「{e.get('title') or e.get('session_id', '')}」：{summary.strip()[:200]}"})
+    entries.sort(key=lambda x: -x["ts"])
+    grouped = []
+    for e in entries:
+        lt = time.localtime(e["ts"])
+        day = time.strftime("%Y-%m-%d", lt)
+        if not grouped or grouped[-1]["day"] != day:
+            grouped.append({"day": day, "weekday": "周" + "一二三四五六日"[lt.tm_wday], "entries": []})
+        grouped[-1]["entries"].append(e)
+    return grouped
+
+
+def here_open_tasks(issues, comments):
+    rows = []
+    for t in issues or []:
+        if t.get("status") in ("closed", "tombstone", "deferred"):
+            continue
+        done, total = acceptance_progress(t)
+        notes = comments.get(t["id"]) or []
+        last = notes[-1] if notes else {}
+        rows.append({"id": t.get("id", ""), "title": t.get("title", ""), "status": t.get("status", ""),
+                     "assignee": t.get("assignee") or "", "acceptance_done": done, "acceptance_total": total,
+                     "last_at": max(iso_epoch(t.get("updated_at")), iso_epoch(last.get("created_at"))),
+                     "last_note": re.sub(r"\s+", " ", last.get("text") or "").strip()[:160]})
+    rows.sort(key=lambda r: (r["status"] != "in_progress", -(r["last_at"] or 0)))
+    return rows
+
+
+def here_sessions(proj, detected, cwd, issues):
+    """Live conversations in this project/directory, each with a close-or-not verdict."""
+    names, roots = project_names(), settings_load().get("workspace_roots") or []
+    from activity import session_preferences
+    prefs = session_preferences(DISPATCH_DIR)
+    try:
+        live = live_sessions()
+    except Exception:
+        live = []
+    try:
+        edits = session_edit_map(window=24 * 3600)
+    except Exception:
+        edits = {}
+    norm = os.path.normpath(cwd)
+    titles = {}
+    for e in (load_index() or {}).values():
+        if e.get("session_id"):
+            titles.setdefault(e["session_id"], e.get("title") or "")
+
+    def mine(scwd):
+        sc = os.path.normpath(scwd or "")
+        if not sc:
+            return False
+        if detected:
+            return (project_of_cwd(sc, names, roots) or "").lower() == proj.lower()
+        return sc == norm or sc.startswith(norm + os.sep) or norm.startswith(sc + os.sep)
+
+    rows, seen = [], set()
+    for s in live:
+        if not s.get("alive") or not mine(s.get("cwd")):
+            continue
+        sid = s.get("session_id") or ""
+        key = f"{s.get('agent')}:{sid}"
+        if key in seen:
+            continue
+        seen.add(key)
+        linked = [t for t in issues if any(l in (f"session:{sid}", f"session-origin:{sid}") for l in (t.get("labels") or []))]
+        unfinished = [t for t in linked if t.get("status") != "closed"]
+        files = sorted(((edits.get(sid) or {}).get("files") or {}).items(), key=lambda kv: -kv[1])
+        state = s.get("state") or "unknown"
+        if state == "working":
+            verdict, reason = "别关", "正在跑"
+        elif unfinished:
+            verdict, reason = "别关", "还在做「" + (unfinished[0].get("title") or "")[:30] + "」"
+        elif files:
+            verdict, reason = "别关", f"最近改过 {len(files)} 个文件（可能有未提交改动）"
+        else:
+            verdict, reason = "可关", ""
+        title = s.get("title") or (s.get("herdr") or {}).get("title") or titles.get(sid) or (linked[0].get("title") if linked else "") or ""
+        rows.append({"agent": s.get("agent", ""), "session_id": sid,
+                     "title": title,
+                     "summary": (prefs.get(key) or {}).get("summary") or "", "state": state,
+                     "last_at": s.get("last_at") or 0,
+                     "tasks": [{"id": t.get("id"), "title": t.get("title"), "status": t.get("status")} for t in linked],
+                     "tasks_all_done": bool(linked) and not unfinished,
+                     "files": [f for f, _ in files[:12]], "files_count": len(files),
+                     "verdict": verdict, "reason": reason})
+    rows.sort(key=lambda r: (r["verdict"] != "别关", -(r["last_at"] or 0)))
+    return rows
+
+
+def cmd_here(a):
+    cwd = os.path.abspath(os.path.expanduser(getattr(a, "dir", "") or os.getcwd()))
+    days = max(1, int(getattr(a, "days", 14) or 14))
+    names = project_names()
+    proj = (getattr(a, "project", "") or getattr(a, "project_opt", "") or "").strip() or project_of_cwd(cwd, names)
+    detected = bool(proj)
+    proj = proj or os.path.basename(cwd.rstrip("/")) or "?"
+    issues = project_issues(proj)
+    since = time.time() - days * 86400
+    comments = here_comments(issues, since)
+    summary = {"text": "", "cached": False}
+    if not getattr(a, "no_summary", False):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import summarize
+        model = getattr(a, "summary_model", "") or HERE_MODEL
+        try:
+            r = summarize.project_summary(proj, force=getattr(a, "refresh_summary", False),
+                                          if_stale=not getattr(a, "refresh_summary", False), model=model)
+            summary = {"text": r.get("summary", ""), "at": r.get("at", 0), "by": r.get("by", ""), "cached": r.get("cached", False)}
+        except Exception as e:
+            summary = {"text": "", "error": str(e)}
+    report = {"project": proj, "detected": detected, "cwd": cwd, "timeline_days": days, "summary": summary,
+              "timeline": here_timeline(proj, issues, comments, days, cwd if detected else cwd),
+              "open_tasks": here_open_tasks(issues, comments),
+              "sessions": here_sessions(proj, detected, cwd, issues)}
+
+    def text(o):
+        print(f"# {o['project']}" + ("" if o["detected"] else "（任务板上没认出这个项目，按目录看）") + f" · {o['cwd']}")
+        s = o["summary"]
+        print("\n## 现状")
+        print(s.get("text") or ("（还没有项目总结：" + (s.get("error") or f"`dispatch project-summary {o['project']}` 生成") + "）"))
+        print(f"\n## 最近 {o['timeline_days']} 天")
+        if o["timeline"]:
+            tag = {"task": "进展", "done": "完成", "commit": "提交", "session": "会话"}
+            for day in o["timeline"]:
+                print(f"{day['day']} {day['weekday']}")
+                for e in day["entries"]:
+                    print(f"  [{tag.get(e['kind'], e['kind'])}] {e['text']}")
+        else:
+            print("（这段时间没有记录）")
+        print(f"\n## 还没做完（{len(o['open_tasks'])}）")
+        for t in o["open_tasks"]:
+            acc = f" {t['acceptance_done']}/{t['acceptance_total']}" if t["acceptance_total"] else ""
+            who = f" · {t['assignee']}" if t["assignee"] else ""
+            when = f" · {ago(t['last_at'])}前" if t["last_at"] else ""
+            print(f"{'◐' if t['status'] == 'in_progress' else '○'} {t['title']}（{t['id']}）{acc}{who}{when}")
+            if t["last_note"]:
+                print(f"    {t['last_note']}")
+        if not o["open_tasks"]:
+            print("（没有未完成任务）")
+        print(f"\n## 本目录活会话（{len(o['sessions'])}）")
+        for x in o["sessions"]:
+            st = {"working": "在跑", "idle": "等你", "unknown": "未登记"}.get(x["state"], x["state"])
+            print(f"{'◐' if x['state'] == 'working' else '○'} {x['agent']} {x['session_id'][:8]} · 「{x['title']}」 · {st} · {ago(x['last_at'])}前活动")
+            if x["summary"]:
+                print(f"   在做：{x['summary'][:160]}")
+            if x["tasks"]:
+                print("   任务：" + "、".join(f"{t['title']}（{t['id']}，{'已完成' if t['status'] == 'closed' else t['status']}）" for t in x["tasks"]))
+            if x["files_count"]:
+                print(f"   最近改了 {x['files_count']} 个文件")
+            print(f"   结论：{x['verdict']}" + (f"：{x['reason']}" if x["reason"] else ""))
+        if not o["sessions"]:
+            print("（本目录没有活会话）")
+
+    out(report, a.json, text)
+
+
 def cmd_move(a):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import move
@@ -6402,7 +6660,7 @@ def cmd_discuss(a):
         def run_tui(i, kind, model, who):
             prompt = discuss_prompt(a.task, title, r, a.question, topic=topic, project=project, who=who)
             if i not in panes:
-                argv = self_cmd() + ["agent", "start", kind, "--cwd", cwd, "--label", f"讨论 {a.task} · {who}", "-p", prompt, "--auto", "--timeout", str(a.timeout), "--lines", "40", "--json"] + (["--model", model] if model else []) + hostargs
+                argv = self_cmd() + ["agent", "start", kind, "--cwd", cwd, "--label", f"讨论「{title[:20]}」· {who}", "-p", prompt, "--auto", "--timeout", str(a.timeout), "--lines", "40", "--json"] + (["--model", model] if model else []) + hostargs
             else:
                 argv = self_cmd() + ["agent", "ask", panes[i], prompt, "--timeout", str(a.timeout), "--lines", "40", "--json"] + hostargs
             t0 = time.time()
@@ -6602,7 +6860,7 @@ def cmd_split(a):
     if a.json:
         print(json.dumps({"task": a.task, "subtasks": made}, ensure_ascii=False)); return
     for r in made:
-        print(f"{r['id']}  {r['title']}  → {r['kind']}" + (f" · Herdr {r.get('pane_id')}" if r.get("pane_id") else "") + ("" if r["started"] else "  （未派出）"))
+        print(f"{r['title']}（{r['id']}）  → {r['kind']}" + (f" · Herdr {r.get('pane_id')}" if r.get("pane_id") else "") + ("" if r["started"] else "  （未派出）"))
     print(f"父任务 {a.task} 已留{SPLIT_TAG}记录；子任务做完各自 dispatch done，父任务最后由你收尾。")
 
 
@@ -6661,7 +6919,7 @@ def cmd_prime(a):
             mark = "◐" if t.get("status") == "in_progress" else "○"
             who = f" [{t.get('assignee')}]" if t.get("assignee") else ""
             by = next((l.split(":", 1)[1] for l in t.get("labels") or [] if l.startswith("delegated-by:")), "")
-            lines.append(f"{mark} {t['id']}{who} {t.get('title', '')}" + (f" ← {by} 派的" if by else ""))
+            lines.append(f"{mark} 「{t.get('title', '')}」（{t['id']}）{who}" + (f" ← {by} 派的" if by else ""))
         if len(mine) > len(shown):
             lines.append(f"…还有 {len(mine) - len(shown)} 条：`bd ready`")
         # the user's unanswered note on a task this agent holds
@@ -6669,7 +6927,7 @@ def cmd_prime(a):
             if t.get("status") == "in_progress" and actor and t.get("assignee") == actor:
                 note = human_note(bd_comments(t["id"]), actor)
                 if note:
-                    lines.append(f"💬 {t['id']} 用户留言（未回复）：{note}")
+                    lines.append(f"💬 「{t.get('title', '')}」（{t['id']}）用户留言（未回复）：{note}")
     # conversations the user is tracking in this project
     try:
         from activity import session_preferences
@@ -6681,7 +6939,7 @@ def cmd_prime(a):
         lines.append(f"## 追踪中的会话（{len(tracked)}）")
         for r in tracked:
             when = ago(r["last_at"])
-            lines.append(f"★ {r['agent']} {r['session_id'][:8]} · {r['title']} · {when if when.startswith('刚') else when + '前'} · 看摘要 `dispatch session {r['session_id'][:8]}`")
+            lines.append(f"★ {r['agent']} 「{r['title']}」（{r['session_id'][:8]}）· {when if when.startswith('刚') else when + '前'} · 看摘要 `dispatch session {r['session_id'][:8]}`")
         lines.append("这些是用户长期跟的线；相关的活先看它们的记录，别另起炉灶。")
     # wiki: this project's entries + global ones (no project tag)
     items = [it for it in wiki_all() if it["kind"]]
@@ -6861,6 +7119,8 @@ def main():
     s = sub.add_parser("notify", help="push a message to the phone (ntfy / Bark) or a macOS banner; channels come from dispatch env NTFY_URL / BARK_KEY"); s.add_argument("title"); s.add_argument("body", nargs="?", default=""); s.add_argument("--url", default="", help="link to open when the notification is tapped"); s.add_argument("--level", choices=["normal", "high"], default="normal"); s.add_argument("--key", default="", help="dedup key: the same key inside 5 minutes is sent once"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_notify)
     s = sub.add_parser("docs", help="项目页「文档」：扫描 design/ docs/ 研究/ 下的 .md/.html，加上登记过的路径/URL"); s.add_argument("op", nargs="?", default="", help="add | rm | read（省略时第一个参数就是项目名，列出它的文档）"); s.add_argument("project", nargs="?"); s.add_argument("extra", nargs="*", help="add/read/rm：路径或 URL、文档 id"); s.add_argument("--title", help="add：显示标题（默认取首个 # 行或文件名）"); s.add_argument("--kind", choices=list(DOC_KINDS), help="add：类型"); s.add_argument("--asset", default="", help="read：读文档同目录下的相对文件（图片），返回 base64"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_docs)
     s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
+    for _here_name in ("here", "project-view"):
+        s = sub.add_parser(_here_name, help="一个项目此刻的样子：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话能不能关（默认当前目录）"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir", help="看这个目录（默认当前目录）"); s.add_argument("--days", type=int, default=14, help="时间线回看天数（默认 14）"); s.add_argument("--no-summary", action="store_true", help="不调模型，跳过现状一段话"); s.add_argument("--refresh-summary", action="store_true", help="现状重新生成，不用缓存"); s.add_argument("--summary-model", default="", help=f"现状用哪个模型（默认 {HERE_MODEL}）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_here)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)
