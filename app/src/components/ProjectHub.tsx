@@ -115,13 +115,15 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
   // Newest-first is the contract, but sort defensively so the default-open day is always the latest.
   const sorted = useMemo(() => [...timeline].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0)), [timeline]);
   const newest = sorted.length ? sorted[0].day : '';
-  const shown = sorted.slice(0, days);
+  // Calendar days back from today (「3 天」 = today and the two before), not the three most recent days that had entries.
+  const cutoff = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - (days - 1)); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }, [days]);
+  const shown = useMemo(() => sorted.filter((d) => d.day >= cutoff), [sorted, cutoff]);
   const hidden = Math.max(0, sorted.length - shown.length);
   const groups = useMemo(() => {
     const order: string[] = [];
     const map = new Map<string, { task: string; title: string; entries: ReviewEntry[] }>();
     const loose: ReviewEntry[] = [];
-    for (const day of sorted.slice(0, days)) for (const e of day.entries) {
+    for (const day of shown) for (const e of day.entries) {
       if (!e.task) { loose.push(e); continue; }
       let g = map.get(e.task);
       if (!g) { g = { task: e.task, title: e.task_title || '', entries: [] }; map.set(e.task, g); order.push(e.task); }
@@ -133,7 +135,7 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
     loose.sort((a, b) => b.ts - a.ts);
     if (loose.length) list.push({ task: '', title: '未挂任务', entries: loose });
     return list;
-  }, [sorted, days]);
+  }, [shown]);
   if (sorted.length === 0) return <p className="muted small">这段时间没有记录。</p>;
   const row = (e: ReviewEntry, key: string, withDate: boolean) => {
     const go = e.ref && (e.kind === 'session' || e.kind === 'task' || e.kind === 'done')
