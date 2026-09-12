@@ -5,18 +5,23 @@ import { actorOf, ago, projectColor } from "../derive";
 
 interface Props { api: Api; me: string; version: number; selected: string | null; onSelect: (id: string) => void; onOpenSession: (sessionId: string) => void; projects: { name: string; count: number }[] }
 
-const W = 220, H = 64, SW = 156, SH = 46, EW = 122, EH = 40;
-const EDGE_LABEL: Record<string, string> = { "discovered-from": "派生出", blocks: "解锁", "parent-child": "包含", "discussed-in": "拆分自", related: "相关", relates_to: "相关" };
+// Edge kinds: `origin` = the session the task was created in (the main line, thick), `flow` =
+// task → session that claimed it / session → its steps, `thin` = a session's other tasks
+// (「继续 task-x」 in a conversation that started elsewhere); the rest are board dependencies.
+const EDGE_LABEL: Record<string, string> = { origin: "发起会话", thin: "顺带做", "discovered-from": "派生出", blocks: "解锁", "parent-child": "包含", "discussed-in": "拆分自", related: "相关", relates_to: "相关" };
 
 type LinDep = { type: string; label: string; id: string };
-type LinSession = { session_id: string; agent: string; title?: string; short?: string; summary?: string; state?: string; live?: boolean; relation?: string; verdict?: string; reason?: string; also?: string[]; also_count?: number; last_at?: number };
-type LinEvent = { ts: number; kind: string; ref: string; text: string; short?: string; by?: string };
-type LinTask = { id: string; title: string; short?: string; status: string; assignee: string; acceptance_done: number; acceptance_total: number; last_at: number; deps: LinDep[]; mentions_count: number; sessions: LinSession[]; events: LinEvent[] };
+type LinSession = { session_id: string; agent: string; title?: string; summary?: string; state?: string; live?: boolean; relation?: string; verdict?: string; reason?: string; also?: string[]; also_count?: number; last_at?: number };
+type LinEvent = { ts: number; kind: string; ref: string; text: string; sentence?: string; by?: string };
+type LinTask = { id: string; title: string; status: string; assignee: string; acceptance_done: number; acceptance_total: number; last_at: number; deps: LinDep[]; mentions_count: number; sessions: LinSession[]; events: LinEvent[] };
 type LinData = { project: string; days: number; cwd: string; counts: { tasks: number; live_sessions: number; unassigned_sessions: number }; tasks: LinTask[]; unassigned_sessions: LinSession[]; unassigned_events: LinEvent[] };
 const LIN_STATUS: Record<string, { text: string; cls: string }> = { in_progress: { text: "进行中", cls: "prog" }, open: { text: "待办", cls: "open" }, blocked: { text: "阻塞", cls: "block" }, deferred: { text: "搁置", cls: "open" }, closed: { text: "已完成", cls: "done" } };
 const LIN_STATE: Record<string, string> = { working: "在跑", idle: "等你", ended: "已结束" };
 const LIN_KIND: Record<string, string> = { task: "进展", done: "完成", commit: "提交" };
 const short = (s: string, n = 8) => (s && s.length > n ? `${s.slice(0, n)}…` : s);
+// A session that did the task, as opposed to one whose transcript merely mentioned its id.
+const isDoer = (s: LinSession) => s.relation === "发起" || s.relation === "在做";
+const sessionLabel = (s: LinSession) => s.title || short(s.session_id);
 const eventDate = (ts: number) => { const d = new Date(ts * 1000); const p = (x: number) => String(x).padStart(2, "0"); return `${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
 
 // Unique graph ids: task/session ids and event refs can collide, so namespace them.
@@ -25,9 +30,23 @@ const SID = (x: string) => `s:${x}`;
 const EID = (taskId: string, i: number) => `e:${taskId}:${i}`;
 
 type GKind = "task" | "session" | "step";
-interface GNode { id: string; kind: GKind; label: string; status: string; task?: LinTask; sess?: LinSession; ev?: LinEvent; taskId?: string; idx?: number }
+interface GNode { id: string; kind: GKind; label: string; status: string; w: number; h: number; lines: number; task?: LinTask; sess?: LinSession; ev?: LinEvent; taskId?: string; idx?: number }
 interface GEdge { from: string; to: string; type: string }
-const sizeOf = (k: GKind) => (k === "task" ? { w: W, h: H } : k === "session" ? { w: SW, h: SH } : { w: EW, h: EH });
+// Nodes show names whole — the board title, the session title, the first sentence of a note —
+// so their height follows the text: width is fixed per kind, lines are estimated from the
+// glyph widths (CJK ≈ 1em, Latin ≈ 0.56em) and capped; anything past the cap is clamped by CSS
+// and readable in the panel.
+const NODE_SPEC: Record<GKind, { w: number; font: number; lineH: number; pad: number; inner: number; maxLines: number }> = {
+  task: { w: 300, font: 12, lineH: 15, pad: 32, inner: 274, maxLines: 3 },
+  session: { w: 240, font: 12, lineH: 15, pad: 30, inner: 214, maxLines: 2 },
+  step: { w: 240, font: 11, lineH: 14, pad: 14, inner: 176, maxLines: 3 },
+};
+const textWidth = (s: string, px: number) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 0x2e7f ? px : px * 0.56; return w; };
+export function nodeSize(kind: GKind, label: string): { w: number; h: number; lines: number } {
+  const sp = NODE_SPEC[kind];
+  const lines = Math.max(1, Math.min(sp.maxLines, Math.ceil(textWidth(label, sp.font) / sp.inner)));
+  return { w: sp.w, h: sp.pad + lines * sp.lineH, lines };
+}
 
 function LinSessionRow({ s, me, showRelation }: { s: LinSession; me: string; showRelation?: boolean }) {
   const a = actorOf(s.agent, me);
@@ -35,7 +54,7 @@ function LinSessionRow({ s, me, showRelation }: { s: LinSession; me: string; sho
     <div className="lin-session-head">
       <span className={`av ${a?.kind || "human"} lin-av`} style={{ width: 18, height: 18, fontSize: 8 }}>{a?.glyph || s.agent.slice(0, 1).toUpperCase()}</span>
       <span className="lin-session-agent">{a?.name || s.agent}</span>
-      <span className="lin-session-title" title={s.title || s.session_id}>{s.title || short(s.session_id)}</span>
+      <span className="lin-session-title" title={s.title || s.session_id}>{sessionLabel(s)}</span>
       {s.state && <span className={`lin-state${s.live ? " live" : ""}`}>{LIN_STATE[s.state] || s.state}</span>}
       {showRelation && s.relation ? <span className="muted small lin-relation">{s.relation}</span> : null}
       {s.verdict ? <span className={`review-verdict${s.verdict === "别关" ? " hold" : ""}`}>{s.verdict}</span> : null}
@@ -97,7 +116,7 @@ function NodePanel({ n, me, onSelect, onOpenSession, onClose }: { n: GNode; me: 
     const state = s.state || "ended";
     return <aside className="node-panel">
       <div className="np-head"><span className="np-kind">会话</span><button className="np-close" onClick={onClose} aria-label="关闭">×</button></div>
-      <h3 className="np-title">{s.title || short(s.session_id)}</h3>
+      <h3 className="np-title">{sessionLabel(s)}</h3>
       <div className="np-meta">
         {a && <span className={`av ${a.kind}`} style={{ width: 18, height: 18, fontSize: 8 }}>{a.glyph}</span>}
         {a && <span className="muted small">{a.name}</span>}
@@ -154,41 +173,46 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
   // Keep the external task selection reflected in the graph; park it on its node.
   useEffect(() => { setSel(selected ? TID(selected) : null); }, [selected]);
 
+  // Unfinished tasks always belong on the page; finished ones only while they are recent.
   const visibleTasks = useMemo(() => {
     const since = Date.now() / 1000 - (data?.days ?? 14) * 86400;
     return (data?.tasks || []).filter((t) =>
-      (!t.last_at || t.last_at >= since) &&
+      (t.status !== "closed" || !t.last_at || t.last_at >= since) &&
       (!onlyProg || t.status === "in_progress") &&
       (!onlyLive || t.sessions.some((s) => s.live)) &&
       (!onlyWait || t.sessions.some((s) => s.live && (s.verdict === "别关" || s.state === "idle"))));
   }, [data, onlyProg, onlyLive, onlyWait]);
 
-  // Build the node+edge model: task cards + their 在做 sessions + every event as its own step,
-  // chained left-to-right into one line, plus task→task dependency edges.
+  // Build the node+edge model: task cards → the sessions that did them → every event as its
+  // own step, chained left-to-right oldest→newest, plus task→task dependency edges. A session
+  // that spans several tasks is one node: a thick `origin` edge from the task it was started
+  // for, thin edges from the others.
   const model = useMemo(() => {
     const nodes: GNode[] = [];
     const edges: GEdge[] = [];
     const seenNode = new Set<string>();
     const seenEdge = new Set<string>();
-    const addNode = (n: GNode) => { if (!seenNode.has(n.id)) { seenNode.add(n.id); nodes.push(n); } };
+    const addNode = (n: Omit<GNode, "w" | "h" | "lines">) => { if (!seenNode.has(n.id)) { seenNode.add(n.id); nodes.push({ ...n, ...nodeSize(n.kind, n.label) }); } };
     const addEdge = (from: string, to: string, type: string) => { const k = `${from}|${to}|${type}`; if (!seenEdge.has(k)) { seenEdge.add(k); edges.push({ from, to, type }); } };
     const taskIds = new Set(visibleTasks.map((t) => t.id));
 
-    for (const t of visibleTasks) addNode({ id: TID(t.id), kind: "task", label: t.short || short(t.title, 14), status: t.status, task: t });
+    for (const t of visibleTasks) addNode({ id: TID(t.id), kind: "task", label: t.title, status: t.status, task: t });
 
     for (const t of visibleTasks) {
-      const doers = t.sessions.filter((s) => s.relation === "在做");
-      const firstDoer: string | null = doers.length ? SID(doers[0].session_id) : null;
+      const doers = t.sessions.filter(isDoer);
+      const main = doers.find((s) => s.relation === "发起") ?? doers[0];
       for (const s of doers) {
-        addNode({ id: SID(s.session_id), kind: "session", label: s.short || short(s.title || s.session_id, 16), status: s.state || "ended", sess: s, taskId: t.id });
-        addEdge(TID(t.id), SID(s.session_id), "flow");
+        addNode({ id: SID(s.session_id), kind: "session", label: sessionLabel(s), status: s.state || "ended", sess: s, taskId: t.id });
+        // A session with an origin task elsewhere is only passing through this one.
+        const passing = s.relation !== "发起" && visibleTasks.some((o) => o.id !== t.id && o.sessions.some((x) => x.session_id === s.session_id && x.relation === "发起"));
+        addEdge(TID(t.id), SID(s.session_id), s.relation === "发起" ? "origin" : passing ? "thin" : "flow");
       }
       // Events arrive newest-first; reverse so the chain reads oldest→newest left→right.
       const steps = [...(t.events || [])].reverse();
-      let prev = firstDoer || TID(t.id);
+      let prev = main ? SID(main.session_id) : TID(t.id);
       steps.forEach((e, i) => {
         const id = EID(t.id, i);
-        addNode({ id, kind: "step", label: e.short || short(e.text, 12), status: e.kind, ev: e, taskId: t.id, idx: i });
+        addNode({ id, kind: "step", label: e.sentence || e.text, status: e.kind, ev: e, taskId: t.id, idx: i });
         addEdge(prev, id, "flow");
         prev = id;
       });
@@ -223,7 +247,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: "LR", nodesep: 18, ranksep: 70, marginx: 20, marginy: 20 });
     g.setDefaultEdgeLabel(() => ({}));
-    for (const n of model.nodes) { const s = sizeOf(n.kind); g.setNode(n.id, { width: s.w, height: s.h }); }
+    for (const n of model.nodes) g.setNode(n.id, { width: n.w, height: n.h });
     for (const e of model.edges) g.setEdge(e.from, e.to);
     dagre.layout(g);
     const gg = g.graph();
@@ -232,10 +256,10 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
 
   const clickNode = (n: GNode) => { setSel(n.id); if (n.kind === "task") onSelect(n.task!.id); };
   const first = (data?.tasks || []).find((t) => t.status === "in_progress");
-  const doing = first ? (first.sessions.find((s) => s.relation === "在做" && s.live) || first.sessions.find((s) => s.relation === "在做") || first.sessions[0]) : undefined;
+  const doing = first ? (first.sessions.find((s) => isDoer(s) && s.live) || first.sessions.find(isDoer)) : undefined;
   const who = doing ? (actorOf(doing.agent, me)?.name || doing.agent) : first ? (actorOf(first.assignee, me)?.name || first.assignee) : "";
   const sentence = first
-    ? doing ? `${who} 在会话「${doing.title || short(doing.session_id)}」做「${first.title}」` : `${who || "有人"} 在做「${first.title}」`
+    ? doing ? `${who} 在会话「${sessionLabel(doing)}」做「${first.title}」` : `${who || "有人"} 在做「${first.title}」`
     : "暂时没有进行中的任务";
 
   const nodeCount = model.nodes.filter((n) => model.connected.has(n.id)).length;
@@ -289,10 +313,12 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
               <input type="range" min={0.4} max={1.5} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} title="缩放" style={{ width: 90 }} />
             </div>
             <div className="graph-legend small muted">
-              <span><i className="lg discovered" />派生出（做 A 时发现了 B）</span>
-              <span><i className="lg blocks" />解锁（A 做完 B 才能开始）</span>
-              <span><i className="lg parent" />包含（epic → 子任务）</span>
-              <span>悬停或选中一个节点，整条线高亮；其余变淡</span>
+              <span><i className="lg origin" />发起会话（任务在这段会话里建的，主线）</span>
+              <span><i className="lg thin" />顺带做（会话顺手接的其他任务）</span>
+              <span><i className="lg discovered" />派生出</span>
+              <span><i className="lg blocks" />解锁</span>
+              <span><i className="lg parent" />包含</span>
+              <span>任务 → 会话 → 进展/提交，从左到右；悬停或选中一个节点，整条线高亮</span>
             </div>
             <div className="graph-scroll">
               {busy && !data && <div className="empty">正在读脉络…</div>}
@@ -332,8 +358,9 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                     if (!p) return null;
                     const cls = `node kind-${n.kind}${hover === n.id || sel === n.id ? " sel" : ""}${dim(n.id) ? " dim" : ""}`;
                     const handlers = { onMouseEnter: () => setHover(n.id), onMouseLeave: () => setHover(null), onClick: () => clickNode(n), role: "button" as const, tabIndex: 0 };
+                    const s = n;
                     if (n.kind === "task") {
-                      const s = sizeOf("task"), t = n.task!;
+                      const t = n.task!;
                       const st = LIN_STATUS[t.status] || { text: t.status, cls: "open" };
                       const a = actorOf(t.assignee, me);
                       return <g key={n.id} transform={`translate(${p.x - s.w / 2},${p.y - s.h / 2})`} className={cls} {...handlers}>
@@ -341,7 +368,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                         <rect x={0} y={0} width={4} height={s.h} rx={2} className={`node-stripe ${st.cls}`} />
                         <foreignObject x={10} y={6} width={s.w - 16} height={s.h - 12}>
                           <div className="node-body">
-                            <div className="node-t">{n.label}</div>
+                            <div className="node-t" style={{ WebkitLineClamp: n.lines }} title={n.label}>{n.label}</div>
                             <div className="node-m">
                               <span className={`st sm ${st.cls}`}>{st.text}</span>
                               {a && <span className={`av ${a.kind}`} style={{ width: 14, height: 14, fontSize: 7 }}>{a.glyph}</span>}
@@ -352,7 +379,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                       </g>;
                     }
                     if (n.kind === "session") {
-                      const s = sizeOf("session"), ss = n.sess!;
+                      const ss = n.sess!;
                       const a = actorOf(ss.agent, me);
                       const state = ss.state || "ended";
                       return <g key={n.id} transform={`translate(${p.x - s.w / 2},${p.y - s.h / 2})`} className={cls} {...handlers}>
@@ -360,7 +387,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                         <rect x={0} y={0} width={4} height={s.h} rx={2} className={`node-stripe ${ss.live ? "prog" : "open"}`} />
                         <foreignObject x={10} y={5} width={s.w - 16} height={s.h - 10}>
                           <div className="node-body sess-body">
-                            <div className="node-t one">{n.label}</div>
+                            <div className="node-t" style={{ WebkitLineClamp: n.lines }} title={n.label}>{n.label}</div>
                             <div className="node-m">
                               {a && <span className={`av ${a.kind}`} style={{ width: 14, height: 14, fontSize: 7 }}>{a.glyph}</span>}
                               <span className={`lin-state${ss.live ? " live" : ""}`}>{LIN_STATE[state] || state}</span>
@@ -369,13 +396,13 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                         </foreignObject>
                       </g>;
                     }
-                    const s = sizeOf("step"), e = n.ev!;
+                    const e = n.ev!;
                     return <g key={n.id} transform={`translate(${p.x - s.w / 2},${p.y - s.h / 2})`} className={`${cls} k-${e.kind}`} {...handlers}>
                       <rect width={s.w} height={s.h} rx={8} className="node-bg step-bg" />
                       <foreignObject x={8} y={4} width={s.w - 12} height={s.h - 8}>
                         <div className="step-body">
                           <span className={`review-kind k-${e.kind}`}>{LIN_KIND[e.kind] || e.kind}</span>
-                          <span className="step-t">{n.label}</span>
+                          <span className="step-t" style={{ WebkitLineClamp: n.lines }} title={e.text}>{n.label}</span>
                         </div>
                       </foreignObject>
                     </g>;

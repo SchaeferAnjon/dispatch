@@ -16,15 +16,36 @@ def iso_epoch(ts):
     return dt.timestamp() if dt else 0.0
 
 
-def short_name(text, n=12):
-    """A node-sized name: keep what is before the first colon (the `why` after it is for the
-    detail panel), drop parenthesised asides, then cut to length."""
-    s = re.split(r"[：:]", text or "", 1)[0]
-    s = re.sub(r"[（(][^）)]*[）)）]", "", s).strip()
-    return (s or (text or "").strip())[:n]
-def short_step(text, n=10):
-    """The first sentence of a progress note, cut short — what a step node shows."""
-    return re.split(r"[。！？!?\n]", (text or "").strip())[0][:n]
+def first_sentence(text):
+    """The first sentence of a progress note, whole — what a step node on the 脉络 page shows
+    (the full note sits in its detail panel). Names are never shortened or invented: task nodes
+    carry the task title as it is on the board, session nodes the session title."""
+    return re.split(r"(?<=[。！？!?])|\n", (text or "").strip(), maxsplit=1)[0].strip()
+
+
+def git_commits(root, days, since):
+    """(ts, short hash, subject) of the repo's commits in the window, newest first."""
+    if not root:
+        return []
+    code, o, _ = D.sh(["git", "-C", root, "log", f"--since={days} days ago", "--date=iso-strict", "--pretty=%h%x1f%cI%x1f%s"], timeout=20)
+    if code != 0:
+        return []
+    rows = []
+    for line in o.splitlines():
+        parts = line.split("\x1f")
+        if len(parts) != 3:
+            continue
+        ts = iso_epoch(parts[1])
+        if ts >= since:
+            rows.append((ts, parts[0], parts[2][:200]))
+    return rows
+
+
+def task_of_commit(subject, tids):
+    """The board task a commit subject names (`feat: … (task-abc)`), if it is one of `tids`."""
+    return next((x for x in re.findall(r"task-[a-z0-9]{2,}", subject) if x in tids), "")
+
+
 def project_base(proj, cwd, names=None, roots=None):
     """Where a project's git log and sessions live: the current directory when it is that
     project, else the project's home — so `dispatch here -P atrium` run from anywhere still
@@ -104,18 +125,9 @@ def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
             reason = re.sub(r"\s+", " ", t.get("close_reason") or "").strip()
             if ts >= since:
                 entries.append({"ts": ts, "kind": "done", "ref": t.get("id", ""), "task": t.get("id", ""), "task_title": t.get("title", ""), "text": f"完成「{title}」" + (f"：{reason[:200]}" if reason else "")})
-    root = D.git_root_of(cwd)
-    if root:
-        code, o, _ = D.sh(["git", "-C", root, "log", f"--since={days} days ago", "--date=iso-strict", "--pretty=%h%x1f%cI%x1f%s"], timeout=20)
-        if code == 0:
-            for line in o.splitlines():
-                parts = line.split("\x1f")
-                if len(parts) != 3:
-                    continue
-                ts = iso_epoch(parts[1])
-                if ts >= since:
-                    found = next((x for x in re.findall(r"task-[a-z0-9]{4,}", parts[2]) if x in tids), "")
-                    entries.append({"ts": ts, "kind": "commit", "ref": parts[0], "task": found, "task_title": ttitles.get(found, ""), "text": parts[2][:200]})
+    for ts, ref, subject in git_commits(D.git_root_of(cwd), days, since):
+        found = task_of_commit(subject, tids)
+        entries.append({"ts": ts, "kind": "commit", "ref": ref, "task": found, "task_title": ttitles.get(found, ""), "text": subject})
     from activity import session_preferences
     prefs = session_preferences(D.DISPATCH_DIR)
     names = D.project_names() if names is None else names
@@ -309,9 +321,12 @@ def cmd_here(a):
 
 def lineage_report(proj, days=14, cwd="", names=None, roots=None):
     """Project → tasks → sessions → progress/commits. Task↔session links come from explicit
-    `session:` labels plus task ids the transcript index saw; a session that spans several tasks
-    shows up under each with the others listed in `also`. Live status and the close-or-not
-    verdict reuse `here`."""
+    labels plus claims the transcript index saw; a session that spans several tasks (「继续
+    task-x」) shows up under each with the others listed in `also`. Its relation to each task:
+    发起 — the task was created in it (`session-origin:`), the main line on the 脉络 page;
+    在做 — it claimed / logged on it (`session:` label, claims, live link), drawn thin;
+    提到 — the transcript only mentioned the id. Live status and the close-or-not verdict
+    reuse `here`."""
     issues = project_issues(proj)
     tids = {t.get("id", "") for t in issues}
     since = time.time() - days * 86400
@@ -325,7 +340,7 @@ def lineage_report(proj, days=14, cwd="", names=None, roots=None):
     # Strong links (claims / explicit `session:` labels) drive the tree; transcript mentions are
     # kept separate, because one planning conversation can mention dozens of tasks and would
     # otherwise attach itself to every node.
-    strong, mentions, sess_meta = {}, {}, {}
+    strong, origin, mentions, sess_meta = {}, {}, {}, {}
     for e in (D.load_index() or {}).values():
         if e.get("subagent") or not e.get("session_id"):
             continue
@@ -341,22 +356,15 @@ def lineage_report(proj, days=14, cwd="", names=None, roots=None):
         for l in t.get("labels") or []:
             if l.startswith("session:") or l.startswith("session-origin:"):
                 strong.setdefault(l.split(":", 1)[1], set()).add(t["id"])
+            if l.startswith("session-origin:"):
+                origin.setdefault(l.split(":", 1)[1], set()).add(t["id"])
+    titles = {t.get("id", ""): t.get("title", "") for t in issues}
 
     commits_by_task, loose_commits = {}, []
-    root = D.git_root_of(base)
-    if root:
-        code, o, _ = D.sh(["git", "-C", root, "log", f"--since={days} days ago", "--date=iso-strict", "--pretty=%h%x1f%cI%x1f%s"], timeout=20)
-        if code == 0:
-            for line in o.splitlines():
-                parts = line.split("\x1f")
-                if len(parts) != 3:
-                    continue
-                ts = iso_epoch(parts[1])
-                if ts < since:
-                    continue
-                found = next((x for x in re.findall(r"task-[a-z0-9]{4,}", parts[2]) if x in tids), "")
-                rec = {"ts": ts, "kind": "commit", "ref": parts[0], "text": parts[2][:200]}
-                (commits_by_task.setdefault(found, []) if found else loose_commits).append(rec)
+    for ts, ref, subject in git_commits(D.git_root_of(base), days, since):
+        found = task_of_commit(subject, tids)
+        rec = {"ts": ts, "kind": "commit", "ref": ref, "text": subject}
+        (commits_by_task.setdefault(found, []) if found else loose_commits).append(rec)
 
     def deps_of(t):
         rows = []
@@ -379,45 +387,42 @@ def lineage_report(proj, days=14, cwd="", names=None, roots=None):
             body = re.sub(r"\s+", " ", c.get("text") or "").strip()
             ts = iso_epoch(c.get("created_at"))
             if body and not body.startswith(HERE_SKIP_NOTES) and ts >= since:
-                events.append({"ts": ts, "kind": "task", "ref": tid, "text": body[:200], "short": short_step(body), "by": c.get("author") or ""})
+                events.append({"ts": ts, "kind": "task", "ref": tid, "text": body[:200], "sentence": first_sentence(body), "by": c.get("author") or ""})
         if t.get("status") == "closed":
             ts = iso_epoch(t.get("closed_at"))
             if ts >= since:
                 done_text = (re.sub(r"\s+", " ", t.get("close_reason") or "").strip() or "已完成")[:200]
-                events.append({"ts": ts, "kind": "done", "ref": tid, "by": t.get("assignee") or "", "text": done_text, "short": short_step(done_text)})
-        events += [dict(c, by="", short=short_step(c["text"])) for c in commits_by_task.get(tid, [])]
+                events.append({"ts": ts, "kind": "done", "ref": tid, "by": t.get("assignee") or "", "text": done_text, "sentence": first_sentence(done_text)})
+        events += [dict(c, by="", sentence=first_sentence(c["text"])) for c in commits_by_task.get(tid, [])]
         events.sort(key=lambda e: -e["ts"])
-
-        def title_of(x):
-            return next((i.get("title", "") for i in issues if i.get("id") == x), x)
 
         def session_row(sid, relation):
             lv, meta = live_by_sid.get(sid) or {}, sess_meta.get(sid) or {}
             also = sorted((strong.get(sid) or set()) - {tid})
-            stitle = lv.get("title") or meta.get("title", "")
             return {"session_id": sid, "agent": lv.get("agent") or meta.get("agent", ""),
-                    "title": stitle, "short": short_name(stitle or sid),
+                    "title": lv.get("title") or meta.get("title", ""),
                     "summary": lv.get("summary", ""),
                     "state": lv.get("state") or "ended", "live": bool(lv), "relation": relation,
                     "verdict": lv.get("verdict", ""), "reason": lv.get("reason", ""),
-                    "also": [title_of(a) for a in also[:3]], "also_count": len(also),
+                    "also": [titles.get(a, a) for a in also[:3]], "also_count": len(also),
                     "last_at": lv.get("last_at") or meta.get("last_at") or 0}
 
         sids = {sid for sid, s_tids in strong.items() if tid in s_tids}
         for s in live:
             if any(x["id"] == tid for x in s["tasks"]):
                 sids.add(s["session_id"])
-        sessions_out = [session_row(sid, "在做") for sid in sids]
+        sessions_out = [session_row(sid, "发起" if tid in (origin.get(sid) or ()) else "在做") for sid in sids]
         mention_sids = [sid for sid, s_tids in mentions.items() if tid in s_tids and sid not in sids]
         sessions_out += [session_row(sid, "提到") for sid in mention_sids[:8]]
-        sessions_out.sort(key=lambda s: (s["relation"] != "在做", not s["live"], -(s["last_at"] or 0)))
-        tasks_out.append({"id": tid, "title": t.get("title", ""), "short": short_name(t.get("title", "")), "status": t.get("status", ""),
+        rank = {"发起": 0, "在做": 1, "提到": 2}
+        sessions_out.sort(key=lambda s: (rank.get(s["relation"], 3), not s["live"], -(s["last_at"] or 0)))
+        tasks_out.append({"id": tid, "title": t.get("title", ""), "status": t.get("status", ""),
                           "assignee": t.get("assignee") or "", "acceptance_done": done, "acceptance_total": total,
                           "last_at": iso_epoch(t.get("updated_at")), "deps": deps_of(t),
                           "mentions_count": len(mention_sids), "sessions": sessions_out, "events": events})
 
     assigned = {s["session_id"] for t in tasks_out for s in t["sessions"]}
-    unassigned = [dict(s, short=short_name(s.get("title") or s["session_id"])) for s in live if s["session_id"] not in assigned]
+    unassigned = [s for s in live if s["session_id"] not in assigned]
     return {"project": proj, "days": days, "cwd": base,
             "counts": {"tasks": len(tasks_out), "live_sessions": len(live), "unassigned_sessions": len(unassigned)},
             "tasks": tasks_out, "unassigned_sessions": unassigned,
@@ -451,7 +456,7 @@ def cmd_lineage(a):
                 st = {"working": "在跑", "idle": "等你"}.get(s["state"], "已结束")
                 verdict = (f" · {s['verdict']}" + (f"：{s['reason']}" if s["reason"] else "")) if s["live"] else ""
                 also = (f"（也在做 {'、'.join(s['also'])}" + (f" 等 {s['also_count']} 个" if s["also_count"] > len(s["also"]) else "") + "）") if s["also"] else ""
-                print(f"   {s['agent']} {s['session_id'][:8]} 「{s['title']}」 · {st}{verdict}{also}")
+                print(f"   [{s['relation']}] {s['agent']} {s['session_id'][:8]} 「{s['title']}」 · {st}{verdict}{also}")
             if t["mentions_count"] > 8:
                 print(f"   …另有 {t['mentions_count'] - 8} 个会话提到过")
             for e in t["events"][:6]:

@@ -98,10 +98,48 @@ class Lineage(unittest.TestCase):
         self.assertEqual(t["events"][0]["kind"], "task")
         self.assertIn("进展一", t["events"][0]["text"])
         self.assertEqual(t["deps"], [{"type": "blocks", "label": "解锁", "id": "task-b"}])
-        self.assertEqual(t["short"], "甲")
-        self.assertEqual(t["events"][0]["short"][:2], "进展")
-        self.assertEqual(t["sessions"][0]["short"], "会话一")
+        self.assertNotIn("short", t)                       # nodes carry the board title, never a short name
+        self.assertEqual(t["events"][0]["sentence"], "进展一")
+        self.assertEqual(t["sessions"][0]["title"], "会话一")
+        self.assertEqual(t["sessions"][0]["relation"], "在做")
         self.assertEqual(r["counts"]["tasks"], 1)
+
+    def test_origin_session_is_the_main_line_and_others_thin(self):
+        """「继续 task-b」in the session that created task-a: 发起 for a, 在做 for b, 提到 for c."""
+        issues = [{"id": "task-a", "title": "甲", "status": "in_progress", "labels": ["session-origin:s1", "session:s1"], "updated_at": "2026-09-02T00:00:00Z"},
+                  {"id": "task-b", "title": "乙", "status": "open", "labels": ["session:s1"], "updated_at": "2026-09-01T00:00:00Z"},
+                  {"id": "task-c", "title": "丙", "status": "open", "labels": [], "updated_at": "2026-09-01T00:00:00Z"}]
+        idx = {"p": {"agent": "claude-code", "session_id": "s1", "tasks": {"task-a": 2, "task-b": 1, "task-c": 1}, "claims": ["task-a"],
+                     "cwd": "/x", "mtime": 1, "title": "会话一"}}
+        with patch.object(lineage, "project_issues", return_value=issues), \
+             patch.object(lineage, "here_comments", return_value={}), \
+             patch.object(dispatch, "project_names", return_value={}), \
+             patch.object(dispatch, "settings_load", return_value={}), \
+             patch.object(lineage, "here_sessions", return_value=[]), \
+             patch.object(dispatch, "load_index", return_value=idx), \
+             patch.object(dispatch, "git_root_of", return_value=""), \
+             patch.object(lineage, "project_base", return_value="/x"):
+            r = lineage.lineage_report("p", 14, "/x")
+        rel = {t["id"]: [(s["session_id"], s["relation"]) for s in t["sessions"]] for t in r["tasks"]}
+        self.assertEqual(rel, {"task-a": [("s1", "发起")], "task-b": [("s1", "在做")], "task-c": [("s1", "提到")]})
+        a = next(t for t in r["tasks"] if t["id"] == "task-a")
+        self.assertEqual(a["sessions"][0]["also"], ["乙"])   # the other task it worked on, by title
+
+    def test_first_sentence_keeps_the_whole_sentence(self):
+        self.assertEqual(lineage.first_sentence("修好了会话线程的红条。然后装机验证"), "修好了会话线程的红条。")
+        self.assertEqual(lineage.first_sentence("第一行\n第二行"), "第一行")
+        self.assertEqual(lineage.first_sentence("没有句号的长句子" * 3), "没有句号的长句子" * 3)
+
+    def test_git_commits_parses_window_and_task_ids(self):
+        out = "abc1234\x1f2026-09-02T10:00:00+02:00\x1ffeat: 甲 (task-a)\nzzz9999\x1f2000-01-01T00:00:00+00:00\x1fold\n"
+        with patch.object(dispatch, "sh", return_value=(0, out, "")):
+            rows = lineage.git_commits("/repo", 14, 0)
+            self.assertEqual([(r[1], r[2]) for r in rows], [("abc1234", "feat: 甲 (task-a)"), ("zzz9999", "old")])
+            self.assertEqual([r[1] for r in lineage.git_commits("/repo", 14, time.time() - 10 * 365 * 86400)], ["abc1234"])
+        self.assertEqual(lineage.task_of_commit("feat: 甲 (task-ab)", {"task-ab"}), "task-ab")
+        self.assertEqual(lineage.task_of_commit("fix: 乙 (task-le3)", {"task-le3"}), "task-le3")   # 3-char ids exist on the board
+        self.assertEqual(lineage.task_of_commit("feat: 甲 (task-zz)", {"task-a"}), "")
+        self.assertEqual(lineage.git_commits("", 14, 0), [])
 
 
 if __name__ == "__main__":
