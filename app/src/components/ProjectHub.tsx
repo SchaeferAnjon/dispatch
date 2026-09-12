@@ -98,7 +98,7 @@ type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string; t
 type ReviewDay = { day: string; weekday: string; entries: ReviewEntry[] };
 type ReviewTask = { id: string; title: string; status: string; assignee: string; acceptance_done: number; acceptance_total: number; last_at: number; last_note: string };
 type ReviewSession = { agent: string; session_id: string; title: string; pane_id?: string; cwd?: string; source_app?: string; summary: string; state: string; last_at?: number; tasks: { id: string; title: string; status: string }[]; tasks_all_done: boolean; files_count: number; verdict: string; reason: string };
-type ReviewData = { project: string; detected: boolean; cwd: string; timeline_days: number; summary: { text: string; at?: number; by?: string; cached?: boolean; error?: string }; timeline: ReviewDay[]; open_tasks: ReviewTask[]; sessions: ReviewSession[] };
+type ReviewData = { project: string; detected: boolean; cwd: string; timeline_days: number; summary: { text: string; at?: number; by?: string; cached?: boolean; error?: string; pending?: boolean }; timeline: ReviewDay[]; open_tasks: ReviewTask[]; sessions: ReviewSession[] };
 const REVIEW_KIND: Record<string, string> = { task: '进展', done: '完成', commit: '提交', session: '会话' };
 const REVIEW_STATE: Record<string, string> = { working: '在跑', idle: '等你', unknown: '未登记' };
 const reviewStatus = (s: string) => s === 'closed' ? '已完成' : s === 'in_progress' ? '进行中' : s === 'blocked' ? '阻塞' : s === 'deferred' ? '搁置' : '待办';
@@ -222,7 +222,8 @@ export function ProjectReview({ api, data, busy, err, me, onOpen, onTask, onRelo
   return <div className="review">
     <section className="review-block">
       <h3>现状</h3>
-      {summary.error ? <p className="muted small">还没有项目总结：{summary.error}</p>
+      {summary.pending ? <p className="muted small">正在读这个项目的会话和任务，写现状…</p>
+        : summary.error ? <p className="muted small">还没有项目总结：{summary.error}</p>
         : summary.text ? <p className="review-summary">{summary.text}</p>
         : <p className="muted small">还没有项目总结。</p>}
       {!data.detected && <p className="muted small">任务板上没认出 <span className="mono">{data.project}</span>，按目录 {shortPath(data.cwd)} 看。</p>}
@@ -297,7 +298,9 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
   useEffect(()=>{loadDocs();},[loadDocs]);
   useEffect(()=>{if(!focusSection)return;if(['review','sessions','tasks','outcomes','unassigned','folders','docs'].includes(focusSection.section)){setTab(focusSection.section);setEditor(false);}onSectionDone?.();},[focusSection]);
   const [review,setReview]=useState<ReviewData|null>(null),[reviewBusy,setReviewBusy]=useState(false),[reviewErr,setReviewErr]=useState('');
-  const loadReview=useCallback(()=>{setReview(null);setReviewErr('');setReviewBusy(true);if(!selected)return;void api.on('local',['here',selected,'--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))) as ReviewData&{error?:string};if(d.error)setReviewErr(d.error);else setReview(d);}).catch((e)=>setReviewErr(String(e))).finally(()=>setReviewBusy(false));},[api,selected]);
+  // Two calls: the timeline / tasks / sessions come back in a second, the 现状 paragraph may take
+  // the model half a minute the first time — the page must not stay blank for it.
+  const loadReview=useCallback(()=>{setReview(null);setReviewErr('');setReviewBusy(true);if(!selected)return;const name=selected;void api.on('local',['here',name,'--no-summary','--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))) as ReviewData&{error?:string};if(d.error){setReviewErr(d.error);return;}setReview({...d,summary:{text:'',pending:true}});return api.on('local',['project-summary',name,'--if-stale','--json']).then(u=>{const r=JSON.parse(u.slice(Math.max(0,u.indexOf('{')))) as {summary?:string;at?:number;by?:string;cached?:boolean;error?:string;skipped?:boolean;reason?:string};setReview(prev=>prev&&prev.project===d.project?{...prev,summary:r.error?{text:'',error:r.error}:r.skipped?{text:'',error:r.reason}:{text:r.summary||'',at:r.at,by:r.by,cached:r.cached}}:prev);}).catch(e=>setReview(prev=>prev&&prev.project===d.project?{...prev,summary:{text:'',error:String(e)}}:prev));}).catch((e)=>setReviewErr(String(e))).finally(()=>setReviewBusy(false));},[api,selected]);
   useEffect(()=>{loadReview();},[loadReview]);
   const verdicts=useMemo(()=>new Map((review?.sessions||[]).map(s=>[s.session_id,s])),[review]);
   const groups=useMemo(()=>projectGroups(rows,tasks,outcomes),[rows,tasks,outcomes]);
