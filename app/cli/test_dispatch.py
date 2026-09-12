@@ -530,6 +530,24 @@ class BeginSessionLink(unittest.TestCase):
         self.assertEqual(bd.call_args_list[0].args[0][bd.call_args_list[0].args[0].index('-l')+1], 'project:kanban,host:test')
 
 class BeginTitleRule(unittest.TestCase):
+    def test_long_title_is_cut_at_a_boundary_and_kept_whole_in_the_description(self):
+        full = "Dispatch：复审并重构两个 DeepSeek agent 的交付（dispatch here/lineage/profile/memories）并装机点过"
+        title, cut = dispatch.trim_title(full)
+        self.assertTrue(cut)
+        self.assertEqual(title, "Dispatch：复审并重构两个 DeepSeek agent 的交付")   # not "…的交付（disp"
+        self.assertLessEqual(len(title), dispatch.TITLE_MAX)
+        self.assertEqual(dispatch.trim_title("短标题"), ("短标题", False))
+        self.assertEqual(dispatch.trim_title("无标点" * 20)[0], "无标点" * 13 + "无")   # nothing to break on: plain cut
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        a = SimpleNamespace(title=full, desc="用户要求复审。", type="task", priority=2, project="kanban", json=False, force=False, session=None, acceptance=None, deps=None)
+        with patch.object(dispatch, "begin_warnings", return_value=[]), patch.object(dispatch, "local_host_name", return_value="t"), patch.object(dispatch, "out"), \
+             patch.object(dispatch, "bd_json", side_effect=[{"id": "task-x"}, {}]) as bd, contextlib.redirect_stderr(io.StringIO()):
+            dispatch.cmd_begin(a)
+        argv = bd.call_args_list[0].args[0]
+        self.assertEqual(argv[1], "Dispatch：复审并重构两个 DeepSeek agent 的交付")
+        self.assertTrue(argv[argv.index("--description") + 1].startswith(f"原标题：{full}\n\n用户要求复审。"))
+
     def test_vague_title_or_thin_description_is_refused(self):
         self.assertTrue(dispatch.title_problems("修复", ""))
         self.assertTrue(dispatch.title_problems("会话页 diff 改成可横向滚动：手机上右半截被截掉", "短"))

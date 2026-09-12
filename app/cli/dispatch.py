@@ -3194,12 +3194,30 @@ def title_problems(title, desc):
     return probs
 
 
+TITLE_MAX = 40
+TITLE_BREAKS = "，。；：、,;: （(「【"
+
+
+def trim_title(title, n=TITLE_MAX):
+    """(title, cut?) — a title longer than `n` is cut at the last punctuation / space in its
+    first `n` characters (never mid-word, never leaving an open bracket), since it is shown as-is
+    in prime, session lists and Herdr tabs. The caller keeps the whole title in the description."""
+    t = (title or "").strip()
+    if len(t) <= n:
+        return t, False
+    head = t[:n]
+    at = max((m.start() for m in re.finditer(f"[{re.escape(TITLE_BREAKS)}]", head) if m.start() >= n // 2), default=n)
+    return (head[:at].rstrip(TITLE_BREAKS) or head).strip(), True
+
+
 def cmd_begin(a):
     """Create + claim a task in one go: the first thing an Agent does once it knows what it is doing."""
-    title = (a.title or "").strip()
-    if len(title) > 40:
-        title = title[:40]
-        print(f"⚠ 标题超过 40 字，已截为「{title}」（完整交代放描述里）", file=sys.stderr)
+    title, cut = trim_title(a.title or "")
+    if cut:
+        print(f"⚠ 标题超过 {TITLE_MAX} 字，已截为「{title}」；完整标题记进描述第一行", file=sys.stderr)
+        full = (a.title or "").strip()
+        if full not in (a.desc or ""):
+            a.desc = f"原标题：{full}\n\n{a.desc or ''}".rstrip()
     probs = title_problems(title, a.desc)
     if probs and not getattr(a, "force", False):
         print("任务没建：先把标题和描述写清楚（或加 --force 硬建）", file=sys.stderr)
@@ -4199,7 +4217,7 @@ DISCUSS_PERSONA_DEFAULT = {"claude": "偏架构和验收：先问值不值得做
                            "codex": "抠实现细节：关心具体改哪里、边界情况、能不能复用已有代码，不信没验证过的说法。",
                            "pi": "短句直给：一次只说最重要的一点，倾向先做最小可验证的版本，看到过度设计会直说。"}
 SETTING_DEFAULTS = {"session_archive_days": 30, "task_archive_days": 0, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": "", "summary_uses": {},
-                     "discuss_rules": DISCUSS_RULES_DEFAULT, **{f"discuss_persona_{k}": v for k, v in DISCUSS_PERSONA_DEFAULT.items()}}
+                    "discuss_rules": DISCUSS_RULES_DEFAULT, **{f"discuss_persona_{k}": v for k, v in DISCUSS_PERSONA_DEFAULT.items()}}
 # free-text settings and their length caps; everything else numeric except workspace_roots
 SETTING_STRINGS = {"summary_model": 80, "discuss_rules": 600, "discuss_persona_claude": 300, "discuss_persona_codex": 300, "discuss_persona_pi": 300}
 
