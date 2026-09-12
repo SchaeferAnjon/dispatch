@@ -5,7 +5,6 @@ import type { Activity, Comment, FileChange, HistoryEntry, Issue, Session, Sessi
 import { Avatar, Pri, ProjectTag, TYPE_LABEL } from "./ui";
 import { Markdown } from "./Markdown";
 
-import { TaskRelations } from "./ProjectHub";
 import { linkedSessions } from "../projectModel";
 import { FileHunks } from "./Sessions";
 import { ImageGrid, MediaProvider } from "./Media";
@@ -15,7 +14,7 @@ interface Props { rows: Activity[]; onOpenSession: (id: string) => void; onDiscu
 
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
-export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
+export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
   const [editProperties, setEditProperties] = useState(false);
   // The right column (diffs, images) is what needs width; the left one can step aside. Remembered per device.
   const [wide, setWide] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-detail-wide") === "1"; } catch { return false; } });
@@ -241,14 +240,13 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
           )}
         </div>}
 
-        <section className="sec sec-origin"><h4>来自哪次会话</h4><TaskRelations issue={issue} rows={rows} api={api} onOpen={onOpenSession} onSaved={()=>onDone("会话归属已保存")}/></section>
         {(() => {
           const discussion = comments.filter((c) => c.text.trimStart().startsWith("【讨论】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
           const subtasks = (issue.dependents ?? []).filter((d) => !d.dependency_type || d.dependency_type === "parent-child");
           if (issue.status === "closed" && !discussion.length && !subtasks.length) return null;
           return (
             <section className="sec workflow">
-              <h4>讨论与分工 <span className="muted">先让几个 Agent 各说一次，再拆成子任务派出去</span>{onDiscuss && discussion.length > 0 && <button className="btn ghost sm" onClick={() => onDiscuss(id)}>可视化 · 继续讨论</button>}</h4>
+              <h4>讨论与分工{onDiscuss && discussion.length > 0 && <button className="btn ghost sm" onClick={() => onDiscuss(id)}>可视化 · 继续讨论</button>}</h4>
               {(() => { const con = discussionConclusion(issue.description, comments); return con ? <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">总结模型归纳 · {con.when.includes("T") ? relTime(con.when) : con.when}</span></div><Markdown src={con.text} className="compact" /></div> : null; })()}
               {discussion.length > 0 && <div className="discussion">{discussion.map((c) => { const a = actorOf(c.author, me); return <div key={c.id} className="say"><Avatar actor={a} /><div><div className="l1"><b>{a?.name ?? c.author}</b><span className="ts">{relTime(c.created_at)}</span></div><Markdown src={c.text.trimStart().slice(4)} className="compact" /></div></div>; })}</div>}
               {subtasks.length > 0 && <div className="subtasks">{subtasks.map((d) => { const st = statusLabel(d); const who = actorOf(d.assignee, me); return <button key={d.id} className="subtask" onClick={() => onSelect(d.id)}><span className={`st sm ${st.cls}`}>{st.text}</span><span className="t">{d.title}</span>{who && <span className="muted small">{who.name}</span>}<span className="mono muted small">{d.id}</span></button>; })}</div>}
@@ -362,7 +360,7 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
 
         <section className="sec work-sec">
           <h4>文件修改与产出 <span className="muted">{work.reduce((n, w) => n + w.files.length, 0)} 个文件 · {work.reduce((n, w) => n + w.attachments.length, 0)} 个产物 · 来自明确关联的会话</span></h4>
-          {work.length === 0 ? <p className="empty-p" style={{ margin: 0 }}>{issue && linkedSessions(issue).length ? "关联的会话里没有记录到文件改动或产物。" : "还没有关联会话，所以这里是空的。上方「来自哪次会话」可以指定；下面「对话中提到过」的会话只是线索。"}</p> : work.map((w) => (
+          {work.length === 0 ? <p className="empty-p" style={{ margin: 0 }}>{issue && linkedSessions(issue).length ? "关联的会话里没有记录到文件改动或产物。" : "还没有关联会话，所以这里是空的。Agent 认领或记进展时会自动关联；下面「对话中提到过」的会话只是线索。"}</p> : work.map((w) => (
             <div key={w.sid} className="work-block">
               <div className="work-head"><button className="link" onClick={() => onOpenSession(w.sid)}>{w.title} ↗</button></div>
               {w.files.length > 0 && <div className="work-files">{w.files.map((f) => <details key={f.path} className="fdiff file work-file" data-menu="file" data-id={f.path} open={w.files.length <= 3}><summary title={f.path}><code>{f.path.replace(/^\/Users\/[^/]+/, "~").replace(/^(.{0,18}).*?([^/]+\/[^/]+)$/, (m, a, b) => (m.length > 44 ? `${a}…/${b}` : m))}</code><span className="muted small">{f.changes.length} 次</span></summary><FileHunks changes={f.changes} /></details>)}</div>}
@@ -374,7 +372,7 @@ export function Detail({ rows, onOpenSession, onDiscuss, initialWf, id, api, me,
         <details className="sec context-fold">
           <summary>对话中提到过 <span className="muted">{refs.length} 个会话 · 仅供参考，不代表归属</span></summary>
           {refs.length === 0 ? (
-            <p className="empty-p" style={{ margin: 0 }}>还没有会话提到 {id}。以上方「来自哪次会话」为准。</p>
+            <p className="empty-p" style={{ margin: 0 }}>还没有会话提到 {id}。</p>
           ) : (
             <div className="sess-list">
               {refs.map((r) => {
