@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive, makeAssistantToolUI, useAuiState, useExternalStoreRuntime, useSmooth, type MessageStatus, type ReasoningMessagePartProps, type TextMessagePartProps, type ThreadMessageLike, type ToolCallMessagePartProps } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive, makeAssistantToolUI, useAuiState, useExternalStoreRuntime, type MessageStatus, type ReasoningMessagePartProps, type TextMessagePartProps, type ThreadMessageLike, type ToolCallMessagePartProps } from "@assistant-ui/react";
 import { fmtTime } from "../derive";
 import { blocksOf, foldLabel } from "../timeline";
 import type { Block, TimelineMsg } from "../types";
@@ -73,11 +73,13 @@ function toMessages(list: TimelineMsg[], name: string, running: boolean): Msg[] 
 
 const useCustom = () => useAuiState((s) => s.message.metadata.custom as Custom);
 
-// Text: Markdown, smoothed while the session streams so a paragraph that lands per poll shows up
-// character by character, with a caret while it is still the newest thing.
+// Text: Markdown, with a caret while it is still the newest thing.
+// No typewriter smoothing any more: the library's smoothing hook writes to a per-part status
+// store from an effect, and when React 19 discards and redoes a render that store can belong to a
+// fiber that never mounted — it then throws "Resource updated before mount" and the page shows the
+// red error strip (2026-09-12). Transcripts arrive per poll anyway, so the animation bought little.
 function Text(p: TextMessagePartProps) {
-  const { text, status } = useSmooth(p, true);
-  return <div className="tl-t"><Markdown src={text + (status.type === "running" ? " ▍" : "")} className="compact" /></div>;
+  return <div className="tl-t"><Markdown src={p.text + (p.status.type === "running" ? " ▍" : "")} className="compact" /></div>;
 }
 
 // Thinking, folded: the first line as the summary, the whole thing on click; while it is the
