@@ -97,6 +97,13 @@ class MemoriesPage(unittest.TestCase):
         self.assertEqual(row["project_dir"], "")
         self.assertEqual(row["project"], "gone")
 
+    def test_expired_home_of_another_user_is_labelled_general(self):
+        old = os.path.join(self.projects, "-Users-apple", "memory")
+        os.makedirs(old)
+        open(os.path.join(old, "x.md"), "w").write("---\nname: x\n---\n正文\n")
+        row = next(r for r in memories.memory_entries() if r["name"] == "x")
+        self.assertEqual((row["project"], row["expired"]), ("通用（apple）", True))
+
     def test_zcode_resolves_real_directory_by_hash(self):
         zbase = os.path.join(self.tmp, ".zcode", "cli", "memories", "projects")
         h = hashlib.sha256(self.real_demo.encode()).hexdigest()[:16]

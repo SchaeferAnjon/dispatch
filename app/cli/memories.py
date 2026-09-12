@@ -143,8 +143,11 @@ def _memory_location(agent, folder, known, zdirs, names, roots):
     if not real:                                    # readable fallback so expired folders still group
         if agent == "zcode":
             return slug or "通用", "", True
-        guess = re.sub(r"^/Users/[^/]+", "~", folder.replace("-", "/"))
-        return os.path.basename(guess.rstrip("/")) or "通用", "", True
+        guess = folder.replace("-", "/")
+        m = re.match(r"^/(?:Users|home)/([^/]+)/?$", guess)      # another machine's home dir
+        if m:
+            return f"通用（{m.group(1)}）", "", True
+        return os.path.basename(re.sub(r"^/Users/[^/]+", "~", guess).rstrip("/")) or "通用", "", True
     return _project_name(real, names, roots), real, True
 
 
