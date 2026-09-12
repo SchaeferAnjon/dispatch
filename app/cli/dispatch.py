@@ -5261,18 +5261,28 @@ def acceptance_progress(issue):
     return done, done + text.count("- [ ]")
 
 
-def project_issues(name):
-    """Board items labeled project:<name>, minus outcomes and recycled tasks."""
-    code, o, _ = sh(["bd", "list", "--all", "--json"], timeout=30)
+def board_export():
+    """Every issue with its comments in one `bd export` call, instead of one `bd comments` per
+    task — on a board with a few hundred tasks that is one 0.5s call instead of a minute."""
+    code, o, _ = sh(["bd", "export"], timeout=60)
     if code != 0:
         return []
-    try:
-        rows = json.loads(o[o.find("["):])
-    except Exception:
-        return []
+    rows = []
+    for line in o.splitlines():
+        line = line.strip()
+        if line:
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+    return rows
+
+
+def project_issues(name, rows=None):
+    """Board items labeled project:<name>, minus outcomes and recycled tasks."""
     want = f"project:{name.lower()}"
     keep = []
-    for t in rows:
+    for t in board_export() if rows is None else rows:
         labels = t.get("labels") or []
         if not any(l.lower() == want for l in labels):
             continue
@@ -5283,16 +5293,17 @@ def project_issues(name):
 
 
 def here_comments(issues, since):
-    """Comments for open tasks (their last progress matters) and anything touched in the window."""
+    """Comments for open tasks (their last progress matters) and anything touched in the window,
+    read straight off the one export that already carries them."""
     got = {}
     for t in issues:
         if (t.get("status") != "closed" or iso_epoch(t.get("updated_at")) >= since
                 or iso_epoch(t.get("closed_at")) >= since):
-            got[t["id"]] = bd_comments(t["id"])
+            got[t["id"]] = sorted(t.get("comments") or [], key=lambda c: c.get("created_at") or "")
     return got
 
 
-def here_timeline(proj, issues, comments, days, cwd):
+def here_timeline(proj, issues, comments, days, cwd, names=None, roots=None):
     """One line per event, newest first, grouped by local day: task progress, closes, commits,
     session summaries."""
     since = time.time() - days * 86400
@@ -5323,7 +5334,8 @@ def here_timeline(proj, issues, comments, days, cwd):
                     entries.append({"ts": ts, "kind": "commit", "ref": parts[0], "text": parts[2][:200]})
     from activity import session_preferences
     prefs = session_preferences(DISPATCH_DIR)
-    names, roots = project_names(), settings_load().get("workspace_roots") or []
+    names = project_names() if names is None else names
+    roots = (settings_load().get("workspace_roots") or []) if roots is None else roots
     for e in (load_index() or {}).values():
         if e.get("subagent") or not e.get("user_msgs"):
             continue
@@ -5361,9 +5373,10 @@ def here_open_tasks(issues, comments):
     return rows
 
 
-def here_sessions(proj, detected, cwd, issues):
+def here_sessions(proj, detected, cwd, issues, names=None, roots=None):
     """Live conversations in this project/directory, each with a close-or-not verdict."""
-    names, roots = project_names(), settings_load().get("workspace_roots") or []
+    names = project_names() if names is None else names
+    roots = (settings_load().get("workspace_roots") or []) if roots is None else roots
     from activity import session_preferences
     prefs = session_preferences(DISPATCH_DIR)
     try:
@@ -5426,10 +5439,12 @@ def cmd_here(a):
     cwd = os.path.abspath(os.path.expanduser(getattr(a, "dir", "") or os.getcwd()))
     days = max(1, int(getattr(a, "days", 14) or 14))
     names = project_names()
+    roots = settings_load().get("workspace_roots") or []
     proj = (getattr(a, "project", "") or getattr(a, "project_opt", "") or "").strip() or project_of_cwd(cwd, names)
     detected = bool(proj)
     proj = proj or os.path.basename(cwd.rstrip("/")) or "?"
-    issues = project_issues(proj)
+    rows = board_export()
+    issues = project_issues(proj, rows)
     since = time.time() - days * 86400
     comments = here_comments(issues, since)
     summary = {"text": "", "cached": False}
@@ -5444,9 +5459,9 @@ def cmd_here(a):
         except Exception as e:
             summary = {"text": "", "error": str(e)}
     report = {"project": proj, "detected": detected, "cwd": cwd, "timeline_days": days, "summary": summary,
-              "timeline": here_timeline(proj, issues, comments, days, cwd if detected else cwd),
+              "timeline": here_timeline(proj, issues, comments, days, cwd, names, roots),
               "open_tasks": here_open_tasks(issues, comments),
-              "sessions": here_sessions(proj, detected, cwd, issues)}
+              "sessions": here_sessions(proj, detected, cwd, issues, names, roots)}
 
     def text(o):
         print(f"# {o['project']}" + ("" if o["detected"] else "（任务板上没认出这个项目，按目录看）") + f" · {o['cwd']}")

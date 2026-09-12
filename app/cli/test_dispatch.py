@@ -1172,3 +1172,17 @@ class HereView(unittest.TestCase):
         self.assertIn("完成「完成的」", texts)
         self.assertNotIn("不该进时间线", texts)
         self.assertTrue(all(len(d["entries"]) >= 1 for d in days))
+
+    def test_here_comments_reads_off_the_export_instead_of_shelling_out(self):
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        issues = [
+            {"id": "t1", "status": "open", "updated_at": iso,
+             "comments": [{"created_at": iso, "text": "后写"}, {"created_at": iso, "text": "先写"}]},
+            {"id": "t2", "status": "closed", "closed_at": "2000-01-01T00:00:00Z",
+             "comments": [{"created_at": "2000-01-01T00:00:00Z", "text": "太久以前"}]},
+        ]
+        with patch.object(dispatch, "bd_comments") as m:
+            got = dispatch.here_comments(issues, time.time() - 14 * 86400)
+        m.assert_not_called()
+        self.assertNotIn("t2", got)
+        self.assertEqual(sorted(c["text"] for c in got["t1"]), sorted(["先写", "后写"]))
