@@ -861,6 +861,10 @@ def live_sessions(local_only=False):
     for a in herdr_agents():
         cands = [s for s in sessions if s.get("cwd") == a.get("cwd") and s["agent"].startswith(a.get("agent", "claude"))]
         cands = [s for s in cands if "herdr" not in s] or cands
+        # Several records can share one directory (cleared/resumed); the pane's own state is
+        # the tiebreak, so an idle pane does not get attached to a session that is still running.
+        if a.get("agent_status") in ("working", "idle"):
+            cands.sort(key=lambda s: s.get("state") != a.get("agent_status"))
         if cands:
             s = cands[0]
             s["herdr"] = {"pane_id": a.get("pane_id"), "tab_id": a.get("tab_id"), "title": a.get("terminal_title_stripped"), "status": a.get("agent_status"), "focused": a.get("focused")}
@@ -5844,6 +5848,12 @@ def here_sessions(proj, detected, cwd, issues, names=None, roots=None):
     for e in (load_index() or {}).values():
         if e.get("session_id"):
             titles.setdefault(e["session_id"], e.get("title") or "")
+    # One terminal process can hold several session records (cleared/resumed); only the first
+    # gets herdr attached by cwd, so hand the same pane to the rest by agent_pid.
+    pane_by_pid = {}
+    for x in live:
+        if (x.get("herdr") or {}).get("pane_id") and x.get("agent_pid"):
+            pane_by_pid.setdefault(x["agent_pid"], x["herdr"]["pane_id"])
 
     def mine(scwd):
         sc = os.path.normpath(scwd or "")
@@ -5875,8 +5885,11 @@ def here_sessions(proj, detected, cwd, issues, names=None, roots=None):
         else:
             verdict, reason = "可关", ""
         title = s.get("title") or (s.get("herdr") or {}).get("title") or titles.get(sid) or (linked[0].get("title") if linked else "") or ""
+        pane_id = (s.get("herdr") or {}).get("pane_id") or pane_by_pid.get(s.get("agent_pid")) or ""
         rows.append({"agent": s.get("agent", ""), "session_id": sid,
                      "title": title,
+                     "pane_id": pane_id,
+                     "cwd": s.get("cwd") or "", "source_app": s.get("source_app") or "",
                      "summary": (prefs.get(key) or {}).get("summary") or "", "state": state,
                      "last_at": s.get("last_at") or 0,
                      "tasks": [{"id": t.get("id"), "title": t.get("title"), "status": t.get("status")} for t in linked],

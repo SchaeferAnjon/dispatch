@@ -8,6 +8,7 @@ import { actorOf, ago, projectColor, projectOf, statusLabel } from '../derive';
 import { ConversationRows } from './Workspace';
 import { Markdown } from './Markdown';
 import { MediaContext, MediaProvider, type AttachmentData } from './Media';
+import { useOpenSession } from './SessionActions';
 
 // A research / review / design write-up found in the project's folders or registered by hand.
 type Doc = { id: string; title: string; kind: string; path: string; url?: boolean; html?: boolean; size?: number; mtime?: number; ext?: string; dir?: string; source?: string };
@@ -96,7 +97,7 @@ type ReviewKind = 'task' | 'done' | 'commit' | 'session';
 type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string };
 type ReviewDay = { day: string; weekday: string; entries: ReviewEntry[] };
 type ReviewTask = { id: string; title: string; status: string; assignee: string; acceptance_done: number; acceptance_total: number; last_at: number; last_note: string };
-type ReviewSession = { agent: string; session_id: string; title: string; summary: string; state: string; last_at?: number; tasks: { id: string; title: string; status: string }[]; tasks_all_done: boolean; files_count: number; verdict: string; reason: string };
+type ReviewSession = { agent: string; session_id: string; title: string; pane_id?: string; cwd?: string; source_app?: string; summary: string; state: string; last_at?: number; tasks: { id: string; title: string; status: string }[]; tasks_all_done: boolean; files_count: number; verdict: string; reason: string };
 type ReviewData = { project: string; detected: boolean; cwd: string; timeline_days: number; summary: { text: string; at?: number; by?: string; cached?: boolean; error?: string }; timeline: ReviewDay[]; open_tasks: ReviewTask[]; sessions: ReviewSession[] };
 const REVIEW_KIND: Record<string, string> = { task: '进展', done: '完成', commit: '提交', session: '会话' };
 const REVIEW_STATE: Record<string, string> = { working: '在跑', idle: '等你', unknown: '未登记' };
@@ -147,22 +148,26 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
   </>;
 }
 
-export function ProjectReview({ api, name, me, onOpen, onTask }: { api: Api; name: string; me: string; onOpen: (id: string) => void; onTask: (id: string) => void }) {
-  const [data, setData] = useState<ReviewData | null>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  useEffect(() => {
-    let alive = true;
-    setData(null); setErr(''); setBusy(true);
-    void api.on('local', ['here', name, '--json']).then((t) => {
-      const d = JSON.parse(t.slice(Math.max(0, t.indexOf('{')))) as ReviewData & { error?: string };
-      if (!alive) return;
-      if (d.error) setErr(d.error); else setData(d);
-    }).catch((e) => { if (alive) setErr(String(e)); }).finally(() => { if (alive) setBusy(false); });
-    return () => { alive = false; };
-  }, [api, name]);
+export function ProjectReview({ api, data, busy, err, me, onOpen, onTask, onReload }: { api: Api; data: ReviewData | null; busy: boolean; err: string; me: string; onOpen: (id: string) => void; onTask: (id: string) => void; onReload: () => void }) {
+  const openSession = useOpenSession();
+  const [closed, setClosed] = useState<Record<string, boolean>>({}); const [confirming, setConfirming] = useState(''); const [closing, setClosing] = useState(''); const [actionErr, setActionErr] = useState<Record<string, string>>({});
   if (busy && !data) return <p className="empty">正在读这个项目此刻的样子…</p>;
   if (err && !data) return <p className="err" role="alert">{err}</p>;
   if (!data) return null;
   const summary = data.summary || {};
+  const closeSession = async (s: ReviewSession) => {
+    if (!s.pane_id) { onOpen(s.session_id); return; }
+    setConfirming(''); setClosing(s.session_id); setActionErr((p) => ({ ...p, [s.session_id]: '' }));
+    try { await api.on('local', ['agent', 'close', s.pane_id, '--json']); setClosed((p) => ({ ...p, [s.session_id]: true })); }
+    catch (e) { setActionErr((p) => ({ ...p, [s.session_id]: String(e) })); }
+    finally { setClosing(''); }
+  };
+  const restore = async (s: ReviewSession) => {
+    setActionErr((p) => ({ ...p, [s.session_id]: '' }));
+    await openSession({ session_id: s.session_id, agent: s.agent, host: 'local', host_name: '本机' });
+    setClosed((p) => { const n = { ...p }; delete n[s.session_id]; return n; });
+    onReload();
+  };
   return <div className="review">
     <section className="review-block">
       <h3>现状</h3>
@@ -173,7 +178,7 @@ export function ProjectReview({ api, name, me, onOpen, onTask }: { api: Api; nam
     </section>
     <section className="review-block">
       <h3>最近 {data.timeline_days} 天</h3>
-      <ReviewTimeline key={name} timeline={data.timeline} onOpen={onOpen} onTask={onTask} />
+      <ReviewTimeline key={data.project} timeline={data.timeline} onOpen={onOpen} onTask={onTask} />
     </section>
     <section className="review-block">
       <h3>还没做完 <span className="review-count">{data.open_tasks.length}</span></h3>
@@ -199,7 +204,10 @@ export function ProjectReview({ api, name, me, onOpen, onTask }: { api: Api; nam
           <div className="review-session-head">
             <span className={`review-mark${s.state === 'working' ? ' prog' : ''}`} aria-hidden>{s.state === 'working' ? '◐' : '○'}</span>
             <button className="link task-title" onClick={() => onOpen(s.session_id)}>{s.title || s.session_id.slice(0, 8)}</button>
-            <span className={`review-verdict${s.verdict === '别关' ? ' hold' : ''}`}>{s.verdict}</span>
+            {closed[s.session_id]
+              ? <span className="review-verdict closed">已关闭</span>
+              : <button type="button" className={`review-verdict${s.verdict === '别关' ? ' hold' : ' ok'}${confirming === s.session_id ? ' confirm' : ''}`} disabled={closing === s.session_id} onClick={() => (s.verdict === '可关' ? (confirming === s.session_id ? void closeSession(s) : setConfirming(s.session_id)) : onOpen(s.session_id))} title={s.verdict === '可关' ? '关闭这个会话：关掉它的 Herdr 标签/进程，之后可点「恢复」续上' : '不安全的关闭，点开这段会话看看'}>{closing === s.session_id ? '关闭中…' : s.verdict === '可关' && confirming === s.session_id ? '确认关闭？' : s.verdict}</button>}
+            <button type="button" className="review-restore" onClick={() => void restore(s)} title="在 Herdr 里恢复/打开这段会话">恢复</button>
           </div>
           <div className="review-task-meta">
             <span className="chip">{s.agent}</span>
@@ -209,6 +217,7 @@ export function ProjectReview({ api, name, me, onOpen, onTask }: { api: Api; nam
           </div>
           {s.summary && <p className="review-summary small">{s.summary}</p>}
           {s.reason && <p className="review-note muted small">{s.reason}</p>}
+          {actionErr[s.session_id] && <p className="review-note err small">{actionErr[s.session_id]}</p>}
           {s.tasks.length > 0 && <div className="review-links">{s.tasks.map((t) => <button key={t.id} className="chip" onClick={() => onTask(t.id)}>{t.title} · {reviewStatus(t.status)}</button>)}</div>}
         </div>)}</div>}
     </section>
@@ -235,6 +244,10 @@ export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,u
   const [tab,setTab]=useState(()=>{const t=new URLSearchParams(location.search).get('section')||'review';return ['review','sessions','tasks','outcomes','unassigned','folders','docs'].includes(t)?t:'review';}),[query,setQuery]=useState(''),[scheduled,setScheduled]=useState(false),[archived,setArchived]=useState(false),[editor,setEditor]=useState<Issue|null|false>(false),[showOther,setShowOther]=useState(false),[showArchived,setShowArchived]=useState(false),[docs,setDocs]=useState<Doc[]|null>(null);
   const loadDocs=useCallback(()=>{setDocs(null);if(!selected)return;void api.on('local',['docs',selected,'--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));setDocs(Array.isArray(d.docs)?d.docs as Doc[]:[]);}).catch(()=>setDocs([]));},[api,selected]);
   useEffect(()=>{loadDocs();},[loadDocs]);
+  const [review,setReview]=useState<ReviewData|null>(null),[reviewBusy,setReviewBusy]=useState(false),[reviewErr,setReviewErr]=useState('');
+  const loadReview=useCallback(()=>{setReview(null);setReviewErr('');setReviewBusy(true);if(!selected)return;void api.on('local',['here',selected,'--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))) as ReviewData&{error?:string};if(d.error)setReviewErr(d.error);else setReview(d);}).catch((e)=>setReviewErr(String(e))).finally(()=>setReviewBusy(false));},[api,selected]);
+  useEffect(()=>{loadReview();},[loadReview]);
+  const verdicts=useMemo(()=>new Map((review?.sessions||[]).map(s=>[s.session_id,s])),[review]);
   const groups=useMemo(()=>projectGroups(rows,tasks,outcomes),[rows,tasks,outcomes]);
   const primary=(p:typeof groups[number])=>p.items.length>0||p.results.length>0||p.sessions.some(a=>!!a.project_override);
   const ranked=useMemo(()=>rankProjects(groups,flags),[groups,flags]);
@@ -252,8 +265,8 @@ export function ProjectHub({onDiscuss,archiveDays,flags,onFlag,connectionError,u
   const short=shortPath;
   const dirs=[...project.sessions.reduce((m,a)=>{const d=(a.cwd||'').replace(/\/+$/,'');if(!d)return m;const cur=m.get(d)||{count:0,last:0,latest:a};cur.count++;if(a.last_at>cur.last){cur.last=a.last_at;cur.latest=a;}return m.set(d,cur);},new Map<string,{count:number;last:number;latest:Activity}>())].sort((x,y)=>y[1].last-x[1].last);
   return <div className="project-hub"><button className="link" onClick={()=>{setQuery('');onProject(null);}}>‹ 全部项目</button><header className="hub-heading"><div><h2>{project.name}{starBtn(project.name)}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p></div><div className="hub-header-actions">{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}<button className="btn primary" onClick={()=>onNew(projectHome(project.sessions))}>在此项目新建会话</button><button className="btn" onClick={()=>onFlag(project.name,{archived:!isArchived(flags,project.name)})} title={isArchived(flags,project.name)?'恢复到工作台和项目列表':'做完了、暂时不用：从工作台和项目列表隐藏，随时可找回'}>{isArchived(flags,project.name)?'取消归档':'归档'}</button></div></header><div className="hub-tabs views">{[['review','项目回顾'],['sessions','会话',project.sessions.filter(a=>!a.scheduled).length],['tasks','任务',project.items.length],['outcomes','成果',project.results.length],['unassigned','待归属任务',unassigned.length],['folders','目录',dirs.length],['docs','文档',docs?docs.length:'…']].map(([id,label,n])=><button className={tab===id?'on':''} key={id} onClick={()=>{setTab(String(id));setEditor(false);}}>{label}{n!=null?` ${n}`:''}</button>)}</div>
-  {tab==='review'&&<ProjectReview api={api} name={project.name} me={me} onOpen={onOpen} onTask={onTask}/>}
-  {tab==='sessions'&&<><div className="hub-tools"><input aria-label="搜索项目会话" placeholder="搜索这个项目的会话…" value={query} onChange={e=>setQuery(e.target.value)}/><button className={`btn sm${archived?' on':''}`} onClick={()=>{setArchived(!archived);setScheduled(false);}} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>{archived?'返回最近会话':`已归档 ${archivedCount}`}</button><button className="btn sm" onClick={()=>{setScheduled(!scheduled);setArchived(false);}}>{scheduled?'返回普通会话':`定时会话 ${project.sessions.filter(a=>a.scheduled).length}`}</button></div><ConversationRows rows={visible} me={me} onOpen={onOpen} onRead={onRead} onSummarize={onSummarize} taskContent={a=>{const linked=project.items.filter(i=>linkedSessions(i).includes(a.session_id));return <details className="conversation-tasks"><summary>会话任务 · {linked.length} 项{linked.length?` · ${linked.filter(i=>i.status==='closed').length} 已完成`:''}</summary>{linked.length?linked.map(taskRow):<p className="muted small">没有明确关联的任务。可在“待归属任务”中指定；聊天里的提及不自动算作归属。</p>}</details>;}}/>{visible.length===0&&<p className="empty">{archived?'没有归档的会话。':'这个分类没有会话。'}</p>}</>}
+  {tab==='review'&&<ProjectReview api={api} data={review} busy={reviewBusy} err={reviewErr} me={me} onOpen={onOpen} onTask={onTask} onReload={loadReview}/>}
+  {tab==='sessions'&&<><div className="hub-tools"><input aria-label="搜索项目会话" placeholder="搜索这个项目的会话…" value={query} onChange={e=>setQuery(e.target.value)}/><button className={`btn sm${archived?' on':''}`} onClick={()=>{setArchived(!archived);setScheduled(false);}} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>{archived?'返回最近会话':`已归档 ${archivedCount}`}</button><button className="btn sm" onClick={()=>{setScheduled(!scheduled);setArchived(false);}}>{scheduled?'返回普通会话':`定时会话 ${project.sessions.filter(a=>a.scheduled).length}`}</button></div><ConversationRows rows={visible} me={me} onOpen={onOpen} onRead={onRead} onSummarize={onSummarize} taskContent={a=>{const linked=project.items.filter(i=>linkedSessions(i).includes(a.session_id));const rev=verdicts.get(a.session_id);return <div className="conversation-tasks-line">{rev?<><span className={`review-verdict${rev.verdict==='别关'?' hold':''}`}>{rev.verdict}</span>{rev.reason&&<span className="muted small">{rev.reason}</span>}</>:null}{linked.length?linked.map(i=><button key={i.id} className="chip" onClick={()=>onTask(i.id)}>{i.title}<span className="muted small"> · {i.status==='closed'?'已完成':i.status==='in_progress'?'进行中':'待办'}</span></button>):<span className="muted small">没有明确关联的任务</span>}</div>;}}/>{visible.length===0&&<p className="empty">{archived?'没有归档的会话。':'这个分类没有会话。'}</p>}</>}
   {(tab==='tasks'||tab==='unassigned')&&<><p className="muted">任务显示发起和参与会话；历史任务没有明确关系时保留待归属，不根据提及次数猜测。</p>{(tab==='unassigned'?unassigned:project.items).map(taskRow)}{tab==='unassigned'&&!unassigned.length&&<p className="empty">任务都已有明确关联。</p>}</>}
   {tab==='folders'&&<><p className="muted">这个项目的会话在哪些文件夹里发生过。</p>{dirs.map(([d,info])=><div className="hub-task hub-dir" key={d}><div className="hub-dir-head"><code title={d}>{short(d)}</code><span className="muted small">{info.count} 个会话 · 最近 {ago(info.last)}</span></div><div className="task-links"><button className="btn sm" onClick={()=>onNew(info.latest)}>在此目录新建会话</button><button className="btn sm" onClick={()=>api.openPath(d).catch(()=>{})}>在 Finder 打开</button><button className="btn sm" onClick={()=>api.copy(`cd '${d}'`).catch(()=>{})}>复制 cd</button></div></div>)}{!dirs.length&&<p className="empty">没有记录到工作目录。</p>}</>}
   {tab==='docs'&&<><ProjectFacts api={api} name={project.name}/><ProjectDocs api={api} name={project.name} docs={docs} onReload={loadDocs}/></>}
