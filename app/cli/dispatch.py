@@ -639,6 +639,32 @@ def drop_echoed_prompt(text, prompt):
     return text
 
 
+def cmd_terminal(a):
+    """A plain shell tab in Herdr at a directory — no agent — brought to the front. What the
+    project page's 「终端」 button does; `--host` opens it in that Mac's Herdr instead."""
+    host = herdr_target_host(a.host)
+    where = host["name"] if host else local_host_name()
+    cwd = os.path.abspath(os.path.expanduser(a.cwd)) if a.cwd and host is None else (a.cwd or "")
+    if host is not None:
+        remote_home = "/Users/" + host["ssh"].split("@")[0] if "@" in host.get("ssh", "") else ""
+        cwd = (cwd or remote_home).replace("~", remote_home, 1) if remote_home else (cwd or "~")
+    elif not cwd or not os.path.isdir(cwd):
+        raise SystemExit(f"目录不存在：{cwd or '（空）'}")
+    targs = ["tab", "create", "--cwd", cwd, "--focus"] + (["--label", a.label] if a.label else [])
+    tab = herdr_ok(herdr(host, targs), "开标签")
+    pane = tab.get("root_pane", {}).get("pane_id") or tab.get("pane_id")
+    tab_id = tab.get("root_pane", {}).get("tab_id") or tab.get("tab_id")
+    app = ""
+    if host is None:
+        table = ps_table()
+        for pid, (_, comm) in table.items():
+            if os.path.basename(comm) == "herdr" and not app:
+                app = host_app_of(pid, table)
+        activate(app or "Ghostty")
+    res = {"host": where, "cwd": cwd, "pane_id": pane, "tab_id": tab_id, "label": a.label or "", "app": app}
+    out(res, a.json, lambda r: print(f"已在 {r['host']} 的 Herdr 开了终端标签 {r['tab_id']}（{r['cwd'].replace(HOME, '~')}）" + (f"，切到 {r['app']}" if r["app"] else "")))
+
+
 def cmd_agent(a):
     host = herdr_target_host(a.host)
     where = host["name"] if host else local_host_name()
@@ -6852,6 +6878,7 @@ def main():
     s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--leader", default="", help="the leader, kind[:model] (added to the members if missing): speaks last each round, writes the conclusion and the document, gets the hand-off by default"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--everyone", action="store_true", help="skip the referee: every member speaks this round (by default, once the members have spoken, a round only wakes who was @'d or named-and-questioned since the last round)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
     s = sub.add_parser("discuss-judge", help="dry run of the discussion referee: who the next round would wake, and why"); s.add_argument("task"); s.add_argument("--with", dest="with_", required=True, help="the members, as for discuss"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_judge)
     s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
+    s = sub.add_parser("terminal", help="在 Herdr 开一个不带 Agent 的终端标签（项目页「终端」按钮）"); s.add_argument("--cwd", default="", help="目录（默认当前目录）"); s.add_argument("--host", default=None, help="hosts.json 里的机器 id 或名字（默认本机）"); s.add_argument("--label", default="", help="标签名"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_terminal)
     s = sub.add_parser("agent", help="hand work to another agent through Herdr: list | start <kind> | ask <target> <text> | read | wait | keys <target> <key…> | close")
     s.add_argument("op", choices=["list", "start", "ask", "read", "wait", "keys", "close"])
     s.add_argument("target_or_kind", nargs="?", help="start: kind (claude|codex|opencode|gemini…); others: pane id / name / title / task id")
