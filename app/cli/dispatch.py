@@ -55,6 +55,13 @@ SQLITE_STORES = {
     "zcode": {"db": ZCODE_DB, "proc": "zcode-cli", "app": "ZCode", "seq": "sequence", "entrypoint": "desktop"},
     "opencode": {"db": os.path.join(HOME, ".local", "share", "opencode", "opencode.db"), "proc": "opencode", "app": "OpenCode", "seq": "id", "entrypoint": "cli"},
 }
+# Hermes Agent (the assistant behind Telegram / 微信 / cron on the Mac mini) keeps every session in one
+# SQLite file too — `sessions` + `messages` (OpenAI-style tool_calls, one `tool` row per result) — but
+# its own schema, so it gets its own readers below. The session's `source` says where it came from.
+HERMES_HOME = os.environ.get("HERMES_HOME") or os.path.join(HOME, ".hermes")
+HERMES_DB = os.path.join(HERMES_HOME, "state.db")
+# source -> (source_kind for the Agent page, app label)
+HERMES_SOURCES = {"cli": ("terminal", "Hermes"), "desktop": ("desktop", "Hermes"), "cron": ("cron", "Hermes 定时"), "telegram": ("chat", "Telegram"), "weixin": ("chat", "微信"), "whatsapp": ("chat", "WhatsApp"), "discord": ("chat", "Discord"), "slack": ("chat", "Slack")}
 RETIRED_AGENTS = frozenset({"qoder", "qoder-ide", "qodercli"})
 PATH_EXTRA = "/opt/homebrew/bin:/usr/local/bin:" + os.path.join(HOME, ".local", "bin")
 
@@ -130,18 +137,50 @@ def zcode_query(sql, params=(), agent="zcode"):
     """Read-only query against ZCode's or OpenCode's SQLite (see SQLITE_STORES); [] when the store
     is missing or the query fails (a table one store does not have, a locked file)."""
     store = SQLITE_STORES.get(agent) or SQLITE_STORES["zcode"]
-    if not os.path.exists(store["db"]):
+    return _sqlite_rows(store["db"], sql.replace("{seq}", store["seq"]), params)
+
+
+def _sqlite_rows(db, sql, params=()):
+    """Rows of a read-only query against another program's SQLite; [] when the file is missing or
+    the query fails (a table it does not have, a locked file)."""
+    if not os.path.exists(db):
         return []
-    sql = sql.replace("{seq}", store["seq"])
     try:
         import sqlite3
-        con = sqlite3.connect(f"file:{store['db']}?mode=ro", uri=True, timeout=2)
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
         con.row_factory = sqlite3.Row
         rows = [dict(r) for r in con.execute(sql, params)]
         con.close()
         return rows
     except Exception:
         return []
+
+
+def hermes_query(sql, params=()):
+    """Read-only query against Hermes Agent's state.db (see HERMES_DB)."""
+    return _sqlite_rows(HERMES_DB, sql, params)
+
+
+def hermes_session_last(r):
+    """When a Hermes session row last moved: its last activity, else its end, else its start (epoch s)."""
+    return float(r.get("last_activity_at") or r.get("ended_at") or r.get("started_at") or 0)
+
+
+def hermes_live(table):
+    """Hermes has no hooks either: while a Hermes process runs (the gateway or an interactive
+    `hermes chat`, both python from ~/.hermes/hermes-agent), a session that is still open and was
+    written to in the last 30 minutes counts as live (working if it wrote within 90 s)."""
+    pids = [pid for pid, (_, comm) in table.items() if "/hermes-agent/" in comm or os.path.basename(comm) == "hermes"]
+    if not pids:
+        return []
+    now = time.time()
+    out = []
+    for r in hermes_query("select id, source, title, cwd, started_at, ended_at, last_activity_at from sessions where parent_session_id is null and ended_at is null and coalesce(last_activity_at, started_at) > ? order by last_activity_at desc", (now - 30 * 60,)):
+        last = hermes_session_last(r)
+        kind, app = HERMES_SOURCES.get(r["source"] or "", ("unknown", "Hermes"))
+        cwd = r["cwd"] or HOME
+        out.append({"agent": "hermes", "session_id": r["id"], "cwd": cwd, "project": os.path.basename(cwd.rstrip("/")), "agent_pid": pids[0], "source_kind": kind, "source_app": app, "entrypoint": r["source"] or "", "started_at": float(r["started_at"] or last), "last_at": last, "state": "working" if now - last < 90 else "idle", "prompts": 0, "alive": True, "registered": True, "title": r["title"] or ""})
+    return out
 
 
 def zcode_live(table):
@@ -428,7 +467,7 @@ def host_rows(local_only=False):
 
 # ---------------------------------------------------------------- hand work to another agent through Herdr
 
-KIND_ACTOR = {"claude": "claude-code", "codex": "codex", "pi": "pi", "opencode": "opencode", "gemini": "gemini", "cursor": "cursor", "kimi": "kimi", "amp": "amp"}
+KIND_ACTOR = {"claude": "claude-code", "codex": "codex", "pi": "pi", "opencode": "opencode", "hermes": "hermes", "gemini": "gemini", "cursor": "cursor", "kimi": "kimi", "amp": "amp"}
 PANE_RE = re.compile(r"^w\d+:p\w+$")
 
 
@@ -872,7 +911,7 @@ def remote_refs():
 
 def live_sessions(local_only=False):
     table = ps_table()
-    sessions = zcode_live(table)
+    sessions = zcode_live(table) + hermes_live(table)
     seen = set()
     seen_sids = set()
     for p in glob.glob(os.path.join(SESS_DIR, "*.json")):
@@ -1206,6 +1245,58 @@ def parse_zcode_stats(e, sid, agent="zcode"):
             e["skills"][r["sk"]] = e["skills"].get(r["sk"], 0) + 1
 
 
+def _hermes_tool_calls(raw):
+    """Hermes stores an assistant turn's tool calls as an OpenAI-style JSON list; yield (id, name, input)."""
+    try:
+        calls = json.loads(raw) if raw else []
+    except Exception:
+        return
+    for tc in calls if isinstance(calls, list) else []:
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = fn.get("name") or tc.get("name") or ""
+        args = fn.get("arguments") if fn else tc.get("arguments")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except Exception:
+                args = {"arguments": args}
+        yield tc.get("id") or tc.get("call_id") or "", name, args if isinstance(args, dict) else {}
+
+
+def parse_hermes_stats(e, r):
+    """Hermes keeps token totals per session (and per model in session_model_usage), not per message:
+    the totals land on the day the session started; messages give the activity by time."""
+    from datetime import datetime as _dt
+    T = e["tokens"]
+    i, o, cr, cw, th = (int(r.get(k) or 0) for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "reasoning_tokens"))
+    T["in"] += i; T["out"] += o; T["cr"] += cr; T["cw"] += cw; T["think"] += th
+    try:
+        start = _dt.fromtimestamp(float(r.get("started_at") or 0))
+    except Exception:
+        start = None
+    if start and i + o + cr + cw:
+        bump_time(e, start, 0, i + o + cr + cw, (i, o, cr, cw))
+    usage = hermes_query("select model, api_call_count from session_model_usage where session_id=?", (r["id"],))
+    for u in usage:
+        if u["model"]:
+            e["models"][u["model"]] = e["models"].get(u["model"], 0) + (u["api_call_count"] or 1)
+    if not usage and r.get("model"):
+        e["models"][r["model"]] = e["models"].get(r["model"], 0) + 1
+    for m in hermes_query("select role, tool_calls, timestamp from messages where session_id=? and role in ('user','assistant')", (r["id"],)):
+        try:
+            dt = _dt.fromtimestamp(float(m["timestamp"]))
+        except Exception:
+            continue
+        bump_time(e, dt, 1, 0)
+        if m["role"] == "assistant" and m["tool_calls"]:
+            for _, name, inp in _hermes_tool_calls(m["tool_calls"]):
+                # Hermes loads a skill by viewing it: skill_view / skills_view {name}.
+                if name in ("skill_view", "skills_view", "skill") and inp.get("name"):
+                    e["skills"][inp["name"]] = e["skills"].get(inp["name"], 0) + 1
+
+
 # Transcripts left by Dispatch's own headless `claude -p` runs (session / project summaries, before they were
 # started with --no-session-persistence): one prompt beginning with the summarizer's system text.
 INTERNAL_PROMPTS = ("你是会话记录的总结者", "你是项目记录的总结者")
@@ -1354,11 +1445,55 @@ def refresh_index():
             e["claims"].append(m.group(1))
         e["size"] = len(blob)
         idx[key] = e
+    # Hermes sessions: one row per session in ~/.hermes/state.db, keyed hermes:<id>. Delegations
+    # (parent_session_id set) are listed under their parent, like Claude Code subagents.
+    for r in hermes_query("select id, source, title, cwd, model, started_at, ended_at, last_activity_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens from sessions where parent_session_id is null"):
+        key = "hermes:" + r["id"]
+        seen.add(key)
+        mtime = hermes_session_last(r)
+        e = idx.get(key)
+        if e and e.get("mtime") == mtime and e.get("stats_v") == STATS_V:
+            continue
+        started = float(r["started_at"] or mtime)
+        e = {"agent": "hermes", "session_id": r["id"], "cwd": r["cwd"] or HOME, "title": r["title"] or "", "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": r["source"] or "", "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": "", "stats_v": STATS_V, **stats_fields()}
+        parse_hermes_stats(e, r)
+        fp = hermes_query("select content from messages where session_id=? and role='user' order by timestamp, id limit 1", (r["id"],))
+        if fp:
+            e["first_prompt"] = _hermes_text(fp[0]["content"]).strip()[:240]
+        for m in hermes_query("select role, count(*) n from messages where session_id=? group by role", (r["id"],)):
+            if m["role"] == "user":
+                e["user_msgs"] = m["n"]
+            elif m["role"] == "assistant":
+                e["assistant_msgs"] = m["n"]
+        for t in hermes_query("select tool_name, count(*) n from messages where session_id=? and role='tool' group by tool_name", (r["id"],)):
+            if t["tool_name"]:
+                e["tools"][t["tool_name"]] = t["n"]
+        blob = "\n".join((m["content"] or "") + "\n" + (m["tool_calls"] or "") for m in hermes_query("select content, tool_calls from messages where session_id=? and role in ('user','assistant')", (r["id"],)))
+        for m in re_task.finditer(blob):
+            e["tasks"][m.group(0)] = e["tasks"].get(m.group(0), 0) + 1
+        for m in re_claim.finditer(blob):
+            e["claims"].append(m.group(1))
+        e["size"] = len(blob)
+        idx[key] = e
     for p in list(idx):
         if p not in seen:
             del idx[p]
     save_index(idx)
     return idx
+
+
+def _hermes_text(content):
+    """A Hermes message's text: plain, or a JSON list of content parts (text / image)."""
+    if not content:
+        return ""
+    if isinstance(content, str) and content.lstrip().startswith("["):
+        try:
+            parts = json.loads(content)
+            if isinstance(parts, list):
+                return "\n".join(p.get("text", "") if isinstance(p, dict) and p.get("type") == "text" else ("[图片]" if isinstance(p, dict) and "image" in str(p.get("type", "")) else "") for p in parts).strip()
+        except Exception:
+            pass
+    return str(content)
 
 
 def _tool_summary(inp):
@@ -1389,7 +1524,7 @@ def resume_command(agent, sid, cwd):
         # ZCode is a desktop app without a resume CLI; the session id identifies it inside the app.
         return f"open -a ZCode  # 会话 {sid}"
     cd = f"cd '{cwd.replace(chr(39), chr(39) + chr(92) + chr(39) + chr(39))}' && " if cwd else ""
-    return f"{cd}{'codex resume' if agent == 'codex' else 'pi --session' if agent == 'pi' else 'opencode --session' if agent == 'opencode' else 'claude --resume'} {sid}"
+    return f"{cd}{'codex resume' if agent == 'codex' else 'pi --session' if agent == 'pi' else 'opencode --session' if agent == 'opencode' else 'hermes chat --resume' if agent == 'hermes' else 'claude --resume'} {sid}"
 
 
 def subagents_of(path):
@@ -1403,6 +1538,10 @@ def subagents_of(path):
         # OpenCode has the child sessions but not ZCode's task-link table.
         rows = zcode_query("select id, title, time_updated from session where parent_id = ? order by time_created", (path[9:],), agent="opencode")
         return [{"agent_id": r["id"], "type": "子会话", "description": r["title"], "tool_use_id": "", "depth": 1, "size": 0, "last_at": r["time_updated"] / 1000, "path": "opencode:" + r["id"]} for r in rows]
+    if path.startswith("hermes:"):
+        # Hermes delegations run as child sessions (sessions.parent_session_id).
+        rows = hermes_query("select id, title, source, started_at, ended_at, last_activity_at from sessions where parent_session_id = ? order by started_at", (path[7:],))
+        return [{"agent_id": r["id"], "type": r["source"] or "子会话", "description": r["title"] or "", "tool_use_id": "", "depth": 1, "size": 0, "last_at": hermes_session_last(r), "path": "hermes:" + r["id"]} for r in rows]
     base = os.path.splitext(path)[0]
     res = []
     for meta in sorted(glob.glob(os.path.join(base, "subagents", "*.meta.json"))):
@@ -1421,7 +1560,7 @@ def ref_of(path, e, task_id=None):
     if e['agent'] == 'codex':
         from activity import codex_titles, user_text
         e = dict(e, title=codex_titles(HOME).get(e['session_id']) or user_text(e.get('title', '')))
-    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": git_root_name(e["cwd"]) or os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode", "opencode") else []}
+    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": git_root_name(e["cwd"]) or os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode", "opencode", "hermes") else []}
 
 
 _KNOWN_IDS = None
@@ -1985,6 +2124,59 @@ def read_zcode_detail(ref, limit, since=None):
     return _finish_detail(ref, tl, limit, since, offset, live=bool(rows) and time.time() - offset / 1000 < RUNNING_GRACE)
 
 
+def _hermes_result_failed(content):
+    """A Hermes tool result is JSON from the tool: {"success": false} or a non-empty "error" means it failed."""
+    try:
+        d = json.loads(content) if content else {}
+    except Exception:
+        return False
+    return isinstance(d, dict) and (d.get("success") is False or bool(d.get("error")))
+
+
+def read_hermes_detail(ref, limit, since=None):
+    """Hermes messages: user / assistant (text + reasoning + OpenAI-style tool_calls) / tool (one row per
+    result, paired by tool_call_id). `since` is the last message id a previous read stopped at."""
+    sid = ref["session_id"]
+    tl = _Timeline()
+    sql = "select id, role, content, tool_calls, tool_call_id, tool_name, timestamp, reasoning, reasoning_content, display_kind from messages where session_id=?"
+    params = [sid]
+    if since:
+        sql += " and id > ?"; params.append(int(since))
+    rows = hermes_query(sql + " order by timestamp, id", tuple(params))
+    offset = int(since or 0)
+    last_ts = 0
+    for r in rows:
+        offset = max(offset, int(r["id"] or 0))
+        if r["role"] not in ("user", "assistant", "tool") or r.get("display_kind") == "hidden":
+            continue
+        last_ts = max(last_ts, float(r["timestamp"] or 0))
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(r["timestamp"] or 0)))
+        if r["role"] == "user":
+            text = _hermes_text(r["content"])
+            if text.strip():
+                tl.add(ts, "user", [{"type": "text", "text": text[:LONG_TEXT]}])
+            continue
+        if r["role"] == "tool":
+            content = r["content"] or ""
+            tl.resolve(r["tool_call_id"], content, _hermes_result_failed(content), ts)
+            continue
+        blocks = []
+        think = (r.get("reasoning") or r.get("reasoning_content") or "").strip()
+        if think:
+            blocks.append(_thinking_block(think))
+        text = _hermes_text(r["content"])
+        if text.strip():
+            blocks.append({"type": "text", "text": text[:LONG_TEXT]})
+        for cid, name, inp in _hermes_tool_calls(r["tool_calls"]):
+            blocks.append(tl.tool(ts, cid, name, inp, _tool_summary(inp)))
+            _tool_file_change(name, inp, ts, tl.files)
+        if blocks:
+            tl.add(ts, "assistant", blocks, mid=str(r["id"]))
+    sess = hermes_query("select ended_at from sessions where id=?", (sid,))
+    open_ = bool(sess) and sess[0]["ended_at"] is None
+    return _finish_detail(ref, tl, limit, since, offset, live=open_ and bool(rows) and time.time() - last_ts < RUNNING_GRACE)
+
+
 def _finish_detail(ref, tl, limit, since, offset, live):
     tl.finish(live)
     msgs = tl.msgs
@@ -2006,6 +2198,8 @@ def read_session_detail(ref, limit=400, since=None):
     already shown) and the new `offset` to continue from."""
     if ref["agent"] in SQLITE_STORES:
         return read_zcode_detail(ref, limit, since)
+    if ref["agent"] == "hermes":
+        return read_hermes_detail(ref, limit, since)
     tl = _Timeline()
     seen_tool_images = []
     path = ref["path"]
@@ -5580,7 +5774,7 @@ def quota_line(actor):
     return f"额度（{actor}）：" + " · ".join(parts) + "。", worst
 
 
-AGENT_ACTORS = {"claude-code", "claude", "codex", "pi", "zcode", "opencode", "cursor"}
+AGENT_ACTORS = {"claude-code", "claude", "codex", "pi", "zcode", "opencode", "hermes", "cursor"}
 
 
 def bd_comments(tid):
@@ -6860,7 +7054,7 @@ def main():
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
-    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
+    s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode | hermes"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--since", type=int, help="只读上次返回的 offset 之后新增的记录（实时 tail）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
@@ -6871,7 +7065,7 @@ def main():
     s = sub.add_parser("done", help="close a task; --next creates follow-ups; --retro writes the retrospective to the wiki"); s.add_argument("task"); s.add_argument("--reason", "-r", required=True); s.add_argument("--verified", action="store_true", help="you actually checked it works; this is not independent peer review"); s.add_argument("--retro", help="复盘：做了什么【技术】用了什么【做对】哪里对了【做错】哪里错了 → wiki retro-<task>"); s.add_argument("--next", nargs="*", help="follow-up task titles"); s.add_argument("--json", action="store_true"); s.add_argument("--review-by", help="request peer review from this Agent, without launching it"); s.set_defaults(fn=cmd_done)
     s = sub.add_parser("review", help="record independent Agent review and its evidence"); s.add_argument("task"); s.add_argument("--verdict", choices=["pass", "changes"], required=True); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("graph", help="task lineage: nodes + typed edges"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_graph)
-    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--local", action="store_true", help="this Mac only (other Macs are merged in by default)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
+    s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode | hermes"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--local", action="store_true", help="this Mac only (other Macs are merged in by default)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("discuss-live", help="what each discussion member is doing right now (the typing bubbles): discussions/<task>.live.json"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_live)
     s = sub.add_parser("discuss-conclude", help="write (replace) the discussion's conclusion — one block in the task's description"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_conclude)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)

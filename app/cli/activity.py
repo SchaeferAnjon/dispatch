@@ -409,6 +409,130 @@ def zcode_sessions(home, db, limit=60, agent='zcode'):
     return rows
 
 
+# Hermes Agent keeps its sessions (CLI chats, Telegram / 微信 turns, cron jobs) in ~/.hermes/state.db:
+# `sessions` + `messages` with OpenAI-style tool_calls and one `tool` row per result.
+HERMES_DB = os.path.join(os.environ.get('HERMES_HOME') or os.path.join(os.path.expanduser('~'), '.hermes'), 'state.db')
+HERMES_PARSER = 1
+
+
+def hermes_text(content):
+    if not content: return ''
+    if content.lstrip().startswith('['):
+        try:
+            parts = json.loads(content)
+            if isinstance(parts, list):
+                return '\n'.join(p.get('text', '') if isinstance(p, dict) and p.get('type') == 'text' else '' for p in parts).strip()
+        except (ValueError, TypeError): pass
+    return str(content)
+
+
+def hermes_tool_calls(raw):
+    try: calls = json.loads(raw) if raw else []
+    except (ValueError, TypeError): return []
+    out = []
+    for tc in calls if isinstance(calls, list) else []:
+        if not isinstance(tc, dict): continue
+        fn = tc.get('function') if isinstance(tc.get('function'), dict) else {}
+        args = fn.get('arguments') if fn else tc.get('arguments')
+        if isinstance(args, str):
+            try: args = json.loads(args)
+            except (ValueError, TypeError): args = {'arguments': args}
+        out.append((tc.get('id') or tc.get('call_id') or '', fn.get('name') or tc.get('name') or '', args if isinstance(args, dict) else {}))
+    return out
+
+
+def hermes_state(z, s, home):
+    sid = s['id']
+    last_at = float(s['last_activity_at'] or s['ended_at'] or s['started_at'] or 0)
+    state = {'parser_version': HERMES_PARSER, 'agent': 'hermes', 'session_id': sid, 'cwd': s['cwd'] or home, 'title': (s['title'] or '')[:100],
+             'last_at': last_at, 'state': 'idle', 'activity': '', 'events': [], 'version': f'0:{s["mid"] or 0}', 'entrypoint': s['source'] or ''}
+    events = state['events']
+    def event(ts, kind, summary, **extra):
+        eid = hashlib.sha256((str(ts) + kind + summary).encode()).hexdigest()[:20]
+        if not any(e['id'] == eid for e in events):
+            events.append(dict(id=eid, ts=ts, kind=kind, text=summary[:400], **extra))
+    pending = {}   # tool call id -> (name, paths)
+    for r in z.execute("SELECT id, role, content, tool_calls, tool_call_id, tool_name, timestamp, display_kind FROM messages WHERE session_id=? AND role IN ('user','assistant','tool') ORDER BY timestamp, id", (sid,)):
+        if r['display_kind'] == 'hidden': continue
+        ts = float(r['timestamp'] or 0)
+        state['last_at'] = max(state['last_at'], ts)
+        if r['role'] == 'user':
+            text = user_text(hermes_text(r['content']))
+            if not text.strip(): continue
+            state['user_at'] = ts
+            remember_topic(state, text)
+            state['state'], state['activity'] = 'working', '正在处理你的消息'
+            if not state.get('title'): state['title'] = text.strip().split('\n')[0][:100]
+            event(ts, 'user', text)
+            continue
+        if r['role'] == 'tool':
+            name, paths = pending.pop(r['tool_call_id'] or '', (r['tool_name'] or '', []))
+            failed = False
+            try:
+                d = json.loads(r['content'] or '{}')
+                failed = isinstance(d, dict) and (d.get('success') is False or bool(d.get('error')))
+            except (ValueError, TypeError): pass
+            event(ts, 'error' if failed else 'result', ('失败 · ' if failed else '已返回 · ') + name, paths=paths)
+            if not failed:
+                for path in paths: state.setdefault('files', {})[path] = ts
+            state['activity'] = '工具执行失败' if failed else f'已执行 · {name}'
+            state['state'] = 'working'
+            continue
+        calls = hermes_tool_calls(r['tool_calls'])
+        text = hermes_text(r['content'])
+        for cid, name, inp in calls:
+            summary = operation_summary(name, inp, json.dumps(inp, ensure_ascii=False))
+            paths = [x for x in [inp.get('path') or inp.get('file_path') or inp.get('filePath')] if x] if any(w in name.lower() for w in ('write', 'edit', 'patch')) else []
+            pending[cid] = (name, paths)
+            event(ts, 'tool', summary, tool=name, paths=paths)
+            state['activity'] = f'{name} · {summary[:160]}'
+            state['state'] = 'working'
+        # A turn is over when the model answered without asking for another tool.
+        finished = not calls
+        if text.strip():
+            event(ts, 'reply' if finished else 'message', text)
+            if finished:
+                digest = hashlib.sha256(text.encode()).hexdigest()[:20]
+                if digest != state.get('reply_digest') or state.get('user_at', 0) > state.get('reply_at', 0):
+                    state.update(reply_id=f'{ts}:{digest}', reply_at=ts, reply_digest=digest, reply_preview=text[:280])
+            state['activity'] = '已回复' if finished else '正在回复'
+        if finished:
+            state['state'] = 'idle'
+            if not text.strip(): state['activity'] = '本轮已结束'
+    if s['ended_at']:
+        state['state'] = 'idle'
+        if state['activity'] in ('', '正在处理你的消息'): state['activity'] = '本轮已结束'
+    state['events'] = events[-80:]
+    return state
+
+
+def hermes_sessions(home, db, limit=60):
+    path = HERMES_DB if home == os.path.expanduser('~') else os.path.join(home, '.hermes', 'state.db')
+    if not os.path.exists(path): return []
+    try:
+        z = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=2)
+        z.row_factory = sqlite3.Row
+    except sqlite3.Error: return []
+    rows = []
+    with closing(z):
+        try:
+            sessions = z.execute('SELECT s.id, s.source, s.title, s.cwd, s.started_at, s.ended_at, s.last_activity_at, (SELECT max(id) FROM messages m WHERE m.session_id = s.id) mid FROM sessions s WHERE s.parent_session_id IS NULL ORDER BY coalesce(s.last_activity_at, s.ended_at, s.started_at) DESC LIMIT ?', (limit,)).fetchall()
+        except sqlite3.Error: return []
+        for s in sessions:
+            key = f'hermes:{s["id"]}'
+            version = int(s['mid'] or 0) * 2 + (1 if s['ended_at'] else 0)  # a new message or the session closing invalidates the cache
+            cached = db.execute('SELECT off,data FROM streams WHERE path=?', (key,)).fetchone()
+            if cached and cached[0] == version:
+                state = json.loads(cached[1])
+                if state.get('parser_version') == HERMES_PARSER:
+                    rows.append(state); continue
+            try: state = hermes_state(z, s, home)
+            except sqlite3.Error: continue
+            db.execute('INSERT OR REPLACE INTO streams VALUES (?,?,?,?,?)', (key, 0, version, state['last_at'], json.dumps(state, ensure_ascii=False)))
+            rows.append(state)
+    return rows
+
+
 def transcript_states(directory, session_ids):
     """What each transcript last said about a session: {session_id: (state, last_at)}.
     Read from the parsed-stream cache, so this costs one small query per session."""
@@ -462,7 +586,7 @@ def activity_list(home, directory, index):
             s['tasks'] = list(e.get('tasks', {}))
             s['path'] = path
             s['project'] = os.path.basename(s.get('cwd', ''))
-            s['entrypoint'] = e.get('entrypoint', '')
+            s['entrypoint'] = e.get('entrypoint') or s.get('entrypoint', '')
             s['key'] = s['agent'] + ':' + s['session_id']
             prefs = db.execute('SELECT data FROM session_preferences WHERE key=?', (s['key'],)).fetchone()
             s.update(json.loads(prefs[0]) if prefs else {})
@@ -485,6 +609,8 @@ def activity_list(home, directory, index):
         for agent in SQLITE_STORES:
             for s in zcode_sessions(home, db, agent=agent):
                 if s.get('last_at'): decorate(dict(s), f'{agent}:{s["session_id"]}', agent)
+        for s in hermes_sessions(home, db):
+            if s.get('last_at'): decorate(dict(s), f'hermes:{s["session_id"]}', 'hermes')
     # A resumed Codex task can have more than one rollout file with the same id.
     # Keep its newest observation; duplicate React keys otherwise accumulate rows.
     unique = {}

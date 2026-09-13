@@ -140,7 +140,7 @@ export interface Info {
   initial_task?: string | null;
 }
 
-export type SourceKind = "terminal" | "desktop" | "editor" | "unknown";
+export type SourceKind = "terminal" | "desktop" | "editor" | "chat" | "cron" | "unknown";
 export interface Session {
   agent: string;
   session_id: string;

@@ -5,7 +5,7 @@ import type { Host } from '../types';
 type Target = { session_id: string; agent: string; host?: string; host_name?: string };
 interface Launch { request_id: string; state: string; message: string; session_id?: string; agent: string; cwd: string }
 interface Folders { path: string; parent: string; children: { name: string; path: string }[]; recent: string[]; truncated: boolean }
-const names: Record<string,string> = { codex: 'Codex', 'claude-code': 'Claude Code', pi: 'pi', zcode: 'ZCode', opencode: 'OpenCode' };
+const names: Record<string,string> = { codex: 'Codex', 'claude-code': 'Claude Code', pi: 'pi', zcode: 'ZCode', opencode: 'OpenCode', hermes: 'Hermes' };
 const id = () => {
   const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
   const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
@@ -46,7 +46,7 @@ export function OpenSessionButton({ session, compact = false }: { session: Targe
   const ctx = useContext(Context);
   const [busy, setBusy] = useState(false);
   const request = useRef<string | null>(null);
-  const supported = ['codex', 'claude-code', 'pi', 'zcode', 'opencode'].includes(session.agent) && !session.session_id.startsWith('pid-');
+  const supported = ['codex', 'claude-code', 'pi', 'zcode', 'opencode', 'hermes'].includes(session.agent) && !session.session_id.startsWith('pid-');
   const open = async () => {
     if (!ctx?.api || busy) return;
     setBusy(true);

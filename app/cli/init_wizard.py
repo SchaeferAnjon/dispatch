@@ -37,6 +37,7 @@ AGENT_HOMES = {
     "zcode": ("ZCode", os.path.join(D.HOME, ".zcode")),
     "gemini": ("Gemini CLI", os.path.join(D.HOME, ".gemini")),
     "opencode": ("OpenCode", os.path.join(D.HOME, ".config", "opencode")),
+    "hermes": ("Hermes", os.environ.get("HERMES_HOME") or os.path.join(D.HOME, ".hermes")),
 }
 DEPS = [
     # name, binary, brew formula/cask, why, required
@@ -911,7 +912,7 @@ def rules_setup(mode=None, target=None):
 # ---------------------------------------------------------------- review
 
 # Which agents can be handed the review: those with a CLI Herdr can drive.
-REVIEW_KINDS = {"claude-code": "claude", "codex": "codex", "pi": "pi", "gemini": "gemini", "opencode": "opencode"}
+REVIEW_KINDS = {"claude-code": "claude", "codex": "codex", "pi": "pi", "gemini": "gemini", "opencode": "opencode", "hermes": "hermes"}
 
 
 def review_agents():

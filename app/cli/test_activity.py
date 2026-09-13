@@ -87,6 +87,47 @@ class ActivityTests(unittest.TestCase):
         self.assertEqual([(r['agent'], r['key'], r['project'], r['title']) for r in rows], [('opencode', 'opencode:ses_oc1', 'atrium', 'Greeting')])
         self.assertEqual((rows[0]['state'], rows[0]['unread'], rows[0]['reply_preview']), ('idle', True, '你好！有什么可以帮你的？'))
 
+    def hermes(self, sessions, messages):
+        """A miniature Hermes state.db (~/.hermes/state.db): sessions + messages, OpenAI-style tool_calls."""
+        import sqlite3
+        path = os.path.join(self.home, '.hermes', 'state.db')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        z = sqlite3.connect(path)
+        z.executescript('CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, source TEXT, title TEXT, cwd TEXT, model TEXT, parent_session_id TEXT, started_at REAL, ended_at REAL, last_activity_at REAL, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER);'
+                        'CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL, reasoning TEXT, reasoning_content TEXT, display_kind TEXT);')
+        for s in sessions:
+            z.execute('INSERT OR REPLACE INTO sessions (id, source, title, cwd, model, parent_session_id, started_at, ended_at, last_activity_at) VALUES (?,?,?,?,?,?,?,?,?)', (s['id'], s.get('source', 'cli'), s.get('title', ''), s.get('cwd', ''), 'glm', s.get('parent'), s['at'], s.get('ended'), s.get('last', s['at'])))
+        for m in messages:
+            z.execute('INSERT INTO messages (session_id, role, content, tool_call_id, tool_calls, tool_name, timestamp) VALUES (?,?,?,?,?,?,?)', (m['sid'], m['role'], m.get('content', ''), m.get('call_id'), json.dumps(m['calls']) if m.get('calls') else None, m.get('tool'), m['at']))
+        z.commit(); z.close()
+
+    def test_hermes_sessions_join_the_activity_list_from_state_db(self):
+        """Hermes (~/.hermes/state.db) rows read like ZCode's: tool calls pair with their result rows, a
+        reply without tool calls ends the turn, cron sessions carry entrypoint cron."""
+        t = self.t
+        call = [{'id': 'c1', 'type': 'function', 'function': {'name': 'terminal', 'arguments': json.dumps({'command': 'ls ~/Schaefer_Master'})}}]
+        self.hermes([{'id': 'h1', 'source': 'cli', 'title': '找一篇笔记', 'cwd': '/tmp/atrium', 'at': t - 60, 'last': t},
+                     {'id': 'cron_1', 'source': 'cron', 'title': 'flomo 存档 · 02:00', 'at': t - 300, 'ended': t - 240, 'last': t - 240}],
+                    [{'sid': 'h1', 'role': 'user', 'content': '我库里那篇海德堡的秋天在哪', 'at': t - 60},
+                     {'sid': 'h1', 'role': 'assistant', 'content': '我来找。', 'calls': call, 'at': t - 50},
+                     {'sid': 'h1', 'role': 'tool', 'content': json.dumps({'output': '60-Creative/秋天.canvas'}), 'call_id': 'c1', 'tool': 'terminal', 'at': t - 40},
+                     {'sid': 'h1', 'role': 'assistant', 'content': '在 60-Creative/秋天.canvas。', 'at': t},
+                     {'sid': 'cron_1', 'role': 'user', 'content': '把 flomo 新笔记存档', 'at': t - 300},
+                     {'sid': 'cron_1', 'role': 'assistant', 'content': '已存档 3 条。', 'at': t - 240}])
+        rows = sorted(activity_list(self.home, self.store, {}), key=lambda r: r['key'])
+        self.assertEqual([(r['agent'], r['key'], r['project'], r['title'], r['entrypoint']) for r in rows],
+                         [('hermes', 'hermes:cron_1', os.path.basename(self.home), 'flomo 存档 · 02:00', 'cron'), ('hermes', 'hermes:h1', 'atrium', '找一篇笔记', 'cli')])
+        h1 = rows[1]
+        self.assertEqual((h1['state'], h1['activity'], h1['unread'], h1['reply_preview']), ('idle', '已回复', True, '在 60-Creative/秋天.canvas。'))
+        self.assertEqual([e['kind'] for e in h1['events']], ['user', 'tool', 'message', 'result', 'reply'])
+        self.assertTrue(any(e['kind'] == 'tool' and e['text'].startswith('运行命令 · ls') for e in h1['events']))
+        acknowledge(self.store, h1['key'], h1['reply_id'])
+        self.assertFalse(next(r for r in activity_list(self.home, self.store, {}) if r['key'] == 'hermes:h1')['unread'])
+        # A new message invalidates the cached parse.
+        self.hermes([], [{'sid': 'h1', 'role': 'user', 'content': '打开它', 'at': t + 1}])
+        h1 = next(r for r in activity_list(self.home, self.store, {}) if r['key'] == 'hermes:h1')
+        self.assertEqual((h1['state'], h1['activity']), ('working', '正在处理你的消息'))
+
     def presence(self, sid, pid, state='working', last_at=None):
         folder = os.path.join(self.store, 'sessions'); os.makedirs(folder, exist_ok=True)
         with open(os.path.join(folder, f'claude-code__{sid}.json'), 'w') as f:

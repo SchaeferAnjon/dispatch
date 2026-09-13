@@ -185,6 +185,36 @@ class SessionDetailBlocks(unittest.TestCase):
         self.assertEqual([x["type"] for x in b], ["thinking", "tool_call"])
         self.assertEqual((b[1]["status"], b[1]["result"], b[1]["summary"]), ("done", "/x", "pwd"))
 
+    def test_hermes_resumes_with_hermes_chat(self):
+        self.assertEqual(dispatch.resume_command("hermes", "20260907_220548_54ce4c", "/x"), "cd '/x' && hermes chat --resume 20260907_220548_54ce4c")
+
+    def test_hermes_messages_pair_tool_results_by_call_id(self):
+        call = json.dumps([{"id": "c1", "type": "function", "function": {"name": "write_file", "arguments": json.dumps({"path": "/x/a.md", "content": "hi"})}}])
+        msgs = [
+            {"id": 1, "role": "user", "content": "写个文件", "tool_calls": None, "tool_call_id": None, "tool_name": None, "timestamp": 1000.0, "reasoning": None, "reasoning_content": None, "display_kind": None},
+            {"id": 2, "role": "assistant", "content": "", "tool_calls": call, "tool_call_id": None, "tool_name": None, "timestamp": 1001.0, "reasoning": "先写再说", "reasoning_content": None, "display_kind": None},
+            {"id": 3, "role": "tool", "content": json.dumps({"success": True, "output": "written"}), "tool_calls": None, "tool_call_id": "c1", "tool_name": "write_file", "timestamp": 1002.0, "reasoning": None, "reasoning_content": None, "display_kind": None},
+            {"id": 4, "role": "assistant", "content": "写好了", "tool_calls": None, "tool_call_id": None, "tool_name": None, "timestamp": 1003.0, "reasoning": None, "reasoning_content": None, "display_kind": None},
+        ]
+        orig = dispatch.hermes_query
+        def fake(sql, params=()):
+            if sql.startswith("select ended_at"):
+                return [{"ended_at": 1003.0}]
+            return [m for m in msgs if "id > ?" not in sql or m["id"] > params[1]]
+        dispatch.hermes_query = fake
+        try:
+            d = dispatch.read_hermes_detail({"agent": "hermes", "session_id": "s", "cwd": "/x"}, 400)
+            self.assertEqual([m["role"] for m in d["messages"]], ["user", "assistant", "assistant"])
+            b = d["messages"][1]["blocks"]
+            self.assertEqual([x["type"] for x in b], ["thinking", "tool_call"])
+            self.assertEqual((b[1]["name"], b[1]["status"], b[1]["result"], b[1]["summary"]), ("write_file", "done", '{"success": true, "output": "written"}', "/x/a.md"))
+            self.assertEqual([f["path"] for f in d["files"]], ["/x/a.md"])
+            self.assertEqual(d["offset"], 4)
+            d2 = dispatch.read_hermes_detail({"agent": "hermes", "session_id": "s", "cwd": "/x"}, 400, since=2)
+            self.assertEqual(([m["role"] for m in d2["messages"]], [r["id"] for r in d2["resolved"]]), (["assistant"], ["c1"]))
+        finally:
+            dispatch.hermes_query = orig
+
     def test_zcode_parts_become_blocks_with_their_own_status(self):
         rows = [
             {"pdata": json.dumps({"type": "text", "text": "改一下", "messageID": "u1"}), "mdata": json.dumps({"role": "user", "id": "u1"}), "ts": 1000, "tu": 1000},

@@ -95,7 +95,7 @@ describe("agent presence", () => {
   const s = (over: Partial<Session>): Session => ({ agent: "claude-code", session_id: "s", cwd: "/x", project: "x", agent_pid: 1, source_kind: "terminal", source_app: "Herdr", entrypoint: "cli", started_at: 0, last_at: 0, state: "idle", prompts: 0, alive: true, registered: true, ...over });
   it("old presence records cannot restore retired integrations", () => {
     const a = agentsFrom([], "schaefer", [s({agent: "qoder"}), s({agent: "qoder-ide"}), s({agent: "codex"})]);
-    expect(a.map(x => x.actor.id).sort()).toEqual(["claude-code", "codex", "opencode", "pi", "zcode"]);
+    expect(a.map(x => x.actor.id).sort()).toEqual(["claude-code", "codex", "hermes", "opencode", "pi", "zcode"]);
     expect(a.find(x => x.actor.id === "codex")?.online).toBe(true);
   });
   it("groups live sessions by source and marks the agent online", () => {

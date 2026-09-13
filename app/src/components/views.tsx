@@ -153,7 +153,7 @@ export function TableView({ issues, selected, onSelect, me, rootOf, starred = ne
   );
 }
 
-const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", unknown: "?" };
+const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", chat: "✉", cron: "⏱", unknown: "?" };
 
 export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFocus, refs, hosts, onOpenUrl, onCopyText, onDelegate , onPhoneLink }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; issues: Issue[]; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onDelegate: (host: Host) => void ; onPhoneLink?: () => void }) {
   useItemMenu("host", (id) => {
@@ -217,7 +217,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
           {!isHuman && (
             <div className="sessions">
               <div className="src-row">
-                {a.bySource.length === 0 && <span className="muted">没有检测到会话{a.actor.kind === "zcode" ? "（ZCode 没开，或 30 分钟内没有会话活动）" : a.actor.kind === "opencode" ? "（没有在跑的 opencode 进程，或 30 分钟内没有会话活动）" : ""}</span>}
+                {a.bySource.length === 0 && <span className="muted">没有检测到会话{a.actor.kind === "zcode" ? "（ZCode 没开，或 30 分钟内没有会话活动）" : a.actor.kind === "opencode" ? "（没有在跑的 opencode 进程，或 30 分钟内没有会话活动）" : a.actor.kind === "hermes" ? "（这台电脑上没有在跑的 Hermes，或 30 分钟内没有未结束的会话）" : ""}</span>}
                 {a.bySource.map((b) => (
                   <span key={b.label} className={`chip src ${b.kind}`} title={SOURCE_LABEL[b.kind]}>
                     <span className="ic">{SOURCE_ICON[b.kind]}</span>{SOURCE_LABEL[b.kind]}{b.label && b.label !== SOURCE_LABEL[b.kind] ? ` · ${b.label}` : ""} <b>{b.count}</b>{b.working ? <span className="pulse" title="在跑" /> : null}

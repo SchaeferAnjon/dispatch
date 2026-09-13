@@ -12,7 +12,7 @@ export const DISCUSSION_LABEL = "dispatch:discussion";
 const MODELS: Record<string, [string, string][]> = {
   claude: [["", "默认"], ["claude-fable-5-1", "Fable 5.1（最强）"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku（快、省）"]],
   codex: [["", "默认"], ["gpt-5.5", "gpt-5.5"], ["gpt-5.6-terra", "gpt-5.6-terra"], ["gpt-6-astra", "gpt-6-astra"]],
-  pi: [["", "默认"]], gemini: [["", "默认"]], opencode: [["", "默认"]],
+  pi: [["", "默认"]], gemini: [["", "默认"]], opencode: [["", "默认"]], hermes: [["", "默认"]],
 };
 export type Participant = { kind: string; model: string };
 export const partArg = (p: Participant) => p.model ? `${p.kind}:${p.model}` : p.kind;

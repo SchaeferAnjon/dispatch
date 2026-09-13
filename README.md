@@ -46,7 +46,7 @@ npm run tauri build
 1. **装依赖** —— 检测并安装 Dolt、Beads、Herdr，缺哪个点哪个。
 2. **终端命令** —— 把 `dispatch` 链接到 `~/.local/bin/dispatch`，之后终端里直接可用。也可以手动：`ln -sf /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py ~/.local/bin/dispatch`。
 3. **任务板** —— 第一台机器选「只有这一台，或这是第一台」新建任务板，这台成为枢纽；已有一台装了 Dispatch 就选「接入它的任务板」并填那台的 `用户名@地址`（见下一节）。
-4. **Agent** —— 勾选这台电脑上要用的 Agent（Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode），并确认 Herdr 在跑。
+4. **Agent** —— 勾选这台电脑上要用的 Agent（Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes），并确认 Herdr 在跑。
 5. **规则与技能** —— 准备共同规则 `~/.agents/rules/GLOBAL.md` 并同步到各 Agent，同时把技能池挂到它们下面。
 6. **审查优化**（可选）—— 派一个 Agent 审查规则与技能并给出建议。
 
@@ -122,6 +122,7 @@ dispatch prime                          # 会话启动注入：身份、本项�
 - **统一的项目规则**：会话归属按一条规则解析：手动关联 > 家目录（不归项目） > `~/Projects/<名>/…` > 路径里出现任务板已知的项目名 > 目录名。侧栏计数、工作台、项目页、搜索用同一份列表。
 - **明确归属**：任务与会话的关系只认 `session:` / `session-origin:` 标签。对话里提到任务 ID、同一个 Agent、同一个目录都不算归属，只作为折叠的参考信息。
 - **OpenCode 与 ZCode 会话**：两者都把对话存在各自的 SQLite（`~/.local/share/opencode/opencode.db`、`~/.zcode/cli/db/db.sqlite`）里，Dispatch 直接读它们：会话列表、工作台、等我、Agent 状态里都能看到，进程在跑且最近有写入就算活会话，会话页能看完整对话；OpenCode 的会话可用 `opencode --session <id>` 续上。
+- **Hermes 会话**：Hermes Agent（Telegram / 微信 / 定时任务背后的助手）把每段会话存在 `~/.hermes/state.db`，Dispatch 直接读它：会话列表、工作台、等我、统计、Agent 页里都当独立 Agent `hermes`；来源（终端 / 聊天 / 定时）显示在 Agent 页，cron 跑出来的会话自动算定时会话；`hermes chat --resume <id>` 续上。
 - **脉络页**：节点 + 连线的图：任务 → 发起它的会话（粗线主线；一个会话顺带做的其他任务画细虚线）→ 进展 / 完成 / 提交按时间从左到右。节点名就是任务标题、会话标题、进展原文首句，不缩写；悬停或选中一个节点整条线高亮，右栏看详情。「清单」页签是同一份数据的树。
 - **成果追溯**：成果有独立内容和入口，可以关联多个任务与会话；历史完成说明单独保留，不要求用户逐个点击审核。成果与回收站任务不进入脉络图。
 - **等我**：红点和系统通知只算未读回复和等待确认；被卡住的任务、Agent 互审、定时会话都不计入。正在跑的会话不算未读。

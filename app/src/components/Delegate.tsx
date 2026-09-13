@@ -6,8 +6,8 @@ import type { Host, Issue } from "../types";
 
 // 派活: start an agent on a machine through Herdr, optionally handing it a task it
 // claims as its own, and send it the first prompt.
-export const KINDS: [string, string][] = [["claude", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["gemini", "Gemini CLI"], ["opencode", "OpenCode"]];
-export const KIND_ACTOR: Record<string, string> = { claude: "claude-code", codex: "codex", pi: "pi", opencode: "opencode", gemini: "gemini" };
+export const KINDS: [string, string][] = [["claude", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["gemini", "Gemini CLI"], ["opencode", "OpenCode"], ["hermes", "Hermes"]];
+export const KIND_ACTOR: Record<string, string> = { claude: "claude-code", codex: "codex", pi: "pi", opencode: "opencode", hermes: "hermes", gemini: "gemini" };
 
 interface Props {
   api?: Api;

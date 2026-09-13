@@ -7,8 +7,8 @@ import { InsightsCard } from "./Insights";
 interface Props { api: Api; me: string; host?: string; hostName?: string; onDone?: (m: string) => void; onError: (m: string) => void; onStart?: (input: AgentStartInput) => Promise<unknown>; onDelegate?: (prompt: string, label: string) => void; onOpenSession?: (id: string) => void }
 const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 
-const AGENTS = ["claude-code", "codex", "pi", "zcode", "opencode"];
-const COLOR: Record<string, string> = { "claude-code": "var(--claude)", codex: "var(--codex)", pi: "var(--pi)", zcode: "var(--cursor)", opencode: "var(--opencode)" };
+const AGENTS = ["claude-code", "codex", "pi", "zcode", "opencode", "hermes"];
+const COLOR: Record<string, string> = { "claude-code": "var(--claude)", codex: "var(--codex)", pi: "var(--pi)", zcode: "var(--cursor)", opencode: "var(--opencode)", hermes: "var(--hermes)" };
 const RANGES: [number, string][] = [[7, "7 天"], [30, "30 天"], [90, "90 天"], [365, "一年"], [0, "全部"]];
 const WD = ["一", "二", "三", "四", "五", "六", "日"];
 

@@ -16,7 +16,7 @@ interface MemorySummary {
 }
 type Sel = { kind: "entry"; path: string } | { kind: "project"; agent: string; project: string } | null;
 
-const AGENT_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", zcode: "ZCode" };
+const AGENT_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", zcode: "ZCode", hermes: "Hermes" };
 const short = (p: string) => p.replace(/^\/(Users|home)\/[^/]+/, "~");
 const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
 const fmtSize = (n: number) => n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;

@@ -8,9 +8,12 @@ CLI call here (`bd … --json` / `dispatch … --json`), exactly like the Tauri 
     dispatch serve qr         # the same URL as a scannable QR in the terminal
     dispatch serve qr --svg   # the QR as SVG (the settings page embeds it)
 
-Config: ~/tasks/.dispatch/serve.json {token, bind, port, actor}. Binds to the Tailscale
-address by default (fallback: LAN address); never to 0.0.0.0 unless bind says so.
+Config: ~/tasks/.dispatch/serve.json {token, bind, port, actor, phone_host}. Binds to the
+Tailscale address by default (fallback: LAN address); never to 0.0.0.0 unless bind says so.
 Auth: Bearer token or the cookie set by opening /?token=… once (the PWA keeps it).
+phone_host: a hosts.json id/name — `serve url` / `serve qr` then hand out THAT Mac's link
+(asked over ssh, so it self-heals there too). Set it to the always-on Mac when this one
+travels; the local daemon keeps running as a fallback.
 """
 import json, os, re, secrets, subprocess, sys, time, urllib.parse
 from http import HTTPStatus
@@ -385,27 +388,56 @@ def ensure_reachable(conf, ip):
     raise SystemExit(f"网页版服务重启后仍连不上 {ip}:{port}，看 /tmp/dispatch-serve.log")
 
 
+def phone_url(conf, ip):
+    """The link the phone should open: this Mac's, or the phone_host's when configured
+    (the always-on Mac). Falls back to the local link, with a note, when that Mac is down."""
+    target = conf.get("phone_host")
+    if target:
+        sys.path.insert(0, HERE)
+        import dispatch as d
+        h = next((x for x in d.hosts() if target in (x["id"], x["name"])), None)
+        if h is None:
+            print(f"serve.json 的 phone_host={target} 不在 hosts.json 里，先用本机链接", file=sys.stderr, flush=True)
+        else:
+            cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} serve url"
+            try:
+                r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", h["ssh"], cmd], capture_output=True, text=True, timeout=25)
+                u = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
+                if r.returncode == 0 and u.startswith("http"):
+                    return u
+                print(f"{h['name']} 上的网页版拿不到链接（{(r.stderr or r.stdout).strip()[:200]}），先用本机链接", file=sys.stderr, flush=True)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                print(f"连不上 {h['name']}（{e}），先用本机链接", file=sys.stderr, flush=True)
+    try:
+        ensure_reachable(conf, ip)
+    except SystemExit as e:
+        if not target:
+            raise
+        print(e, file=sys.stderr, flush=True)
+    return url(conf, ip)
+
+
 def main():
     conf = load_conf()
     ip = bind_address(conf, wait=0 if len(sys.argv) > 1 else 60)
     if len(sys.argv) > 1 and sys.argv[1] == "url":
-        ensure_reachable(conf, ip)
-        print(url(conf, ip))
+        print(phone_url(conf, ip))
         return
     if len(sys.argv) > 1 and sys.argv[1] == "qr":
         # The settings page embeds the same QR as SVG; the terminal gets half blocks.
         try:
-            ensure_reachable(conf, ip)
+            u = phone_url(conf, ip)
         except SystemExit as e:
             print(e, file=sys.stderr, flush=True)  # the QR is still worth showing
+            u = url(conf, ip)
         sys.path.insert(0, HERE)
         import qr as qrlib
-        code = qrlib.matrix(url(conf, ip))
+        code = qrlib.matrix(u)
         if "--svg" in sys.argv[2:]:
             print(qrlib.render_svg(code))
         else:
             print(qrlib.render_blocks(code))
-            print(f"\n手机相机扫这个二维码，或在手机上打开：{url(conf, ip)}")
+            print(f"\n手机相机扫这个二维码，或在手机上打开：{u}")
         return
     if not os.path.isfile(os.path.join(DIST, "index.html")):
         sys.exit(f"没有构建产物 {DIST}/index.html：先在 app/ 里 npm run build")

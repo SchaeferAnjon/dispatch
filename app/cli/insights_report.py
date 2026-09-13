@@ -282,7 +282,7 @@ def _fmt_tok(n):
     return f"{n / 1e9:.2f}B" if n >= 1e9 else f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}K" if n >= 1e3 else str(int(n))
 
 
-AGENT_COLOR = {"claude-code": "#c8693a", "codex": "#2f7d6b", "zcode": "#6b5bd6", "opencode": "#3b6fb6", "pi": "#5a7d2f"}
+AGENT_COLOR = {"claude-code": "#c8693a", "codex": "#2f7d6b", "zcode": "#6b5bd6", "opencode": "#3b6fb6", "hermes": "#8a6d3b", "pi": "#5a7d2f"}
 
 
 def svg_bars(rows, fmt=str, width=560, color=None):

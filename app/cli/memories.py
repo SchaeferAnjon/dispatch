@@ -14,6 +14,8 @@ MEMORY_STORES = [
     ("claude-code", os.path.join(D.HOME, ".claude", "projects", "*", "memory", "*.md")),
     ("codex", os.path.join(D.HOME, ".codex", "memories", "raw_memories.md")),
     ("zcode", os.path.join(D.HOME, ".zcode", "cli", "memories", "projects", "*", "memory", "*.md")),
+    # Hermes keeps two global files: MEMORY.md (what it learned) and USER.md (about the person).
+    ("hermes", os.path.join(os.environ.get("HERMES_HOME") or os.path.join(D.HOME, ".hermes"), "memories", "*.md")),
 ]
 
 
@@ -56,7 +58,7 @@ def claude_decode_dir(enc, base="/", depth=0):
 
 
 def memory_project(agent, path, known):
-    if agent == "codex":
+    if agent in ("codex", "hermes"):
         return "全局"
     folder = os.path.basename(os.path.dirname(os.path.dirname(path)))
     if agent == "zcode":
@@ -213,7 +215,7 @@ def memory_entries():
                 continue
             fields, body = parse_frontmatter(text)
             folder = os.path.basename(os.path.dirname(os.path.dirname(path)))
-            project, project_dir, expired = _memory_location(agent, folder, known, zdirs, names, roots)
+            project, project_dir, expired = ("通用", "", False) if agent == "hermes" else _memory_location(agent, folder, known, zdirs, names, roots)
             rows.append({
                 "id": "file:" + path, "agent": agent, "project": project, "project_dir": project_dir,
                 "expired": expired, "path": path,

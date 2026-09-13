@@ -10,7 +10,7 @@ export function durSince(epochSec: number): string {
   return `${Math.floor(h / 24)} 天`;
 }
 
-export type AgentKind = "claude" | "codex" | "zcode" | "opencode" | "cursor" | "human" | "pi";
+export type AgentKind = "claude" | "codex" | "zcode" | "opencode" | "hermes" | "cursor" | "human" | "pi";
 export interface Actor { id: string; name: string; kind: AgentKind; glyph: string }
 
 const KNOWN: Record<string, Omit<Actor, "id">> = {
@@ -19,10 +19,11 @@ const KNOWN: Record<string, Omit<Actor, "id">> = {
   codex: { name: "Codex", kind: "codex", glyph: "X" },
   zcode: { name: "ZCode", kind: "zcode", glyph: "Z" },
   opencode: { name: "OpenCode", kind: "opencode", glyph: "O" },
+  hermes: { name: "Hermes", kind: "hermes", glyph: "H" },
   pi: { name: "pi", kind: "pi", glyph: "π" },
   cursor: { name: "Cursor", kind: "cursor", glyph: "U" },
 };
-export const DEFAULT_AGENTS = ["claude-code", "codex", "pi", "zcode", "opencode"];
+export const DEFAULT_AGENTS = ["claude-code", "codex", "pi", "zcode", "opencode", "hermes"];
 // Ignore retired integrations in old task and presence records.
 const RETIRED_AGENTS = new Set(["qoder", "qoder-ide", "qodercli"]);
 // Desktop-only agents: no CLI to resume from, the app has to be brought up instead.
@@ -119,7 +120,7 @@ export interface AgentPresence {
   sessions: Session[];
   bySource: { kind: SourceKind; label: string; count: number; working: number }[];
 }
-export const SOURCE_LABEL: Record<SourceKind, string> = { terminal: "终端", desktop: "桌面端", editor: "编辑器", unknown: "来源未知" };
+export const SOURCE_LABEL: Record<SourceKind, string> = { terminal: "终端", desktop: "桌面端", editor: "编辑器", chat: "聊天", cron: "定时任务", unknown: "来源未知" };
 const ONLINE_WINDOW_MIN = 30;
 export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []): AgentPresence[] {
   const map = new Map<string, AgentPresence>();
@@ -167,7 +168,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
     p.online = p.sessions.length > 0 || (p.actor.kind !== "human" && p.sessions.length === 0 && recentWrite && p.actor.kind === "cursor");
     p.current.sort((a, b) => a.priority - b.priority);
   }
-  const order: Record<AgentKind, number> = { claude: 0, codex: 1, pi: 2, zcode: 3, opencode: 4, human: 5, cursor: 6 };
+  const order: Record<AgentKind, number> = { claude: 0, codex: 1, pi: 2, zcode: 3, opencode: 4, hermes: 5, human: 6, cursor: 7 };
   // The human is not an agent: only list them while they actually hold an in-progress task.
   return [...map.values()]
     .filter((p) => p.actor.kind !== "human" || p.current.length > 0)
