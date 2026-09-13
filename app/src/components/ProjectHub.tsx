@@ -94,7 +94,7 @@ export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: str
 // two weeks as a day-grouped timeline, unfinished tasks, and the live sessions in this directory
 // with a close-or-not verdict. Read-only; the CLI caches the model-written summary.
 type ReviewKind = 'task' | 'done' | 'commit' | 'session';
-type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string; task?: string; task_title?: string };
+type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string; task?: string; task_title?: string; host?: string };
 type ReviewDay = { day: string; weekday: string; entries: ReviewEntry[] };
 type ReviewTask = { id: string; title: string; status: string; assignee: string; acceptance_done: number; acceptance_total: number; last_at: number; last_note: string };
 type ReviewSession = { agent: string; session_id: string; title: string; pane_id?: string; cwd?: string; source_app?: string; summary: string; state: string; last_at?: number; tasks: { id: string; title: string; status: string }[]; tasks_all_done: boolean; files_count: number; verdict: string; reason: string };
@@ -149,7 +149,7 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
       <span className={`review-kind k-${e.kind}`}>{REVIEW_KIND[e.kind] || e.kind}</span>
       {withDate && <span className="review-date mono">{entryDate(e.ts)}</span>}
       {e.kind === 'commit' && e.ref ? <code className="review-ref mono">{String(e.ref).slice(0, 7)}</code> : null}
-      <span className="review-text clamp-2" title={e.text}>{e.text}</span>
+      <span className="review-text clamp-2" title={e.text}>{e.text}</span>{e.host ? <span className="review-host muted small" title={`来自 ${e.host}`}>{e.host}</span> : null}
     </li>;
   };
   return <>

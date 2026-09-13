@@ -260,6 +260,43 @@ def here_sessions(proj, detected, cwd, issues, names=None, roots=None):
     return rows
 
 
+def merge_remote_here(proj, days, timeline, sessions):
+    """Ask every other Mac in hosts.json for its own `here --local` and merge: board entries are
+    shared (dedupe by kind+ref+ts), commits by hash, sessions by id; remote rows carry `host`."""
+    hosts_seen, unavailable = [], []
+    entries = [e for g in timeline for e in g["entries"]]
+    seen = {(e["kind"], e.get("ref", ""), round(e.get("ts", 0))) for e in entries}
+    seen_refs = {(e["kind"], e.get("ref", "")) for e in entries if e["kind"] in ("commit", "session")}
+    sids = {s.get("session_id") for s in sessions}
+    for h in D.hosts():
+        r = D.remote_dispatch(h, ["here", proj, "--no-summary", "--local", "--days", str(days), "--json"], 30)
+        if not isinstance(r, dict) or "timeline" not in r:
+            unavailable.append(h["name"])
+            continue
+        hosts_seen.append(h["name"])
+        for g in r.get("timeline") or []:
+            for e in g.get("entries") or []:
+                key = (e.get("kind"), e.get("ref", ""), round(e.get("ts", 0)))
+                if key in seen or (e.get("kind") in ("commit", "session") and (e.get("kind"), e.get("ref", "")) in seen_refs):
+                    continue
+                seen.add(key)
+                entries.append(dict(e, host=h["name"]))
+        for x in r.get("sessions") or []:
+            if x.get("session_id") in sids:
+                continue
+            sids.add(x.get("session_id"))
+            sessions.append(dict(x, host=h["name"], remote=True))
+    entries.sort(key=lambda x: -x["ts"])
+    grouped = []
+    for e in entries:
+        lt = time.localtime(e["ts"])
+        day = time.strftime("%Y-%m-%d", lt)
+        if not grouped or grouped[-1]["day"] != day:
+            grouped.append({"day": day, "weekday": "周" + "一二三四五六日"[lt.tm_wday], "entries": []})
+        grouped[-1]["entries"].append(e)
+    return grouped, sessions, hosts_seen, unavailable
+
+
 def cmd_here(a):
     cwd = os.path.abspath(os.path.expanduser(getattr(a, "dir", "") or os.getcwd()))
     days = max(1, int(getattr(a, "days", 14) or 14))
@@ -287,10 +324,16 @@ def cmd_here(a):
             except Exception as e:
                 summary = {"text": "", "error": str(e)}
     base = project_base(proj, cwd, names, roots)
+    timeline = here_timeline(proj, issues, comments, days, base, names, roots)
+    sessions = here_sessions(proj, detected, base, issues, names, roots)
+    hosts_seen, unavailable = [], []
+    if not getattr(a, "local", False):
+        # Commits come from this Mac's clone and session summaries from this Mac's index: the other
+        # Mac has its own. Fold theirs in so the phone (served by the mini) and the desktop agree.
+        timeline, sessions, hosts_seen, unavailable = merge_remote_here(proj, days, timeline, sessions)
     report = {"project": proj, "detected": detected, "cwd": base, "timeline_days": days, "summary": summary,
-              "timeline": here_timeline(proj, issues, comments, days, base, names, roots),
-              "open_tasks": here_open_tasks(issues, comments),
-              "sessions": here_sessions(proj, detected, base, issues, names, roots)}
+              "timeline": timeline, "open_tasks": here_open_tasks(issues, comments), "sessions": sessions,
+              "hosts": hosts_seen, "unavailable_hosts": unavailable}
 
     def text(o):
         print(f"# {o['project']}" + ("" if o["detected"] else "（任务板上没认出这个项目，按目录看）") + f" · {o['cwd']}")

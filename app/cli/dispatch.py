@@ -911,6 +911,32 @@ def remote_refs():
     return out
 
 
+def codex_desktop_overlay(sessions):
+    """Codex desktop sessions have no hooks: ask the desktop (over its IPC) whether a turn runs and
+    what it waits for, so 等我 shows a pending approval or question like a Claude Code picker."""
+    rows = [s for s in sessions if s.get("agent") == "codex" and s.get("source_kind") == "desktop" and s.get("session_id")]
+    if not rows or not os.path.exists(os.path.join(HOME, ".codex", "ipc", "ipc.sock")):
+        return
+    try:
+        R = _mod("session_reply")
+        from contextlib import closing
+        with closing(R.DesktopIPC(HOME)) as ipc:
+            for s in rows[:6]:
+                try:
+                    st = ipc.state(s["session_id"])
+                except Exception:
+                    continue
+                s["state"] = "working" if st["running"] else "idle"
+                if st["requests"]:
+                    s["attention"] = "input"
+                    s["attention_text"] = "；".join(f"{ {'command': '要跑命令', 'file': '要改文件', 'permission': '要权限', 'question': '在提问'}.get(r['kind'], '等确认') }：{r['summary']}" for r in st["requests"])[:300]
+                elif s.get("attention") == "input":
+                    s["attention"] = None
+                s["desktop"] = {"running": st["running"], "requests": st["requests"], "model": st["model"]}
+    except Exception:
+        return
+
+
 def live_sessions(local_only=False):
     table = ps_table()
     sessions = zcode_live(table) + hermes_live(table)
@@ -932,6 +958,7 @@ def live_sessions(local_only=False):
         seen_sids.add((r.get("agent"), r.get("session_id")))
         sessions.append(r)
     reconcile_with_transcripts(sessions)
+    codex_desktop_overlay(sessions)
     idx = None
     for pid, (ppid, comm) in table.items():
         base = os.path.basename(comm).lstrip("-")
@@ -7051,7 +7078,7 @@ def main():
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply; reply=unread drops the receipt"); s.add_argument("key"); s.add_argument("reply", help="reply id, or `unread` to mark the session unread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
     s = sub.add_parser("session-control", help="open exact sessions and create conversations"); s.add_argument("op", choices=["open", "browse", "start", "status", "adopt"]); s.set_defaults(fn=cmd_session_control)
     s = sub.add_parser("adopt", help="take a session running in another terminal (Warp/iTerm/Terminal/VS Code) into Herdr: stop it when idle, resume it in a new Herdr tab"); s.add_argument("key", help="session id, prefix, or pid-<n>"); s.add_argument("--keep", action="store_true", help="leave the old process running (the two will interleave writes)"); s.add_argument("--force", action="store_true", help="adopt even while it is working"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_adopt)
-    s = sub.add_parser("reply", help="reply to an exact Agent session; `commands` lists the slash commands it accepts"); s.add_argument("op", choices=["status", "send", "commands", "answer", "control"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--mode", choices=["queue", "interrupt"], default="queue", help="while the agent works: queue for its next turn, or Esc first (steer it now)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
+    s = sub.add_parser("reply", help="reply to an exact Agent session; `commands` lists the slash commands it accepts"); s.add_argument("op", choices=["status", "send", "commands", "answer", "control"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--mode", choices=["queue", "interrupt"], default="queue", help="while the agent works: queue for its next turn, or Esc first (steer it now)"); s.add_argument("--image", action="append", default=[], help="send: a picture to attach (repeat for several); Claude Code gets them as attachments, others as paths in the text"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
     s = sub.add_parser("save-image", help="store a pasted image (base64 JSON on stdin: {name, data}) and print its path"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_save_image)
     s = sub.add_parser("commits", help="git commits that belong to a task (id in the message, or hashes in its close reason / comments)"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_commits)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
@@ -7112,7 +7139,7 @@ def main():
     s = sub.add_parser("docs", help="项目页「文档」：扫描 design/ docs/ 研究/ 下的 .md/.html，加上登记过的路径/URL"); s.add_argument("op", nargs="?", default="", help="add | rm | read（省略时第一个参数就是项目名，列出它的文档）"); s.add_argument("project", nargs="?"); s.add_argument("extra", nargs="*", help="add/read/rm：路径或 URL、文档 id"); s.add_argument("--title", help="add：显示标题（默认取首个 # 行或文件名）"); s.add_argument("--kind", choices=list(DOC_KINDS), help="add：类型"); s.add_argument("--asset", default="", help="read：读文档同目录下的相对文件（图片），返回 base64"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_docs)
     s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
     for _here_name in ("here", "project-view"):
-        s = sub.add_parser(_here_name, help="一个项目此刻的样子：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话能不能关（默认当前目录）"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir", help="看这个目录（默认当前目录）"); s.add_argument("--days", type=int, default=14, help="时间线回看天数（默认 14）"); s.add_argument("--no-summary", action="store_true", help="不调模型，跳过现状一段话"); s.add_argument("--refresh-summary", action="store_true", help="现状重新生成，不用缓存"); s.add_argument("--summary-model", default="", help="现状用哪个模型（默认设置里的总结模型）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_here)
+        s = sub.add_parser(_here_name, help="一个项目此刻的样子：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话能不能关（默认当前目录）"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir", help="看这个目录（默认当前目录）"); s.add_argument("--days", type=int, default=14, help="时间线回看天数（默认 14）"); s.add_argument("--no-summary", action="store_true", help="不调模型，跳过现状一段话"); s.add_argument("--refresh-summary", action="store_true", help="现状重新生成，不用缓存"); s.add_argument("--summary-model", default="", help="现状用哪个模型（默认设置里的总结模型）"); s.add_argument("--local", action="store_true", help="只看这台 Mac（默认把另一台的提交和会话合并进来）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_here)
     s = sub.add_parser("lineage", help="项目→任务→会话→进展：谁在哪个会话做哪个任务、做到哪、能不能关"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir"); s.add_argument("--days", type=int, default=14); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_lineage)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("summarize", help="总结用的模型与各用途开关：providers（可选模型）/ set-key（从 stdin 存 Key）/ uses（用途表）"); s.add_argument("op", nargs="?", default="providers", choices=["providers", "set-key", "uses"]); s.add_argument("provider", nargs="?", help="set-key: zhipu | deepseek | kimi | minimax | openai"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_summarize)
