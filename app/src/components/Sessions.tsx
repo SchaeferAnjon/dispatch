@@ -16,7 +16,7 @@ import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 import { SessionQuestion, pendingQuestion } from "./SessionQuestion";
 
-interface Props { archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
+interface Props { onBack?: { label: string; go: () => void }; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code", cron: "定时任务", telegram: "Telegram", weixin: "微信", whatsapp: "WhatsApp", discord: "Discord", slack: "Slack" };
 
@@ -70,7 +70,7 @@ export function FileHunks({ changes }: { changes: FileChange[] }) {
   })}</>;
 }
 
-export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ onBack, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
   const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
@@ -256,7 +256,7 @@ export function SessionsView({ archivedProjects, refs, scriptCount, refsLoaded: 
           return (
             <>
               <div className="sess-head">
-                <button className="btn sm session-back" onClick={() => setSel(null)}>‹ 会话</button>
+                <button className="btn sm session-back" onClick={() => { if (onBack) onBack.go(); else setSel(null); }} title={onBack ? `回到${onBack.label}` : "回到会话列表"}>‹ {onBack ? onBack.label : "会话"}</button>
                 <Avatar actor={a} size={28} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="ttl">{m.title || "（无标题）"}</div>

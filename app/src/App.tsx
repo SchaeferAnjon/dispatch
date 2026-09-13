@@ -2,7 +2,7 @@ import { ConversationActions } from './components/ConversationActions';
 import { GlobalContextMenu, ItemMenus, ProjectActions, ViewMenu, type ViewMenuItem } from './components/ContextMenu';
 import { TaskActions, isArchivedTask, isTrashed } from "./components/TaskActions";
 import { UsageView } from "./components/Quota";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { getApi, isTauri, isServed, type Api, type AgentStartInput } from "./api";
 import { Detail } from "./components/Detail";
 import { NewSession, SessionActions } from "./components/SessionActions";
@@ -192,6 +192,19 @@ export default function App() {
   const [tour, setTour] = useState(false);
   const closeTour = () => setTour(false);
   const openSession = (id: string) => { setSessionFocus(id); setSessionShown(id); navigateContext("sessions"); };
+  // Where the person had scrolled each view to, so coming back (工作台 → a reply → back) lands on the same rows.
+  const viewEl = useRef<HTMLElement>(null);
+  const scrollMemo = useRef<Record<string, number>>({});
+  const scrollKey = `${view}:${view === "projects" ? projectSelection ?? "" : ""}`;
+  const scrollKeyRef = useRef(scrollKey); scrollKeyRef.current = scrollKey;
+  useLayoutEffect(() => {
+    const want = scrollMemo.current[scrollKey] ?? 0;
+    let tries = 0, raf = 0;
+    const tick = () => { const el = viewEl.current; if (!el) return; el.scrollTop = want; if (Math.abs(el.scrollTop - want) > 2 && tries++ < 30) raf = requestAnimationFrame(tick); };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [scrollKey]);
+  const previousView = backStack[backStack.length - 1]?.view;
   const openDiscussion = (id?: string) => { setDiscussFocus(id ?? null); setDiscussShown(id ?? null); navigateContext("discuss"); };
   const [version, setVersion] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -730,7 +743,7 @@ export default function App() {
         <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} hosts={hosts} hostFilter={hostFilter} setHostFilter={(h) => { setHostFilter(h); setSelected(null); }} onAllTasks={allTasks} onOverview={() => setView("overview")} />
         <main className="main">
           <div className={`toolbar${TASK_VIEWS.includes(view) ? "" : " bare"}`}>
-            {backStack.length > 0 && <button className="btn sm mobile-context-back" onClick={goBack}>‹ 返回</button>}
+            {backStack.length > 0 && previousView && <button className="btn sm mobile-context-back" onClick={goBack}>‹ {VIEW_LABEL[previousView]}</button>}
             <h2>{VIEW_LABEL[view]}{BOARD_VIEWS.includes(view) && filters.project !== null && <span className="muted"> · {filters.project || "未分项目"}</span>}</h2>
             {hosts.length > 1 && <select className="mobile-host-filter" aria-label="选择机器" value={hostFilter} onChange={e => { setHostFilter(e.target.value); setSelected(null); }}><option value="">全部机器</option>{hosts.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}</select>}
             {TASK_VIEWS.includes(view) && (
@@ -756,7 +769,7 @@ export default function App() {
             </>)}
           </div>
           {err && <div className="err">{err}</div>}
-          <section className="view">
+          <section className="view" ref={viewEl} onScroll={(e) => { scrollMemo.current[scrollKeyRef.current] = e.currentTarget.scrollTop; }}>
             {view === "home" && api && <HomeView onDiscuss={() => setDiscuss({})} insight={insight} alertCount={alertCount} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onLocate={locateProject} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
             {view === "projects" && api && <ProjectHub onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} onOpenSession={openSession} projects={projects} />}
@@ -765,7 +778,7 @@ export default function App() {
             {view === "table" && <TableView starred={starredProjects} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(what.endsWith("。") ? what : `${what}已复制`)).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
             {view === "discuss" && api && <DiscussView api={api} me={me} issues={issuesF} initialTask={discussFocus} onShown={setDiscussShown} onNew={() => setDiscuss({})} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, kind: leader?.kind, model: leader?.model })} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} />}
+            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} onBack={previousView ? { label: VIEW_LABEL[previousView], go: goBack } : undefined} />}
             {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}

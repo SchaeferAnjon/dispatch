@@ -91,7 +91,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .sel-text{user-select:text;cursor:text}
 
 .app{display:grid;grid-template-rows:44px 1fr;height:100%;background:var(--win)}
-.titlebar{display:grid;grid-template-columns:232px minmax(0,1fr) auto;align-items:center;border-bottom:1px solid var(--line);background:var(--panel)}
+.titlebar{display:grid;grid-template-columns:232px minmax(0,1fr) minmax(0,auto);align-items:center;border-bottom:1px solid var(--line);background:var(--panel);min-width:0}
 /* Tauri only starts a window drag when the mousedown target itself carries
    data-tauri-drag-region, so text inside the drag areas must not be a target. */
 .titlebar .lead *,.titlebar .crumb *{pointer-events:none}
@@ -102,7 +102,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .crumb b{color:var(--ink);font-weight:500}
 .crumb .sep{color:var(--ink-3)}
 .crumb .sync{margin-left:10px;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
-.tb-right{display:flex;align-items:center;gap:8px;padding-right:12px}
+.tb-right{display:flex;align-items:center;gap:8px;padding-right:12px;min-width:0;justify-content:flex-end}
+.tb-right>*{flex-shrink:0}
+/* The right cluster (search, quotas, status, new session) must never push the window wider: drop the least useful pieces first. */
+@media(max-width:1440px){.tb-right .home-quota .ql{display:none}.tb-right .home-quota .qbar{width:26px}.tb-right .home-quota{gap:6px}}
+@media(max-width:1240px){.tb-right .home-quota{display:none}.tb-right kbd{display:none}}
+@media(max-width:1060px){.tb-right .status{display:none}.tb-right .update-chip{display:none}}
 .search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--win);border-radius:7px;padding:4px 10px;color:var(--ink-3);width:240px;white-space:nowrap}
 .search input{flex:1;min-width:0;border:0;background:transparent;outline:none;color:var(--ink)}
 .search input::placeholder{color:var(--ink-3)}
@@ -289,7 +294,15 @@ td .t{font-weight:500}
 .session-reply .reply-attach{padding:0 10px;font-size:16px}
 .session-reply textarea{flex:1 1 200px}
 .reply-images{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.reply-desktop{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.reply-request{border:1px solid var(--line);border-left:3px solid var(--s-prog);border-radius:8px;padding:8px 10px;background:var(--panel);display:flex;flex-direction:column;gap:6px}
+.reply-request.k-question{border-left-color:var(--accent)}
+.reply-request-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.reply-request-head b{white-space:nowrap}.reply-request-text{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
+.reply-request-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.reply-request-answers{display:flex;flex-direction:column;gap:6px}.reply-request-answers label{display:flex;flex-direction:column;gap:4px}.reply-request-answers input{width:100%}
+.reply-request-options{display:flex;gap:6px;flex-wrap:wrap}.reply-request-options .btn.on{background:var(--accent-soft);color:var(--accent-ink)}
 .reply-receipt{font-size:13px;padding:6px 10px;margin-bottom:8px;border-radius:6px;background:var(--panel);max-height:100px;overflow:auto}
+.reply-queued{padding:2px 0}.reply-queued+.reply-queued{border-top:1px dashed var(--line);margin-top:4px;padding-top:4px}.reply-queued p{margin:2px 0 0}
 .reply-receipt span{color:var(--ink-3);font-size:11px}.reply-receipt p{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .reply-error{font-size:12px;color:var(--s-block);margin-top:6px;overflow-wrap:anywhere}.reply-error button{margin-left:8px}
 @media(max-width:760px){.app{height:var(--reply-viewport,100dvh)!important}.session-reply{padding:8px 12px}.session-reply textarea{font-size:16px;max-height:110px;flex:1 1 90px}.session-reply .btn{padding:0 10px}.chat .tl{max-width:100%}.chat .tl-t{font-size:15px;line-height:1.7}.tool-fold>summary{font-size:14px}.reply-keyboard .m-nav{display:none}.reply-keyboard .body{padding-bottom:env(safe-area-inset-bottom)}.reply-keyboard .session-context,.reply-keyboard .session-live{display:none}.reply-receipt{max-height:68px}}
@@ -1412,7 +1425,8 @@ a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text
 .tl.assistant.typing{opacity:.85}
 /* 跑了 N 条命令 ›: a run of finished calls, one quiet line until opened. */
 .tool-fold{margin:4px 0}
-.tool-fold>summary{list-style:none;cursor:pointer;display:inline-flex;gap:6px;align-items:center;color:var(--ink-3);font-size:13px;padding:2px 0}
+.tool-fold>summary{list-style:none;cursor:pointer;display:flex;max-width:100%;min-width:0;gap:6px;align-items:center;color:var(--ink-3);font-size:13px;padding:2px 0}
+.tool-fold>summary>*{min-width:0}
 .tool-fold>summary::-webkit-details-marker{display:none}
 .tool-fold>summary:hover{color:var(--ink-2)}
 .tool-fold .fold-arrow{transition:transform .15s}
