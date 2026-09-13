@@ -804,6 +804,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if let Ok(resources) = app.path().resource_dir() { let _ = BUNDLED_CLI.set(resources.join("cli/dispatch.py")); }
             ensure_dolt_server();

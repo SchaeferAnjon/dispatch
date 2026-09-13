@@ -188,7 +188,8 @@ def enqueue(d, data):
     prompt = data.get('prompt', '')
     if not isinstance(prompt, str) or len(prompt) > 16000 or (not data.get('resume') and not prompt.strip()):
         raise Rejected('请输入第一条消息，最多 16000 字。')
-    payload = dict(agent=data['agent'], cwd=cwd, prompt=prompt.strip(), resume=data.get('resume'))
+    # focus: bring the terminal hosting Herdr to the front once the session is ready (the desktop app asks for it on this Mac).
+    payload = dict(agent=data['agent'], cwd=cwd, prompt=prompt.strip(), resume=data.get('resume'), focus=bool(data.get('focus')))
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     with closing(connect(d)) as db, db:
         db.execute('BEGIN IMMEDIATE')
@@ -294,6 +295,9 @@ def worker(d, rid):
                         except FileExistsError:
                             pass
                 save(d, rid, state='ready', session_id=sid, message='会话已创建，可以查看和回复' if not p['resume'] else '已恢复原会话')
+                if p.get('focus'):
+                    try: d.focus_session({'agent': agent, 'session_id': sid, 'herdr': {'pane_id': pid, 'tab_id': tid, 'title': label}})
+                    except Exception: pass
                 return
             pane_info = checked(d, ['agent', 'get', pid]).get('agent', {})
             if pane_info.get('agent_status') == 'blocked':

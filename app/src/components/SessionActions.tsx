@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Api } from '../api';
+import { isTauri, type Api } from '../api';
+import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 import type { Host } from '../types';
 
 type Target = { session_id: string; agent: string; host?: string; host_name?: string };
@@ -130,6 +131,13 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
     finally { if (seq === generation.current) setBrowseBusy(false); }
   };
   useEffect(() => { setFolders(null); setPath(''); void browse(host === (initialHost || 'local') ? initialCwd || '' : ''); return () => { generation.current++; }; }, [host]);
+  // On this Mac the desktop app can ask Finder for the folder; other Macs and the phone keep the in-app browser.
+  const finder = isTauri && host === 'local';
+  const pick = async () => {
+    setError('');
+    try { const p = await pickFolder({ directory: true, multiple: false, title: '选择工作文件夹', defaultPath: path || undefined }); if (typeof p === 'string' && p) { setPath(p); void browse(p); } }
+    catch (e) { setError(String(e)); }
+  };
   useEffect(() => {
     if (!launch || !['starting','running'].includes(launch.state)) return;
     let active = true; let timer = 0;
@@ -149,7 +157,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
     setBusy(true); setError(''); request.current ??= id();
     const pending = { request_id: request.current, state: 'starting', host, agent, cwd: path, message: '正在连接电脑…' };
     try { sessionStorage.setItem('dispatch-new-session', JSON.stringify(pending)); } catch { /* private mode */ }
-    try { const r = await control<Launch>(api, host, 'start', {request_id: request.current, agent, cwd: path, prompt}); setLaunch(r); }
+    try { const r = await control<Launch>(api, host, 'start', {request_id: request.current, agent, cwd: path, prompt, focus: finder}); setLaunch(r); }
     catch (e) {
       setError(String(e));
       // Distinguish rejected input from an accepted launch with a lost response.
@@ -181,7 +189,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
       <label>运行电脑<select aria-label="运行电脑" value={host} disabled={locked} onChange={e => setHost(e.target.value)}>{hosts.length ? hosts.map(h => <option key={h.id} value={h.local ? 'local' : h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? ' · 离线' : ''}</option>) : <option value="local">本机</option>}</select></label>
       <label>Agent<select aria-label="Agent" title="能在 Dispatch 里看到对话并回复的 Agent；派活对话框里的 Gemini CLI 只能派，看不到" value={agent} disabled={locked} onChange={e => setAgent(e.target.value)}>{Object.entries(names).filter(([k]) => k !== 'zcode').map(([k,n]) => <option key={k} value={k}>{n}</option>)}</select></label>
     </div>
-    <label>工作文件夹<div className="folder-path"><input aria-label="工作文件夹" value={path} disabled={locked} onChange={e => setPath(e.target.value)} placeholder="输入完整路径，或从下方选择" /><button className="btn sm" type="button" disabled={locked || browseBusy} onClick={() => browse(path)}>前往</button></div></label>
+    <label>工作文件夹<div className="folder-path"><input aria-label="工作文件夹" value={path} disabled={locked} onChange={e => setPath(e.target.value)} placeholder="输入完整路径，或从下方选择" />{finder && <button className="btn sm" type="button" disabled={locked} onClick={() => void pick()} title="用 Finder 选一个文件夹">从 Finder 选择…</button>}<button className="btn sm" type="button" disabled={locked || browseBusy} onClick={() => browse(path)}>前往</button></div></label>
     <div className="folder-picker" aria-busy={browseBusy}>
       <div className="folder-picker-heading"><b>浏览文件夹</b><button className="link" disabled={!folders || locked || browseBusy || folders.path === folders.parent} onClick={() => browse(folders!.parent)}>↑ 上一级</button></div>
       {browseBusy ? <p className="muted">读取文件夹…</p> : <div className="folder-children">{folders?.children.map(f => <button key={f.path} type="button" disabled={locked} onClick={() => browse(f.path)}>▱ {f.name}<span>›</span></button>)}{folders?.children.length === 0 && <p className="muted">没有子文件夹，可直接使用当前目录。</p>}</div>}
@@ -189,7 +197,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
     </div>
     {!!folders?.recent.length && <label>最近使用<select aria-label="最近使用的文件夹" value="" disabled={locked || browseBusy} onChange={e => browse(e.target.value)}><option value="">选择最近使用的文件夹…</option>{folders.recent.map(p => <option key={p} value={p}>{p}</option>)}</select></label>}
     <label>第一条消息<textarea aria-label="第一条消息" value={prompt} disabled={locked} maxLength={16000} onChange={e => setPrompt(e.target.value)} placeholder="告诉 Agent 这次想做什么…" /></label>
-    <p className="new-session-note">Agent 在所选电脑的终端中运行，沿用已有登录和权限设置。你可以留在 Dispatch 查看进展并继续回复。</p></>}
+    <p className="new-session-note">Agent 在所选电脑的终端中运行，沿用已有登录和权限设置。{finder ? '创建好后会直接切到 Herdr 所在的终端；也可以回到 Dispatch 查看进展并继续回复。' : '你可以留在 Dispatch 查看进展并继续回复。'}</p></>}
     {launch && <div className="launch-progress" role="status"><b>{launch.state === 'ready' ? '会话已就绪' : launch.state === 'attention' || launch.state === 'failed' ? '需要查看电脑' : '正在新建会话…'}</b><p>{launch.message}</p><code>{launch.cwd}</code>{['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => onComputer(host)}>查看电脑与连接</button>}{launch.session_id && <button className="btn primary" onClick={() => onCreated(launch.session_id!, host, agent)}>进入会话</button>}</div>}
     {error && <p className="new-session-error" role="alert">{error}</p>}
     <div className="foot"><button className="btn" onClick={onClose}>{launch ? '收起' : '取消'}</button>{!launch && <button className="btn primary" disabled={busy || browseBusy || !path || !prompt.trim()} onClick={submit}>{busy ? '正在创建…' : '创建并发送'}</button>}{launch && ['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onClose(); }}>已了解</button>}</div>
