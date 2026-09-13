@@ -7,6 +7,7 @@ CLI call here (`bd … --json` / `dispatch … --json`), exactly like the Tauri 
     dispatch serve url        # just the URL (for the phone)
     dispatch serve qr         # the same URL as a scannable QR in the terminal
     dispatch serve qr --svg   # the QR as SVG (the settings page embeds it)
+    dispatch serve host [<id>|local]   # which Mac the phone link points at (settings dropdown)
 
 Config: ~/tasks/.dispatch/serve.json {token, bind, port, actor, phone_host}. Binds to the
 Tailscale address by default (fallback: LAN address); never to 0.0.0.0 unless bind says so.
@@ -417,8 +418,38 @@ def phone_url(conf, ip):
     return url(conf, ip)
 
 
+def cmd_host(conf, argv):
+    """`serve host` — which Mac the phone link points at; `serve host <id>|local` changes it.
+    The desktop's settings page renders this as a dropdown (hosts.json plus this Mac)."""
+    sys.path.insert(0, HERE)
+    import dispatch as d
+    want_json = "--json" in argv
+    target = next((x for x in argv if not x.startswith("--")), None)
+    others = d.hosts()
+    if target is not None:
+        if target in ("local", "本机", ""):
+            conf.pop("phone_host", None)
+        else:
+            h = next((x for x in others if target in (x["id"], x["name"])), None)
+            if h is None:
+                raise SystemExit(f"hosts.json 里没有叫 {target} 的机器；可选：local、" + "、".join(x["id"] for x in others))
+            conf["phone_host"] = h["id"]
+        json.dump(conf, open(CONF, "w"), indent=2)
+    cur = conf.get("phone_host") or "local"
+    rows = [{"id": "local", "name": d.local_host_name(), "local": True}] + [{"id": x["id"], "name": x["name"], "local": False} for x in others]
+    if cur != "local" and not any(r["id"] == cur for r in rows):
+        rows.append({"id": cur, "name": f"{cur}（不在 hosts.json 里）", "local": False})
+    if want_json:
+        print(json.dumps({"phone_host": cur, "hosts": rows}, ensure_ascii=False))
+    else:
+        name = next(r["name"] for r in rows if r["id"] == cur)
+        print(f"手机版跑在：{name}（{cur}）" + ("" if len(rows) > 1 else "；hosts.json 里没有别的机器"))
+
+
 def main():
     conf = load_conf()
+    if len(sys.argv) > 1 and sys.argv[1] == "host":
+        return cmd_host(conf, sys.argv[2:])
     ip = bind_address(conf, wait=0 if len(sys.argv) > 1 else 60)
     if len(sys.argv) > 1 and sys.argv[1] == "url":
         print(phone_url(conf, ip))

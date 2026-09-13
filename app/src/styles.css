@@ -1613,3 +1613,7 @@ button.review-verdict:hover{filter:brightness(.96)}
 .step-body .review-kind{flex:none}
 .step-t{min-width:0;line-height:1.27;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 @media(max-width:760px){.lineage{grid-template-columns:1fr;grid-template-rows:auto 1fr}.lineage-side{border-right:0;border-bottom:1px solid var(--line);max-height:180px}.lineage-top{padding:12px 12px 0}.lineage-tools{padding:10px 12px}.lineage-tree{padding:12px 12px 20px}.lineage-projects{flex-direction:row;flex-wrap:wrap}.lineage-proj{width:auto}.lineage-dep-body{height:340px}.lineage-body{flex-direction:column}.lineage-graph{flex-direction:column}.node-panel{width:auto;border-left:0;border-top:1px solid var(--line);max-height:42vh}}
+
+/* 设置页「手机访问」：手机版跑在哪台 Mac 的下拉 */
+.settings-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.settings-inline select { max-width: 100%; }

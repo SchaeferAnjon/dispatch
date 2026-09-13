@@ -42,6 +42,20 @@ describe("SettingsView phone access", () => {
     expect(html).toContain("复制链接");
   });
 
+  it("lets the user pick which Mac the phone version runs on", () => {
+    const phoneHost = { phone_host: "apple-mac-mini", hosts: [{ id: "local", name: "大哥", local: true }, { id: "apple-mac-mini", name: "Apple的Mac mini", local: false }] };
+    const html = renderToStaticMarkup(<SettingsView {...base} onPhone={() => {}} phoneQr={QR} phoneHost={phoneHost} onPhoneHost={() => {}} />);
+    expect(html).toContain("手机版跑在");
+    expect(html).toContain("本机（大哥）");
+    expect(html).toContain('<option value="apple-mac-mini" selected="">Apple的Mac mini</option>');
+  });
+
+  it("hides the machine picker when this Mac is the only one", () => {
+    const phoneHost = { phone_host: "local", hosts: [{ id: "local", name: "大哥", local: true }] };
+    const html = renderToStaticMarkup(<SettingsView {...base} onPhone={() => {}} phoneQr={QR} phoneHost={phoneHost} onPhoneHost={() => {}} />);
+    expect(html).not.toContain("手机版跑在");
+  });
+
   it("keeps the row hidden when there is neither a QR nor a copy link", () => {
     const html = renderToStaticMarkup(<SettingsView {...base} />);
     expect(html).not.toContain("手机访问");

@@ -21,7 +21,7 @@ import { SearchPalette } from "./components/Search";
 import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, parseProjectFlags, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
 import { SetupView, type InitStatus } from "./components/Setup";
-import type { ScreenSetupResult, UpdateInfo } from "./components/Settings";
+import type { PhoneHost, ScreenSetupResult, UpdateInfo } from "./components/Settings";
 import { Delegate } from "./components/Delegate";
 import { DiscussDialog } from "./components/Discuss";
 import { DiscussView } from "./components/DiscussView";
@@ -598,12 +598,24 @@ export default function App() {
   // The settings page shows the same QR the terminal prints; the CLI owns the encoding, so
   // fetch it only when that page is open (this also creates serve.json on first use).
   const [phoneQr, setPhoneQr] = useState("");
+  const [phoneHost, setPhoneHost] = useState<PhoneHost | null>(null);
+  const [phoneTick, setPhoneTick] = useState(0);
   useEffect(() => {
     if (view !== "settings" || !isTauri || !api) return;
     let alive = true;
+    void api.on("local", ["serve", "host", "--json"]).then((s) => { if (alive) setPhoneHost(JSON.parse(s.replace(/^[^{]*/, "")) as PhoneHost); }).catch(() => {});
     void api.on("local", ["serve", "qr", "--svg"]).then((svg) => { if (alive) setPhoneQr(svg.trim()); }).catch(() => {});
     return () => { alive = false; };
-  }, [view, api]);
+  }, [view, api, phoneTick]);
+  // Which Mac the phone link points at (serve.json phone_host); the QR follows it.
+  const choosePhoneHost = isTauri && api ? async (id: string) => {
+    try {
+      const s = await api.on("local", ["serve", "host", id]);
+      setPhoneQr("");
+      setPhoneTick((n) => n + 1);
+      say(s.trim() + "。手机上重新打开一次新链接（或扫新二维码）");
+    } catch (e) { say(String(e), true); }
+  } : undefined;
 
   // Every conversation a row can stand for, by activity key, for the global right-click.
   const sessionByKey = useMemo(() => {
@@ -759,7 +771,7 @@ export default function App() {
             {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} screen={(() => { const h = hosts.find((x) => x.local); return { url: h?.novnc ?? "", up: !!h?.novnc_up, sharing: !!h?.screen_sharing, issue: h?.novnc_issue ?? "" }; })()} onScreenSetup={screenSetup} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} api={api ?? undefined} onPhone={phoneLink} phoneQr={phoneQr} hosts={hosts} onRenameHost={api ? renameHost : undefined} onDeleteHost={api ? deleteHost : undefined} onRedetectHost={api ? redetectHost : undefined} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
+            {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} screen={(() => { const h = hosts.find((x) => x.local); return { url: h?.novnc ?? "", up: !!h?.novnc_up, sharing: !!h?.screen_sharing, issue: h?.novnc_issue ?? "" }; })()} onScreenSetup={screenSetup} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} api={api ?? undefined} onPhone={phoneLink} phoneQr={phoneQr} phoneHost={phoneHost ?? undefined} onPhoneHost={choosePhoneHost} hosts={hosts} onRenameHost={api ? renameHost : undefined} onDeleteHost={api ? deleteHost : undefined} onRedetectHost={api ? redetectHost : undefined} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "overview" && <OverviewView stats={{ projects: projects.filter((p) => p.name).length, inbox: counts.inbox, sessions: projectRows.length, running: runningSessions, tasks: issuesF.length, open: issuesF.filter((i) => i.status !== "closed").length, agentsOnline: agents.filter((a) => a.online).length, agentsTotal: agents.length, skills: skillCount, wiki: wikiCount, hosts: Math.max(1, hosts.length), rulesSynced: null, version: update?.current ?? "" }} onGo={(v) => (v === "board" ? allTasks() : setView(v))} onTour={() => setTour(true)} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}
             {view === "setup" && api && initStatus && <SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={() => { void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} />}
             {view === "env" && api && <EnvView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}

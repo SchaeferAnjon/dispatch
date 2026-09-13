@@ -611,6 +611,15 @@ class ServeSymlink(unittest.TestCase):
             dispatch.cmd_serve(SimpleNamespace(what='qr', svg=True))
             self.assertEqual(sys.argv, ['serve','qr','--svg'])
 
+    def test_host_passes_target_and_json(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with patch.object(sys,'argv',['dispatch']), patch('runpy.run_path'):
+            dispatch.cmd_serve(SimpleNamespace(what='host', target='apple-mac-mini', json=True))
+            self.assertEqual(sys.argv, ['serve','host','apple-mac-mini','--json'])
+            dispatch.cmd_serve(SimpleNamespace(what='host', target=None, json=False))
+            self.assertEqual(sys.argv, ['serve','host'])
+
     def test_qr_without_svg_prints_terminal_blocks(self):
         from types import SimpleNamespace
         from unittest.mock import patch

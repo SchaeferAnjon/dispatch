@@ -11,7 +11,8 @@ export interface SummaryProvider { id: string; provider: string; label: string; 
 export interface SummaryUse { key: string; name: string; desc: string; enabled: boolean; last: { at: number; tokens: number; model: string } | null }
 // The fixture/fallback shape: only id + label are required, matching the plain `dispatch summarize providers` list.
 export interface SummaryProviderOption { id: string; label: string; provider?: string; env?: string; configured?: boolean; model?: string; subscription?: boolean }
-interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; api?: Api; summaryProviders?: SummaryProviderOption[]; onPhone?: () => void; phoneQr?: string; onScreen?: () => void; screenReady?: boolean; screen?: { url: string; up: boolean; sharing: boolean; issue: string }; onScreenSetup?: () => Promise<ScreenSetupResult | null>; hosts?: Host[]; onSetup?: () => void; onRenameHost?: (host: Host, name: string) => Promise<void>; onDeleteHost?: (host: Host) => Promise<void>; onRedetectHost?: (host: Host) => Promise<void>; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
+export interface PhoneHost { phone_host: string; hosts: { id: string; name: string; local: boolean }[] }
+interface Props { settings: DispatchSettings; onSave: (next: DispatchSettings) => Promise<void>; theme: Theme; onTheme: (t: Theme) => void; api?: Api; summaryProviders?: SummaryProviderOption[]; onPhone?: () => void; phoneQr?: string; phoneHost?: PhoneHost; onPhoneHost?: (id: string) => void; onScreen?: () => void; screenReady?: boolean; screen?: { url: string; up: boolean; sharing: boolean; issue: string }; onScreenSetup?: () => Promise<ScreenSetupResult | null>; hosts?: Host[]; onSetup?: () => void; onRenameHost?: (host: Host, name: string) => Promise<void>; onDeleteHost?: (host: Host) => Promise<void>; onRedetectHost?: (host: Host) => Promise<void>; onTestNotify?: () => Promise<void>; update?: UpdateInfo | null; onCheckUpdate?: () => Promise<void>; onApplyUpdate?: () => Promise<void> }
 export interface UpdateInfo { current: string; latest: string; newer?: boolean; url: string; error?: string; needs_token?: boolean; notes?: string }
 // What `dispatch screen setup --json` returns: the steps it walked and the one thing left for the user.
 export interface ScreenSetupResult { ok: boolean; url?: string; error?: string; steps?: { id?: string; title: string; ok: boolean; detail: string }[]; manual?: { id?: string; title: string; detail: string }[]; state?: { url: string; ready: boolean; screen_sharing: boolean; issue: string } }
@@ -29,7 +30,7 @@ function formatSummaryTime(at: number): string { const d = new Date(at < 1e12 ? 
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, api, summaryProviders = [], onPhone, phoneQr, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onRenameHost, onDeleteHost, onRedetectHost, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, api, summaryProviders = [], onPhone, phoneQr, phoneHost, onPhoneHost, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onRenameHost, onDeleteHost, onRedetectHost, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
   const [checking, setChecking] = useState(false);
   // The version line should not read "v…" forever: look it up once when the page opens.
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -187,7 +188,9 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
           <select value={theme} onChange={(e) => onTheme(e.target.value as Theme)} aria-label="外观"><option value="">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
         </label>
         {(onPhone || phoneQr) && <div className="settings-row">
-          <div><b>手机访问</b><p>手机连上 Tailscale 后，用相机扫下面的二维码就能打开网页版（二维码里带着登录令牌，扫一次就记住）；也可以复制链接发到手机，能添加到主屏幕。</p>{phoneQr ? <div className="settings-qr" dangerouslySetInnerHTML={{ __html: phoneQr }} /> : null}</div>
+          <div><b>手机访问</b><p>手机连上 Tailscale 后，用相机扫下面的二维码就能打开网页版（二维码里带着登录令牌，扫一次就记住）；也可以复制链接发到手机，能添加到主屏幕。</p>
+            {phoneHost && phoneHost.hosts.length > 1 && <p className="settings-inline"><span>手机版跑在</span><select value={phoneHost.phone_host} onChange={(e) => onPhoneHost?.(e.target.value)} aria-label="手机版跑在哪台 Mac">{phoneHost.hosts.map((h) => <option key={h.id} value={h.id}>{h.local ? `本机（${h.name}）` : h.name}</option>)}</select><span className="muted small">选常驻的那台，这台电脑带走了手机也能用；换了机器要在手机上重新打开一次链接</span></p>}
+            {phoneQr ? <div className="settings-qr" dangerouslySetInnerHTML={{ __html: phoneQr }} /> : null}</div>
           {onPhone && <button className="btn sm" onClick={onPhone}>复制链接</button>}
         </div>}
         {onScreen && <div className="settings-row">
