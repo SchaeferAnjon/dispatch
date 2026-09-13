@@ -175,8 +175,8 @@ def auto(limit=2):
     return {"done": done, "tried": tried, "unread": unread}
 
 
-UNREAD_PROMPT = ("你是会话记录的总结者。下面是一个编程 Agent 在用户上一条消息之后这一轮的回复摘录（可能有多条回复和工具调用）。用简体中文写一段不超过 80 字的话，只说这一轮：Agent 做了什么、结果如何、现在在等用户什么（没有就不写）。"
-                 "摘录可能只有几句话或几条进度说明，就按它写，不要索要更多材料。只写事实，不评价，不加标题、不用列表、不用引号。")
+UNREAD_PROMPT = ("你是会话记录的总结者。用户消息里「摘录开始」和「摘录结束」之间，是一个编程 Agent 在用户上一条消息之后这一轮的回复原文（可能只有一两句，也可能有多条回复和工具调用）。"
+                 "用简体中文写一段不超过 80 字的话，只说这一轮：Agent 做了什么、结果如何、现在在等用户什么（没有就不写）。摘录再短也按它写，不要说看不到内容、不要索要材料。只写事实，不评价，不加标题、不用列表、不用引号。")
 
 
 def _msg_epoch(m):
@@ -239,7 +239,7 @@ def summarize_unread(key, reply_id, force=False):
     if not excerpt.strip():
         raise RuntimeError("这一轮还没有可总结的回复")
     meta = d.get("meta", {})
-    text = chat(p, UNREAD_PROMPT, f"会话标题：{meta.get('title', '')}\n\n{excerpt}", use="session")
+    text = chat(p, UNREAD_PROMPT, f"会话标题：{meta.get('title', '')}\n\n【摘录开始】\n{excerpt}\n【摘录结束】\n\n请写这一轮的摘要。", use="session")
     text = text.strip().strip('"“”').replace("\n", " ")[:240]
     if not text:
         raise RuntimeError("模型没有返回内容")
@@ -253,7 +253,8 @@ def auto_unread(limit=3):
     if not use_enabled("session"):
         return []
     idx = D.load_index() or {}
-    rows = [a for a in activity_list(D.HOME, D.DISPATCH_DIR, idx) if a.get("unread") and a.get("reply_id") and not a.get("scheduled") and not a.get("archived")]
+    # Only conversations the index knows (Dispatch's own headless runs and sub-agents are not in it).
+    rows = [a for a in activity_list(D.HOME, D.DISPATCH_DIR, idx) if a.get("unread") and a.get("reply_id") and not a.get("scheduled") and not a.get("archived") and a.get("path") in idx and not idx[a["path"]].get("subagent")]
     rows.sort(key=lambda a: -(a.get("reply_at") or 0))
     prefs = session_preferences(D.DISPATCH_DIR)
     done = []
