@@ -127,6 +127,8 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     return () => { viewport?.removeEventListener('resize', resize); viewport?.removeEventListener('scroll', resize); document.removeEventListener('focusin', resize); document.removeEventListener('focusout', resize); document.body.classList.remove('reply-keyboard'); document.documentElement.style.removeProperty('--reply-viewport'); };
   }, []);
   const [switching, setSwitching] = useState(false);
+  // Phone: the one-line box is fine for a sentence; a long message wants the big editor.
+  const [big, setBig] = useState(false);
   const control = async (payload: { mode?: string; model?: string; interrupt?: boolean; request_id?: string; decision?: string; answers?: Record<string, unknown> }) => {
     if (switching) return;
     setSwitching(true); setError('');
@@ -201,7 +203,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   // holds several queued messages, and each one stays visible here until its turn comes.
   const pending = (connection?.receipts ?? []).filter(r => r.state === 'accepted' && r.id !== dismissed && !shownInTranscript(r) && Date.now() / 1000 - r.created < 6 * 3600).sort((a, b) => a.created - b.created);
   const unknown = last && (last.state === 'unknown' || last.state === 'sending');
-  return <section className="session-reply" aria-label="回复当前会话">
+  return <section className={`session-reply${big ? " big" : ""}`} aria-label="回复当前会话">
     {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map(r => <div key={r.id} className="reply-queued"><span>你 · {r.note}</span><p>{r.text}</p></div>)}</div>}
     {desktopBlock}
     {notice && <div className="reply-receipt" role="status"><span>{notice}</span><button className="link" type="button" onClick={() => setNotice('')}>好</button></div>}
@@ -236,6 +238,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
           else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(menu[Math.min(cursor, menu.length - 1)]); }
           else if (e.key === 'Escape') { e.preventDefault(); setMenuClosed(draft); }
         }} />
+      <button className="btn reply-expand" type="button" onClick={() => { setBig(b => !b); textarea.current?.focus(); }} title={big ? '收起输入框' : '放大输入框'} aria-label={big ? '收起输入框' : '放大输入框'}>{big ? '⤡' : '⤢'}</button>
       {connection?.working && <button className="btn" type="button" disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title="先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导">打断并发送</button>}
       <button className="btn primary" type="submit" disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} title={connection?.working ? '排进队列，本轮结束 Agent 就会看到' : undefined}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : connection?.working ? '排队发送' : '发送'}</button>
     </form>
