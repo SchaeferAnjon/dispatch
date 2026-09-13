@@ -269,7 +269,7 @@ def merge_remote_here(proj, days, timeline, sessions):
     seen_refs = {(e["kind"], e.get("ref", "")) for e in entries if e["kind"] in ("commit", "session")}
     sids = {s.get("session_id") for s in sessions}
     for h in D.hosts():
-        r = D.remote_dispatch(h, ["here", proj, "--no-summary", "--local", "--days", str(days), "--json"], 30)
+        r = D.remote_dispatch(h, ["here", proj, "--no-summary", "--local", "--days", str(days), "--json"], 30, timeout=45)
         if not isinstance(r, dict) or "timeline" not in r:
             unavailable.append(h["name"])
             continue

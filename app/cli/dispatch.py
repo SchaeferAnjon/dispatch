@@ -242,7 +242,7 @@ def _tag_host(rows, h):
     return rows or []
 
 
-def remote_dispatch(h, args, ttl):
+def remote_dispatch(h, args, ttl, timeout=12):
     """Run `dispatch <args> --json` on another host, cached for ttl seconds. Never blocks
     the caller for more than ~10s, and remembers an unreachable host for a minute so the
     app's 5-second presence polls stay cheap. Returns the stale cache (or None) on failure."""
@@ -272,7 +272,7 @@ def remote_dispatch(h, args, ttl):
     # The remote login shell is fish, so use `env` rather than FOO=bar prefixes.
     cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in args) + " --json"
     try:
-        r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd], capture_output=True, text=True, timeout=12)
+        r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd], capture_output=True, text=True, timeout=timeout)
         if r.returncode == 255:
             raise ConnectionError(r.stderr.strip()[:200])  # ssh itself failed: host unreachable
         if r.returncode != 0:
@@ -920,19 +920,32 @@ def codex_desktop_overlay(sessions):
     try:
         R = _mod("session_reply")
         from contextlib import closing
-        with closing(R.DesktopIPC(HOME)) as ipc:
-            for s in rows[:6]:
+        os.makedirs(REMOTE_DIR, exist_ok=True)
+        ipc = None
+        for s in rows[:6]:
+            cache = os.path.join(REMOTE_DIR, f"codex-desktop--{s['session_id']}.json")
+            st = None
+            try:
+                if time.time() - os.stat(cache).st_mtime < 8:
+                    st = json.load(open(cache))
+            except Exception:
+                st = None
+            if st is None:
                 try:
+                    ipc = ipc or R.DesktopIPC(HOME)
                     st = ipc.state(s["session_id"])
+                    json.dump(st, open(cache, "w"), ensure_ascii=False)
                 except Exception:
                     continue
-                s["state"] = "working" if st["running"] else "idle"
-                if st["requests"]:
-                    s["attention"] = "input"
-                    s["attention_text"] = "；".join(f"{ {'command': '要跑命令', 'file': '要改文件', 'permission': '要权限', 'question': '在提问'}.get(r['kind'], '等确认') }：{r['summary']}" for r in st["requests"])[:300]
-                elif s.get("attention") == "input":
-                    s["attention"] = None
-                s["desktop"] = {"running": st["running"], "requests": st["requests"], "model": st["model"]}
+            s["state"] = "working" if st["running"] else "idle"
+            if st["requests"]:
+                s["attention"] = "input"
+                s["attention_text"] = "；".join(f"{ {'command': '要跑命令', 'file': '要改文件', 'permission': '要权限', 'question': '在提问'}.get(r['kind'], '等确认') }：{r['summary']}" for r in st["requests"])[:300]
+            elif s.get("attention") == "input":
+                s["attention"] = None
+            s["desktop"] = {"running": st["running"], "requests": st["requests"], "model": st["model"]}
+        if ipc:
+            ipc.close()
     except Exception:
         return
 
