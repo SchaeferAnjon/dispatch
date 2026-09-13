@@ -415,8 +415,12 @@ def with_images(text, paths):
 
 def plain_text(text):
     """A message with its picture markers and the 附图 note removed, for comparing what was sent
-    with what the transcript shows."""
-    t = IMAGE_MARK.sub('', text or '')
+    with what the transcript shows. Content blocks (a list) count by their text parts."""
+    if isinstance(text, list):
+        text = '\n'.join((b.get('text') or '') if isinstance(b, dict) else str(b) for b in text)
+    elif not isinstance(text, str):
+        text = str(text or '')
+    t = IMAGE_MARK.sub('', text)
     i = t.find(IMAGE_NOTE)
     if i >= 0:
         t = t[:i]

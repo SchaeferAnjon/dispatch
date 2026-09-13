@@ -28,7 +28,9 @@ export function ConversationRows({ rows, me, onOpen, onRead, onSummarize, taskCo
     <div className="conversation-summary">
       <div className="conversation-title">{a.starred&&<span className="star on" title="追踪中">★</span>}<strong>{a.title}</strong><span className={`activity-badge ${a.stale ? '' : a.state === 'working' ? 'running' : a.unread ? 'new' : ''}`}>{a.scheduled ? '定时会话' : activityLabel(a)}</span></div>
       {!compact && <div className="conversation-location"><span className="conversation-project"><span>项目</span><b>{conversationProject(a)}</b></span><span className="conversation-folder" title={a.cwd || '未记录工作目录'}><span>文件夹</span><code>{a.cwd ? a.cwd.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, '~') : '未记录'}</code></span></div>}
-      {a.summary && <Preview className="conversation-model-summary" title="模型写的总结：目标、做了什么、还差什么（点文字展开全文）"><span className="conversation-caption">总结</span><Linkified text={a.summary} /></Preview>}
+      {(() => { const fresh = a.unread && a.unread_summary && a.unread_summary_reply === a.reply_id; return fresh
+        ? <Preview className="conversation-model-summary" title="模型写的这一轮摘要：你上条消息之后它做了什么、在等你什么（点文字展开全文）"><span className="conversation-caption">未读这轮</span><Linkified text={a.unread_summary!} /></Preview>
+        : a.summary ? <Preview className="conversation-model-summary" title="模型写的总结：目标、做了什么、还差什么（点文字展开全文）"><span className="conversation-caption">总结</span><Linkified text={a.summary} /></Preview> : null; })()}
       {!compact && !a.summary && <div className="conversation-preview conversation-overview" title="你在这段会话里提过的要求：最初一条，以及后续追加的"><span className="conversation-caption">你说过的</span>{a.overview || '暂无足够的对话内容可整理'}</div>}
       <Preview title="点文字展开全文；点其他地方打开会话"><span className="conversation-caption">{a.reply_preview ? '最新回复' : '最新进展'}</span><Linkified text={a.summary ? (a.reply_preview || a.activity || '').trim().slice(0, 600) || '—' : conversationSummary(a)} /></Preview>
       {a.state === 'working' && !a.stale && a.activity && <div className="conversation-current" title={a.activity}><span className="conversation-caption">正在做</span>{a.activity}</div>}

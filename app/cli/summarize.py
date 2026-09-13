@@ -171,7 +171,104 @@ def auto(limit=2):
             done.append({"key": key, "error": str(ex)[:160]})
         if len(done) >= limit:
             break
-    return {"done": done, "tried": tried}
+    unread = auto_unread(limit)
+    return {"done": done, "tried": tried, "unread": unread}
+
+
+UNREAD_PROMPT = ("你是会话记录的总结者。下面是一个编程 Agent 在用户上一条消息之后这一轮的回复摘录（可能有多条回复和工具调用）。用简体中文写一段不超过 80 字的话，只说这一轮：Agent 做了什么、结果如何、现在在等用户什么（没有就不写）。"
+                 "摘录可能只有几句话或几条进度说明，就按它写，不要索要更多材料。只写事实，不评价，不加标题、不用列表、不用引号。")
+
+
+def _msg_epoch(m):
+    try:
+        from datetime import datetime as _dt
+        return _dt.fromisoformat((m.get("ts") or "").replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0
+
+
+def unread_turn(msgs, reply_at=None):
+    """The Agent's side of the turn that ended with the unread reply (at `reply_at`, epoch s; default
+    the latest): every assistant text after the person's message that started it, with the tools it
+    called, oldest first. Empty when there is no assistant text in that turn."""
+    last_user = -1
+    for i, m in enumerate(msgs):
+        if m.get("role") == "user" and (m.get("text") or "").strip() and (reply_at is None or _msg_epoch(m) <= reply_at + 1):
+            last_user = i
+    parts, tools = [], {}
+    for m in msgs[last_user + 1:]:
+        if m.get("role") != "assistant":
+            continue
+        if reply_at is not None and _msg_epoch(m) > reply_at + 2:
+            break
+        for t in m.get("tools") or []:
+            tools[t.get("name", "")] = tools.get(t.get("name", ""), 0) + 1
+        if (m.get("text") or "").strip():
+            parts.append(m["text"].strip()[:900])
+    text = "\n\n".join(parts)
+    if not text.strip():
+        return ""
+    if len(text) > 9000:
+        text = text[:3000] + "\n\n……（中间省略）……\n\n" + text[-6000:]
+    if tools:
+        text = "（这一轮调用了：" + "、".join(f"{k}×{n}" if n > 1 else k for k, n in sorted(tools.items(), key=lambda kv: -kv[1])[:8]) + "）\n\n" + text
+    return text
+
+
+def summarize_unread(key, reply_id, force=False):
+    """A digest of what the Agent did since the person's last message — what an unread reply
+    means — cached per reply id in the session's preferences."""
+    from activity import set_preferences, session_preferences
+    if not use_enabled("session"):
+        raise RuntimeError(gate_message("session"))
+    p = provider()
+    if not p:
+        raise RuntimeError("没有可用的模型")
+    prefs = session_preferences(D.DISPATCH_DIR).get(key, {})
+    if not force and prefs.get("unread_summary") and prefs.get("unread_summary_reply") == reply_id:
+        return {"key": key, "unread_summary": prefs["unread_summary"], "cached": True}
+    r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "dispatch.py"), "session", key, "--json"], capture_output=True, text=True, timeout=120, env={**os.environ, "BEADS_DIR": D.BEADS_DIR})
+    if r.returncode != 0:
+        raise RuntimeError(f"读不到会话：{(r.stderr or r.stdout).strip()[-200:]}")
+    d = json.loads(r.stdout[r.stdout.find("{"):])
+    try:
+        reply_at = float(str(reply_id).split(":")[0])
+    except ValueError:
+        reply_at = None
+    excerpt = unread_turn(d.get("messages") or [], reply_at)
+    if not excerpt.strip():
+        raise RuntimeError("这一轮还没有可总结的回复")
+    meta = d.get("meta", {})
+    text = chat(p, UNREAD_PROMPT, f"会话标题：{meta.get('title', '')}\n\n{excerpt}", use="session")
+    text = text.strip().strip('"“”').replace("\n", " ")[:240]
+    if not text:
+        raise RuntimeError("模型没有返回内容")
+    data = set_preferences(D.DISPATCH_DIR, key, {"unread_summary": text, "unread_summary_reply": reply_id, "unread_summary_at": int(time.time()), "unread_summary_by": f"{p['id']}:{p['model']}"})
+    return {"key": key, "unread_summary": data["unread_summary"], "cached": False}
+
+
+def auto_unread(limit=3):
+    """For every unread reply without a digest yet: write one (newest first, a few per call)."""
+    from activity import activity_list, session_preferences
+    if not use_enabled("session"):
+        return []
+    idx = D.load_index() or {}
+    rows = [a for a in activity_list(D.HOME, D.DISPATCH_DIR, idx) if a.get("unread") and a.get("reply_id") and not a.get("scheduled") and not a.get("archived")]
+    rows.sort(key=lambda a: -(a.get("reply_at") or 0))
+    prefs = session_preferences(D.DISPATCH_DIR)
+    done = []
+    for a in rows:
+        key = a["key"]
+        if (prefs.get(key) or {}).get("unread_summary_reply") == a["reply_id"]:
+            continue
+        try:
+            r = summarize_unread(key, a["reply_id"])
+            done.append({"key": key, "unread_summary": r["unread_summary"][:80]})
+        except Exception as ex:
+            done.append({"key": key, "error": str(ex)[:160]})
+        if len(done) >= limit:
+            break
+    return done
 
 
 def transcript_excerpt(key, limit=12000):
@@ -258,6 +355,19 @@ def main(a):
     if a.op == "auto":
         res = auto(a.limit)
         print(json.dumps(res, ensure_ascii=False, indent=2) if a.json else (res.get("reason") or "\n".join(f"{d['key'][:28]}  {d.get('summary') or d.get('error')}" for d in res["done"]) or "没有需要总结的会话"))
+        return
+    if a.op == "unread":
+        from activity import activity_list
+        row = next((x for x in activity_list(D.HOME, D.DISPATCH_DIR, D.load_index() or {}) if x["key"] == a.key or x["session_id"] == a.key), None)
+        if not row or not row.get("reply_id"):
+            print(json.dumps({"error": "这个会话没有待读的回复"}, ensure_ascii=False) if a.json else "✗ 这个会话没有待读的回复")
+            sys.exit(1)
+        try:
+            res = summarize_unread(row["key"], row["reply_id"], force=a.force)
+        except Exception as e:
+            print(json.dumps({"error": str(e)}, ensure_ascii=False) if a.json else f"✗ {e}")
+            sys.exit(1)
+        print(json.dumps(res, ensure_ascii=False, indent=2) if a.json else res["unread_summary"])
         return
     if a.op == "provider":
         p = provider()
