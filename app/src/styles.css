@@ -1435,7 +1435,7 @@ a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text
 .tool-card{margin:3px 0;border:1px solid var(--line);border-radius:7px;background:var(--panel);font-size:12px;max-width:80ch}
 .tool-card summary{list-style:none;cursor:pointer;display:flex;gap:7px;align-items:baseline;padding:4px 8px;min-width:0}
 .tool-card summary::-webkit-details-marker{display:none}
-.tool-card summary b{font-weight:500;color:var(--ink);flex:none}
+.tool-card summary b{font-weight:500;color:var(--ink);flex:0 1 auto;min-width:0;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tool-card .tool-sum{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
 .tool-card .tool-sum.mono{font-family:var(--mono);font-size:11px}
 .tool-card[open] .tool-sum{white-space:normal;word-break:break-all}
