@@ -293,7 +293,7 @@ td .t{font-weight:500}
 .session-reply form{flex-wrap:wrap}
 .session-reply .reply-attach{padding:0 10px;font-size:16px}
 .session-reply .reply-expand{display:none;padding:0 10px;font-size:16px}
-@media(max-width:760px){.session-reply .reply-expand{display:inline-flex}.session-reply.big textarea{height:42vh;max-height:60vh;flex-basis:100%}}
+@media(max-width:760px){.session-reply .reply-expand{display:inline-flex}.session-reply.big textarea{height:26vh;max-height:34vh;flex-basis:100%}.session-reply.big form{flex-wrap:wrap}}
 .session-reply textarea{flex:1 1 200px}
 .reply-images{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .reply-desktop{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
