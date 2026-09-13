@@ -327,26 +327,77 @@ class H(BaseHTTPRequestHandler):
             return self._send(500, json.dumps({"error": str(e)[:800]}, ensure_ascii=False))
 
 
-def bind_address(conf):
-    if conf.get("bind"):
-        return conf["bind"]
+def detect_address():
     sys.path.insert(0, HERE)
     import dispatch as d
-    return d.tailscale_ip() or d.lan_ip() or "127.0.0.1"
+    return d.tailscale_ip() or d.lan_ip()
+
+
+def bind_address(conf, wait=0):
+    """Tailscale address, else LAN address. Detection shells out with 3 s timeouts, and on
+    a loaded machine (a `dispatch-update` build restarting this daemon) both can time out
+    at once; a server that silently binds 127.0.0.1 then hands the phone a dead link, so
+    the daemon keeps retrying for `wait` seconds before it accepts loopback."""
+    if conf.get("bind"):
+        return conf["bind"]
+    deadline = time.time() + wait
+    while True:
+        ip = detect_address()
+        if ip or time.time() >= deadline:
+            break
+        time.sleep(3)
+    if not ip:
+        print("没探测到 Tailscale / 局域网地址，只监听 127.0.0.1（手机连不上）", file=sys.stderr, flush=True)
+    return ip or "127.0.0.1"
 
 
 def url(conf, ip):
     return f"http://{ip}:{conf.get('port', 7799)}/?token={conf['token']}"
 
 
+LAUNCHD_LABEL = "dev.schaefer.dispatch-serve"
+
+
+def reachable(ip, port, timeout=1.0):
+    import socket
+    try:
+        with socket.create_connection((ip, int(port)), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def ensure_reachable(conf, ip):
+    """`serve url` is what the desktop copies for the phone: make sure the daemon actually
+    answers at that address, and if it bound somewhere else (loopback after a failed
+    detection) restart it through launchd and wait for it to come back."""
+    port = conf.get("port", 7799)
+    if reachable(ip, port):
+        return
+    job = f"gui/{os.getuid()}/{LAUNCHD_LABEL}"
+    if subprocess.run(["launchctl", "print", job], capture_output=True).returncode != 0:
+        raise SystemExit(f"网页版服务没在 {ip}:{port} 上跑：先 `dispatch serve` 或装 launchd 任务 {LAUNCHD_LABEL}")
+    subprocess.run(["launchctl", "kickstart", "-k", job], capture_output=True)
+    for _ in range(20):
+        time.sleep(0.5)
+        if reachable(ip, port):
+            return
+    raise SystemExit(f"网页版服务重启后仍连不上 {ip}:{port}，看 /tmp/dispatch-serve.log")
+
+
 def main():
     conf = load_conf()
-    ip = bind_address(conf)
+    ip = bind_address(conf, wait=0 if len(sys.argv) > 1 else 60)
     if len(sys.argv) > 1 and sys.argv[1] == "url":
+        ensure_reachable(conf, ip)
         print(url(conf, ip))
         return
     if len(sys.argv) > 1 and sys.argv[1] == "qr":
         # The settings page embeds the same QR as SVG; the terminal gets half blocks.
+        try:
+            ensure_reachable(conf, ip)
+        except SystemExit as e:
+            print(e, file=sys.stderr, flush=True)  # the QR is still worth showing
         sys.path.insert(0, HERE)
         import qr as qrlib
         code = qrlib.matrix(url(conf, ip))
