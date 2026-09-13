@@ -1454,7 +1454,8 @@ def refresh_index():
         seen.add(key)
         mtime = hermes_session_last(r)
         e = idx.get(key)
-        if e and e.get("mtime") == mtime and e.get("stats_v") == STATS_V:
+        # Hermes names a session a moment after creating it, without touching last_activity_at: re-read on a title change too.
+        if e and e.get("mtime") == mtime and e.get("title") == (r["title"] or "") and e.get("stats_v") == STATS_V:
             continue
         started = float(r["started_at"] or mtime)
         e = {"agent": "hermes", "session_id": r["id"], "cwd": r["cwd"] or HOME, "title": r["title"] or "", "mtime": mtime, "size": 0, "off": 0, "tasks": {}, "claims": [], "subagent": False, "entrypoint": r["source"] or "", "branch": "", "first_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)), "last_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime)), "user_msgs": 0, "assistant_msgs": 0, "tools": {}, "first_prompt": "", "stats_v": STATS_V, **stats_fields()}

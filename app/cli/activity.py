@@ -520,7 +520,8 @@ def hermes_sessions(home, db, limit=60):
         except sqlite3.Error: return []
         for s in sessions:
             key = f'hermes:{s["id"]}'
-            version = int(s['mid'] or 0) * 2 + (1 if s['ended_at'] else 0)  # a new message or the session closing invalidates the cache
+            # A new message, the session closing, or a (late) title change invalidates the cache.
+            version = (int(s['mid'] or 0) * 2 + (1 if s['ended_at'] else 0)) * 1024 + len(s['title'] or '') % 1024
             cached = db.execute('SELECT off,data FROM streams WHERE path=?', (key,)).fetchone()
             if cached and cached[0] == version:
                 state = json.loads(cached[1])
