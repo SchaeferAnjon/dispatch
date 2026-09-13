@@ -164,6 +164,8 @@ export interface Session {
   probable_session_id?: string;
   scheduled?: boolean;
   title?: string;
+  // A resident process (Hermes gateway) that is online without a conversation in progress.
+  daemon?: boolean;
   host?: string;
   host_name?: string;
   remote?: boolean;

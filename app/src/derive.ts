@@ -119,6 +119,8 @@ export interface AgentPresence {
   current: Issue[];
   sessions: Session[];
   bySource: { kind: SourceKind; label: string; count: number; working: number }[];
+  // A resident process that keeps the agent online between conversations (Hermes gateway).
+  daemon?: string;
 }
 export const SOURCE_LABEL: Record<SourceKind, string> = { terminal: "终端", desktop: "桌面端", editor: "编辑器", chat: "聊天", cron: "定时任务", unknown: "来源未知" };
 const ONLINE_WINDOW_MIN = 30;
@@ -150,6 +152,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
   for (const s of sessions) {
     if (!s.alive || RETIRED_AGENTS.has(s.agent)) continue;
     const p = ensure(s.agent);
+    if (s.daemon) { p.daemon = s.source_app || "常驻"; continue; }
     p.sessions.push(s);
   }
   for (const p of map.values()) {
@@ -162,10 +165,11 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
       bs.set(key, b);
     }
     p.bySource = [...bs.values()].sort((a, b) => b.count - a.count);
+    if (p.daemon) p.bySource.push({ kind: "chat", label: `${p.daemon} · 常驻`, count: 0, working: 0 });
     p.sessions.sort((a, b) => Number(b.state === "working") - Number(a.state === "working") || b.last_at - a.last_at);
     const recentWrite = !!p.lastActive && Date.now() - new Date(p.lastActive).getTime() < ONLINE_WINDOW_MIN * 60_000;
     // A live process is the truth; bd write recency only covers agents without hooks.
-    p.online = p.sessions.length > 0 || (p.actor.kind !== "human" && p.sessions.length === 0 && recentWrite && p.actor.kind === "cursor");
+    p.online = p.sessions.length > 0 || !!p.daemon || (p.actor.kind !== "human" && p.sessions.length === 0 && recentWrite && p.actor.kind === "cursor");
     p.current.sort((a, b) => a.priority - b.priority);
   }
   const order: Record<AgentKind, number> = { claude: 0, codex: 1, pi: 2, zcode: 3, opencode: 4, hermes: 5, human: 6, cursor: 7 };

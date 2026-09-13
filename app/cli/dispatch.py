@@ -180,6 +180,10 @@ def hermes_live(table):
         kind, app = HERMES_SOURCES.get(r["source"] or "", ("unknown", "Hermes"))
         cwd = r["cwd"] or HOME
         out.append({"agent": "hermes", "session_id": r["id"], "cwd": cwd, "project": os.path.basename(cwd.rstrip("/")), "agent_pid": pids[0], "source_kind": kind, "source_app": app, "entrypoint": r["source"] or "", "started_at": float(r["started_at"] or last), "last_at": last, "state": "working" if now - last < 90 else "idle", "prompts": 0, "alive": True, "registered": True, "title": r["title"] or ""})
+    if not out:
+        # The gateway is a resident process (Telegram / 微信 / cron): it is "online" even between
+        # conversations. One daemon row says so; the app shows it as presence, not as a session.
+        out.append({"agent": "hermes", "session_id": "hermes-gateway", "cwd": HOME, "project": "", "agent_pid": pids[0], "source_kind": "chat", "source_app": "Hermes 网关", "entrypoint": "gateway", "started_at": 0, "last_at": now, "state": "idle", "prompts": 0, "alive": True, "registered": True, "title": "Hermes 常驻网关（等消息 / 定时任务）", "daemon": True})
     return out
 
 
