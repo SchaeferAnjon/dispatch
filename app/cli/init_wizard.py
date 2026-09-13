@@ -901,6 +901,10 @@ def rules_setup(mode=None, target=None):
     code, o, e = run([sys.executable, bundled_cli(), "rules", "sync", "--json"], timeout=60)
     synced = json.loads(o[o.find("{"):]) if code == 0 and "{" in o else {"error": (e or o).strip()[-300:]}
     mounted = []
+    # ZCode has no skills dir of its own and no user-level hooks: it gets the same prime + skill through a plugin.
+    if os.path.isdir(AGENT_HOMES["zcode"][1]):
+        c, oo, ee = run([sys.executable, bundled_cli(), "zcode-plugin", "install"], timeout=60)
+        mounted.append({"agent": "zcode", "ok": c == 0, "msg": (oo or ee).strip().splitlines()[:1]})
     for ag in ("claude", "codex"):
         if os.path.isdir(os.path.dirname(D.AGENT_SKILL_DIRS[ag][0])):
             c, oo, ee = run([sys.executable, bundled_cli(), "skills", "enable", "task-board", "--agent", ag], timeout=60)
