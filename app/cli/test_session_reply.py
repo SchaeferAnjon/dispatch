@@ -69,6 +69,38 @@ class Replies(unittest.TestCase):
             self.assertEqual(reply.status(self.d,self.ref)['receipts'][0]['state'],'accepted')
             ipc.send.assert_called_once()
 
+    def test_claude_pictures_are_pasted_one_by_one_before_the_words(self):
+        """Claude Code turns a pasted image path into an attachment and drops any text pasted with it:
+        each picture goes in its own paste, then the words with Enter; the receipt keeps the words."""
+        import tempfile
+        calls = []
+        def herdr(host, args, timeout=30, raw=False):
+            calls.append(args)
+            if args[:2] == ['tab', 'focus']: return {'result': {}}
+            if args[:2] == ['agent', 'prompt']: return {'result': {'agent': {}}}
+            return '' if raw else {'result': {}}
+        self.d.herdr = herdr
+        pics = [tempfile.NamedTemporaryFile(suffix='.png', delete=False).name for _ in range(2)]
+        pane = {'pane_id': 'p1', 'tab_id': 't1', 'busy': False}
+        with patch.object(reply, 'target', return_value={'kind': 'herdr', 'pane': pane, 'label': 'x'}), patch.object(reply, 'herdr_target', return_value=pane), patch.object(reply.time, 'sleep'):
+            r = reply.submit(self.d, self.ref, '看看颜色', str(uuid.uuid4()), images=pics)
+        self.assertEqual((r['state'], r['text']), ('accepted', '看看颜色'))
+        self.assertEqual([a for a in calls if a[0] == 'pane'], [['pane', 'send-text', 'p1', pics[0]], ['pane', 'send-text', 'p1', pics[1]]])
+        self.assertEqual([a for a in calls if a[:2] == ['agent', 'prompt']], [['agent', 'prompt', 'p1', ' 看看颜色']])
+
+    def test_other_agents_get_picture_paths_in_the_text(self):
+        import tempfile
+        calls = []
+        self.d.herdr = lambda host, args, timeout=30, raw=False: (calls.append(args) or ({'result': {'agent': {}}} if args[:2] == ['agent', 'prompt'] else {'result': {}}))
+        pic = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False).name
+        pane = {'pane_id': 'p1', 'tab_id': 't1', 'busy': False}
+        ref = dict(self.ref, agent='codex')
+        with patch.object(reply, 'target', return_value={'kind': 'herdr', 'pane': pane, 'label': 'x'}), patch.object(reply, 'herdr_target', return_value=pane):
+            r = reply.submit(self.d, ref, '', str(uuid.uuid4()), images=[pic])
+        self.assertEqual(r['text'], f'看一下这几张图 附图（用 Read 看）：{pic}')
+        self.assertEqual([a for a in calls if a[:2] == ['agent', 'prompt']], [['agent', 'prompt', 'p1', f'看一下这几张图 附图（用 Read 看）：{pic}']])
+        self.assertEqual(reply.plain_text(f'[Image: source: {pic}]\n看一下这几张图 附图（用 Read 看）：{pic}'), '看一下这几张图')
+
     def test_desktop_inactive_turn_starts_original_thread_without_setting_override(self):
         ipc = object.__new__(reply.DesktopIPC)
         ipc.owner = Mock(return_value='owner-exact')

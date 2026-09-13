@@ -3,7 +3,10 @@ import type { Api } from '../api';
 import type { SessionRef, TimelineMsg } from '../types';
 
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number }
-interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string }
+interface DesktopRequest { id: string; kind: 'command' | 'file' | 'permission' | 'question' | 'option' | 'elicitation' | 'other'; summary: string; reason?: string; cwd?: string; files?: string[]; questions?: { id: string; text: string; options: string[] }[] }
+interface Desktop { running: boolean; status: string; requests: DesktopRequest[]; model?: string; approval_policy?: string }
+interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop }
+const REQUEST_LABEL: Record<DesktopRequest['kind'], string> = { command: '要跑命令', file: '要改文件', permission: '申请权限', question: '在提问', option: '要你选', elicitation: 'MCP 请求', other: '等确认' };
 const MODES: [string, string][] = [['default', '手动确认'], ['acceptEdits', '自动接受编辑'], ['plan', '计划模式'], ['bypassPermissions', '跳过权限']];
 const MODELS: [string, string][] = [['fable', 'Fable 5.1'], ['opus', 'Opus 5'], ['sonnet', 'Sonnet 5'], ['haiku', 'Haiku 4.5']];
 /** "Sonnet 5" → "sonnet": the alias /model takes. */
@@ -124,25 +127,58 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     return () => { viewport?.removeEventListener('resize', resize); viewport?.removeEventListener('scroll', resize); document.removeEventListener('focusin', resize); document.removeEventListener('focusout', resize); document.body.classList.remove('reply-keyboard'); document.documentElement.style.removeProperty('--reply-viewport'); };
   }, []);
   const [switching, setSwitching] = useState(false);
-  const control = async (payload: { mode?: string; model?: string }) => {
+  const control = async (payload: { mode?: string; model?: string; interrupt?: boolean; request_id?: string; decision?: string; answers?: Record<string, unknown> }) => {
     if (switching) return;
     setSwitching(true); setError('');
     try {
-      const r = readJson<{ state: string; note: string; model?: string; mode?: string }>(await api.on(host, ['reply', 'control', session.session_id, '--agent', session.agent, '--json'], JSON.stringify(payload)));
-      if (r.state !== 'accepted') setError(r.note);
-      setConnection(c => c ? { ...c, model: r.model ?? c.model, mode: r.mode ?? c.mode } : c);
+      const r = readJson<{ state: string; note: string; model?: string; mode?: string; desktop?: Desktop }>(await api.on(host, ['reply', 'control', session.session_id, '--agent', session.agent, '--json'], JSON.stringify(payload)));
+      if (r.state !== 'accepted') setError(r.note); else if (payload.interrupt || payload.request_id) setNotice(r.note);
+      setConnection(c => c ? { ...c, model: r.model ?? c.model, mode: r.mode ?? c.mode, ...(r.desktop ? { desktop: r.desktop, working: r.desktop.running } : {}) } : c);
+      if (payload.interrupt || payload.request_id) onSent();
     } catch (e) { setError(String(e)); }
     finally { setSwitching(false); }
   };
+  const [notice, setNotice] = useState('');
+  const [answerDraft, setAnswerDraft] = useState<Record<string, string>>({});
+  // Codex desktop: what it waits for right now (approvals, questions), answered over the desktop's own IPC.
+  const desktop = connection?.desktop;
+  const desktopBlock = desktop && (desktop.requests.length > 0 || desktop.running) ? <div className="reply-desktop" role="status">
+    {desktop.requests.map(r => <div key={r.id} className={`reply-request k-${r.kind}`}>
+      <div className="reply-request-head"><b>{REQUEST_LABEL[r.kind] ?? '等确认'}</b><span className="reply-request-text">{r.summary}</span></div>
+      {r.reason && <p className="muted small">{r.reason}</p>}
+      {r.cwd && <p className="muted small mono">{r.cwd}</p>}
+      {(r.kind === 'command' || r.kind === 'file') && <div className="reply-request-actions">
+        <button className="btn sm primary" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'accept' })}>批准</button>
+        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'acceptForSession' })} title="这个会话里同类的都批准">本会话都批准</button>
+        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'decline' })}>拒绝</button>
+      </div>}
+      {r.kind === 'permission' && <div className="reply-request-actions">
+        <button className="btn sm primary" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'accept' })}>批准（本轮）</button>
+        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'decline' })}>拒绝</button>
+      </div>}
+      {r.kind === 'question' && <div className="reply-request-answers">
+        {(r.questions ?? []).map(q => <label key={q.id}><span>{q.text}</span>
+          {q.options.length > 0 && <div className="reply-request-options">{q.options.map(o => <button key={o} type="button" className={`btn sm${answerDraft[q.id] === o ? ' on' : ''}`} onClick={() => setAnswerDraft(d => ({ ...d, [q.id]: o }))}>{o}</button>)}</div>}
+          <input value={answerDraft[q.id] ?? ''} onChange={e => setAnswerDraft(d => ({ ...d, [q.id]: e.target.value }))} placeholder={q.options.length ? '或自己写' : '你的回答'} />
+        </label>)}
+        <button className="btn sm primary" type="button" disabled={switching || !(r.questions ?? []).every(q => (answerDraft[q.id] ?? '').trim())} onClick={() => void control({ request_id: r.id, answers: Object.fromEntries((r.questions ?? []).map(q => [q.id, { answers: [answerDraft[q.id]] }])) })}>回答</button>
+      </div>}
+      {(r.kind === 'option' || r.kind === 'elicitation' || r.kind === 'other') && <p className="muted small">这种请求得在 Codex 桌面端里处理。</p>}
+    </div>)}
+    {desktop.running && <div className="reply-request-actions"><span className="muted small">它正在跑</span><button className="btn sm" type="button" disabled={switching} onClick={() => void control({ interrupt: true })} title="停下当前这轮（桌面端的 Stop）">打断</button></div>}
+  </div> : null;
   const send = async (mode: 'queue' | 'interrupt' = 'queue') => {
-    const text = withImages(draft, images.map(x => x.path));
+    // Pictures travel as separate --image arguments: the CLI attaches them the way each agent
+    // takes them (Claude Code: one paste per picture, then the words; others: paths in the text).
+    const paths = images.map(x => x.path);
+    const text = draft.trim() || (paths.length ? '看一下这几张图' : '');
     if (locked.current || !text || saving || !connection?.available) return;
     locked.current = true; setBusy(true); setError('');
     const request = attempt.current?.text === text ? attempt.current : { id: messageId(), text };
     attempt.current = request;
     try { sessionStorage.setItem(storageKey+':attempt',JSON.stringify(request)); } catch { /* private browser */ }
     try {
-      const r = readJson<Receipt>(await api.on(host, ['reply', 'send', session.session_id, '--agent', session.agent, '--request', request.id, '--mode', mode, '--json'], text));
+      const r = readJson<Receipt>(await api.on(host, ['reply', 'send', session.session_id, '--agent', session.agent, '--request', request.id, '--mode', mode, ...paths.flatMap(p => ['--image', p]), '--json'], text));
       if (r.state === 'accepted') { try { if ((sessionStorage.getItem(storageKey)||'').trim()===text) sessionStorage.removeItem(storageKey); } catch { /* private browser */ } forgetAttempt(); }
       if (!alive.current) return;
       setReceipt(r);
@@ -159,10 +195,16 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     }
   };
   const last = (receipt || connection?.receipts[0])?.id===dismissed ? null : receipt || connection?.receipts[0];
-  const inTranscript = last && messages.some(m => m.role === 'user' && m.text.trim() === last.text.trim() && Date.parse(m.ts) >= (last.created - 10) * 1000);
+  const plain = (t: string) => t.replace(/\[Image: source: [^\]]*\]/g, '').split('附图（用 Read 看）：')[0].replace(/\s+/g, ' ').trim();
+  const shownInTranscript = (r: Receipt) => messages.some(m => m.role === 'user' && plain(m.text) === plain(r.text) && Date.parse(m.ts) >= (r.created - 10) * 1000);
+  // Everything accepted but not yet in the conversation, oldest first: while the agent works, Claude Code
+  // holds several queued messages, and each one stays visible here until its turn comes.
+  const pending = (connection?.receipts ?? []).filter(r => r.state === 'accepted' && r.id !== dismissed && !shownInTranscript(r) && Date.now() / 1000 - r.created < 6 * 3600).sort((a, b) => a.created - b.created);
   const unknown = last && (last.state === 'unknown' || last.state === 'sending');
   return <section className="session-reply" aria-label="回复当前会话">
-    {last?.state === 'accepted' && !inTranscript && <div className="reply-receipt" role="status"><span>你 · {last.note}</span><p>{last.text}</p></div>}
+    {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map(r => <div key={r.id} className="reply-queued"><span>你 · {r.note}</span><p>{r.text}</p></div>)}</div>}
+    {desktopBlock}
+    {notice && <div className="reply-receipt" role="status"><span>{notice}</span><button className="link" type="button" onClick={() => setNotice('')}>好</button></div>}
     <div className="reply-connection"><span>{connection?.label || (error ? '连接暂时不可用' : '正在连接原会话…')}</span>
       {connection?.available && (connection.mode || connection.model) && <span className="reply-switches">
         {connection.mode && <select aria-label="权限模式" title="权限模式：终端里的 Shift+Tab" value={connection.mode} disabled={switching} onChange={e => void control({ mode: e.target.value })}>{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODES.some(([v]) => v === connection.mode) && <option value={connection.mode}>{connection.mode}</option>}</select>}

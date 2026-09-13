@@ -90,6 +90,145 @@ class DesktopIPC:
             raise RuntimeError(r.get('error') or 'Codex 未确认收到消息')
         return '已送达原 Codex 会话'
 
+    # -- what the desktop knows about a thread: pending approvals / questions and whether a turn runs.
+    # The desktop broadcasts a thread's state only to followers: announce ourselves, ask the owner
+    # to load the complete history (it answers with a snapshot broadcast), read it, stop following.
+    def _send(self, msg):
+        raw = json.dumps(msg).encode()
+        self.sock.sendall(struct.pack('<I', len(raw)) + raw)
+
+    def _recv(self):
+        size = struct.unpack('<I', self.read(4))[0]
+        if not 0 < size <= 256 * 1024 * 1024:
+            raise ConnectionError('Codex IPC 消息格式已改变')
+        m = json.loads(self.read(size))
+        if m.get('type') == 'client-discovery-request':
+            self._send(dict(type='client-discovery-response', requestId=m['requestId'], response={'canHandle': False}))
+        return m
+
+    def _follow(self, sid, on):
+        self._send(dict(type='broadcast', broadcastId=str(uuid.uuid4()), sourceClientId=self.client, method='thread-stream-following-changed',
+                        params=dict(conversationId=sid, hostId='local', following=bool(on)), version=1))
+
+    def snapshot(self, sid, owner=None):
+        """The desktop's conversationState for the thread (raw)."""
+        owner = owner or self.owner(sid)
+        self._follow(sid, True)
+        try:
+            rid = str(uuid.uuid4())
+            self._send(dict(type='request', requestId=rid, sourceClientId=self.client, targetClientId=owner, method='thread-follower-load-complete-history',
+                            params=dict(conversationId=sid), version=1, timeoutMs=8000))
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                m = self._recv()
+                if m.get('type') == 'broadcast' and m.get('method') == 'thread-stream-state-changed':
+                    p = m.get('params') or {}
+                    ch = p.get('change') or {}
+                    if p.get('conversationId') == sid and ch.get('type') == 'snapshot' and isinstance(ch.get('conversationState'), dict):
+                        return ch['conversationState']
+                if m.get('type') == 'response' and m.get('requestId') == rid and m.get('resultType') == 'error':
+                    raise RuntimeError(m.get('error') or 'Codex 没有返回会话状态')
+            raise TimeoutError('Codex 没有返回会话状态')
+        finally:
+            try:
+                self._follow(sid, False)
+            except Exception:
+                pass
+
+    def state(self, sid):
+        return desktop_state(self.snapshot(sid))
+
+    def decide(self, sid, request_id, decision, answers=None):
+        """Answer one pending request: command / file approvals take accept | acceptForSession |
+        decline; a permission request takes accept | decline (scope: this turn); a question takes
+        the answers. The request's method decides which follower call to make."""
+        owner = self.owner(sid)
+        st = desktop_state(self.snapshot(sid, owner))
+        req = next((r for r in st['requests'] if r['id'] == request_id), None)
+        if not req:
+            raise Rejected('这个请求已经不在了（可能已在桌面端处理过），刷新看看。')
+        kind = req['kind']
+        if kind in ('command', 'file'):
+            if decision not in ('accept', 'acceptForSession', 'decline'):
+                raise Rejected('决定只能是 accept / acceptForSession / decline。')
+            method = 'thread-follower-command-approval-decision' if kind == 'command' else 'thread-follower-file-approval-decision'
+            r = self.request(method, dict(conversationId=sid, requestId=request_id, decision=decision), owner)
+        elif kind == 'permission':
+            if decision not in ('accept', 'decline'):
+                raise Rejected('权限请求只能批准或拒绝。')
+            granted = req.get('permissions') if decision == 'accept' else {}
+            r = self.request('thread-follower-permissions-request-approval-response', dict(conversationId=sid, requestId=request_id, response={'permissions': granted or {}, 'scope': 'turn'}), owner)
+        elif kind == 'question':
+            if not isinstance(answers, dict) or not answers:
+                raise Rejected('请填写答案。')
+            r = self.request('thread-follower-submit-user-input', dict(conversationId=sid, requestId=request_id, response={'answers': answers}), owner)
+        else:
+            raise Rejected('这种请求只能在桌面端处理。')
+        if r.get('resultType') != 'success':
+            raise RuntimeError(r.get('error') or 'Codex 没有确认这个决定')
+        return {'command': '已批准' if decision == 'accept' else '本会话都批准' if decision == 'acceptForSession' else '已拒绝', 'file': '已批准' if decision != 'decline' else '已拒绝', 'permission': '已批准' if decision == 'accept' else '已拒绝', 'question': '答案已提交'}[kind]
+
+    def interrupt(self, sid):
+        owner = self.owner(sid)
+        st = desktop_state(self.snapshot(sid, owner))
+        if not st['running']:
+            raise Rejected('它现在没在跑，不用打断。')
+        r = self.request('thread-follower-interrupt-turn', dict(conversationId=sid, mode='user-stop', expectedTurnId=st.get('turn_id')), owner, version=4)
+        if r.get('resultType') != 'success':
+            raise RuntimeError(r.get('error') or 'Codex 没有确认打断')
+        return '已打断当前这轮'
+
+
+REQUEST_KINDS = {
+    'item/commandExecution/requestApproval': 'command', 'execCommandApproval': 'command',
+    'item/fileChange/requestApproval': 'file', 'applyPatchApproval': 'file',
+    'item/permissions/requestApproval': 'permission',
+    'item/tool/requestUserInput': 'question',
+    'item/tool/requestOptionPicker': 'option', 'mcpServer/elicitation/request': 'elicitation',
+}
+
+
+def _cmd_text(v):
+    if isinstance(v, list):
+        return ' '.join(str(x) for x in v)
+    return str(v or '')
+
+
+def desktop_state(cs):
+    """A compact view of the desktop's conversationState: is a turn running, and what it waits for."""
+    status = (cs.get('threadRuntimeStatus') or {}) if isinstance(cs.get('threadRuntimeStatus'), dict) else {}
+    requests = []
+    for r in cs.get('requests') or []:
+        if not isinstance(r, dict):
+            continue
+        p = r.get('params') if isinstance(r.get('params'), dict) else {}
+        kind = REQUEST_KINDS.get(r.get('method') or '', 'other')
+        row = {'id': str(r.get('id')), 'method': r.get('method') or '', 'kind': kind, 'turn_id': p.get('turnId'), 'reason': str(p.get('reason') or '')[:400]}
+        if kind == 'command':
+            row['summary'] = _cmd_text(p.get('command') or p.get('parsedCmd') or p.get('cmd'))[:400]
+            row['cwd'] = str(p.get('cwd') or '')
+        elif kind == 'file':
+            changes = p.get('changes') or p.get('fileChanges') or []
+            paths = [str(c.get('path') or c.get('file') or '') for c in changes if isinstance(c, dict)] if isinstance(changes, list) else []
+            row['summary'] = '修改 ' + '、'.join(x for x in paths if x)[:400] if paths else '修改文件'
+            row['files'] = paths
+        elif kind == 'permission':
+            perms = p.get('permissions') if isinstance(p.get('permissions'), dict) else {}
+            row['summary'] = '申请权限：' + ('、'.join(perms.keys()) if perms else str(p.get('reason') or ''))[:400]
+            row['permissions'] = perms
+        elif kind == 'question':
+            qs = p.get('questions') if isinstance(p.get('questions'), list) else []
+            row['questions'] = [{'id': str(q.get('id') or i), 'text': str(q.get('question') or q.get('header') or q.get('text') or '')[:400], 'options': [str(o.get('label') if isinstance(o, dict) else o) for o in (q.get('options') or [])]} for i, q in enumerate(qs) if isinstance(q, dict)]
+            row['summary'] = '；'.join(q['text'] for q in row['questions'])[:400] or '它有问题要问'
+        else:
+            row['summary'] = str(p.get('message') or p.get('title') or r.get('method') or '')[:400]
+        requests.append(row)
+    return {'running': status.get('type') not in (None, '', 'idle'), 'status': status.get('type') or 'idle', 'turn_id': status.get('turnId') or status.get('turn_id'),
+            'requests': requests, 'title': cs.get('title') or cs.get('generatedTitle') or '', 'cwd': cs.get('cwd') or '',
+            'model': cs.get('latestModel') or '', 'approval_policy': ((cs.get('latestThreadSettings') or {}).get('approvalPolicy') if isinstance(cs.get('latestThreadSettings'), dict) else '') or '',
+            'has_unread': bool(cs.get('hasUnreadTurn'))}
+
+
 
 def exact_ref(d, sid, agent):
     # Do not use resolve(), which deliberately accepts task IDs and ID prefixes.
@@ -153,8 +292,12 @@ def target(d, ref):
         else:
             return {'kind': 'herdr', 'pane': herdr_target(d, ref), 'label': '回复到电脑上的原 Codex 会话'}
         with closing(DesktopIPC(d.HOME)) as ipc:
-            ipc.owner(ref['session_id'])
-        return {'kind': 'codex-desktop', 'label': '回复到原 Codex 会话'}
+            owner = ipc.owner(ref['session_id'])
+            try:
+                desktop = desktop_state(ipc.snapshot(ref['session_id'], owner))
+            except Exception:
+                desktop = None
+        return {'kind': 'codex-desktop', 'label': '回复到原 Codex 会话', 'working': bool(desktop and desktop['running']), 'desktop': desktop}
     if ref['agent'] in ('claude-code', 'pi', 'codex'):
         # A working agent can still take a message: the TUIs queue typed input for the next turn,
         # and Esc interrupts the current one — the app offers both.
@@ -187,7 +330,7 @@ def status(d, ref):
                         stamp = datetime.fromisoformat(m.get('ts', '').replace('Z', '+00:00')).timestamp()
                     except ValueError:
                         continue
-                    if m['role'] == 'user' and m['text'].strip() == receipt['text'].strip() and stamp >= receipt['created'] - 10:
+                    if m['role'] == 'user' and plain_text(m['text']) == plain_text(receipt['text']) and stamp >= receipt['created'] - 10:
                         found = True
                 if found:
                     db.execute("UPDATE replies SET state='accepted',note='已在原会话确认收到' WHERE id=?", (receipt['id'],))
@@ -197,19 +340,43 @@ def status(d, ref):
     try:
         t = target(d, ref)
         extra = tui_state(d, t['pane']['pane_id']) if t['kind'] == 'herdr' and ref['agent'] == 'claude-code' else {}
-        return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts, **extra)
+        return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts, **({'desktop': t['desktop']} if t.get('desktop') else {}), **extra)
     except Exception as e:
         return dict(available=False, label=str(e) if isinstance(e, Rejected) else '暂时无法连接原 Agent，请重新连接。', receipts=receipts)
 
 
-def submit(d, ref, text, request_id, mode='queue'):
+IMAGE_NOTE = '附图（用 Read 看）：'
+IMAGE_MARK = re.compile(r'\[Image: source: [^\]]*\]')
+
+
+def with_images(text, paths):
+    """The one-string form: text plus where the pictures are (for agents whose input box has no
+    picture attachments)."""
+    return f"{text.strip() or '看一下这几张图'} {IMAGE_NOTE}{' '.join(paths)}" if paths else text.strip()
+
+
+def plain_text(text):
+    """A message with its picture markers and the 附图 note removed, for comparing what was sent
+    with what the transcript shows."""
+    t = IMAGE_MARK.sub('', text or '')
+    i = t.find(IMAGE_NOTE)
+    if i >= 0:
+        t = t[:i]
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def submit(d, ref, text, request_id, mode='queue', images=()):
+    images = [p for p in (images or []) if isinstance(p, str) and p.strip()]
+    text = text if text.strip() else ('看一下这几张图' if images else text)
     if not text.strip() or len(text) > 16000:
         raise Rejected('请输入回复，最多 16000 字。')
+    if any(not os.path.isfile(p) for p in images):
+        raise Rejected('有图片没传上来，请重新添加。')
     try:
         uuid.UUID(request_id)
     except (ValueError, TypeError):
         raise Rejected('无效的消息编号，请刷新页面。')
-    digest = hashlib.sha256((ref['agent'] + '\0' + ref['session_id'] + '\0' + text).encode()).hexdigest()
+    digest = hashlib.sha256((ref['agent'] + '\0' + ref['session_id'] + '\0' + text + '\0' + '\n'.join(images)).encode()).hexdigest()
     with closing(connect(d)) as db, db:
         db.execute('BEGIN IMMEDIATE')
         old = db.execute('SELECT * FROM replies WHERE id=?', (request_id,)).fetchone()
@@ -223,12 +390,16 @@ def submit(d, ref, text, request_id, mode='queue'):
         # Resolve first: a disconnected/blocked target never gets a receipt claiming
         # submission. The second identity check is done immediately before writing.
         t = target(d, ref)
-        db.execute('INSERT INTO replies VALUES (?,?,?,?,?,?,?,?)', (request_id, ref['session_id'], ref['agent'], digest, text, 'sending', '正在发送', time.time()))
+        # Claude Code takes pictures as attachments (each path pasted alone becomes [Image #n]); the
+        # others read them from a note in the text. The receipt keeps the text only.
+        attach = bool(images) and t['kind'] == 'herdr' and ref['agent'] == 'claude-code'
+        wire = text if attach else with_images(text, images)
+        db.execute('INSERT INTO replies VALUES (?,?,?,?,?,?,?,?)', (request_id, ref['session_id'], ref['agent'], digest, with_images(text, images) if not attach else text, 'sending', '正在发送', time.time()))
     state, note = 'accepted', ''
     try:
         if t['kind'] == 'codex-desktop':
             with closing(DesktopIPC(d.HOME)) as ipc:
-                note = ipc.send(ref, text, request_id)
+                note = ipc.send(ref, wire, request_id)
         else:
             pane = herdr_target(d, ref, require_idle=False)
             focus = d.herdr(None, ['tab', 'focus', pane['tab_id']])
@@ -243,7 +414,16 @@ def submit(d, ref, text, request_id, mode='queue'):
                 # Esc stops the current turn in Claude Code, Codex and pi; give the TUI a moment to settle.
                 d.herdr(None, ['agent', 'send-keys', pane['pane_id'], 'esc'])
                 time.sleep(1.2)
-            result = d.herdr(None, ['agent', 'prompt', pane['pane_id'], text], timeout=15)
+            if attach:
+                # Pasting a path that ends in an image extension turns it into an attachment — and,
+                # when other text rides along in the same paste, Claude Code drops that text (and any
+                # second path). So: one paste per picture, a beat for the conversion, then the words.
+                for p in images:
+                    d.herdr(None, ['pane', 'send-text', pane['pane_id'], p], raw=True)  # prints nothing on success
+                    time.sleep(0.9)
+                result = d.herdr(None, ['agent', 'prompt', pane['pane_id'], ' ' + text.strip()], timeout=15)
+            else:
+                result = d.herdr(None, ['agent', 'prompt', pane['pane_id'], wire], timeout=15)
             if result.get('error'):
                 err = result['error']
                 if err.get('code') in ('agent_blocked', 'agent_pane_busy', 'agent_not_found'):
@@ -401,9 +581,31 @@ def tui_state(d, pid):
     return out
 
 
+def desktop_control(d, ref, payload):
+    """Codex desktop: approve / decline a pending request, answer its question, or interrupt the turn."""
+    t = target(d, ref)
+    if t['kind'] != 'codex-desktop':
+        raise Rejected('这个会话不在 Codex 桌面端里打开，审批和打断得在它运行的地方做。')
+    with closing(DesktopIPC(d.HOME)) as ipc:
+        if payload.get('interrupt'):
+            note = ipc.interrupt(ref['session_id'])
+        elif payload.get('request_id'):
+            note = ipc.decide(ref['session_id'], str(payload['request_id']), payload.get('decision') or '', payload.get('answers'))
+        else:
+            raise Rejected('没有要做的事。')
+        try:
+            desktop = ipc.state(ref['session_id'])
+        except Exception:
+            desktop = None
+    return dict(state='accepted', note=note, **({'desktop': desktop} if desktop else {}))
+
+
 def control(d, ref, payload):
     """Switch the permission mode (Shift+Tab cycles: default → acceptEdits → plan → bypass) or
-    the model (/model <alias>, confirming the cache warning) of a Claude Code terminal session."""
+    the model (/model <alias>, confirming the cache warning) of a Claude Code terminal session.
+    For a Codex desktop session: approvals, answers and interrupts over its IPC."""
+    if ref['agent'] == 'codex' and (payload.get('interrupt') or payload.get('request_id')):
+        return desktop_control(d, ref, payload)
     if ref['agent'] != 'claude-code':
         raise Rejected('只有 Claude Code 的会话能在这里切模式和模型。')
     pane = herdr_target(d, ref, require_idle=False)
@@ -509,5 +711,5 @@ def command(d, a):
     else:
         import sys
         text = sys.stdin.read(16001)
-        result = submit(d, ref, text, a.request, mode=getattr(a, 'mode', 'queue') or 'queue')
+        result = submit(d, ref, text, a.request, mode=getattr(a, 'mode', 'queue') or 'queue', images=getattr(a, 'image', None) or [])
     d.out(result, a.json, lambda x: print(json.dumps(x, ensure_ascii=False)))
