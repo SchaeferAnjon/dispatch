@@ -317,14 +317,49 @@ def connect(d):
     return db
 
 
+def queued_delivered(ref):
+    """(text, epoch) of every message Claude Code took from its queue in this transcript: the
+    `queued_command` attachment it logs when it folds one into the running turn."""
+    out = []
+    path = ref.get('path') or ''
+    if not path or not os.path.isfile(path):
+        return out
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                if 'queued_command' not in line and 'queue-operation' not in line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                text, ts = '', d.get('timestamp') or ''
+                if d.get('type') == 'attachment' and (d.get('attachment') or {}).get('type') == 'queued_command':
+                    text = (d['attachment'].get('prompt') or '')
+                elif d.get('type') == 'queue-operation' and d.get('operation') == 'remove':
+                    text = d.get('content') or ''
+                if not text:
+                    continue
+                try:
+                    from datetime import datetime as _dt
+                    epoch = _dt.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
+                except ValueError:
+                    epoch = 0
+                out.append((plain_text(text), epoch))
+    except OSError:
+        pass
+    return out
+
+
 def status(d, ref):
     with closing(connect(d)) as db, db:
         pending = db.execute("SELECT * FROM replies WHERE sid=? AND agent=? AND state IN ('sending','unknown')", (ref['session_id'], ref['agent'])).fetchall()
         if pending:
             messages = d.read_session_detail(d.ref_of(ref['path'], ref))['messages']
             from datetime import datetime
+            taken = queued_delivered(ref) if ref['agent'] == 'claude-code' else []
             for receipt in pending:
-                found = False
+                found = any(t == plain_text(receipt['text']) and ts >= receipt['created'] - 10 for t, ts in taken)
                 for m in messages:
                     try:
                         stamp = datetime.fromisoformat(m.get('ts', '').replace('Z', '+00:00')).timestamp()
@@ -337,6 +372,28 @@ def status(d, ref):
                 elif receipt['state'] == 'sending' and time.time() - receipt['created'] > 45:
                     db.execute("UPDATE replies SET state='unknown',note='未确认送达，请先查看原会话。' WHERE id=?", (receipt['id'],))
         receipts = [dict(r) for r in db.execute('SELECT id,text,state,note,created FROM replies WHERE sid=? AND agent=? ORDER BY created DESC LIMIT 10', (ref['session_id'], ref['agent']))]
+    # Delivered = the words are in the conversation. A message queued while Claude Code worked never
+    # becomes a user turn: it is absorbed mid-turn and logged as a queued_command attachment / a
+    # queue-operation, so those count too.
+    absorbed = queued_delivered(ref) if ref['agent'] == 'claude-code' else []
+    try:
+        shown = d.read_session_detail(d.ref_of(ref['path'], ref))['messages'] if receipts else []
+    except Exception:
+        shown = []
+    from datetime import datetime as _dt
+    for r in receipts:
+        want = plain_text(r['text'])
+        hit = any(t == want and ts >= r['created'] - 10 for t, ts in absorbed)
+        if not hit:
+            for m in shown:
+                try:
+                    stamp = _dt.fromisoformat(m.get('ts', '').replace('Z', '+00:00')).timestamp()
+                except ValueError:
+                    continue
+                if m['role'] == 'user' and plain_text(m['text']) == want and stamp >= r['created'] - 10:
+                    hit = True
+                    break
+        r['delivered'] = hit
     try:
         t = target(d, ref)
         extra = tui_state(d, t['pane']['pane_id']) if t['kind'] == 'herdr' and ref['agent'] == 'claude-code' else {}
@@ -346,7 +403,8 @@ def status(d, ref):
 
 
 IMAGE_NOTE = '附图（用 Read 看）：'
-IMAGE_MARK = re.compile(r'\[Image: source: [^\]]*\]')
+# What a picture looks like in a transcript: Claude Code's marker, or the bare path it logs for a pasted attachment.
+IMAGE_MARK = re.compile(r'\[Image: source: [^\]]*\]|(?:^|(?<=\s))/[^\s]+\.(?:png|jpe?g|gif|webp|heic|heif)\b', re.I)
 
 
 def with_images(text, paths):

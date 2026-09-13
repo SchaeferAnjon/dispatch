@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent
 import type { Api } from '../api';
 import type { SessionRef, TimelineMsg } from '../types';
 
-interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number }
+interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number; delivered?: boolean }
 interface DesktopRequest { id: string; kind: 'command' | 'file' | 'permission' | 'question' | 'option' | 'elicitation' | 'other'; summary: string; reason?: string; cwd?: string; files?: string[]; questions?: { id: string; text: string; options: string[] }[] }
 interface Desktop { running: boolean; status: string; requests: DesktopRequest[]; model?: string; approval_policy?: string }
 interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop }
@@ -197,11 +197,11 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     }
   };
   const last = (receipt || connection?.receipts[0])?.id===dismissed ? null : receipt || connection?.receipts[0];
-  const plain = (t: string) => t.replace(/\[Image: source: [^\]]*\]/g, '').split('附图（用 Read 看）：')[0].replace(/\s+/g, ' ').trim();
+  const plain = (t: string) => t.replace(/\[Image: source: [^\]]*\]|(?:^|\s)\/\S+\.(?:png|jpe?g|gif|webp|heic|heif)\b/gi, ' ').split('附图（用 Read 看）：')[0].replace(/\s+/g, ' ').trim();
   const shownInTranscript = (r: Receipt) => messages.some(m => m.role === 'user' && plain(m.text) === plain(r.text) && Date.parse(m.ts) >= (r.created - 10) * 1000);
   // Everything accepted but not yet in the conversation, oldest first: while the agent works, Claude Code
   // holds several queued messages, and each one stays visible here until its turn comes.
-  const pending = (connection?.receipts ?? []).filter(r => r.state === 'accepted' && r.id !== dismissed && !shownInTranscript(r) && Date.now() / 1000 - r.created < 6 * 3600).sort((a, b) => a.created - b.created);
+  const pending = (connection?.receipts ?? []).filter(r => r.state === 'accepted' && r.id !== dismissed && !r.delivered && !shownInTranscript(r) && Date.now() / 1000 - r.created < 6 * 3600).sort((a, b) => a.created - b.created);
   const unknown = last && (last.state === 'unknown' || last.state === 'sending');
   return <section className={`session-reply${big ? " big" : ""}`} aria-label="回复当前会话">
     {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map(r => <div key={r.id} className="reply-queued"><span>你 · {r.note}</span><p>{r.text}</p></div>)}</div>}
