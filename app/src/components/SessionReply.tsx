@@ -225,7 +225,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
       </div>}
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={e => { void addFiles(Array.from(e.target.files || [])); e.target.value = ''; }} />
       <button className="btn reply-attach" type="button" disabled={busy || !!unknown} onClick={() => fileInput.current?.click()} title="发图片：手机可拍照或选相册，电脑也可以直接粘贴" aria-label="添加图片">📷</button>
-      <textarea ref={textarea} onPaste={onPaste} aria-label="回复内容" placeholder={connection?.working ? "它在跑，也可以说话：排队等本轮结束，或打断让它马上看" : images.length ? "说说这张图要干什么（可不填）" : "在这里回复，继续这个会话…"} value={draft} maxLength={16000} rows={2} disabled={busy || !!unknown}
+      <textarea ref={textarea} onPaste={onPaste} aria-label="回复内容" placeholder={connection?.working ? "" : images.length ? "说说这张图要干什么（可不填）" : "在这里回复…"} value={draft} maxLength={16000} rows={1} disabled={busy || !!unknown}
         onChange={e => { setDraft(e.target.value); if (receipt?.state === 'failed') setReceipt(null); }}
         onKeyDown={e => {
           if (e.nativeEvent.isComposing) return;
