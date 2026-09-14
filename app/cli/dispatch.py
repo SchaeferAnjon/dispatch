@@ -2709,7 +2709,11 @@ def cmd_session(a):
     if "/sub/" in a.key:
         ref = subagent_ref(idx, a.key)
         if not ref:
-            print(f"找不到子 Agent {a.key}", file=sys.stderr); sys.exit(1)
+            # The parent session may live on another Mac (the phone is served by the mini): ask there.
+            d = remote_session_detail(a.key)
+            if not d:
+                print(f"找不到子 Agent {a.key}", file=sys.stderr); sys.exit(1)
+            return out(d, a.json, lambda d: print(f"{d['meta']['title']} · {len(d['messages'])} 条 · 改动文件 {len(d['files'])}"))
         d = read_session_detail(ref)
         from attachments import catalog
         d["attachments"] = catalog(ref)
