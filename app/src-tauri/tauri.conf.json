@@ -65,6 +65,8 @@
       "../cli/memories.py": "cli/memories.py",
       "../cli/zcode_plugin.py": "cli/zcode_plugin.py",
       "../cli/lineage.py": "cli/lineage.py",
+      "../cli/rules_sync.py": "cli/rules_sync.py",
+      "../cli/qr.py": "cli/qr.py",
       "../cli/VERSION": "cli/VERSION",
       "../cli/board-sync.sh": "cli/board-sync.sh",
       "../cli/statusline-tee.sh": "cli/statusline-tee.sh",
