@@ -9,8 +9,8 @@ import { Avatar } from './ui';
 // compact: one line of summary per conversation, for triage lists (等我).
 // A clamped line of text that opens in place when tapped, so a cut-off summary or reply can be
 // read without leaving the list (the row itself still opens the session).
-function Preview({ className = '', title, children }: { className?: string; title?: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+function Preview({ className = '', title, children, initiallyOpen = false }: { className?: string; title?: string; children: ReactNode; initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
   return <div className={`conversation-preview${open ? ' open' : ''} ${className}`} title={title} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}>{children}</div>;
 }
 
@@ -31,9 +31,9 @@ export function ConversationRows({ rows, me, onOpen, onRead, onSummarize, onDige
     <div className="conversation-summary">
       <div className="conversation-title">{showProject && <span className="conversation-project-chip" title="所属项目">{conversationProject(a)}</span>}{a.starred&&<span className="star on" title="追踪中">★</span>}<strong>{a.title}</strong><span className={`activity-badge ${a.stale ? '' : a.state === 'working' ? 'running' : a.unread ? 'new' : ''}`}>{a.scheduled ? '定时会话' : activityLabel(a)}</span></div>
       {!compact && <div className="conversation-location"><span className="conversation-project"><span>项目</span><b>{conversationProject(a)}</b></span><span className="conversation-folder" title={a.cwd || '未记录工作目录'}><span>文件夹</span><code>{a.cwd ? a.cwd.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, '~') : '未记录'}</code></span></div>}
-      {a.unread
-        ? <div className="conversation-preview open conversation-model-summary conversation-digest" title="这一轮摘要：你上条消息之后它做了什么、在等你什么" onClick={(e) => e.stopPropagation()}><span className="conversation-caption">未读这轮</span>{digestFresh(a) ? <Linkified text={a.unread_summary!} /> : <span className="muted">{onDigest ? '正在写这一轮的摘要…' : (a.reply_preview || '').slice(0, 300)}</span>}</div>
-        : a.summary ? <Preview className="conversation-model-summary" title="模型写的总结：目标、做了什么、还差什么（点文字展开全文）"><span className="conversation-caption">总结</span><Linkified text={a.summary} /></Preview> : null}
+      {(() => { const fresh = !!(a.unread_summary && a.unread_summary_reply === a.reply_id); return a.unread || fresh
+        ? <div className="conversation-preview open conversation-model-summary conversation-digest" title="这一轮的回复摘要：它最后告诉你什么、要你做什么" onClick={(e) => e.stopPropagation()}><span className="conversation-caption">{a.unread ? '未读这轮' : '这轮回复'}</span>{fresh ? <Linkified text={a.unread_summary!} /> : <span className="muted">{onDigest ? '正在写这一轮的摘要…' : (a.reply_preview || '').slice(0, 300)}</span>}</div>
+        : a.summary ? <Preview className="conversation-model-summary" initiallyOpen title="模型写的总结：目标、做了什么、还差什么（点文字收起）"><span className="conversation-caption">总结</span><Linkified text={a.summary} /></Preview> : null; })()}
       {!compact && !a.summary && <div className="conversation-preview conversation-overview" title="你在这段会话里提过的要求：最初一条，以及后续追加的"><span className="conversation-caption">你说过的</span>{a.overview || '暂无足够的对话内容可整理'}</div>}
       <Preview title="点文字展开全文；点其他地方打开会话"><span className="conversation-caption">{a.reply_preview ? '最新回复' : '最新进展'}</span><Linkified text={a.summary ? (a.reply_preview || a.activity || '').trim().slice(0, 600) || '—' : conversationSummary(a)} /></Preview>
       {a.state === 'working' && !a.stale && a.activity && <div className="conversation-current" title={a.activity}><span className="conversation-caption">正在做</span>{a.activity}</div>}

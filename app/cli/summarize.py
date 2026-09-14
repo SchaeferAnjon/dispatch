@@ -175,8 +175,8 @@ def auto(limit=2):
     return {"done": done, "tried": tried, "unread": unread}
 
 
-UNREAD_PROMPT = ("你是会话记录的总结者。用户消息里「摘录开始」和「摘录结束」之间，是一个编程 Agent 在用户上一条消息之后这一轮的回复原文（可能只有一两句，也可能有多条回复和工具调用）。"
-                 "用简体中文写一段不超过 80 字的话，只说这一轮：Agent 做了什么、结果如何、现在在等用户什么（没有就不写）。摘录再短也按它写，不要说看不到内容、不要索要材料。只写事实，不评价，不加标题、不用列表、不用引号。")
+UNREAD_PROMPT = ("你是会话记录的总结者。用户消息里「摘录开始」和「摘录结束」之间，是一个编程 Agent 在用户上一条消息之后这一轮说的话；标着【最终回复】的那段是它最后给用户的回复，前面的只是过程中的进度说明。"
+                 "用简体中文把【最终回复】的内容压缩成不超过 80 字的一段：它告诉用户什么结论或结果、要用户做什么（没有就不写）。不要写它调用了几次工具、跑了几条命令这类过程；进度说明只在最终回复没说清时才参考。摘录再短也按它写，不要说看不到内容、不要索要材料。只写事实，不评价，不加标题、不用列表、不用引号。")
 
 
 def _msg_epoch(m):
@@ -195,24 +195,20 @@ def unread_turn(msgs, reply_at=None):
     for i, m in enumerate(msgs):
         if m.get("role") == "user" and (m.get("text") or "").strip() and (reply_at is None or _msg_epoch(m) <= reply_at + 1):
             last_user = i
-    parts, tools = [], {}
+    parts = []
     for m in msgs[last_user + 1:]:
         if m.get("role") != "assistant":
             continue
         if reply_at is not None and _msg_epoch(m) > reply_at + 2:
             break
-        for t in m.get("tools") or []:
-            tools[t.get("name", "")] = tools.get(t.get("name", ""), 0) + 1
         if (m.get("text") or "").strip():
-            parts.append(m["text"].strip()[:900])
-    text = "\n\n".join(parts)
-    if not text.strip():
+            parts.append(m["text"].strip())
+    if not parts:
         return ""
-    if len(text) > 9000:
-        text = text[:3000] + "\n\n……（中间省略）……\n\n" + text[-6000:]
-    if tools:
-        text = "（这一轮调用了：" + "、".join(f"{k}×{n}" if n > 1 else k for k, n in sorted(tools.items(), key=lambda kv: -kv[1])[:8]) + "）\n\n" + text
-    return text
+    # The last text is the reply the person reads; earlier ones are progress notes along the way.
+    final = parts[-1][:3000]
+    notes = "\n".join(p[:300] for p in parts[:-1])[-2500:]
+    return (f"（过程中的进度说明）\n{notes}\n\n" if notes else "") + "【最终回复】\n" + final
 
 
 def summarize_unread(key, reply_id, force=False):

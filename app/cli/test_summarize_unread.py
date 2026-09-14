@@ -14,9 +14,9 @@ class UnreadTurnTest(unittest.TestCase):
                 m("user", "再来一个", "2026-09-14T00:02:00Z"), m("assistant", "正在做", "2026-09-14T00:02:10Z")]
         reply_at = S._msg_epoch(msgs[2])
         text = S.unread_turn(msgs, reply_at)
-        self.assertTrue(text.startswith("（这一轮调用了：Read×2、Edit）"))
-        self.assertIn("看一下代码", text); self.assertIn("改好了，已推送", text)
-        self.assertNotIn("正在做", text)
+        self.assertTrue(text.endswith("【最终回复】\n改好了，已推送"))
+        self.assertIn("（过程中的进度说明）\n看一下代码", text)
+        self.assertNotIn("Read", text); self.assertNotIn("正在做", text)
         # No anchor: the latest turn.
         self.assertIn("正在做", S.unread_turn(msgs))
 

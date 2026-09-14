@@ -235,19 +235,26 @@ class ActivityTests(unittest.TestCase):
         self.assertEqual(self.row()['state'], 'working')
 
     def test_reply_to_harness_event_is_not_unread(self):
-        # user asks → agent answers → user reads it → a background-task notice arrives → agent comments on it.
+        # user asks → agent answers → user reads it → a hook event arrives → agent comments on it.
         self.append(record('user', '帮我看看', self.t), record('assistant', '看完了', self.t+1))
         a = self.row(); self.assertTrue(a['unread'])
         acknowledge(self.store, a['key'], a['reply_id'])
         self.assertFalse(self.row()['unread'])
-        self.append(record('user', '<task-notification>\n<task-id>abc</task-id>\n<summary>Background command done</summary>\n</task-notification>', self.t+2),
-                    record('assistant', '那条后台命令跑完了，没有新情况。', self.t+3))
+        self.append(record('user', '<system-reminder>\nhook output\n</system-reminder>', self.t+2),
+                    record('assistant', '那个钩子跑完了，没有新情况。', self.t+3))
         r = self.row()
         self.assertFalse(r['unread'])
         self.assertEqual(r['state'], 'idle')
+        self.assertNotEqual(r.get('title', ''), '<system-reminder>')
+        # A background task finishing is different: the report written after it is the reply the person waits for.
+        self.append(record('user', '<task-notification>\n<task-id>abc</task-id>\n<summary>Background command done</summary>\n</task-notification>', self.t+4),
+                    record('assistant', '构建完成，已装到本机和 mini。', self.t+5))
+        r = self.row()
+        self.assertTrue(r['unread']); self.assertEqual(r['reply_preview'], '构建完成，已装到本机和 mini。')
         self.assertNotEqual(r.get('title', ''), '<task-notification>')
-        # but a real question afterwards is answered → unread again
-        self.append(record('user', '再看一下', self.t+4), record('assistant', '看了', self.t+5))
+        # and a real question afterwards is answered → unread again
+        acknowledge(self.store, r['key'], r['reply_id'])
+        self.append(record('user', '再看一下', self.t+6), record('assistant', '看了', self.t+7))
         self.assertTrue(self.row()['unread'])
 
     def test_commentary_not_unread_final(self):
