@@ -1,4 +1,5 @@
 import { conversationProject } from "../activity";
+import { MovedChip } from "./Sessions";
 import { useState } from "react";
 import { ago, parseAcceptance, sessionStatus, actorOf, projectOf, relTime } from "../derive";
 import { ConversationRows } from "./Workspace";
@@ -34,11 +35,11 @@ export function InboxView({ onSummarize, onDigest, onRead, onOpen, initialTab, i
           {items[tab].map((s) => {
             const a = actorOf(s.agent, me);
             return (
-              <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className="ib-row" title="右键更多操作">
+              <div key={`${s.host ?? "local"}:${s.session_id}`} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className="ib-row" title="右键更多操作">
                 <Avatar actor={a} />
                 <div className="ib-main">
                   <div className="t"><span className="st sm">{sessionStatus(s)}</span> {s.herdr?.title || s.title || s.project || s.cwd || s.session_id}</div>
-                  <div className="muted small">{a?.name} · {s.source_app}{s.remote && <> · <span className="host-chip">{s.host_name}</span></>}{s.project ? ` · ${s.project}` : ""} · 最近活动 {ago(s.last_at)}{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
+                  <div className="muted small">{a?.name} · {s.source_app}{s.remote && <> · <span className="host-chip">{s.host_name}</span></>}<MovedChip r={s} />{s.project ? ` · ${s.project}` : ""} · 最近活动 {ago(s.last_at)}{s.prompts ? ` · ${s.prompts} 轮` : ""}</div>
                 </div>
                 <button className="btn sm" onClick={() => s.session_id.startsWith('pid-') ? onFocus(s.session_id) : onOpen(s.session_id)}>查看并回复</button>
               </div>

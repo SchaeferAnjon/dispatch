@@ -235,6 +235,17 @@ def exact_ref(d, sid, agent):
     matches = [(path, e) for path, e in d.load_index().items()
                if e.get('session_id') == sid and e.get('agent') == agent and not e.get('subagent')]
     if not matches:
+        # Same id on another Mac (a moved/forked conversation): say where instead of "not found".
+        elsewhere = []
+        try:
+            elsewhere = sorted({r.get('host_name') or r.get('host') for r in (d.remote_refs() if callable(getattr(d, 'remote_refs', None)) else [])
+                                if r.get('session_id') == sid and r.get('agent') == agent})
+        except Exception:
+            pass
+        if elsewhere:
+            hosts = [h for h in (d.hosts() if callable(getattr(d, 'hosts', None)) else []) if h.get('name') in elsewhere]
+            how = '；'.join(f"dispatch --host {h['id']} …" for h in hosts)
+            raise Rejected(f"这台电脑上没有这个会话，它在 {'、'.join(elsewhere)} 上" + (f"（在那台上操作：{how}）" if how else '') + '。')
         raise Rejected('这台电脑找不到这个会话，请刷新后重新选择。')
     path, entry = max(matches, key=lambda pair: pair[1].get('mtime', 0))
     return dict(entry, path=path)
@@ -256,13 +267,15 @@ def herdr_target(d, ref, require_idle=True, allow_blocked=False):
     if any(r.get('agent_pid') == pid and r.get('session_id') != ref['session_id'] and r.get('last_at', 0) >= rec.get('last_at', 0) for r in records):
         raise Rejected('原终端已切换到另一个会话，请重新打开当前会话。')
     family = {'claude-code': 'claude', 'pi': 'pi', 'codex': 'codex'}.get(ref['agent'])
-    for pane in d.herdr_agents():
-        if pane.get('agent') != family:
-            continue
-        r = d.herdr(None, ['pane', 'process-info', '--pane', pane['pane_id']])
-        processes = r.get('result', {}).get('process_info', {}).get('foreground_processes', [])
-        if not any(p.get('pid') == pid for p in processes):
-            continue
+    panes = [p for p in d.herdr_agents() if p.get('agent') == family]
+    # Herdr knows which conversation a pane runs (agent_session); that is exact, so try it first.
+    exact = [p for p in panes if (p.get('agent_session') or {}).get('value') == ref['session_id']]
+    for pane in exact + [p for p in panes if p not in exact]:
+        if pane not in exact:
+            r = d.herdr(None, ['pane', 'process-info', '--pane', pane['pane_id']])
+            processes = r.get('result', {}).get('process_info', {}).get('foreground_processes', [])
+            if not any(p.get('pid') == pid for p in processes):
+                continue
         if pane.get('agent_status') == 'blocked' and not allow_blocked:
             raise Rejected('原会话正在等待权限确认，请打开电脑屏幕处理。')
         # Herdr's status lags (pi looks idle while its bash tool runs); the hook record is the

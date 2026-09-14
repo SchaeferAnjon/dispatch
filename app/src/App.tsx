@@ -400,7 +400,7 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     let alive = true;
-    const tick = async () => { try { const l = await api.sessionList(); if (alive) setRefs(new Map(l.map((r) => [r.session_id, r]))); } catch { /* index not ready */ } };
+    const tick = async () => { try { const l = await api.sessionList(); if (alive) { const m = new Map<string, SessionRef>(); for (const r of [...l].sort((a, b) => Number(!!a.remote) - Number(!!b.remote))) m.set(m.has(r.session_id) ? `${r.session_id}@${r.host}` : r.session_id, r); setRefs(m); } } catch { /* index not ready */ } };
     tick();
     const t = window.setInterval(tick, 60_000);
     return () => { alive = false; window.clearInterval(t); };
@@ -462,7 +462,10 @@ export default function App() {
     try { await api.remember(PROJECT_FLAGS_KEY, serializeProjectFlags(next)); setProjectFlags(next); say(change.starred === true ? `已收藏 ${name}` : change.starred === false ? `已取消收藏 ${name}` : change.archived === true ? `已归档 ${name}，工作台不再显示` : `已取消归档 ${name}`); }
     catch (e) { say(String(e), true); }
   };
-  const hostIssues = useMemo(() => hostFilter ? issues.filter((i) => hostOfIssue(i, refs) === hostFilter) : issues, [issues, refs, hostFilter]);
+  // One name per Mac: labels and saved filters written under an old name (rename, system name) map to the current one.
+  const canonHost = useCallback((n: string) => hosts.find((h) => h.name === n || h.aliases?.includes(n))?.name ?? n, [hosts]);
+  useEffect(() => { if (hostFilter && canonHost(hostFilter) !== hostFilter) setHostFilter(canonHost(hostFilter)); }, [hostFilter, canonHost]);
+  const hostIssues = useMemo(() => hostFilter ? issues.filter((i) => canonHost(hostOfIssue(i, refs)) === hostFilter) : issues, [issues, refs, hostFilter, canonHost]);
   const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)&&!isArchivedTask(i)&&!isOutcome(i)), [hostIssues]);
   // Closed more than 30 days ago and not yet archived: what the 归档 button would put away.
   const archivable = useMemo(() => hostIssues.filter((i) => i.status === "closed" && !isTrashed(i) && !isArchivedTask(i) && !isOutcome(i) && Date.now() - Date.parse(i.closed_at ?? i.updated_at) > 30 * 86_400_000), [hostIssues]);

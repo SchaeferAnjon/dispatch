@@ -73,8 +73,22 @@ def open_original(d, data):
         except Rejected:
             # Restoring a historical session is explicit. Never focus another
             # conversation merely because it uses the same working directory.
-            if any(s.get('session_id') == sid for s in d.live_sessions(local_only=True)):
-                raise Rejected('原会话仍在运行，但无法定位窗口。请在电脑上打开原 Agent。')
+            live = next((s for s in d.live_sessions(local_only=True) if s.get('session_id') == sid and s.get('agent', agent) == agent), None)
+            if live:
+                # Running here but not in a Herdr pane we can address: bring its own window forward
+                # rather than claiming it cannot be found; name the place when even that fails.
+                where = getattr(d, 'local_host_name', lambda: '这台电脑')()
+                focus = getattr(d, 'focus_session', None)
+                msg = None
+                try:
+                    msg = focus(live) if callable(focus) else None
+                except Exception:
+                    msg = None
+                if msg:
+                    return dict(message=msg)
+                h = live.get('herdr') or {}
+                place = (f"Herdr 页签 {h.get('tab_id')}（{h.get('pane_id')}）" if h else f"{live.get('source_app') or '终端'}（进程 {live.get('agent_pid')}）")
+                raise Rejected(f'会话正在 {where} 的 {place} 里运行，Dispatch 没能切过去；请在 {where} 上切到它，或用「电脑」页的屏幕共享打开。')
             with closing(connect(d)) as db:
                 for row in db.execute('SELECT payload,result FROM launches'):
                     old = json.loads(row['result'])
@@ -86,7 +100,8 @@ def open_original(d, data):
         table = d.ps_table()
         host = next((d.host_app_of(pid, table) for pid, (_, comm) in table.items() if os.path.basename(comm) == 'herdr'), None)
         d.activate(host or 'Ghostty')
-        return dict(message='已在终端中打开原会话')
+        title = (pane.get('terminal_title_stripped') or '').strip()
+        return dict(message=f"已在 {host or '终端'} 里切到 Herdr 页签 {pane.get('tab_id') or pane['pane_id']}" + (f"「{title}」" if title else ''), pane_id=pane['pane_id'], tab_id=pane.get('tab_id'))
     raise Rejected('这个 Agent 暂不支持精确打开原会话，可在 Dispatch 查看记录。')
 
 

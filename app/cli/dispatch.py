@@ -113,11 +113,35 @@ def ps_table():
     return t
 
 
+_HERDR_NAMED = None
+
+
+def _herdr_agent_count(cmd):
+    try:
+        r = subprocess.run(cmd + ["agent", "list"], capture_output=True, text=True, timeout=4)
+        return len(json.loads(r.stdout).get("result", {}).get("agents", [])) if r.returncode == 0 else -1
+    except Exception:
+        return -1
+
+
 def herdr_local_command(args):
     # The Mac mini keeps its persistent terminal in the named "main" session.
     # GUI and SSH callers must resolve the same running server.
+    # Both sockets can exist: a stray `herdr` typed without --session starts an empty default
+    # server next to "main". Then use the server that actually hosts agents (probed once per
+    # process), otherwise every pane lookup comes back empty and a running session "can't be found".
+    global _HERDR_NAMED
     root = os.path.join(HOME, '.config', 'herdr')
-    named = not os.path.exists(os.path.join(root, 'herdr.sock')) and os.path.exists(os.path.join(root, 'sessions', 'main', 'herdr.sock'))
+    has_root = os.path.exists(os.path.join(root, 'herdr.sock'))
+    has_main = os.path.exists(os.path.join(root, 'sessions', 'main', 'herdr.sock'))
+    if not has_main:
+        named = False
+    elif not has_root:
+        named = True
+    else:
+        if _HERDR_NAMED is None:
+            _HERDR_NAMED = _herdr_agent_count([HERDR, '--session', 'main']) > max(0, _herdr_agent_count([HERDR]))
+        named = _HERDR_NAMED
     return [HERDR] + (['--session', 'main'] if named else []) + args
 
 
@@ -230,6 +254,36 @@ def local_host_name():
     return _LOCAL_NAME
 
 
+def local_host_aliases():
+    """Names this Mac went by before (renames, the system ComputerName): old host:<name> task
+    labels and saved filters still resolve to it."""
+    names = set()
+    try:
+        names |= set(json.load(open(SELF_NAME_FILE)).get("aliases") or [])
+    except Exception:
+        pass
+    try:
+        sysname = subprocess.run(["/usr/sbin/scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2).stdout.strip()
+        if sysname:
+            names.add(sysname)
+    except Exception:
+        pass
+    return sorted(n for n in names if n and n != local_host_name())
+
+
+def remember_peer_name(hid, name, aliases=()):
+    hs = hosts()
+    for h in hs:
+        if h.get("id") == hid and h.get("name") != name:
+            h["aliases"] = sorted((set(h.get("aliases") or []) | {h["name"]} | set(aliases)) - {name})
+            h["name"] = name
+            tmp = HOSTS_FILE + ".tmp"
+            json.dump(hs, open(tmp, "w"), ensure_ascii=False, indent=2)
+            os.replace(tmp, HOSTS_FILE)
+            return True
+    return False
+
+
 def hosts():
     """Other Macs that run the same dispatch checkout, reached over Tailscale by ssh.
     Edit ~/tasks/.dispatch/hosts.json to add one; an empty list turns the feature off."""
@@ -244,6 +298,76 @@ def _tag_host(rows, h):
         if isinstance(r, dict):
             r["host"], r["host_name"] = h["id"], h["name"]
     return rows or []
+
+
+MOVES_FILE = os.path.join(DISPATCH_DIR, "moves.json")
+
+
+def load_moves():
+    try:
+        return json.load(open(MOVES_FILE))
+    except Exception:
+        return {}
+
+
+def host_label(hid):
+    """Display name for a host id — looked up each time, so a rename shows everywhere at once."""
+    if hid in (None, "", "local"):
+        return local_host_name()
+    return next((h["name"] for h in hosts() if h.get("id") == hid), hid)
+
+
+def resolve_host_id(x):
+    """hosts.json id for an id, name, alias, ssh address or IP; "" when it is not a known peer."""
+    for h in hosts():
+        ip = h.get("ip") or h.get("ssh", "").split("@")[-1]
+        if x in (h.get("id"), h.get("name"), h.get("ssh"), ip) or x in (h.get("aliases") or []):
+            return h["id"]
+    return ""
+
+
+def record_move(agent, sid, moved_to=None, moved_from=None):
+    """A `dispatch move` leaves the same session id running on two Macs. Remember which copy is
+    the original (moved_to <host id>) and which the new one (moved_from <host id>)."""
+    moves = load_moves()
+    rec = {"at": time.time()}
+    if moved_to:
+        rec["moved_to"] = moved_to
+    if moved_from:
+        rec["moved_from"] = moved_from
+    moves[f"{agent}:{sid}"] = rec
+    os.makedirs(DISPATCH_DIR, exist_ok=True)
+    tmp = MOVES_FILE + ".tmp"
+    json.dump(moves, open(tmp, "w"), ensure_ascii=False, indent=2)
+    os.replace(tmp, MOVES_FILE)
+    return rec
+
+
+def annotate_moves(rows):
+    """Put moved_to/moved_from (host id + current name) on this Mac's rows. Peers annotate their own."""
+    moves = load_moves()
+    if not moves:
+        return rows
+    for r in rows or []:
+        if not isinstance(r, dict) or r.get("host") not in (None, "local"):
+            continue
+        rec = moves.get(f"{r.get('agent')}:{r.get('session_id')}")
+        for k in ("moved_to", "moved_from"):
+            if rec and rec.get(k):
+                r[k], r[k + "_name"] = rec[k], host_label(rec[k])
+    return rows
+
+
+def cmd_moves(a):
+    if a.op == "mark":
+        if ":" not in a.key or not (a.to or a.from_):
+            raise SystemExit("用法：dispatch moves mark <agent:session_id> --to <主机> | --from <主机>")
+        agent, sid = a.key.split(":", 1)
+        to = resolve_host_id(a.to) or a.to if a.to else None
+        frm = resolve_host_id(a.from_) or a.from_ if a.from_ else None
+        return out(record_move(agent, sid, moved_to=to, moved_from=frm), a.json, lambda r: print("已记录", json.dumps(r, ensure_ascii=False)))
+    rows = [{"key": k, **v, **({"moved_to_name": host_label(v["moved_to"])} if v.get("moved_to") else {}), **({"moved_from_name": host_label(v["moved_from"])} if v.get("moved_from") else {})} for k, v in load_moves().items()]
+    out(rows, a.json, lambda rows: [print(f"{r['key']}  " + (f"已迁往 {r['moved_to_name']}" if r.get("moved_to") else f"从 {r.get('moved_from_name')} 迁来")) for r in rows] or None)
 
 
 def remote_cache_path(h, args):
@@ -480,7 +604,7 @@ def host_rows(local_only=False):
     rows = []
     b = detect_remote_backends()
     ip = b["overlay"]["ip"] or b["lan_ip"]
-    rows.append({"id": "local", "name": local_host_name(), "ip": ip, "ssh": "", "online": True, "local": True, **{k: v for k, v in b.items()}})
+    rows.append({"id": "local", "name": local_host_name(), "aliases": local_host_aliases(), "ip": ip, "ssh": "", "online": True, "local": True, **{k: v for k, v in b.items()}})
     if local_only:
         return rows
     for h in hosts():
@@ -491,13 +615,18 @@ def host_rows(local_only=False):
         except OSError:
             recently_down = False
         online = (not recently_down) and port_open(hip, 22)
-        row = {"id": h["id"], "name": h["name"], "ip": hip, "ssh": h.get("ssh", ""), "online": online, "local": False, "herdr_session": h.get("herdr_session", ""),
+        row = {"id": h["id"], "name": h["name"], "aliases": h.get("aliases") or [], "ip": hip, "ssh": h.get("ssh", ""), "online": online, "local": False, "herdr_session": h.get("herdr_session", ""),
                "novnc": "", "novnc_up": False, "novnc_issue": "", "vnc": f"vnc://{hip}",
                "screen_sharing": online and port_open(hip, 5900), "rustdesk": False, "rustdesk_id": "", "sunshine": False, "sunshine_ui": "", "uu": False, "overlay": {"kind": "", "ip": hip}, "recommend": "", "why": ""}
         if online:
             det = remote_dispatch(h, ["hosts", "--local"], 120)
             if isinstance(det, list) and det:
                 d = det[0]
+                # Each Mac owns its name; our hosts.json only caches it. Heal a stale copy here, so a
+                # rename that could not be pushed (peer offline) still reaches every view.
+                if d.get("name") and d["name"] != h["name"]:
+                    remember_peer_name(h["id"], d["name"], d.get("aliases") or [])
+                    row["name"], row["aliases"] = d["name"], sorted(set(row["aliases"]) | {h["name"]} | set(d.get("aliases") or []) - {d["name"]})
                 for k in ("rustdesk", "rustdesk_id", "sunshine", "uu", "screen_sharing", "novnc", "novnc_up", "novnc_issue"):
                     row[k] = d.get(k, row[k])
                 # Older peers may still advertise the broken HTTP endpoint.
@@ -812,7 +941,7 @@ def cmd_agent(a):
             sargs += ["--"] + extra
         # The new tab's shell needs a while before it counts as "an available shell":
         # fish start-up (prime, env export) can take most of a minute on a busy Mac.
-        started = None
+        started, dismissed_at_start = None, False
         # fish start-up in a fresh tab (the prime hook reads the board and the index) can take
         # well over a minute on a loaded Mac: keep asking for ~3 minutes before giving up.
         for attempt in range(70):
@@ -820,6 +949,11 @@ def cmd_agent(a):
             if isinstance(d, dict) and d.get("error") and "agent_pane_busy" in json.dumps(d.get("error")) and attempt < 69:
                 time.sleep(2.5)
                 continue
+            if isinstance(d, dict) and d.get("error") and "blocked" in json.dumps(d.get("error"), ensure_ascii=False) and dismiss_startup_dialogs(host, pane):
+                # "agent … is blocked during startup": a trust / hooks dialog. Answer it instead of failing.
+                info = herdr(host, ["agent", "get", pane])
+                started, dismissed_at_start = ((info.get("result") or {}).get("agent") or {}) if isinstance(info, dict) else {}, True
+                break
             started = herdr_ok(d, "起 Agent").get("agent", {})
             break
         me = os.environ.get("BEADS_ACTOR", "schaefer")
@@ -830,6 +964,8 @@ def cmd_agent(a):
             note = f"{me} 通过 dispatch agent 派给 {actor}（Herdr {pane} @ {where}，目录 {cwd}）"
             sh(["bd", "comments", "add", a.task, note], env={"BEADS_ACTOR": me})
         res = {"host": where, "pane_id": pane, "tab_id": tab_id, "name": name, "kind": kind, "actor": actor, "cwd": cwd, "status": started.get("agent_status"), "task": a.task or "", "task_title": "", "output": ""}
+        if dismissed_at_start:
+            res["dismissed"] = True
         if a.task:
             res["task_title"] = bd_json(["show", a.task, "--json"]).get("title") or ""
         if a.prompt:
@@ -921,6 +1057,25 @@ def cmd_serve(a):
 
 
 def cmd_hosts(a):
+    if getattr(a, "op", None) == "rename":
+        if len(a.args) != 2:
+            raise SystemExit("用法：dispatch hosts rename <id|local|名字> <新名字>")
+        target, name = a.args
+        import init_wizard as W
+        if target in ("local", "本机") or target == local_host_name() or target in local_host_aliases():
+            res = W.rename_self(name)  # writes self-name.json and pushes to every peer's hosts.json
+        else:
+            hid = resolve_host_id(target)
+            if not hid:
+                raise SystemExit(f"hosts.json 里没有 {target}")
+            h = next(x for x in hosts() if x["id"] == hid)
+            import shlex
+            r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", h["ssh"], f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} init rename-self {shlex.quote(name)} --json"], capture_output=True, text=True, timeout=60)
+            remember_peer_name(hid, name.strip()[:60])  # the push back may not reach us; keep our copy right anyway
+            res = {"name": name.strip()[:60], "host": hid, "remote_ok": r.returncode == 0}
+        if res.get("error"):
+            raise SystemExit(res["error"])
+        return out(res, a.json, lambda r: print(f"已改名为 {r['name']}" + (f"，已同步到 {'、'.join(r['pushed'])}" if r.get("pushed") else "") + (f"；没同步到 {'、'.join(r['failed'])}（它上线后 dispatch hosts 会自动对齐）" if r.get("failed") else "")))
     refresh = getattr(a, "refresh", "")
     if refresh:
         for p in glob.glob(os.path.join(REMOTE_DIR, f"{refresh}.down")) + glob.glob(os.path.join(REMOTE_DIR, f"{refresh}--*.json")):
@@ -1059,6 +1214,7 @@ def live_sessions(local_only=False):
     for s in sessions:
         s.setdefault("host", "local")
         s.setdefault("host_name", local_host_name())
+    annotate_moves(sessions)
     if not local_only:
         sessions.extend(remote_sessions())
     sessions.sort(key=lambda s: (s.get("state") != "working", -(s.get("last_at") or 0)))
@@ -1108,6 +1264,8 @@ def cmd_sessions(a):
     # 5-second presence poll, and it covers agents the transcript index does not parse.
     edits = session_edit_map(window=30 * 60, with_activity=False)
     for x in s:
+        if x.get("host") not in (None, "local"):
+            continue  # a peer's copy of the same id reports its own edits
         rec = edits.get(x.get("session_id"))
         if rec and rec["files"]:
             x["editing"] = [{"path": f, "ts": ts} for f, ts in sorted(rec["files"].items(), key=lambda kv: -kv[1])]
@@ -1120,7 +1278,8 @@ def cmd_sessions(a):
             st = {"working": "在跑", "idle": "等你", "unknown": "未登记"}.get(x.get("state"), x.get("state"))
             title = h.get("title") or x.get("title") or ""
             name = f"「{title}」（{x['session_id'][:8]}）" if title else x["session_id"]
-            print(f"{x['agent']:<12} {st:<4} {x.get('project') or '?':<18} {x.get('source_app', ''):<14} {ago(x.get('last_at'))!s:<5} {name}" + (f"  [Herdr {h.get('tab_id')}]" if h else ""))
+            moved = f"  已迁往 {x['moved_to_name']}" if x.get("moved_to") else f"  从 {x['moved_from_name']} 迁来" if x.get("moved_from") else ""
+            print(f"{x['agent']:<12} {st:<4} {x.get('project') or '?':<18} {x.get('host_name') or '':<14} {x.get('source_app', ''):<8} {ago(x.get('last_at'))!s:<5} {name}" + (f"  [Herdr {h.get('tab_id')}]" if h else "") + moved)
     out(s, a.json, text)
 
 
@@ -1988,6 +2147,7 @@ def cmd_list(a):
     for r in refs:
         apply_preferences(r, preferences.get(r["agent"] + ":" + r["session_id"], {}))
         r["host"], r["host_name"] = "local", local_host_name()
+    annotate_moves(refs)
     if not getattr(a, "local", False):
         refs = sorted(refs + remote_refs(), key=lambda r: -(r.get("last_at") or 0))
     if a.agent:
@@ -2539,7 +2699,7 @@ def remote_session_detail(key):
 def cmd_activity(a):
     from activity import activity_list
     rows = activity_list(HOME, DISPATCH_DIR, load_index())
-    _tag_host(rows, {"id": "local", "name": local_host_name()})
+    annotate_moves(_tag_host(rows, {"id": "local", "name": local_host_name()}))
     key = getattr(a, "key", "") or ""
     if key:
         rows = [r for r in rows if r.get("key") == key or r.get("session_id") == key]
@@ -2799,12 +2959,16 @@ def cmd_session(a):
 def cmd_find(a):
     idx = refresh_index()
     refs = session_refs(idx, task_id=a.task)
+    for r in refs:
+        r["host"], r["host_name"] = "local", local_host_name()
+    annotate_moves(refs)
+    refs += [r for r in remote_refs() if a.task in (r.get("tasks") or {})]
 
     def text(refs):
         if not refs:
             print(f"没有会话提到过 {a.task}")
         for r in refs:
-            print(f"{r['agent']:<12} {r['project']:<18} {ago(r['last_at']):<5} {r['mentions']:>3}次  {r['title'] or ''}\n    {r['resume_cmd']}")
+            print(f"{r['agent']:<12} {r.get('host_name') or '':<14} {r['project']:<18} {ago(r['last_at']):<5} {r.get('mentions', 0):>3}次  {r['title'] or ''}\n    {r['resume_cmd']}")
     out(refs, a.json, text)
 
 
@@ -2818,12 +2982,40 @@ def resolve(idx, key):
     return session_refs(idx, session_id=key)
 
 
+def refs_everywhere(key, on=""):
+    """resolve() here plus the same id on the other Macs: [(host id, host name, ref)], one per host."""
+    found = []
+    if on in ("", "local") or on == local_host_name():
+        mine = [dict(r, host="local", host_name=local_host_name()) for r in resolve(refresh_index(), key)[:1]]
+        found += [("local", local_host_name(), r) for r in annotate_moves(mine)]
+    if on not in ("local",) and on != local_host_name() and not re.match(r"^[a-z]+-[a-z0-9]{2,8}$", key):
+        agent, sid = key.split(":", 1) if ":" in key else ("", key)
+        seen = set()
+        for r in remote_refs():
+            if r.get("session_id", "").startswith(sid) and (not agent or r.get("agent") == agent) and r["host"] not in seen:
+                if not on or on in (r["host"], r.get("host_name")):
+                    seen.add(r["host"])
+                    found.append((r["host"], r.get("host_name"), r))
+    return found
+
+
+def pick_host(found, key, verb):
+    """One candidate: take it. Several Macs run the same id (after `dispatch move`): list them and stop."""
+    if len({h for h, _, _ in found}) <= 1:
+        return found[0] if found else None
+    print(f"{key} 在 {len(found)} 台电脑上都有（迁移后分叉了），加 --on 选一台：", file=sys.stderr)
+    for hid, name, r in found:
+        mark = f"，已迁往 {r['moved_to_name']}" if r.get("moved_to") else f"，从 {r['moved_from_name']} 迁来" if r.get("moved_from") else ""
+        print(f"  {name}（{hid}）· 最近 {ago(r.get('last_at'))}{mark}\n    dispatch {verb} {key} --on {hid}", file=sys.stderr)
+    sys.exit(2)
+
+
 def cmd_resume(a):
-    refs = resolve(refresh_index(), a.key)
-    if not refs:
+    hit = pick_host(refs_everywhere(a.key, getattr(a, "on", "")), a.key, "resume")
+    if not hit:
         print(f"找不到 {a.key}", file=sys.stderr)
         sys.exit(1)
-    cmd = refs[0]["resume_cmd"]
+    cmd = hit[2]["resume_cmd"]
     if a.copy:
         subprocess.run(["pbcopy"], input=cmd, text=True)
         print(f"已复制到剪贴板：{cmd}")
@@ -2931,7 +3123,8 @@ def focus_session(s):
     supports it, jump to the session itself. Returns a message."""
     agent = s.get("agent", "")
     if s.get("remote"):
-        return f"这个会话在 {s.get('host_name')} 上，得在那台机器上打开（或 ssh 过去后 herdr agent focus）"
+        h = s.get("herdr") or {}
+        return f"这个会话在 {s.get('host_name')} 上" + (f"（Herdr 页签 {h.get('tab_id')}）" if h else "") + f"：dispatch focus {s.get('session_id')} --on {s.get('host')}"
     table = ps_table()
     h = s.get("herdr")
     if h:
@@ -2970,15 +3163,28 @@ def focus_session(s):
 
 
 def cmd_focus(a):
+    on = getattr(a, "on", "")
     live = live_sessions()
     refs = resolve(load_index() or refresh_index(), a.key)
     wanted = {r["session_id"] for r in refs} | {a.key}
-    for s in live:
-        if s.get("session_id") in wanted or any(s.get("session_id", "").startswith(k) for k in wanted):
-            msg = focus_session(s)
-            if msg:
-                print(msg)
-                return
+    hits = [s for s in live if s.get("session_id") in wanted or any(s.get("session_id", "").startswith(k) for k in wanted)]
+    if on:
+        hits = [s for s in hits if on in (s.get("host"), s.get("host_name")) or (on == "local" and s.get("host") == "local")]
+    if len({s.get("host") for s in hits}) > 1:
+        pick_host([(s.get("host"), s.get("host_name"), s) for s in hits], a.key, "focus")
+    if hits and hits[0].get("remote"):
+        # Focus happens on the Mac that runs it: its own Herdr and window server.
+        h = next((x for x in hosts() if x["id"] == hits[0]["host"]), None)
+        if h:
+            import shlex
+            r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", h["ssh"], f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} focus {shlex.quote(hits[0]['session_id'])} --on local"], capture_output=True, text=True, timeout=40)
+            print(f"{h['name']}：" + (r.stdout.strip() or r.stderr.strip()))
+            sys.exit(r.returncode)
+    for s in hits:
+        msg = focus_session(s)
+        if msg:
+            print(msg)
+            return
     # not live: fall back to a Herdr tab in the same directory, else say so
     for r in refs:
         for ag in herdr_agents():
@@ -7202,6 +7408,7 @@ def main():
     p = argparse.ArgumentParser(prog="dispatch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser('task', help='recoverable task removal'); s.add_argument('op', choices=['trash', 'restore']); s.add_argument('task'); s.add_argument('--json', action='store_true'); s.set_defaults(fn=cmd_task)
+    s = sub.add_parser("moves", help="sessions moved between Macs (dispatch move): which copy is the original"); s.add_argument("op", nargs="?", choices=["list", "mark"], default="list"); s.add_argument("key", nargs="?", default=""); s.add_argument("--to", default=""); s.add_argument("--from", dest="from_", default=""); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_moves)
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("attachment", help="read a file linked in a conversation; --thumbs returns every image as a small thumbnail in one call"); s.add_argument("key"); s.add_argument("ref", nargs="?", default=""); s.add_argument("--thumbs", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
     s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--events", action="store_true", help="include each session's event log (large; the session page asks for one session with --key)"); s.add_argument("--key", default="", help="only this session (agent:session_id or session id)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
@@ -7222,8 +7429,8 @@ def main():
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
     s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode | hermes"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--since", type=int, help="只读上次返回的 offset 之后新增的记录（实时 tail）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
-    s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
-    s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
+    s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.add_argument("--on", default="", help="same id on several Macs (after dispatch move): which one — host id, name or local"); s.set_defaults(fn=cmd_resume)
+    s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.add_argument("--on", default="", help="host id, name or local when the session runs on several Macs"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash", "new", "import"]); s.add_argument("name", nargs="?", help="技能名；import 时是仓库地址（owner/repo 或 GitHub URL）"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", action="append", choices=["claude", "codex", "all"], help="可重复；不传 = enable/disable 两个都动、new/import 不挂载"); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--description", help="new/import: 一句话触发描述（写进 frontmatter）"); s.add_argument("--trigger", help="new: 触发条件"); s.add_argument("--constraint", help="new: 关键约束"); s.add_argument("--path", help="import: 仓库里的子目录"); s.add_argument("--as", dest="as_name", help="import: 落进技能池的名字"); s.add_argument("--force", action="store_true", help="import: 覆盖同名技能（旧的改名 .bak-时间戳）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("need-you", help="只有用户能做的事（发邮件、付款、登录、当面演示…）：记成一条「只能你做」的任务，用户在项目任务板上做完打勾"); s.add_argument("title", help="一句话说清要用户做什么"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d", help="为什么要做、怎么做、材料在哪"); s.add_argument("--task", help="它源自哪个任务（会在那条任务上留记录）"); s.add_argument("--priority", "-p", type=int, default=1); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_need_you)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing); the title must say what + why, the description the trigger"); s.add_argument("title", help="「<对象> <怎么改>：<为什么>」，8–80 字"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d", help="触发原因 + 期望结果，≥20 字"); s.add_argument("--force", action="store_true", help="create even when the title/description checks fail"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
@@ -7260,7 +7467,7 @@ def main():
     s.add_argument("--auto", action="store_true", help="start: unattended mode (Codex bypasses sandbox approvals, Claude skips permissions); implied by --task")
     s.set_defaults(fn=cmd_agent)
     s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link, `serve qr` prints a scannable QR, `serve host [<id>|local]` shows/sets which Mac the phone link points at"); s.add_argument("what", nargs="?", choices=["run", "url", "qr", "host"], default="run"); s.add_argument("target", nargs="?", default=None, help="host: a hosts.json id/name, or `local` for this Mac"); s.add_argument("--svg", action="store_true", help="qr: print SVG instead of terminal blocks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_serve)
-    s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--refresh", help="clear the cached probe for this host id first, forcing a fresh ssh check"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
+    s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--refresh", help="clear the cached probe for this host id first, forcing a fresh ssh check"); s.add_argument("op", nargs="?", choices=["rename"], help="rename <id|local|名字> <新名字>: one name for that Mac everywhere, pushed to the other Macs"); s.add_argument("args", nargs="*"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("screen", help="手机看屏幕的一键配置（noVNC + websockify 常驻 + Tailscale Serve HTTPS）"); s.add_argument("op", nargs="?", choices=["status", "setup"], default="status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_screen)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
     s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)

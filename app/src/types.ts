@@ -21,7 +21,7 @@ export interface Stats {
   hosts?: string[];
 }
 export interface Host {
-  id: string; name: string; ip: string; ssh: string; online: boolean; local: boolean; herdr_session?: string;
+  id: string; name: string; aliases?: string[]; ip: string; ssh: string; online: boolean; local: boolean; herdr_session?: string;
   overlay: { kind: string; ip: string }; lan_ip?: string;
   screen_sharing: boolean; novnc: string; novnc_up: boolean; novnc_issue?: string; vnc: string;
   rustdesk: boolean; rustdesk_id: string; sunshine: boolean; sunshine_ui: string; uu: boolean;
@@ -72,6 +72,7 @@ export interface SessionRef {
   subagents: SubagentRef[];
   host?: string;
   host_name?: string;
+  moved_to?: string; moved_to_name?: string; moved_from?: string; moved_from_name?: string;
   remote?: boolean;
 }
 // One step of an assistant turn, the same shape for every agent (field names are the CLI contract).
@@ -168,6 +169,7 @@ export interface Session {
   daemon?: boolean;
   host?: string;
   host_name?: string;
+  moved_to?: string; moved_to_name?: string; moved_from?: string; moved_from_name?: string;
   remote?: boolean;
   // Files the session touched recently: `editing` from the hook registry (dispatch sessions),
   // `files` from the transcript activity snapshot. Absolute paths either way.
@@ -201,6 +203,6 @@ export interface Activity {
   last_at: number; state: string; activity: string; version: string; events: ActivityEvent[];
   scheduled?: boolean; project_override?: string; title_override?: string; starred?: boolean; archived?: boolean; summary?: string; summary_at?: number; unread_summary?: string; unread_summary_reply?: string; overview?: string; path?: string; entrypoint?: string; files?: Record<string, number>; tasks: string[]; reply_id?: string; reply_at?: number; reply_preview?: string;
   unread: boolean; stale: boolean; tracking_since: number; source: string;
-  host?: string; host_name?: string; remote?: boolean;
+  host?: string; host_name?: string; remote?: boolean; moved_to?: string; moved_to_name?: string; moved_from?: string; moved_from_name?: string;
 }
 export interface ActivitySnapshot { sessions: Activity[]; updated_at: number; unavailable_hosts: string[] }

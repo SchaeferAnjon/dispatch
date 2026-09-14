@@ -7,7 +7,8 @@ A conversation is a transcript file plus a working directory. Moving it means:
   3. start the agent there through its Dispatch/Herdr with `--resume <id>` and a
      hand-off prompt that says where the files now live;
   4. leave a note on the task the session was working on.
-The session on this Mac is left untouched; close it when the other side has taken over.
+The session on this Mac is left untouched (marked "moved to" in moves.json; the new copy is marked
+"moved from"), so both show up per machine until you close the original.
 Supports Claude Code and Codex (both resume by id). pi keeps its sessions in its own
 store and is not moved yet.
 """
@@ -138,6 +139,72 @@ def transcript_target(agent, path, cwd, remote_home, remote_cwd):
     raise RuntimeError(f"{agent} 的会话还不支持迁移（目前支持 Claude Code 和 Codex）")
 
 
+TRUST_SCRIPT = r"""
+import json, os, shutil, sys, time
+path, cwd, apply = os.path.expanduser("~/.claude.json"), sys.argv[1], sys.argv[2] == "1"
+try:
+    data = json.load(open(path))
+except FileNotFoundError:
+    data = {}
+proj = data.setdefault("projects", {}).setdefault(cwd, {})
+if proj.get("hasTrustDialogAccepted"):
+    print("already"); sys.exit(0)
+if not apply:
+    print("needed"); sys.exit(0)
+if os.path.exists(path):
+    shutil.copy2(path, path + ".dispatch-bak")
+proj["hasTrustDialogAccepted"] = True
+tmp = path + ".dispatch-tmp"
+json.dump(data, open(tmp, "w"), ensure_ascii=False, indent=2)
+if os.path.exists(path):
+    os.chmod(tmp, os.stat(path).st_mode & 0o777)
+os.replace(tmp, path)
+print("set")
+"""
+
+
+def trust_folder(h, remote_cwd, apply=True):
+    """Claude Code asks "Do you trust the files in this folder?" the first time it runs in a
+    directory, and a resumed session sits blocked behind that dialog. Mark the folder trusted in
+    the other Mac's ~/.claude.json (projects[<cwd>].hasTrustDialogAccepted, the flag the dialog
+    itself writes), after a backup to ~/.claude.json.dispatch-bak. Returns already / set / needed."""
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", h["ssh"], "/usr/bin/python3 - " + shlex.quote(remote_cwd) + (" 1" if apply else " 0")],
+                       input=TRUST_SCRIPT, capture_output=True, text=True, timeout=60)
+    return (r.stdout.strip().splitlines() or ["failed"])[-1] if r.returncode == 0 else "failed"
+
+
+def memory_dir(home, cwd):
+    return os.path.join(home, ".claude", "projects", claude_project_dir(cwd), "memory")
+
+
+def sync_memory(h, cwd, remote_home, remote_cwd, dry=False):
+    """The project's Claude auto-memory (~/.claude/projects/<encoded cwd>/memory/) belongs with the
+    conversation. Merge it into the other Mac's folder for the new path; newer files there win."""
+    src = memory_dir(D.HOME, cwd)
+    files = sorted(f for f in os.listdir(src)) if os.path.isdir(src) else []
+    if not files or dry:
+        return {"files": len(files), "synced": False}
+    dst = memory_dir(remote_home, remote_cwd)
+    ssh(h, f"mkdir -p {shlex.quote(dst)}")
+    r = subprocess.run(["rsync", "-a", "--update", "-e", "ssh -o BatchMode=yes", src + "/", f"{h['ssh']}:{shlex.quote(dst)}/"], capture_output=True, text=True, timeout=600)
+    return {"files": len(files), "synced": r.returncode == 0, **({"error": r.stderr.strip()[-200:]} if r.returncode else {})}
+
+
+def unblock_start(h, remote_cwd, label):
+    """`agent start` failed because the agent sat on a start-up dialog: find that pane over there
+    and answer the dialog, so the session comes up instead of waiting for someone at the screen."""
+    try:
+        agents = D.herdr_list_agents(h)
+    except BaseException:
+        return None
+    panes = [a for a in agents if (a.get("cwd") or "").rstrip("/") == remote_cwd.rstrip("/") and a.get("agent_status") == "blocked"]
+    if not panes:
+        return None
+    pane = panes[-1]
+    pressed = D.dismiss_startup_dialogs(h, pane["pane_id"])
+    return {"pane_id": pane["pane_id"], "tab_id": pane.get("tab_id"), "dismissed": pressed}
+
+
 def move(session_id, to, prompt_extra="", sync_files=True, dry=False):
     ref = find_ref(session_id)
     h = host_by(to)
@@ -156,6 +223,9 @@ def move(session_id, to, prompt_extra="", sync_files=True, dry=False):
     target, rewrite = transcript_target(agent, path, cwd, remote_home, remote_cwd)
     plan = {"session": sid, "agent": agent, "from": D.local_host_name(), "to": h["name"], "cwd": cwd, "remote_cwd": remote_cwd, "transcript": target, "task": (ref.get("claims") or [None])[-1] if ref.get("claims") else ref.get("current_task")}
     plan["env"] = preflight(h, path, agent, install=not dry)
+    if agent == "claude-code":
+        plan["trust"] = trust_folder(h, remote_cwd, apply=not dry)
+        plan["memory"] = sync_memory(h, cwd, remote_home, remote_cwd, dry=dry)
     if dry:
         return plan
     # 1. files
@@ -186,12 +256,24 @@ def move(session_id, to, prompt_extra="", sync_files=True, dry=False):
     resume_flag = "--resume" if agent == "claude-code" else "resume"
     dcmd = h.get("dispatch", "$HOME/.local/bin/dispatch")
     cmd = f"env BEADS_DIR=$HOME/tasks/.beads {dcmd} agent start {kind} --cwd {shlex.quote(remote_cwd)} --label {shlex.quote(ref.get('title') or '迁移的会话')} --extra {shlex.quote(resume_flag + ' ' + sid)} --prompt {shlex.quote(handoff)} --no-wait --json"
-    out = ssh(h, cmd, timeout=240)
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", h["ssh"], cmd], capture_output=True, text=True, timeout=240)
+    out = r.stdout
     try:
         started = json.loads(out[out.find("{"):])
     except ValueError:
-        started = {"raw": out[-400:]}
+        started = {"raw": (out or r.stderr)[-400:]}
+    if r.returncode != 0:
+        # Typically "agent … is blocked during startup": a dialog the trust flag did not cover.
+        fixed = unblock_start(h, remote_cwd, ref.get("title") or "")
+        if not fixed:
+            raise RuntimeError(f"{h['name']} 上没能起 Agent：{(r.stderr or out).strip()[-300:]}")
+        started = dict(started if "raw" not in started else {}, **fixed, recovered=True)
     plan["started"] = started
+    # Both copies now run the same id: mark them so lists can tell the original from the new one.
+    D.record_move(agent, sid, moved_to=h["id"])
+    me_ip = D.tailscale_ip()
+    if me_ip:
+        ssh(h, f"env BEADS_DIR=$HOME/tasks/.beads {dcmd} moves mark {shlex.quote(agent + ':' + sid)} --from {shlex.quote(me_ip)}", timeout=30, check=False)
     # 4. board note
     task = plan.get("task")
     if task:
@@ -211,6 +293,13 @@ def main(a):
         env = res.get("env", {})
         print(f"会打包 {res['agent']} 会话 {res['session'][:8]}：{res['cwd']} → {res['to']}:{res['remote_cwd']}，记录放 {res['transcript']}")
         print(f"用过的工具 {len(env.get('used', []))} 个；对方缺：" + ("、".join(env["missing"]) if env.get("missing") else "无"))
+        if "trust" in res:
+            print("信任提示：" + {"already": "对方已信任这个目录", "needed": "迁移时会在对方 ~/.claude.json 标记信任（先备份）", "failed": "读不到对方 ~/.claude.json"}.get(res["trust"], res["trust"]))
+            print(f"项目记忆：{res['memory']['files']} 个文件会同步" if res["memory"]["files"] else "项目记忆：本机没有")
     else:
         s = res.get("started") or {}
-        print(f"已迁移到 {res['to']}：{res['remote_cwd']}" + (f" · Herdr {s.get('pane_id')}" if s.get("pane_id") else "") + "\n这台上的原会话可以关了；对方会话页能看到它继续。")
+        print(f"已迁移到 {res['to']}：{res['remote_cwd']}" + (f" · Herdr {s.get('pane_id')}" if s.get("pane_id") else "")
+              + (f" · 信任提示{'已自动标记' if res.get('trust') == 'set' else '无需处理' if res.get('trust') == 'already' else '未能处理'}" if "trust" in res else "")
+              + (f" · 记忆 {res['memory']['files']} 个文件已同步" if res.get("memory", {}).get("synced") else "")
+              + ("（启动时卡在对话框，已自动按过）" if s.get("recovered") else "")
+              + "\n这台上的原会话仍在跑，列表里标「已迁往」；对方接手后关掉即可。")

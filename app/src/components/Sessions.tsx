@@ -70,6 +70,13 @@ export function FileHunks({ changes }: { changes: FileChange[] }) {
   })}</>;
 }
 
+// Which Mac's copy a row is: this Mac's keeps the bare id, another Mac's is id@host.
+const rowKey = (r: { session_id: string; host?: string; remote?: boolean }) => (r.remote && r.host ? `${r.session_id}@${r.host}` : r.session_id);
+// After `dispatch move` both copies keep running: say which one is the original.
+export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?: string } }) =>
+  r.moved_to_name ? <span className="host-chip moved" title="dispatch move 迁出的原会话；对方接手后可以关掉">已迁往 {r.moved_to_name}</span>
+  : r.moved_from_name ? <span className="host-chip moved" title="dispatch move 迁过来接手的会话">从 {r.moved_from_name} 迁来</span> : null;
+
 export function SessionsView({ onBack, localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
   const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
@@ -103,7 +110,10 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
   const timelineScroll = useRef(0);
   const [atLatest, setAtLatest] = useState(true);
   const [isVisible, setIsVisible] = useState(document.visibilityState === 'visible');
-  const current = activities.find(a => a.session_id === sel);
+  // A row is a session on one Mac: after `dispatch move` the same id runs on two, so another Mac's copy is selected as id@host.
+  const selSid = sel ? sel.split("@")[0] : null; const selHost = sel && sel.includes("@") ? sel.slice(sel.indexOf("@") + 1) : null;
+  const refsRef = useRef(refs); refsRef.current = refs;
+  const current = activities.find(a => a.session_id === selSid && (selHost ? a.host === selHost : !a.remote)) ?? (selHost ? undefined : activities.find(a => a.session_id === selSid));
   // The event log is not in the activity feed any more (too big to poll for every session): the
   // open session asks for its own while the 实时活动 dock is showing.
   const [liveEvents, setLiveEvents] = useState<Activity["events"]>([]);
@@ -132,7 +142,16 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
     setBusy(true); setDetail(null); setLoadError(false); follow.current = true; setAtLatest(true);
     const refresh = async () => {
       if (document.visibilityState === 'visible') {
-        try { const d = await api.sessionDetail(sel); if (alive) { setDetail(d); setLoadError(false); } }
+        try {
+          let d: SessionDetail;
+          if (selHost) {
+            const raw = await api.on(selHost, ["session", selSid!, "--json"]);
+            d = JSON.parse(raw.slice(raw.indexOf("{"))) as SessionDetail;
+            const r = refsRef.current.find((x) => x.session_id === selSid && x.host === selHost);
+            d = { ...d, meta: { ...d.meta, host: selHost, remote: true, host_name: r?.host_name ?? selHost, moved_to: r?.moved_to, moved_to_name: r?.moved_to_name, moved_from: r?.moved_from, moved_from_name: r?.moved_from_name } };
+          } else d = await api.sessionDetail(sel);
+          if (alive) { setDetail(d); setLoadError(false); }
+        }
         catch { if (alive) setLoadError(true); }
         finally { if (alive) setBusy(false); }
       }
@@ -192,19 +211,19 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
 
   const items = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    const all = new Map(refs.map(r => [r.session_id, r]));
+    const all = new Map(refs.map(r => [rowKey(r), r]));
     for (const a of activities) {
-      const old = all.get(a.session_id);
-      all.set(a.session_id, old ? { ...old, last_at: a.last_at, scheduled: old.scheduled || a.scheduled, starred: old.starred || a.starred, archived: old.archived || a.archived } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
+      const old = all.get(rowKey(a));
+      all.set(rowKey(a), old ? { ...old, last_at: a.last_at, scheduled: old.scheduled || a.scheduled, starred: old.starred || a.starred, archived: old.archived || a.archived } : { ...a, first_ts: '', last_ts: '', entrypoint: '', branch: '', user_msgs: 0, assistant_msgs: 0, tools: {}, tasks: Object.fromEntries(a.tasks.map(t => [t, 1])), mentions: 0, current_task: null, resume_cmd: '', path: '', size: 0, subagents: [] });
     }
     const inMode = (r: SessionRef) => { if (mode === "scheduled") return !!r.scheduled || isScriptSession(r); if (!showScripts && isScriptSession(r)) return false; if (r.scheduled) return false; const life = archivedProjects.has(r.project_override || r.project) ? "archived" : sessionLifecycle(r, archiveDays); return mode === "archived" ? life === "archived" : mode === "starred" ? life === "starred" : life !== "archived"; };
     return [...all.values()].sort((a,b) => Number(!!b.starred) - Number(!!a.starred) || b.last_at - a.last_at).filter((r) => inMode(r) && (!agent || r.agent === agent) && (!host || (r.host ?? "local") === host) && (!qq || (r.title || "").toLowerCase().includes(qq) || r.cwd.toLowerCase().includes(qq) || r.session_id.startsWith(qq) || Object.keys(r.tasks).some((t) => t.includes(qq))));
   }, [refs, showScripts, activities, q, agent, host, mode, archiveDays, archivedProjects]);
   // The menu wants the conversation shape; a catalog row becomes one with the same identity.
   const asActivity = (r: SessionRef): Activity => activities.find((a) => a.session_id === r.session_id && (a.host ?? "local") === (r.host ?? "local")) ?? ({ ...r, key: `${r.agent}:${r.session_id}`, tasks: Object.keys(r.tasks || {}), state: "unknown", stale: true, unread: false, activity: "", version: "", events: [], tracking_since: 0, source: "catalog" } as Activity);
-  const counts = useMemo(() => { const seen = new Map<string, SessionRef | Activity>(); for (const r of [...refs, ...activities]) if (!seen.has(r.session_id)) seen.set(r.session_id, r); const all = [...seen.values()]; const life = (r: SessionRef | Activity) => archivedProjects.has(r.project_override || r.project) ? "archived" : sessionLifecycle(r, archiveDays); return { scheduled: all.filter((r) => r.scheduled).length, starred: all.filter((r) => !r.scheduled && life(r) === "starred").length, archived: all.filter((r) => !r.scheduled && life(r) === "archived").length }; }, [refs, activities, archiveDays, archivedProjects]);
+  const counts = useMemo(() => { const seen = new Map<string, SessionRef | Activity>(); for (const r of [...refs, ...activities]) if (!seen.has(rowKey(r))) seen.set(rowKey(r), r); const all = [...seen.values()]; const life = (r: SessionRef | Activity) => archivedProjects.has(r.project_override || r.project) ? "archived" : sessionLifecycle(r, archiveDays); return { scheduled: all.filter((r) => r.scheduled).length, starred: all.filter((r) => !r.scheduled && life(r) === "starred").length, archived: all.filter((r) => !r.scheduled && life(r) === "archived").length }; }, [refs, activities, archiveDays, archivedProjects]);
 
-  const liveOf = (id: string) => live.find((s) => s.session_id === id);
+  const liveOf = (id: string, host?: string) => live.find((s) => s.session_id === id && (host === undefined || (s.host ?? "local") === host));
   const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
   useItemMenu("file", (rel) => {
     const root = detail?.workspace?.root;
@@ -243,12 +262,12 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
           {loaded && items.length === 0 && <div className="empty">{mode === "archived" ? `没有归档的会话（${archiveDays} 天没有活动的会自动归到这里）` : mode === "starred" ? "还没有收藏的会话。右键一条会话，选「收藏：长期追踪」。" : "没有匹配的会话"}</div>}
           {(() => { const isBlank = (r: SessionRef) => !r.title && r.user_msgs <= 1 && !r.starred && !activities.some((a) => a.session_id === r.session_id && (a.unread || (a.state === "working" && !a.stale))); const named = items.filter((r) => !isBlank(r)); const blank = items.filter(isBlank); const item = (r: SessionRef) => {
             const a = actorOf(r.agent, me);
-            const l = liveOf(r.session_id);
-            const active = activities.find(a => a.session_id === r.session_id);
+            const l = liveOf(r.session_id, r.host ?? "local");
+            const active = activities.find(a => a.session_id === r.session_id && (a.host ?? "local") === (r.host ?? "local"));
             return (
-              <div key={r.session_id} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${sel === r.session_id ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(r.session_id); setTab("timeline"); }}>
+              <div key={rowKey(r)} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${sel === rowKey(r) ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(rowKey(r)); setTab("timeline"); }}>
                 <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title="追踪中">★</span>}<span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
-                <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}<span className={`host-chip${r.remote ? "" : " local"}`} title={r.remote ? `在 ${r.host_name} 上` : "在这台电脑上"}>{r.remote ? r.host_name : (localHostName || "本机")}</span><span className="muted">{(ENTRY[r.entrypoint] ?? r.entrypoint) ? `· ${ENTRY[r.entrypoint] ?? r.entrypoint} ` : ""}· {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
+                <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}<span className={`host-chip${r.remote ? "" : " local"}`} title={r.remote ? `在 ${r.host_name} 上` : "在这台电脑上"}>{r.remote ? r.host_name : (localHostName || "本机")}</span><MovedChip r={r} /><span className="muted">{(ENTRY[r.entrypoint] ?? r.entrypoint) ? `· ${ENTRY[r.entrypoint] ?? r.entrypoint} ` : ""}· {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && activityLine(active) && <div className="l3 activity-text">{activityLine(active)}</div>}
                 {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}
               </button><div className="sess-item-actions touch-only"><ConversationMenuButton a={asActivity(r)} /></div></div>
@@ -261,7 +280,7 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
         {!sel && <div className="empty">选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
         {sel && !detail && <div className="empty">{busy ? "读取对话记录…" : loadError ? "暂时读不到会话，正在重试。" : ""}<button className="link" onClick={() => setSel(null)}>返回会话列表</button></div>}
         {detail && (() => {
-          const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id);
+          const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id, m.host ?? "local");
           const linked = issues.filter(i => linkedSessions(i).includes(m.session_id));
           const related = linked;
           const results = outcomes.filter(i=>linkedSessions(i).includes(m.session_id));
@@ -289,7 +308,7 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
                 <div className="sess-meta kv">
                 <b>开始</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>
                 <b>最近</b><span className="mono">{m.last_ts ? `${fmtTime(m.last_ts)}（${ago(m.last_at)}）` : "?"}</span>
-                <b>来源</b><span>{ENTRY[m.entrypoint] ?? m.entrypoint ?? "?"}{l ? ` · ${l.source_app}` : ""}<span className={`host-chip${m.remote ? "" : " local"}`}>{m.remote ? m.host_name : (localHostName || "本机")}</span></span>
+                <b>来源</b><span>{ENTRY[m.entrypoint] ?? m.entrypoint ?? "?"}{l ? ` · ${l.source_app}` : ""}<span className={`host-chip${m.remote ? "" : " local"}`}>{m.remote ? m.host_name : (localHostName || "本机")}</span><MovedChip r={m} /></span>
                 <b>对话</b><span>{m.user_msgs} 轮 · {m.assistant_msgs} 次回复 · {(m.size / 1e6).toFixed(1)} MB</span>
                 <b>工具</b><span className="mono small">{Object.entries(detail.tool_counts).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</span>
                 {m.subagents.length > 0 && (<><b>子 Agent</b><span className="subs">{m.subagents.map((s) => <span key={s.agent_id} className="sub-chip" title={s.path}>↳ <b>{s.type}</b> {s.description}<span className="muted mono"> · {(s.size / 1e3).toFixed(0)} KB</span></span>)}</span></>)}

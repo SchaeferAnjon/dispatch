@@ -1650,3 +1650,4 @@ button.review-verdict:hover{filter:brightness(.96)}
 /* 设置页「手机访问」：手机版跑在哪台 Mac 的下拉 */
 .settings-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
 .settings-inline select { max-width: 100%; }
+.host-chip.moved{background:transparent;border:1px solid var(--line);color:var(--ink-3);opacity:1}

@@ -21,8 +21,11 @@ class SessionControl(unittest.TestCase):
     def test_named_terminal_fallback_matches_remote_server(self):
         with patch.object(dispatch, 'HOME', self.temp.name), patch.object(dispatch.os.path, 'exists', side_effect=lambda p: p.endswith('/main/herdr.sock')):
             self.assertEqual(dispatch.herdr_local_command(['agent','list'])[1:], ['--session','main','agent','list'])
-        with patch.object(dispatch.os.path, 'exists', return_value=True):
-            self.assertEqual(dispatch.herdr_local_command(['agent','list'])[1:], ['agent','list'])
+        # Both servers up: use the one that hosts agents (a stray empty default server must not win).
+        for root_n, main_n, want in [(2, 0, ['agent','list']), (0, 3, ['--session','main','agent','list']), (0, 0, ['agent','list'])]:
+            with patch.object(dispatch.os.path, 'exists', return_value=True), patch.object(dispatch, '_HERDR_NAMED', None), \
+                 patch.object(dispatch, '_herdr_agent_count', side_effect=lambda cmd: main_n if '--session' in cmd else root_n):
+                self.assertEqual(dispatch.herdr_local_command(['agent','list'])[1:], want)
 
     def test_folders_are_real_and_home_is_for_selected_machine(self):
         os.mkdir(self.temp.name+'/项目'); os.mkdir(self.temp.name+'/.hidden')
@@ -74,6 +77,18 @@ class SessionControl(unittest.TestCase):
         with patch.object(c,'herdr_target',side_effect=Rejected('unmapped')), patch.object(c,'enqueue') as launch:
             with self.assertRaises(Rejected): c.open_original(self.d,dict(session_id='exact',agent='claude-code'))
             launch.assert_not_called()
+
+    def test_live_session_outside_known_pane_is_focused_not_misreported(self):
+        self.d.load_index=lambda:{'file':dict(session_id='exact',agent='claude-code')}
+        self.d.live_sessions=lambda **kw:[dict(session_id='exact',agent='claude-code',source_app='Warp')]
+        self.d.focus_session=lambda s:'已切到 Warp'
+        with patch.object(c,'herdr_target',side_effect=Rejected('unmapped')), patch.object(c,'enqueue') as launch:
+            self.assertEqual(c.open_original(self.d,dict(session_id='exact',agent='claude-code'))['message'],'已切到 Warp')
+            launch.assert_not_called()
+        self.d.focus_session=lambda s:None; self.d.local_host_name=lambda:'Mini'
+        with patch.object(c,'herdr_target',side_effect=Rejected('unmapped')):
+            with self.assertRaises(Rejected) as e: c.open_original(self.d,dict(session_id='exact',agent='claude-code'))
+            self.assertIn('Mini', str(e.exception)); self.assertNotIn('无法定位窗口', str(e.exception))
 
     def test_status_retains_launch_after_client_reconnect(self):
         with patch.object(c.subprocess,'Popen'):

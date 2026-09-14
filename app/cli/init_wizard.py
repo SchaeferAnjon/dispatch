@@ -647,7 +647,12 @@ def set_self_name(name):
     if not name:
         return {"error": "名字不能为空"}
     os.makedirs(D.DISPATCH_DIR, exist_ok=True)
-    json.dump({"name": name}, open(D.SELF_NAME_FILE, "w"), ensure_ascii=False)
+    try:
+        aliases = set(json.load(open(D.SELF_NAME_FILE)).get("aliases") or [])
+    except Exception:
+        aliases = set()
+    aliases.add(D.local_host_name())  # the old name: host:<old> task labels still map to this Mac
+    json.dump({"name": name, "aliases": sorted(aliases - {name, ""})}, open(D.SELF_NAME_FILE, "w"), ensure_ascii=False)
     D._LOCAL_NAME = name  # bust dispatch.py's process-local cache
     return {"name": name}
 
@@ -663,6 +668,8 @@ def rename_peer(match, name):
     hit = False
     for h in hs:
         if h.get("ssh") == match or h.get("id") == match:
+            if h.get("name") and h["name"] != name:
+                h["aliases"] = sorted((set(h.get("aliases") or []) | {h["name"]}) - {name})
             h["name"] = name
             hit = True
     if hit:
