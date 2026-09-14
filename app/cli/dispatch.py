@@ -4670,6 +4670,10 @@ def cmd_facts(a):
                 end = idx + 3 + nxt.start() if nxt else len(text)
                 text = text[:end].rstrip() + "\n" + "\n".join(block) + "\n\n" + text[end:]
             open(FACTS_FILE, "w", encoding="utf-8").write(text)
+            try:
+                _mod("rules_sync").push_after_edit("FACTS.md")
+            except Exception:
+                pass
             print(f"已把 {len(cands)} 段追加到 FACTS.md「通用」末尾的待整理块；清单在 {out_path}")
         else:
             print(f"清单写到 {out_path}（{len(cands)} 段，来自 {len(by)} 个文件）。看过后 `dispatch facts import --apply` 追加进 FACTS.md，或手动挑选粘贴。")
@@ -4685,6 +4689,11 @@ def cmd_facts(a):
         text = sys.stdin.read()
         os.makedirs(os.path.dirname(target), exist_ok=True)
         open(target, "w", encoding="utf-8").write(text if text.endswith("\n") else text + "\n")
+        if target == FACTS_FILE:  # only the machine-wide file is shared; a project's own FACTS.md stays local
+            try:
+                _mod("rules_sync").push_after_edit("FACTS.md")
+            except Exception:
+                pass
         print(f"已写入 {target}（{len(text.splitlines())} 行）")
     elif a.op == "sections":
         src = facts_doc_path(a)
@@ -4765,6 +4774,8 @@ def target_state(agent, h):
 
 
 def cmd_rules(a):
+    if a.op in ('push', 'pull', 'peers', 'auto'):
+        return _mod("rules_sync").cmd_rules_peer(a)
     if a.op in ('inspect', 'optimize', 'check', 'apply', 'restore'):
         from instructions import command
         project = None
@@ -4779,6 +4790,11 @@ def cmd_rules(a):
                 msg = "这份文件里「BEGIN/END DISPATCH GLOBAL RULES」之间的内容是托管块，由 ~/.agents/rules/GLOBAL.md 生成，改它没用、也不能在这里改。要改共同规则请编辑左边的「所有 Agent 的共同规则」。托管块之外的内容可以随便改。"
             print(json.dumps({"error": msg}, ensure_ascii=False) if a.json else f"✗ {msg}")
             sys.exit(2)
+        if a.op in ('apply', 'restore'):
+            try:
+                _mod("rules_sync").push_after_edit("GLOBAL.md")  # harmless no-op if GLOBAL.md was not among the changed docs
+            except Exception:
+                pass
         out(result, a.json, lambda d: print(json.dumps(d, ensure_ascii=False, indent=2)))
         return
     if a.op == "path":
@@ -4797,6 +4813,10 @@ def cmd_rules(a):
             import shutil
             shutil.copy2(RULES_FILE, RULES_FILE + ".bak")
         open(RULES_FILE, "w", encoding="utf-8").write(new)
+        try:
+            _mod("rules_sync").push_after_edit("GLOBAL.md")
+        except Exception:
+            pass
         a.op, a.force = "sync", True
         return cmd_rules(a)
     if a.op == "open":
@@ -7716,7 +7736,7 @@ def main():
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--refresh", help="clear the cached probe for this host id first, forcing a fresh ssh check"); s.add_argument("op", nargs="?", choices=["rename"], help="rename <id|local|名字> <新名字>: one name for that Mac everywhere, pushed to the other Macs"); s.add_argument("args", nargs="*"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("screen", help="手机看屏幕的一键配置（noVNC + websockify 常驻 + Tailscale Serve HTTPS）"); s.add_argument("op", nargs="?", choices=["status", "setup"], default="status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_screen)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)
-    s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.set_defaults(fn=cmd_rules)
+    s = sub.add_parser("rules", help="machine-wide rules for every agent"); s.add_argument("op", choices=["show", "path", "open", "status", "sync", "write", "inspect", "optimize", "check", "apply", "restore", "push", "pull", "peers", "auto"]); s.add_argument("--force", action="store_true"); s.add_argument("--json", action="store_true"); s.add_argument("--path", default=""); s.add_argument("--profile", choices=["auto", "codex", "claude", "general"], default="auto"); s.add_argument("--model", default=""); s.add_argument("--backup", default=""); s.add_argument("--project", default=""); s.add_argument("--host", default="", help="push/pull/peers：只对 hosts.json 里这一台（默认全部对端）"); s.add_argument("--file", default="", choices=["", *["GLOBAL.md", "FACTS.md", "PROFILE.md", "artifact.md"]], help="push/pull/peers：只同步这一个文件（默认四个都比）"); s.add_argument("--refresh", action="store_true", help="auto：现在就同步所有对端"); s.add_argument("--due", action="store_true", help="auto：到期（距上次超过半小时）才后台同步，供 App 定时器调用"); s.set_defaults(fn=cmd_rules)
     s = sub.add_parser("pit", help="pitfall log (= wiki --kind pit)"); s.add_argument("op", choices=["add", "list", "show"]); s.add_argument("text", nargs="?"); s.add_argument("--fix"); s.add_argument("--project", "-P"); s.add_argument("--task"); s.add_argument("--key"); s.add_argument("--all", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_pit)
     s = sub.add_parser("facts", help="常用信息：全局 FACTS.md 每个会话注入；项目目录 FACTS.md 只在 -P <项目> 时按需读"); s.add_argument("op", choices=["show", "path", "open", "write", "sections", "docs", "vaults", "topics", "get", "search", "import"]); s.add_argument("query", nargs="?", default=""); s.add_argument("--apply", action="store_true", help="import: 追加进 FACTS.md"); s.add_argument("--out", default="", help="import: 清单路径"); s.add_argument("--project", "-P", default=""); s.add_argument("--path", default="", help="docs 列表里的某一份（默认全局 FACTS.md）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_facts)
     s = sub.add_parser("profile", help="关于用户本人的档案（~/.agents/rules/PROFILE.md）：现状/未来安排，Agent 自动维护"); s.add_argument("op", choices=["show", "path", "write", "add", "upcoming", "done", "inventory"]); s.add_argument("args", nargs="*"); s.add_argument("--actor", default=""); s.add_argument("--task", default=""); s.add_argument("--refresh", action="store_true"); s.add_argument("--due", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_profile)

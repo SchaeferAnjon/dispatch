@@ -42,6 +42,11 @@ class ProfileDoc(unittest.TestCase):
         profile.PROFILE_FILE = self.path
         self.addCleanup(setattr, dispatch, "PROFILE_FILE", self._orig)
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        # profile_write_content fires a detached `rules push` when hosts.json lists a peer (rules_sync
+        # task-yvse); point it at a file that does not exist so these tests never spawn a real process.
+        self._orig_hosts_file = dispatch.HOSTS_FILE
+        dispatch.HOSTS_FILE = os.path.join(self.tmp, "no-hosts.json")
+        self.addCleanup(setattr, dispatch, "HOSTS_FILE", self._orig_hosts_file)
 
     def text(self):
         with open(self.path, encoding="utf-8") as f:

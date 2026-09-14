@@ -121,6 +121,7 @@ export function fixtureApi(): Api {
     insightSchedule: async () => {},
     insightDue: async () => {},
     profileDue: async () => {},
+    rulesSyncDue: async () => {},
     envGet: async () => "abc123def456",
     envSet: async () => {},
     envUnset: async () => {},

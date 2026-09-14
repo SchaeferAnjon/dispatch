@@ -27,6 +27,10 @@ def profile_text():
 def profile_write_content(text):
     os.makedirs(os.path.dirname(PROFILE_FILE), exist_ok=True)
     open(PROFILE_FILE, "w", encoding="utf-8").write(text if text.endswith("\n") else text + "\n")
+    try:
+        D._mod("rules_sync").push_after_edit("PROFILE.md")
+    except Exception:
+        pass
 
 
 def profile_today():
