@@ -7,11 +7,11 @@ import { Avatar, Pri, ProjectTag } from "./ui";
 
 export interface InboxItems { unread: Activity[]; running: Activity[]; read: Activity[]; waiting: Session[]; idle: Session[]; review: Issue[]; blocked: Issue[] }
 
-interface Props { onSummarize?: (a: Activity) => Promise<void>; onRead: (a: Activity) => Promise<void>; onOpen: (id: string) => void; initialTab?: keyof InboxItems | null; items: InboxItems; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void }
+interface Props { onSummarize?: (a: Activity) => Promise<void>; onDigest?: (a: Activity) => Promise<void>; onRead: (a: Activity) => Promise<void>; onOpen: (id: string) => void; initialTab?: keyof InboxItems | null; items: InboxItems; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void }
 
 // The one screen that answers "what needs me right now": sessions that stopped
 // and are waiting for input, finished work awaiting review, and blocked tasks.
-export function InboxView({ onSummarize, onRead, onOpen, initialTab, items, me, onSelect, onFocus }: Props) {
+export function InboxView({ onSummarize, onDigest, onRead, onOpen, initialTab, items, me, onSelect, onFocus }: Props) {
   const [tab, setTab] = useState<keyof InboxItems>(() => initialTab ?? "unread");
   const [readingAll, setReadingAll] = useState(false);
   const readAll = async () => { setReadingAll(true); try { for (const a of items.unread) if (a.reply_id) await onRead(a); } finally { setReadingAll(false); } };
@@ -27,7 +27,7 @@ export function InboxView({ onSummarize, onRead, onOpen, initialTab, items, me, 
       {tab === "running" && items.running.length > 0 && <section><ConversationRows compact showProject onSummarize={onSummarize} onRead={onRead} rows={items.running} me={me} onOpen={onOpen}/></section>}
       {tab === "read" && items.read.length > 0 && <div className="inbox-bulk"><span className="muted small">最近七天读过的回复，最新在前；再看一眼或接着回复</span></div>}
       {tab === "read" && items.read.length > 0 && <section><ConversationRows compact showProject onSummarize={onSummarize} onRead={onRead} rows={items.read} me={me} onOpen={onOpen}/></section>}
-      {tab === "unread" && [...new Set(items.unread.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows compact onSummarize={onSummarize} onRead={onRead} rows={items.unread.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
+      {tab === "unread" && [...new Set(items.unread.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows compact onSummarize={onSummarize} onDigest={onDigest} onRead={onRead} rows={items.unread.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
       {(tab === "waiting" || tab === "idle") && items[tab].length > 0 && (
         <section>
           <h4>{tab === "idle" ? "空闲会话" : "需要处理"}<span className="n">{items[tab].length}</span><span className="muted">{tab === "idle" ? "不计入待处理数量，也不会触发通知" : "只有接入事件上报的会话会出现在这里；Codex 桌面端等没有上报的会话请到会话页看"}</span></h4>

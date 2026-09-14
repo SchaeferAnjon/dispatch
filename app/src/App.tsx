@@ -682,6 +682,20 @@ export default function App() {
   } : undefined;
 
   // A model-written summary, stored with the session's preferences; the row updates in place.
+  // Unread cards ask for their "this turn" digest as soon as they render; one request per reply.
+  const digestAsked = useRef(new Set<string>());
+  const digestUnread = async (a: Activity) => {
+    if (!api || !a.reply_id) return;
+    const tag = `${activityKey(a)}|${a.reply_id}`;
+    if (digestAsked.current.has(tag)) return;
+    digestAsked.current.add(tag);
+    try {
+      const r = JSON.parse((await api.on(a.host || "local", ["session-summary", "unread", a.key, "--json"])).replace(/^[^{]*/, "")) as { unread_summary?: string; error?: string };
+      if (r.error || !r.unread_summary) return;
+      const patch = { unread_summary: r.unread_summary, unread_summary_reply: a.reply_id };
+      setActivity((old) => ({ ...old, sessions: old.sessions.map((x) => activityKey(x) === activityKey(a) ? { ...x, ...patch } : x) }));
+    } catch { /* the auto pass will fill it in later */ }
+  };
   const summarizeSession = async (a: Activity) => {
     if (!api) return;
     try {
@@ -777,7 +791,7 @@ export default function App() {
             {view === "home" && api && <HomeView onDiscuss={() => setDiscuss({})} insight={insight} alertCount={alertCount} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onLocate={locateProject} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
             {view === "projects" && api && <ProjectHub onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} onOpenSession={openSession} projects={projects} />}
-            {view === "inbox" && <InboxView onSummarize={summarizeSession} onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onFocus={focusSession} />}
+            {view === "inbox" && <InboxView onSummarize={summarizeSession} onDigest={digestUnread} onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onFocus={focusSession} />}
             {view === "board" && <Board sort={boardSort} starred={starredProjects} progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView starred={starredProjects} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(what.endsWith("。") ? what : `${what}已复制`)).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}

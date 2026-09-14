@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { activityKey, activityLabel, conversationProject, conversationSummary } from '../activity';
 import { actorOf, ago } from '../derive';
 import type { Activity } from '../types';
@@ -14,7 +14,10 @@ function Preview({ className = '', title, children }: { className?: string; titl
   return <div className={`conversation-preview${open ? ' open' : ''} ${className}`} title={title} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}>{children}</div>;
 }
 
-export function ConversationRows({ rows, me, onOpen, onRead, onSummarize, taskContent, compact = false, showProject = false }: { taskContent?: (a: Activity) => ReactNode; rows: Activity[]; onRead: (a: Activity) => Promise<void>; onSummarize?: (a: Activity) => Promise<void>; me: string; onOpen: (id: string) => void; compact?: boolean; showProject?: boolean }) {
+export function ConversationRows({ rows, me, onOpen, onRead, onSummarize, onDigest, taskContent, compact = false, showProject = false }: { taskContent?: (a: Activity) => ReactNode; rows: Activity[]; onRead: (a: Activity) => Promise<void>; onSummarize?: (a: Activity) => Promise<void>; onDigest?: (a: Activity) => Promise<void>; me: string; onOpen: (id: string) => void; compact?: boolean; showProject?: boolean }) {
+  const digestFresh = (a: Activity) => !!(a.unread && a.unread_summary && a.unread_summary_reply === a.reply_id);
+  // An unread reply without its digest yet: ask for one (the handler dedupes per reply).
+  useEffect(() => { if (!onDigest) return; for (const a of rows) if (a.unread && a.reply_id && !digestFresh(a)) void onDigest(a); }, [rows, onDigest]);
   const [summarizing, setSummarizing] = useState<Set<string>>(new Set());
   const summarize = async (a: Activity) => { if (!onSummarize) return; const key = activityKey(a); setSummarizing(old => new Set(old).add(key)); try { await onSummarize(a); } finally { setSummarizing(old => { const n = new Set(old); n.delete(key); return n; }); } };
   const [reading, setReading] = useState<Set<string>>(new Set());
@@ -28,9 +31,9 @@ export function ConversationRows({ rows, me, onOpen, onRead, onSummarize, taskCo
     <div className="conversation-summary">
       <div className="conversation-title">{showProject && <span className="conversation-project-chip" title="所属项目">{conversationProject(a)}</span>}{a.starred&&<span className="star on" title="追踪中">★</span>}<strong>{a.title}</strong><span className={`activity-badge ${a.stale ? '' : a.state === 'working' ? 'running' : a.unread ? 'new' : ''}`}>{a.scheduled ? '定时会话' : activityLabel(a)}</span></div>
       {!compact && <div className="conversation-location"><span className="conversation-project"><span>项目</span><b>{conversationProject(a)}</b></span><span className="conversation-folder" title={a.cwd || '未记录工作目录'}><span>文件夹</span><code>{a.cwd ? a.cwd.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, '~') : '未记录'}</code></span></div>}
-      {(() => { const fresh = a.unread && a.unread_summary && a.unread_summary_reply === a.reply_id; return fresh
-        ? <Preview className="conversation-model-summary" title="模型写的这一轮摘要：你上条消息之后它做了什么、在等你什么（点文字展开全文）"><span className="conversation-caption">未读这轮</span><Linkified text={a.unread_summary!} /></Preview>
-        : a.summary ? <Preview className="conversation-model-summary" title="模型写的总结：目标、做了什么、还差什么（点文字展开全文）"><span className="conversation-caption">总结</span><Linkified text={a.summary} /></Preview> : null; })()}
+      {a.unread
+        ? <div className="conversation-preview open conversation-model-summary conversation-digest" title="这一轮摘要：你上条消息之后它做了什么、在等你什么" onClick={(e) => e.stopPropagation()}><span className="conversation-caption">未读这轮</span>{digestFresh(a) ? <Linkified text={a.unread_summary!} /> : <span className="muted">{onDigest ? '正在写这一轮的摘要…' : (a.reply_preview || '').slice(0, 300)}</span>}</div>
+        : a.summary ? <Preview className="conversation-model-summary" title="模型写的总结：目标、做了什么、还差什么（点文字展开全文）"><span className="conversation-caption">总结</span><Linkified text={a.summary} /></Preview> : null}
       {!compact && !a.summary && <div className="conversation-preview conversation-overview" title="你在这段会话里提过的要求：最初一条，以及后续追加的"><span className="conversation-caption">你说过的</span>{a.overview || '暂无足够的对话内容可整理'}</div>}
       <Preview title="点文字展开全文；点其他地方打开会话"><span className="conversation-caption">{a.reply_preview ? '最新回复' : '最新进展'}</span><Linkified text={a.summary ? (a.reply_preview || a.activity || '').trim().slice(0, 600) || '—' : conversationSummary(a)} /></Preview>
       {a.state === 'working' && !a.stale && a.activity && <div className="conversation-current" title={a.activity}><span className="conversation-caption">正在做</span>{a.activity}</div>}
