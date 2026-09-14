@@ -1063,6 +1063,7 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .mentioned-tasks summary{cursor:pointer;color:var(--ink-3)}
 .titlebar .crumb button{pointer-events:auto}
 .mobile-host-filter,.mobile-context-back{display:none}
+.conversation-project-chip{font-size:11px;color:var(--ink-2);background:var(--panel-2);border-radius:5px;padding:1px 6px;margin-right:6px;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle}
 /* A menu opened by a long press stays inert until the finger that opened it has lifted. */
 .menu-fresh .task-menu,.menu-fresh .ctx-menu{pointer-events:none}
 @media(max-width:760px){

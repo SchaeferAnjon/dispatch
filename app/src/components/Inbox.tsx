@@ -25,7 +25,7 @@ export function InboxView({ onSummarize, onRead, onOpen, initialTab, items, me, 
       {total === 0 && tab !== "idle" && tab !== "review" && tab !== "read" && <div className="empty big">✓ 暂时没有等我的事项<br /><span className="muted">新回复会出现在这里；读到最新后自动移出。</span></div>}
       {tab === "unread" && items.unread.length > 1 && <div className="inbox-bulk"><span className="muted small">{items.unread.length} 条未读 · 每条只留一行摘要，展开看全文请「查看并回复」</span><button className="btn sm" disabled={readingAll} onClick={() => void readAll()}>{readingAll ? "标记中…" : "全部标记已读"}</button></div>}
       {tab === "read" && items.read.length > 0 && <div className="inbox-bulk"><span className="muted small">最近七天读过的回复，最新在前；再看一眼或接着回复</span></div>}
-      {tab === "read" && [...new Set(items.read.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows compact onSummarize={onSummarize} onRead={onRead} rows={items.read.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
+      {tab === "read" && items.read.length > 0 && <section><ConversationRows compact showProject onSummarize={onSummarize} onRead={onRead} rows={items.read} me={me} onOpen={onOpen}/></section>}
       {tab === "unread" && [...new Set(items.unread.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows compact onSummarize={onSummarize} onRead={onRead} rows={items.unread.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
       {(tab === "waiting" || tab === "idle") && items[tab].length > 0 && (
         <section>
