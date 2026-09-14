@@ -1983,10 +1983,10 @@ def cmd_stats(a):
 def cmd_list(a):
     idx = load_index() if a.cached else refresh_index()
     refs = session_refs(idx)
-    from activity import session_preferences
+    from activity import session_preferences, apply_preferences
     preferences = session_preferences(DISPATCH_DIR)
     for r in refs:
-        r.update(preferences.get(r["agent"] + ":" + r["session_id"], {}))
+        apply_preferences(r, preferences.get(r["agent"] + ":" + r["session_id"], {}))
         r["host"], r["host_name"] = "local", local_host_name()
     if not getattr(a, "local", False):
         refs = sorted(refs + remote_refs(), key=lambda r: -(r.get("last_at") or 0))
@@ -2753,8 +2753,9 @@ def cmd_session(a):
             st = read_stream(db, refs[0]['path'], refs[0]['agent'])
     d = read_session_detail(refs[0]) if refs else remote_session_detail(a.key)
     if d and refs:
-        from activity import workspace_changes
+        from activity import workspace_changes, session_preferences, apply_preferences
         from attachments import catalog
+        d['meta'] = apply_preferences(dict(d['meta']), session_preferences(DISPATCH_DIR).get(refs[0]['agent'] + ':' + refs[0]['session_id'], {}))
         siblings = [r for r in refs if (r['agent'],r['session_id']) == (refs[0]['agent'],refs[0]['session_id'])]
         assets = {}; messages = {}
         for ref in reversed(siblings):

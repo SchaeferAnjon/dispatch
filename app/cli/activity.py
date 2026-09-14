@@ -294,13 +294,17 @@ def unacknowledge(directory, key):
 
 def set_preferences(directory, key, changes):
     if not isinstance(key, str) or ':' not in key or len(key) > 250: raise ValueError('无效的会话标识')
-    if not isinstance(changes, dict) or set(changes) - {'scheduled', 'project_override', 'starred', 'archived', 'summary', 'summary_at', 'summary_version', 'summary_by', 'summary_mtime', 'unread_summary', 'unread_summary_reply', 'unread_summary_at', 'unread_summary_by'}: raise ValueError('无效的分类字段')
+    if not isinstance(changes, dict) or set(changes) - {'scheduled', 'project_override', 'title_override', 'starred', 'archived', 'summary', 'summary_at', 'summary_version', 'summary_by', 'summary_mtime', 'unread_summary', 'unread_summary_reply', 'unread_summary_at', 'unread_summary_by'}: raise ValueError('无效的分类字段')
     for flag in ('scheduled', 'starred', 'archived'):
         if flag in changes and type(changes[flag]) is not bool: raise ValueError('标记必须是布尔值')
     if 'project_override' in changes:
         value=changes['project_override']
         if not isinstance(value, str) or len(value.strip()) > 120 or any(ord(c)<32 for c in value): raise ValueError('无效的项目名称')
         changes={**changes, 'project_override':value.strip()}
+    if 'title_override' in changes:  # a name the user gave the conversation; empty restores the derived title
+        value=changes['title_override']
+        if not isinstance(value, str) or len(value.strip()) > 120 or any(ord(c)<32 for c in value): raise ValueError('无效的会话名称')
+        changes={**changes, 'title_override':value.strip()}
     with closing(connect(directory)) as db, db:
         row=db.execute('SELECT data FROM session_preferences WHERE key=?',(key,)).fetchone()
         data={**(json.loads(row[0]) if row else {}), **changes}
@@ -311,6 +315,14 @@ def set_preferences(directory, key, changes):
 def session_preferences(directory):
     with closing(connect(directory)) as db:
         return {key: json.loads(data) for key, data in db.execute('SELECT key,data FROM session_preferences')}
+
+
+def apply_preferences(row, prefs):
+    """Fold a conversation's stored preferences into its row; a user-given name replaces the derived title."""
+    row.update(prefs or {})
+    if row.get('title_override'):
+        row['title'] = row['title_override']
+    return row
 
 
 # ZCode (an OpenCode-based desktop app) keeps conversations in one SQLite file instead of
@@ -595,7 +607,7 @@ def activity_list(home, directory, index):
             s['entrypoint'] = e.get('entrypoint') or s.get('entrypoint', '')
             s['key'] = s['agent'] + ':' + s['session_id']
             prefs = db.execute('SELECT data FROM session_preferences WHERE key=?', (s['key'],)).fetchone()
-            s.update(json.loads(prefs[0]) if prefs else {})
+            apply_preferences(s, json.loads(prefs[0]) if prefs else {})
             receipt = db.execute('SELECT reply_id FROM read_replies WHERE key=? AND reply_id=?', (s['key'], s.get('reply_id'))).fetchone()
             s['unread'] = bool(s.get('reply_at', 0) > max(started_at, s.get('user_at', 0)) and (not receipt or receipt[0] != s.get('reply_id')))
             s['tracking_since'] = started_at

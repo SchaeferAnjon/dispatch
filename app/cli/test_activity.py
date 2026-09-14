@@ -179,6 +179,17 @@ class ActivityTests(unittest.TestCase):
         with self.assertRaises(ValueError): set_preferences(self.store,a['key'],{'scheduled':'yes'})
         with self.assertRaises(ValueError): set_preferences(self.store,a['key'],{'unread':False})
 
+    def test_title_override_renames_the_row_until_cleared(self):
+        self.append(record('assistant','first',self.t))
+        a=self.row(); derived=a['title']
+        set_preferences(self.store,a['key'],{'title_override':'  给客户的报价单  '})
+        b=self.row()
+        self.assertEqual(b['title'],'给客户的报价单'); self.assertEqual(b['title_override'],'给客户的报价单')
+        set_preferences(self.store,a['key'],{'title_override':''})
+        self.assertEqual(self.row()['title'],derived)
+        with self.assertRaises(ValueError): set_preferences(self.store,a['key'],{'title_override':'x'*121})
+        with self.assertRaises(ValueError): set_preferences(self.store,a['key'],{'title_override':'a\nb'})
+
     def test_image_reference_is_not_a_goal(self):
         state={}
         remember_topic(state, '[Image: source: /Users/me/.claude/image-cache/a.png]')
