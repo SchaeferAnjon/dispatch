@@ -69,5 +69,35 @@ class RemoteShell(unittest.TestCase):
         self.assertEqual(r.stdout, "node\\n\n")
 
 
+class HandOver(unittest.TestCase):
+    def test_working_original_is_closed_with_its_pane(self):
+        from unittest.mock import patch
+        live = [{"agent": "claude-code", "session_id": "s1", "agent_pid": 4242, "state": "working", "herdr": {"pane_id": "w1:p3"}}]
+        alive = {4242}
+        herdr_calls = []
+        with patch.object(M.D, "live_sessions", lambda local_only=False: live), patch.object(M, "own_ancestors", lambda: {1}), \
+             patch.object(M.os, "kill", lambda pid, sig: alive.discard(pid)), patch.object(M.D, "ps_table", lambda: {p: (1, "claude") for p in alive}), \
+             patch.object(M.D, "herdr", lambda host, args, **kw: herdr_calls.append(args) or {"result": {}}), patch.object(M.time, "sleep", lambda s: None):
+            r = M.stop_original("claude-code", "s1")
+            self.assertEqual((r["state"], r["was_working"], r["pane_closed"]), ("stopped", True, True))
+            self.assertEqual(herdr_calls, [["pane", "close", "w1:p3"]])
+            alive.add(4242)
+            self.assertEqual(M.stop_original("claude-code", "s1", force=False)["state"], "working")
+            self.assertEqual(M.stop_original("claude-code", "s1", keep=True)["state"], "kept")
+
+    def test_history_is_the_projects_other_claude_and_codex_conversations(self):
+        import os, tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as t:
+            paths = {n: os.path.join(t, n) for n in ("a", "b", "c", "d", "e")}
+            for p in paths.values():
+                open(p, "w").close()
+            idx = {paths["a"]: {"agent": "claude-code", "session_id": "a", "cwd": "/p/kanban/app"}, paths["b"]: {"agent": "codex", "session_id": "b", "cwd": "/p/kanban"},
+                   paths["c"]: {"agent": "pi", "session_id": "c", "cwd": "/p/kanban"}, paths["d"]: {"agent": "claude-code", "session_id": "d", "cwd": "/p/kanban-wt/x"},
+                   paths["e"]: {"agent": "claude-code", "session_id": "live", "cwd": "/p/kanban"}}
+            with patch.object(M.D, "load_index", lambda: idx):
+                self.assertEqual(sorted(r["session_id"] for r in M.project_history("/p/kanban", {"live"})), ["a", "b"])
+
+
 if __name__ == "__main__":
     unittest.main()

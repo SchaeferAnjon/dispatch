@@ -18,6 +18,7 @@ import { InboxView, type InboxItems } from "./components/Inbox";
 import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
 import { SearchPalette } from "./components/Search";
+import { dropMovedOriginals } from "./moves";
 import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, newSessionTarget, ownerHostId, parseProjectFlags, parseProjectOwners, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags, type ProjectOwner } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
 import { SetupView, type InitStatus } from "./components/Setup";
@@ -400,7 +401,7 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     let alive = true;
-    const tick = async () => { try { const l = await api.sessionList(); if (alive) { const m = new Map<string, SessionRef>(); for (const r of [...l].sort((a, b) => Number(!!a.remote) - Number(!!b.remote))) m.set(m.has(r.session_id) ? `${r.session_id}@${r.host}` : r.session_id, r); setRefs(m); } } catch { /* index not ready */ } };
+    const tick = async () => { try { const l = await api.sessionList(); if (alive) { const m = new Map<string, SessionRef>(); for (const r of [...dropMovedOriginals(l)].sort((a, b) => Number(!!a.remote) - Number(!!b.remote))) m.set(m.has(r.session_id) ? `${r.session_id}@${r.host}` : r.session_id, r); setRefs(m); } } catch { /* index not ready */ } };
     tick();
     const t = window.setInterval(tick, 60_000);
     return () => { alive = false; window.clearInterval(t); };
@@ -442,7 +443,7 @@ export default function App() {
   const normalise = useCallback(<T extends { cwd: string; project: string; project_override?: string; scheduled?: boolean; path?: string; entrypoint?: string; title?: string }>(x: T): T => ({ ...x, project: resolveProject(x, known, settings.workspace_roots), scheduled: x.scheduled ?? (settings.sdk_sessions_scheduled && isScriptSession(x) ? true : undefined) }), [known, settings.sdk_sessions_scheduled, settings.workspace_roots]);
   // This Mac's rows arrive without a machine name (only peers' are tagged); name them too, so every
   // conversation says which Mac it is on — after `dispatch move` the same id exists on both.
-  const activityRows = useMemo(() => activity.sessions.filter((a) => !isSubagentSession(a)).map(normalise).map((a) => a.host_name || !localName ? a : { ...a, host_name: localName }), [activity, normalise, localName]);
+  const activityRows = useMemo(() => dropMovedOriginals(activity.sessions).filter((a) => !isSubagentSession(a)).map(normalise).map((a) => a.host_name || !localName ? a : { ...a, host_name: localName }), [activity, normalise, localName]);
   const observedPresence = useMemo(() => mergeActivity(presence, activityRows), [presence, activityRows]);
   const presenceF = useMemo(() => hostFilter ? { ...observedPresence, sessions: observedPresence.sessions.filter((x) => (x.host_name ?? localName) === hostFilter) } : observedPresence, [observedPresence, hostFilter, localName]);
   // Every conversation carries its resolved project from here on, so each view agrees on it.
@@ -754,7 +755,7 @@ export default function App() {
             p.git?.history ? "Git 历史用 git push 过去，那边的 stash 保留" : "",
             p.already_there ? `${hostName} 上已经在跑这个会话，不会再开一份` : "",
             others.length ? `⚠ 这边还有 ${others.length} 个会话在这个项目里（${others.map((o) => `${o.title || "未命名"}·${o.state}`).join("、")}），它们会继续改这边的文件` : "",
-            "这边的原会话空闲时会停掉；项目以后归那台，新建会话默认开在那边。"].filter(Boolean);
+            "这边的原会话会直接关掉（正在跑的也关），在那边接着跑；项目以后归那台，新建会话默认开在那边。"].filter(Boolean);
           if (!window.confirm(lines.join("\n"))) return;
           say(`正在把项目交给 ${hostName}…`);
           const r = await run([]);
@@ -835,7 +836,8 @@ export default function App() {
                   const lines = [`把项目 ${name} 整个交给 ${to.name}：${p.remote_cwd}`,
                     `文件：同步 ${f.send ?? 0} 个${f.delete ? `、删除 ${f.delete} 个（这边已删）` : ""}${f.skipped?.length ? `；构建产物不搬：${f.skipped.join("、")}` : ""}`,
                     p.git?.history ? "Git 历史用 git push 过去，那边的 stash 保留" : "",
-                    sessions.length ? `在跑的 ${sessions.length} 个会话会在 ${to.name} 上接着跑（${sessions.map((s) => `${s.title || "未命名"}·${s.state}`).join("、")}）；这边的空闲后停掉` : "这边没有在跑的会话，只交接文件和归属",
+                    sessions.length ? `这边开着的 ${sessions.length} 个会话会直接关掉（正在跑的也关），在 ${to.name} 上接着跑：${sessions.map((s) => `${s.title || "未命名"}·${s.state === "working" ? "正在跑" : "空闲"}`).join("、")}` : "这边没有开着的会话",
+                    p.history?.count ? `其余 ${p.history.count} 段历史会话（${p.history.mb} MB）的记录也搬过去，Dispatch 里都显示在 ${to.name}` : "",
                     "以后这个项目归那台，新建会话默认开在那边。"].filter(Boolean);
                   if (!window.confirm(lines.join("\n"))) return;
                   say(`正在把 ${name} 交给 ${to.name}…`);
@@ -843,7 +845,8 @@ export default function App() {
                   if (r.error) { say(String(r.error), true); return; }
                   const v = r.git?.verify; const failed = (r.moved ?? []).filter((m: { error?: string }) => m.error);
                   say([`已把 ${name} 交给 ${to.name}`, v?.checked ? (v.head_match && v.dirty_match ? "Git 两边一致" : `Git 没对上，去 ${to.name} 看 git status`) : "",
-                    (r.moved ?? []).length ? `${(r.moved ?? []).length - failed.length} 个会话已在那边接着跑` : "", failed.length ? `${failed.length} 个会话没迁过去：${failed[0].error}` : ""].filter(Boolean).join("；"), !!failed.length || !!(v?.checked && !(v.head_match && v.dirty_match)));
+                    (r.moved ?? []).length ? `${(r.moved ?? []).length - failed.length} 个会话已在那边接着跑` : "", failed.length ? `${failed.length} 个会话没迁过去：${failed[0].error}` : "",
+                    r.history?.copied ? `${r.history.copied} 段历史会话已搬过去` : "", r.history?.failed?.length ? `${r.history.failed.length} 段历史没搬成` : ""].filter(Boolean).join("；"), !!failed.length || !!(v?.checked && !(v.head_match && v.dirty_match)));
                   api.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
                   void reload();
                 } catch (e) { say(String(e), true); }
