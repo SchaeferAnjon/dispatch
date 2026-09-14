@@ -260,20 +260,31 @@ def here_sessions(proj, detected, cwd, issues, names=None, roots=None):
     return rows
 
 
+HERE_REMOTE_TTL = 30
+
+
 def merge_remote_here(proj, days, timeline, sessions):
     """Ask every other Mac in hosts.json for its own `here --local` and merge: board entries are
-    shared (dedupe by kind+ref+ts), commits by hash, sessions by id; remote rows carry `host`."""
-    hosts_seen, unavailable = [], []
+    shared (dedupe by kind+ref+ts), commits by hash, sessions by id; remote rows carry `host`.
+
+    Never waits for the ssh: the other Mac needs seconds to compute its side, and the 项目回顾
+    page must paint now. We merge whatever its cache holds and let a detached refresh write the
+    next answer; a cache older than the ttl is reported in `stale_hosts` so the page can say so."""
+    hosts_seen, unavailable, stale = [], [], []
     entries = [e for g in timeline for e in g["entries"]]
     seen = {(e["kind"], e.get("ref", ""), round(e.get("ts", 0))) for e in entries}
     seen_refs = {(e["kind"], e.get("ref", "")) for e in entries if e["kind"] in ("commit", "session")}
     sids = {s.get("session_id") for s in sessions}
     for h in D.hosts():
-        r = D.remote_dispatch(h, ["here", proj, "--no-summary", "--local", "--days", str(days), "--json"], 30, timeout=45)
+        rargs = ["here", proj, "--no-summary", "--local", "--days", str(days), "--json"]
+        r = D.remote_dispatch(h, rargs, HERE_REMOTE_TTL, timeout=45, background=True)
         if not isinstance(r, dict) or "timeline" not in r:
             unavailable.append(h["name"])
             continue
         hosts_seen.append(h["name"])
+        age = D.remote_cache_age(h, rargs)
+        if age is not None and age >= HERE_REMOTE_TTL:
+            stale.append({"name": h["name"], "age": int(age)})
         for g in r.get("timeline") or []:
             for e in g.get("entries") or []:
                 key = (e.get("kind"), e.get("ref", ""), round(e.get("ts", 0)))
@@ -294,18 +305,20 @@ def merge_remote_here(proj, days, timeline, sessions):
         if not grouped or grouped[-1]["day"] != day:
             grouped.append({"day": day, "weekday": "周" + "一二三四五六日"[lt.tm_wday], "entries": []})
         grouped[-1]["entries"].append(e)
-    return grouped, sessions, hosts_seen, unavailable
+    return grouped, sessions, hosts_seen, unavailable, stale
 
 
 def cmd_here(a):
     cwd = os.path.abspath(os.path.expanduser(getattr(a, "dir", "") or os.getcwd()))
     days = max(1, int(getattr(a, "days", 14) or 14))
-    names = D.project_names()
+    # The export carries every issue's labels, so the project names come out of it — one whole-board
+    # `bd list` less on every open of 项目回顾.
+    rows = board_export()
+    names = D.project_names(rows)
     roots = D.settings_load().get("workspace_roots") or []
     proj = (getattr(a, "project", "") or getattr(a, "project_opt", "") or "").strip() or D.project_of_cwd(cwd, names, roots)
     detected = bool(proj)
     proj = proj or os.path.basename(cwd.rstrip("/")) or "?"
-    rows = board_export()
     issues = project_issues(proj, rows)
     since = time.time() - days * 86400
     comments = here_comments(issues, since)
@@ -326,14 +339,14 @@ def cmd_here(a):
     base = project_base(proj, cwd, names, roots)
     timeline = here_timeline(proj, issues, comments, days, base, names, roots)
     sessions = here_sessions(proj, detected, base, issues, names, roots)
-    hosts_seen, unavailable = [], []
+    hosts_seen, unavailable, stale_hosts = [], [], []
     if not getattr(a, "local", False):
         # Commits come from this Mac's clone and session summaries from this Mac's index: the other
         # Mac has its own. Fold theirs in so the phone (served by the mini) and the desktop agree.
-        timeline, sessions, hosts_seen, unavailable = merge_remote_here(proj, days, timeline, sessions)
+        timeline, sessions, hosts_seen, unavailable, stale_hosts = merge_remote_here(proj, days, timeline, sessions)
     report = {"project": proj, "detected": detected, "cwd": base, "timeline_days": days, "summary": summary,
               "timeline": timeline, "open_tasks": here_open_tasks(issues, comments), "sessions": sessions,
-              "hosts": hosts_seen, "unavailable_hosts": unavailable}
+              "hosts": hosts_seen, "unavailable_hosts": unavailable, "stale_hosts": stale_hosts}
 
     def text(o):
         print(f"# {o['project']}" + ("" if o["detected"] else "（任务板上没认出这个项目，按目录看）") + f" · {o['cwd']}")

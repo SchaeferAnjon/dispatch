@@ -246,14 +246,54 @@ def _tag_host(rows, h):
     return rows or []
 
 
-def remote_dispatch(h, args, ttl, timeout=12):
+def remote_cache_path(h, args):
+    """Where remote_dispatch keeps this host+command's answer; its mtime is how old it is."""
+    return os.path.join(REMOTE_DIR, f"{h['id']}--" + re.sub(r"[^a-z0-9]+", "-", " ".join(args).lower()).strip("-") + ".json")
+
+
+def remote_cache_age(h, args):
+    """Seconds since that answer was written; None when there is none yet."""
+    try:
+        return max(0.0, time.time() - os.stat(remote_cache_path(h, args)).st_mtime)
+    except OSError:
+        return None
+
+
+def _spawn_remote_refresh(h, args, timeout):
+    """Let a detached `dispatch remote-refresh` do the ssh and write the cache, so the caller
+    can answer now. The .lock keeps one refresh per host+command: the app polls every few
+    seconds and the remote side takes seconds, so without it we would pile up ssh sessions."""
+    lock = remote_cache_path(h, args)[:-5] + ".lock"
+    try:
+        if time.time() - os.stat(lock).st_mtime < timeout + 10:
+            return  # one is already on its way (or died mid-flight less than a timeout ago)
+    except OSError:
+        pass
+    try:
+        os.makedirs(REMOTE_DIR, exist_ok=True)
+        open(lock, "w").close()
+        devnull = subprocess.DEVNULL
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "remote-refresh", h["id"], "--timeout", str(int(timeout)), "--"] + list(args),
+                         stdin=devnull, stdout=devnull, stderr=devnull, start_new_session=True, close_fds=True)
+    except Exception:
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+
+def remote_dispatch(h, args, ttl, timeout=12, background=False):
     """Run `dispatch <args> --json` on another host, cached for ttl seconds. Never blocks
     the caller for more than ~10s, and remembers an unreachable host for a minute so the
-    app's 5-second presence polls stay cheap. Returns the stale cache (or None) on failure."""
+    app's 5-second presence polls stay cheap. Returns the stale cache (or None) on failure.
+
+    background=True never blocks at all: hand back whatever the cache holds (stale, or None
+    when the host has never answered) and refresh it in a detached process for the next call.
+    Use it where the page must paint now and slightly old remote rows are fine (`here`);
+    callers that need the answer itself keep the blocking default."""
     import shlex
     os.makedirs(REMOTE_DIR, exist_ok=True)
-    key = re.sub(r"[^a-z0-9]+", "-", " ".join(args).lower()).strip("-")
-    cache = os.path.join(REMOTE_DIR, f"{h['id']}--{key}.json")
+    cache = remote_cache_path(h, args)
     down = os.path.join(REMOTE_DIR, f"{h['id']}.down")
     now = time.time()
 
@@ -273,6 +313,9 @@ def remote_dispatch(h, args, ttl, timeout=12):
             return stale()
     except OSError:
         pass
+    if background:
+        _spawn_remote_refresh(h, args, timeout)
+        return stale()
     # The remote login shell is fish, so use `env` rather than FOO=bar prefixes.
     cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in args) + " --json"
     try:
@@ -301,6 +344,18 @@ def remote_dispatch(h, args, ttl, timeout=12):
     except OSError:
         pass
     return data
+
+
+def cmd_remote_refresh(a):
+    """The detached half of remote_dispatch(background=True): do the ssh, write the cache, drop
+    the lock. Not meant to be typed — prints nothing, so it can be spawned and forgotten."""
+    h = next((x for x in hosts() if x.get("id") == a.host), {"id": a.host})
+    if h.get("ssh"):
+        remote_dispatch(h, a.args, 0, timeout=max(5, a.timeout))
+    try:
+        os.remove(remote_cache_path(h, a.args)[:-5] + ".lock")  # even when the host is gone, or the next open never refreshes
+    except OSError:
+        pass
 
 
 def tailscale_ip():
@@ -5640,18 +5695,23 @@ def cmd_env(a):
 
 # ---------------------------------------------------------------- prime: compact session-start digest
 
-def project_names():
-    code, o, err = sh(["bd", "list", "--all", "--json"])
+def project_names(rows=None):
+    """lowercase name -> the name as written, from the `project:` labels on the board.
+    Pass `rows` when the caller already holds every issue (a `bd export`, say): the labels are
+    the same and one whole-board round-trip per call is what `here` was spending 0.3s on."""
     names = {}
-    if code != 0:
-        return names
-    try:
-        for it in json.loads(o[o.find("["):]):
-            for l in it.get("labels") or []:
-                if l.startswith("project:"):
-                    names[l.split(":", 1)[1].lower()] = l.split(":", 1)[1]
-    except Exception:
-        pass
+    if rows is None:
+        code, o, err = sh(["bd", "list", "--all", "--json"])
+        if code != 0:
+            return names
+        try:
+            rows = json.loads(o[o.find("["):])
+        except Exception:
+            return names
+    for it in rows or []:
+        for l in it.get("labels") or []:
+            if l.startswith("project:"):
+                names[l.split(":", 1)[1].lower()] = l.split(":", 1)[1]
     return names
 
 
@@ -7203,6 +7263,7 @@ def main():
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)
     s = sub.add_parser("init", help="首次设置向导：装依赖、建/接入任务板、选 Agent、同步规则与技能（无参数=交互式）"); s.add_argument("op", nargs="?", choices=["wizard", "status", "run", "hub-info", "add-host", "rename-self", "rename-peer", "remove-host", "skip", "finish", "reset", "peers"]); s.add_argument("args", nargs="*", help="run: <deps|cli|board|agents|rules|review|reverse-ssh> [参数…]; rename-self <新名字>; rename-peer <ssh或id> <新名字>; remove-host <id>"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_init)
     s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--project", "-P", default=None, help="set/import: 只属于这个项目；list: 只看这个项目的。空串清除归属"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
+    s = sub.add_parser("remote-refresh", help=argparse.SUPPRESS); s.add_argument("host"); s.add_argument("--timeout", type=int, default=45); s.add_argument("args", nargs="*"); s.set_defaults(fn=cmd_remote_refresh)
     s = sub.add_parser("prime", help="compact session-start digest (SessionStart hook)"); s.add_argument("--hook-json", action="store_true"); s.add_argument("--cwd"); s.add_argument("--limit", type=int, default=4, help="wiki entries for this project"); s.set_defaults(fn=cmd_prime)
     a = p.parse_args()
     if a.cmd == "agent":

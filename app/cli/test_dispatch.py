@@ -1312,3 +1312,77 @@ class SummaryUses(unittest.TestCase):
         self.assertEqual(by["session"]["last"], {"at": 1700000000, "tokens": 42, "model": "zhipu:glm-5.3-flash"})
         self.assertTrue(by["session"]["enabled"])
         self.assertIsNone(by["project"]["last"])
+
+
+class RemoteBackground(unittest.TestCase):
+    """`here` must not wait on the other Mac: it answers from the cache (even a stale one) and
+    lets a detached `dispatch remote-refresh` write the next answer."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        p = patch.object(dispatch, "REMOTE_DIR", self.dir)
+        p.start()
+        self.addCleanup(p.stop)
+        self.h = {"id": "mini", "name": "mini", "ssh": "x"}
+        self.args = ["here", "p", "--no-summary", "--local"]
+
+    def write_cache(self, data, age=0):
+        path = dispatch.remote_cache_path(self.h, self.args)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        if age:
+            os.utime(path, (time.time() - age, time.time() - age))
+        return path
+
+    def test_stale_cache_comes_back_now_and_one_refresh_is_spawned(self):
+        self.write_cache({"timeline": []}, age=600)
+        with patch("subprocess.Popen") as pop, \
+             patch("subprocess.run", side_effect=AssertionError("ssh 不该在前台跑")):
+            self.assertEqual(dispatch.remote_dispatch(self.h, self.args, 30, background=True), {"timeline": []})
+            self.assertEqual(dispatch.remote_dispatch(self.h, self.args, 30, background=True), {"timeline": []})
+        self.assertEqual(pop.call_count, 1)   # the .lock keeps a second open from piling up ssh
+        self.assertIn("remote-refresh", pop.call_args[0][0])
+        self.assertGreaterEqual(dispatch.remote_cache_age(self.h, self.args), 600)
+
+    def test_no_cache_at_all_answers_none_instead_of_waiting(self):
+        with patch("subprocess.Popen") as pop, \
+             patch("subprocess.run", side_effect=AssertionError("ssh 不该在前台跑")):
+            self.assertIsNone(dispatch.remote_dispatch(self.h, self.args, 30, background=True))
+        self.assertEqual(pop.call_count, 1)
+        self.assertIsNone(dispatch.remote_cache_age(self.h, self.args))
+
+    def test_fresh_cache_needs_no_refresh(self):
+        self.write_cache({"ok": 1})
+        with patch("subprocess.Popen") as pop:
+            self.assertEqual(dispatch.remote_dispatch(self.h, self.args, 30, background=True), {"ok": 1})
+        self.assertEqual(pop.call_count, 0)
+
+    def test_blocking_callers_keep_their_semantics(self):
+        """sessions / activity / stats still wait for the answer — only `here` opted out."""
+        self.write_cache({"old": 1}, age=600)
+        r = types.SimpleNamespace(returncode=0, stdout=json.dumps({"new": 1}), stderr="")
+        with patch("subprocess.run", return_value=r) as run, \
+             patch("subprocess.Popen", side_effect=AssertionError("前台调用不该派后台刷新")):
+            self.assertEqual(dispatch.remote_dispatch(self.h, self.args, 30), {"new": 1})
+        self.assertEqual(run.call_args[0][0][0], "ssh")
+
+    def test_remote_refresh_writes_the_cache_and_drops_the_lock(self):
+        lock = dispatch.remote_cache_path(self.h, self.args)[:-5] + ".lock"
+        with patch("subprocess.Popen") as pop, patch("subprocess.run", side_effect=AssertionError("ssh 不该在前台跑")):
+            dispatch.remote_dispatch(self.h, self.args, 30, background=True)
+        self.assertTrue(os.path.exists(lock))
+        spawned = pop.call_args[0][0]
+        args = spawned[spawned.index("--") + 1:]
+        r = types.SimpleNamespace(returncode=0, stdout=json.dumps({"new": 1}), stderr="")
+        with patch.object(dispatch, "hosts", return_value=[self.h]), patch("subprocess.run", return_value=r):
+            dispatch.cmd_remote_refresh(types.SimpleNamespace(host="mini", timeout=45, args=args))
+        self.assertFalse(os.path.exists(lock))
+        self.assertEqual(json.load(open(dispatch.remote_cache_path(self.h, self.args))), {"new": 1})
+
+
+class ProjectNamesFromRows(unittest.TestCase):
+    def test_rows_in_hand_skip_the_board_round_trip(self):
+        rows = [{"labels": ["project:Atrium", "dispatch:outcome"]}, {"labels": []}, {}]
+        with patch.object(dispatch, "sh", side_effect=AssertionError("已经有全板数据就别再查一次")):
+            self.assertEqual(dispatch.project_names(rows), {"atrium": "Atrium"})

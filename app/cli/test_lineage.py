@@ -159,5 +159,46 @@ class Lineage(unittest.TestCase):
         self.assertEqual(lineage.git_commits("", 14, 0), [])
 
 
+class RemoteMerge(unittest.TestCase):
+    """项目回顾 must paint from the local board plus whatever the other Mac's cache holds —
+    never waiting for its ssh (it needs seconds to compute its own side)."""
+
+    def merge(self, age):
+        now = time.time()
+        remote = {"timeline": [{"day": "x", "weekday": "周一", "entries": [{"ts": now, "kind": "commit", "ref": "zzz", "text": "他们那台的提交"}]}],
+                  "sessions": [{"session_id": "s-remote", "state": "idle"}]}
+        seen = {}
+
+        def fake(h, args, ttl, timeout=12, background=False):
+            seen.update(args=args, ttl=ttl, background=background)
+            return remote
+
+        with patch.object(dispatch, "hosts", return_value=[{"id": "mini", "name": "mini", "ssh": "x"}]), \
+             patch.object(dispatch, "remote_dispatch", side_effect=fake), \
+             patch.object(dispatch, "remote_cache_age", return_value=age):
+            return seen, lineage.merge_remote_here("p", 14, [], [])
+
+    def test_merges_the_cache_and_never_blocks_on_the_ssh(self):
+        seen, (grouped, sessions, hosts_seen, unavailable, stale) = self.merge(2)
+        self.assertTrue(seen["background"])
+        self.assertEqual(seen["args"], ["here", "p", "--no-summary", "--local", "--days", "14", "--json"])
+        self.assertEqual(hosts_seen, ["mini"])
+        self.assertEqual(unavailable, [])
+        self.assertEqual(stale, [])
+        self.assertEqual([e["host"] for g in grouped for e in g["entries"]], ["mini"])
+        self.assertEqual([s["session_id"] for s in sessions], ["s-remote"])
+
+    def test_a_cache_older_than_the_ttl_is_merged_but_reported_as_stale(self):
+        _, (_, _, hosts_seen, _, stale) = self.merge(300)
+        self.assertEqual(hosts_seen, ["mini"])
+        self.assertEqual(stale, [{"name": "mini", "age": 300}])
+
+    def test_a_host_that_never_answered_is_unavailable_not_a_wait(self):
+        with patch.object(dispatch, "hosts", return_value=[{"id": "mini", "name": "mini", "ssh": "x"}]), \
+             patch.object(dispatch, "remote_dispatch", return_value=None):
+            grouped, sessions, hosts_seen, unavailable, stale = lineage.merge_remote_here("p", 14, [], [])
+        self.assertEqual((hosts_seen, unavailable, stale, grouped, sessions), ([], ["mini"], [], [], []))
+
+
 if __name__ == "__main__":
     unittest.main()
