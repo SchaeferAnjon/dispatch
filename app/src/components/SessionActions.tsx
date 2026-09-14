@@ -78,7 +78,7 @@ export function OpenSessionButton({ session, compact = false }: { session: Targe
 // into Herdr: the CLI stops it once idle and resumes the same transcript in a new Herdr tab.
 // Only Herdr-hosted sessions get the tab title, working/idle judgement and phone replies.
 export const canAdopt = (s: { agent: string; host?: string; herdr?: unknown; source_app?: string; session_id: string; probable_session_id?: string; remote?: boolean }) =>
-  !s.remote && (!s.host || s.host === 'local') && !s.herdr && ['claude-code', 'codex', 'pi'].includes(s.agent) && s.source_app !== 'Herdr' && (!s.session_id.startsWith('pid-') || !!s.probable_session_id);
+  !s.herdr && ['claude-code', 'codex', 'pi'].includes(s.agent) && s.source_app !== 'Herdr' && (!s.session_id.startsWith('pid-') || !!s.probable_session_id);
 
 export function AdoptButton({ session, compact = false, className = 'btn sm' }: { session: { agent: string; session_id: string; host?: string; herdr?: unknown; source_app?: string; state?: string; probable_session_id?: string; remote?: boolean }; compact?: boolean; className?: string }) {
   const ctx = useContext(Context);
@@ -86,17 +86,18 @@ export function AdoptButton({ session, compact = false, className = 'btn sm' }: 
   const request = useRef<string | null>(null);
   if (!canAdopt(session)) return null;
   const working = session.state === 'working';
+  const host = session.host || 'local';
   const adopt = async () => {
     if (!ctx?.api || busy) return;
     setBusy(true);
     request.current ??= id();
     try {
-      const r = await control<Launch & { stopped_pid?: number | null }>(ctx.api, 'local', 'adopt', { session_id: session.session_id, request_id: request.current });
+      const r = await control<Launch & { stopped_pid?: number | null }>(ctx.api, host, 'adopt', { session_id: session.session_id, request_id: request.current });
       ctx.notify(r.message);
       if (r.request_id) {
         for (let n = 0; n < 60; n++) {
           await new Promise(resolve => window.setTimeout(resolve, 2000));
-          const s = await control<Launch>(ctx.api, 'local', 'status', { request_id: r.request_id });
+          const s = await control<Launch>(ctx.api, host, 'status', { request_id: r.request_id });
           if (!['starting', 'running'].includes(s.state)) { ctx.notify(s.state === 'ready' ? `已接到 Herdr：${s.message}` : s.message, s.state !== 'ready'); break; }
         }
       }

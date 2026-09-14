@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import uuid
 from datetime import datetime, timezone
 
+import session_control
 import session_reply as reply
 
 
@@ -119,6 +120,95 @@ class Replies(unittest.TestCase):
         ipc.request = Mock(return_value={'resultType':'error', 'error':'timeout'})
         with self.assertRaises(RuntimeError): ipc.send(self.ref, '继续', 'client-message')
         ipc.request.assert_called_once()
+
+
+class AdoptFromReply(unittest.TestCase):
+    """A session running on this machine outside Herdr (plain Ghostty/VS Code terminal, no
+    Herdr pane) has no `target`. status() should say so and offer adoption; submit() should
+    adopt it itself when idle, and never touch it while it is working."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = SimpleNamespace(HOME=self.tmp.name, DISPATCH_DIR=self.tmp.name, SESS_DIR=self.tmp.name)
+        self.ref = dict(agent='claude-code', session_id='session-exact', cwd='/project')
+        self.not_found = reply.Rejected('无法确认原会话所在的终端。请在电脑上恢复原会话后重新连接。')
+
+    def test_status_offers_adoption_for_an_idle_session_outside_herdr(self):
+        self.d.live_sessions = lambda local_only=True: [dict(self.ref, agent='claude-code', state='idle', source_app='Ghostty', herdr=None)]
+        with patch.object(reply, 'target', side_effect=self.not_found):
+            st = reply.status(self.d, self.ref)
+        self.assertFalse(st['available'])
+        self.assertTrue(st['adoptable'])
+        self.assertEqual(st['adopt_state'], 'idle')
+        self.assertEqual(st['source_app'], 'Ghostty')
+        self.assertIn('Ghostty', st['label'])
+
+    def test_status_offers_adoption_for_a_working_session_but_says_so(self):
+        self.d.live_sessions = lambda local_only=True: [dict(self.ref, agent='claude-code', state='working', source_app='VS Code', herdr=None)]
+        with patch.object(reply, 'target', side_effect=self.not_found):
+            st = reply.status(self.d, self.ref)
+        self.assertTrue(st['adoptable'])
+        self.assertEqual(st['adopt_state'], 'working')
+
+    def test_status_stays_generic_when_the_session_is_not_live_here(self):
+        self.d.live_sessions = lambda local_only=True: []
+        with patch.object(reply, 'target', side_effect=self.not_found):
+            st = reply.status(self.d, self.ref)
+        self.assertFalse(st['available'])
+        self.assertNotIn('adoptable', st)
+
+    def test_status_skips_a_session_already_in_herdr(self):
+        # herdr_target would have found it; something else is wrong — don't offer to re-adopt it.
+        self.d.live_sessions = lambda local_only=True: [dict(self.ref, agent='claude-code', state='idle', source_app='Herdr', herdr={'pane_id': 'p1'})]
+        with patch.object(reply, 'target', side_effect=self.not_found):
+            st = reply.status(self.d, self.ref)
+        self.assertNotIn('adoptable', st)
+
+    def test_submit_auto_adopts_an_idle_session_then_sends(self):
+        live = dict(self.ref, agent='claude-code', state='idle', source_app='Ghostty', herdr=None)
+        self.d.live_sessions = lambda local_only=True: [live]
+        self.d.refresh_index = lambda: None
+        pane = {'pane_id': 'p1', 'tab_id': 't1', 'busy': False}
+        calls = []
+        def herdr(host, args, timeout=30, raw=False):
+            calls.append(args)
+            if args[:2] == ['agent', 'prompt']: return {'result': {'agent': {}}}
+            return '' if raw else {'result': {}}
+        self.d.herdr = herdr
+        with patch.object(reply, 'target', side_effect=[self.not_found, {'kind': 'herdr', 'pane': pane, 'label': 'x'}]), \
+             patch.object(reply, 'herdr_target', return_value=pane), \
+             patch.object(session_control, 'adopt', return_value={'request_id': 'launch-1', 'state': 'starting'}) as m_adopt, \
+             patch.object(session_control, 'status', return_value={'request_id': 'launch-1', 'state': 'ready'}), \
+             patch.object(reply.time, 'sleep'):
+            r = reply.submit(self.d, self.ref, 'hello', str(uuid.uuid4()))
+        self.assertEqual(r['state'], 'accepted')
+        m_adopt.assert_called_once()
+        self.assertEqual(m_adopt.call_args.args[1]['session_id'], 'session-exact')
+        self.assertTrue(any(a[:2] == ['agent', 'prompt'] for a in calls))
+
+    def test_submit_gives_up_when_adoption_does_not_finish(self):
+        live = dict(self.ref, agent='claude-code', state='idle', source_app='Ghostty', herdr=None)
+        self.d.live_sessions = lambda local_only=True: [live]
+        self.d.refresh_index = lambda: None
+        with patch.object(reply, 'target', side_effect=self.not_found), \
+             patch.object(session_control, 'adopt', return_value={'request_id': 'launch-1', 'state': 'starting'}), \
+             patch.object(session_control, 'status', return_value={'request_id': 'launch-1', 'state': 'attention', 'message': '启动尚未确认，请查看电脑终端。'}), \
+             patch.object(reply.time, 'sleep'):
+            with self.assertRaises(reply.Rejected) as cm:
+                reply.submit(self.d, self.ref, 'hello', str(uuid.uuid4()))
+        self.assertIn('查看电脑终端', str(cm.exception))
+
+    def test_submit_never_interrupts_a_working_session_to_adopt_it(self):
+        live = dict(self.ref, agent='claude-code', state='working', source_app='VS Code', herdr=None)
+        self.d.live_sessions = lambda local_only=True: [live]
+        with patch.object(reply, 'target', side_effect=self.not_found), patch.object(session_control, 'adopt') as m_adopt:
+            with self.assertRaises(reply.Rejected) as cm:
+                reply.submit(self.d, self.ref, 'hello', str(uuid.uuid4()))
+        self.assertIn('VS Code', str(cm.exception))
+        m_adopt.assert_not_called()
+        with reply.connect(self.d) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM replies').fetchone()[0], 0)
 
 
 if __name__ == '__main__': unittest.main()

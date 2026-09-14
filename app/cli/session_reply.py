@@ -283,6 +283,61 @@ def herdr_target(d, ref, require_idle=True, allow_blocked=False):
     raise Rejected('无法确认原会话所在的终端。请在电脑上恢复原会话后重新连接。')
 
 
+def adoptable(d, ref):
+    """The live_sessions() row for `ref` when it is running on this machine outside Herdr (so
+    `target` cannot find a pane for it) and its agent kind can be adopted — the same session
+    `session_control.adopt` would take. None when it isn't live here, already in Herdr, or its
+    kind can't be adopted this way (imported lazily: session_control imports this module)."""
+    live_sessions = getattr(d, 'live_sessions', None)
+    if not callable(live_sessions):
+        return None
+    import session_control
+    if ref['agent'] not in session_control.KINDS:
+        return None
+    for s in live_sessions(local_only=True):
+        if s.get('agent') != ref['agent'] or s.get('herdr'):
+            continue
+        sid = s.get('session_id') or ''
+        if sid == ref['session_id'] or (sid.startswith('pid-') and s.get('probable_session_id') == ref['session_id']):
+            return s
+    return None
+
+
+def auto_adopt(d, ref, live):
+    """Take `live` (confirmed idle by the caller) into Herdr and wait for the resumed transcript
+    to become reachable again. Reuses session_control.adopt — it stops the old process and
+    resumes the same transcript in a new Herdr tab — rather than reimplementing that dance."""
+    import session_control
+    launch = session_control.adopt(d, dict(session_id=live['session_id'], request_id=str(uuid.uuid4())))
+    st = launch
+    deadline = time.time() + 45
+    while st.get('request_id') and st.get('state') in ('starting', 'running') and time.time() < deadline:
+        time.sleep(1.0)
+        st = session_control.status(d, st['request_id'])
+    if st.get('state') != 'ready':
+        raise Rejected(st.get('message') or '接进 Herdr 还没完成，请稍候几秒再发送。')
+
+
+def _ensure_reachable(d, ref):
+    """Before resolving where to send: if the session cannot be reached because it runs outside
+    Herdr on this machine, take it in first — but only while idle, never interrupting a working
+    agent. A session that is genuinely unreachable, or busy, is left for `target` to reject."""
+    try:
+        target(d, ref)
+        return
+    except Rejected:
+        pass
+    live = adoptable(d, ref)
+    if live is None:
+        return
+    if live.get('state') == 'working':
+        raise Rejected('它正在 %s 里跑，等这轮结束后会自动接进 Herdr 再发' % (live.get('source_app') or '原终端'))
+    auto_adopt(d, ref, live)
+    refresh_index = getattr(d, 'refresh_index', None)
+    if callable(refresh_index):
+        refresh_index()
+
+
 def target(d, ref):
     if ref['agent'] == 'codex' and os.path.exists(os.path.join(d.HOME, '.codex', 'ipc', 'ipc.sock')):
         try:
@@ -399,7 +454,13 @@ def status(d, ref):
         extra = tui_state(d, t['pane']['pane_id']) if t['kind'] == 'herdr' and ref['agent'] == 'claude-code' else {}
         return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts, **({'desktop': t['desktop']} if t.get('desktop') else {}), **extra)
     except Exception as e:
-        return dict(available=False, label=str(e) if isinstance(e, Rejected) else '暂时无法连接原 Agent，请重新连接。', receipts=receipts)
+        info = dict(available=False, label=str(e) if isinstance(e, Rejected) else '暂时无法连接原 Agent，请重新连接。', receipts=receipts)
+        live = adoptable(d, ref)
+        if live is not None:
+            info.update(label='原会话在这台电脑的 %s 里跑，没接进 Herdr' % (live.get('source_app') or '其它终端'),
+                        adoptable=True, adopt_state='working' if live.get('state') == 'working' else 'idle',
+                        source_app=live.get('source_app') or '')
+        return info
 
 
 IMAGE_NOTE = '附图（用 Read 看）：'
@@ -439,6 +500,7 @@ def submit(d, ref, text, request_id, mode='queue', images=()):
     except (ValueError, TypeError):
         raise Rejected('无效的消息编号，请刷新页面。')
     digest = hashlib.sha256((ref['agent'] + '\0' + ref['session_id'] + '\0' + text + '\0' + '\n'.join(images)).encode()).hexdigest()
+    _ensure_reachable(d, ref)
     with closing(connect(d)) as db, db:
         db.execute('BEGIN IMMEDIATE')
         old = db.execute('SELECT * FROM replies WHERE id=?', (request_id,)).fetchone()

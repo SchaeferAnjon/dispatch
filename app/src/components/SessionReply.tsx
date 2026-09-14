@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react';
 import type { Api } from '../api';
 import type { SessionRef, TimelineMsg } from '../types';
+import { control as sessionControl } from './SessionActions';
 
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number; delivered?: boolean }
 interface DesktopRequest { id: string; kind: 'command' | 'file' | 'permission' | 'question' | 'option' | 'elicitation' | 'other'; summary: string; reason?: string; cwd?: string; files?: string[]; questions?: { id: string; text: string; options: string[] }[] }
 interface Desktop { running: boolean; status: string; requests: DesktopRequest[]; model?: string; approval_policy?: string }
-interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop }
+interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop; adoptable?: boolean; adopt_state?: 'idle' | 'working'; source_app?: string }
 const REQUEST_LABEL: Record<DesktopRequest['kind'], string> = { command: '要跑命令', file: '要改文件', permission: '申请权限', question: '在提问', option: '要你选', elicitation: 'MCP 请求', other: '等确认' };
 const MODES: [string, string][] = [['default', '手动确认'], ['acceptEdits', '自动接受编辑'], ['plan', '计划模式'], ['bypassPermissions', '跳过权限']];
 const MODELS: [string, string][] = [['fable', 'Fable 5.1'], ['opus', 'Opus 5'], ['sonnet', 'Sonnet 5'], ['haiku', 'Haiku 4.5']];
@@ -129,6 +130,29 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   const [switching, setSwitching] = useState(false);
   // Phone: the one-line box is fine for a sentence; a long message wants the big editor.
   const [big, setBig] = useState(false);
+  // The original session runs on this host but outside Herdr (a plain terminal, VS Code…):
+  // take it into Herdr first, then re-check the connection. Runs on the session's own host,
+  // not necessarily this device's.
+  const [adopting, setAdopting] = useState(false);
+  const adoptRequest = useRef<string | null>(null);
+  const adopt = async () => {
+    if (adopting) return;
+    setAdopting(true); setError('');
+    adoptRequest.current ??= messageId();
+    try {
+      const r = await sessionControl<{ request_id?: string; state: string; message: string }>(api, host, 'adopt', { session_id: session.session_id, request_id: adoptRequest.current });
+      if (r.request_id) {
+        for (let n = 0; n < 45; n++) {
+          await new Promise(res => window.setTimeout(res, 1000));
+          const s = await sessionControl<{ state: string; message: string }>(api, host, 'status', { request_id: r.request_id });
+          if (!['starting', 'running'].includes(s.state)) { if (s.state !== 'ready') setError(s.message); break; }
+        }
+      }
+      adoptRequest.current = null;
+      await load();
+    } catch (e) { setError(String(e)); }
+    finally { setAdopting(false); }
+  };
   const control = async (payload: { mode?: string; model?: string; interrupt?: boolean; request_id?: string; decision?: string; answers?: Record<string, unknown> }) => {
     if (switching) return;
     setSwitching(true); setError('');
@@ -212,6 +236,9 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
         {connection.mode && <select aria-label="权限模式" title="权限模式：终端里的 Shift+Tab" value={connection.mode} disabled={switching} onChange={e => void control({ mode: e.target.value })}>{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODES.some(([v]) => v === connection.mode) && <option value={connection.mode}>{connection.mode}</option>}</select>}
         {connection.model && <select aria-label="模型" title="模型：终端里的 /model" value={modelAlias(connection.model)} disabled={switching || !!connection.working} onChange={e => void control({ model: e.target.value })}>{MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODELS.some(([v]) => v === modelAlias(connection.model!)) && <option value={modelAlias(connection.model)}>{connection.model}</option>}</select>}
       </span>}
+      {!connection?.available && connection?.adoptable && <button className="btn sm" type="button" disabled={adopting || connection.adopt_state === 'working'}
+        title={connection.adopt_state === 'working' ? `它正在 ${connection.source_app || '原终端'} 里跑，等它停下来再接` : `把它从 ${connection.source_app || '原终端'} 接进那台电脑的 Herdr，再发这条`}
+        onClick={() => void adopt()}>{adopting ? '正在接…' : '接进 Herdr 再发'}</button>}
       {!connection?.available && <button className="link" onClick={() => void load()}>重新连接</button>}</div>
     <form onSubmit={e => { e.preventDefault(); void send(); }}>
       {menu.length > 0 && <ul className="reply-slash" role="listbox" aria-label="可用的 / 命令">
