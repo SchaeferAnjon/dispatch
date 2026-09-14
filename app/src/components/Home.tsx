@@ -196,7 +196,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
                   <Avatar actor={who} size={22} />
                   <span className="st sm block">{sessionStatus(s)}</span>
                   <span className="t">{s.herdr?.title || s.title || s.cwd}</span>
-                  <span className="meta muted small">{who?.name}{s.remote ? ` · ${s.host_name}` : ""} · {ago(s.last_at)}</span>
+                  <span className="meta muted small">{who?.name}{s.host_name ? ` · ${s.host_name}` : ""} · {ago(s.last_at)}</span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); openSession(s.session_id); }}>查看并回复</button>
                 </div>
               );
@@ -208,7 +208,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
                   <Avatar actor={who} size={22} />
                   <span className="st sm rev">未读回复</span>
                   <span className="t">{a.title}<span className="sub">{conversationSummary(a)}</span></span>
-                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
+                  <span className="meta muted small">{who?.name}{a.host_name ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); onOpen(a.session_id); }}>查看并回复</button>
                 </div>
               );
@@ -226,7 +226,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
                   <Avatar actor={who} size={22} />
                   <span className="st sm prog">进行中</span>
                   <span className="t">{a.title}{a.activity && <span className="sub">正在做：{a.activity}</span>}</span>
-                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
+                  <span className="meta muted small">{who?.name}{a.host_name ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
                 </div>
               );
             })}
@@ -243,7 +243,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
                   <Avatar actor={who} size={22} />
                   <span className="star on" title="追踪中">★</span>
                   <span className="t">{a.title}<span className="sub">{conversationSummary(a)}</span></span>
-                  <span className="meta muted small">{who?.name}{a.remote ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
+                  <span className="meta muted small">{who?.name}{a.host_name ? ` · ${a.host_name}` : ""} · {ago(a.last_at)}</span>
                 </div>
               );
             })}

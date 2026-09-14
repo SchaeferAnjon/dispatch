@@ -291,6 +291,8 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
                 <button className="btn sm session-back" onClick={() => { if (onBack) onBack.go(); else setSel(null); }} title={onBack ? `回到${onBack.label}` : "回到会话列表"}>‹ {onBack ? onBack.label : "会话"}</button>
                 <Avatar actor={a} size={28} />
                 <div style={{ minWidth: 0, flex: 1 }}>
+                  {/* Which Mac this copy lives on: after `dispatch move` the same id exists on both. */}
+                  <div className="sess-host" title={m.remote ? `这段会话在 ${m.host_name} 上` : "这段会话在这台电脑上"}><span className={`host-chip${m.remote ? "" : " local"}`}>{m.remote ? m.host_name : (localHostName || "本机")}</span><MovedChip r={m} /></div>
                   <div className="ttl">{m.title || "（无标题）"}</div>
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
