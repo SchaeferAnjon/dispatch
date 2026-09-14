@@ -1074,7 +1074,8 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .done-archive .hub-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.done-archive .hub-tools input{flex:1;min-width:180px}
 .done-week{margin-bottom:18px}.done-week h4{margin:0 0 8px;font-size:13px;color:var(--ink-2);display:flex;align-items:center;gap:6px}.done-week h4 .n{font-family:var(--mono);font-size:11px;color:var(--ink-3);background:var(--panel-2);border-radius:999px;padding:0 7px}
 .hub-col h4 .link.small{margin-left:auto;font-size:12px}
-.host-chip.local{opacity:.75}
+/* The machine you are on reads darker; the other one lighter. */
+.host-chip.local{opacity:1;font-weight:600}.sess-item .host-chip:not(.local),.sess-meta .host-chip:not(.local),.session-info .host-chip:not(.local){opacity:.55}
 .mobile-host-filter,.mobile-context-back{display:none}
 .conversation-project-chip{font-size:11px;color:var(--ink-2);background:var(--panel-2);border-radius:5px;padding:1px 6px;margin-right:6px;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle}
 /* A menu opened by a long press stays inert until the finger that opened it has lifted. */
