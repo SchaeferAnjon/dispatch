@@ -22,9 +22,9 @@ const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk
 
 // The conversation itself, one block per turn (thinking folded, tool cards, text). Shared by the
 // session page and the sub-agent viewer.
-export function ChatList({ list, name, showTools, running }: { list: TimelineMsg[]; name: string; showTools: boolean; running?: boolean }) {
+export function ChatList({ list, name, showTools, running, cwd }: { list: TimelineMsg[]; name: string; showTools: boolean; running?: boolean; cwd?: string }) {
   const shown = useMemo(() => visibleTurns(list, { brief: false, showTools, showUser: true, showAssistant: true, running: !!running }), [list, showTools, running]);
-  return <SessionThread list={shown} name={name} running={!!running} />;
+  return <SessionThread list={shown} name={name} running={!!running} cwd={cwd} />;
 }
 
 // A sub-agent's own transcript, opened from the parent's 子 Agent tab. The prompt it was
@@ -49,7 +49,7 @@ export function SubagentDialog({ api, parent, sub, onClose }: { api: Api; parent
         <div className="media-content subagent-body">
           {err && <p className="err">{err}</p>}
           {!d && !err && <div className="empty small">读子 Agent 的记录中…</div>}
-          {d && tab === "chat" && <ChatList list={list} name={sub.type || "子 Agent"} showTools={tools} />}
+          {d && tab === "chat" && <ChatList list={list} name={sub.type || "子 Agent"} showTools={tools} cwd={parent.cwd} />}
           {d && tab === "files" && d.files.map((f) => <details key={f.path} className="fdiff" open={d.files.length <= 3}><summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {f.changes.length} 处</span></summary><FileHunks changes={f.changes} /></details>)}
         </div>
       </MediaProvider>
@@ -340,7 +340,7 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
               })()}
               {tab === 'timeline' && !atLatest && <button className="follow-latest" onClick={latest}>回到最新 ↓{current?.unread ? ' · 有未读回复' : ''}</button>}
               <div className="sess-body" tabIndex={0} aria-label="会话内容" ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>
-                {tab === "timeline" && <SessionThread list={shownTurns} name={a?.name ?? m.agent} running={running} />}
+                {tab === "timeline" && <SessionThread list={shownTurns} name={a?.name ?? m.agent} running={running} cwd={m.cwd} />}
                 {tab === "subagents" && (() => {
                   // Who this conversation handed work to: sub-agents from the transcript, plus the
                   // Agent/Task tool calls that dispatched them, in order.

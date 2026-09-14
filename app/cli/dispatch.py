@@ -2324,11 +2324,39 @@ def _block_text(content):
 #   {"type": "tool_call", "id", "name", "summary", "input": {compact}, "status": running|done|error|incomplete,
 #                         "result": short text, "result_ts": ts}
 # `text` and `tools` stay on the message for the older readers (reply box, sibling merge).
+# `input` on an edit-shaped call (Edit/MultiEdit/Write/NotebookEdit/apply_patch/…, see EDIT_TOOLS)
+# keeps its old/new text large enough to diff (capped, see _cap_diff_text) instead of the small
+# INPUT_CHARS clip every other tool argument gets; `input.truncated: true` marks a clipped one.
 LONG_TEXT = 24000
 LONG_NOTE = "\n（这条消息过长，剩余内容请在原会话查看）"
 RESULT_CHARS = 600
 INPUT_CHARS = 400
 RUNNING_GRACE = 180  # a tool call still unanswered this long after the last write is "incomplete", not "running"
+
+# Edit-shaped tool calls (across all agents) whose old/new text the UI turns into a diff in the
+# timeline — these keep a much larger (but still capped) copy of their diff-relevant fields; every
+# other tool argument stays at INPUT_CHARS. Kept in sync with the EDIT set in src/timeline.ts.
+EDIT_TOOLS = {"Edit", "MultiEdit", "Write", "NotebookEdit", "edit", "write", "edit_file", "write_file", "apply_patch", "patch"}
+DIFF_FIELDS = {"old_string", "new_string", "content", "new_source", "oldText", "newText", "input"}
+DIFF_LINE_CAP = 400   # ~ what a terminal Edit/Write diff shows at once
+DIFF_BYTE_CAP = 40_000
+
+
+def _cap_diff_text(s):
+    """Trim one diff-relevant string to at most DIFF_LINE_CAP lines and DIFF_BYTE_CAP bytes,
+    whichever hits first. Returns (text, truncated)."""
+    s = s or ""
+    truncated = False
+    lines = s.split("\n")
+    if len(lines) > DIFF_LINE_CAP:
+        lines = lines[:DIFF_LINE_CAP]
+        truncated = True
+    s = "\n".join(lines)
+    b = s.encode("utf-8", "replace")
+    if len(b) > DIFF_BYTE_CAP:
+        s = b[:DIFF_BYTE_CAP].decode("utf-8", "ignore")
+        truncated = True
+    return s, truncated
 
 
 def _clip(txt, n=LONG_TEXT):
@@ -2362,14 +2390,36 @@ def _summarize_result(content, limit=RESULT_CHARS):
     return f"{head}\n…（省略 {len(txt) - len(head) - len(tail)} 字）…\n{tail}"
 
 
-def _compact_input(inp):
-    """Tool arguments small enough to ship to the UI: strings clipped, nested values summarized."""
+def _compact_input(inp, name=""):
+    """Tool arguments small enough to ship to the UI: strings clipped, nested values summarized.
+
+    An edit-shaped call (see EDIT_TOOLS) keeps its old/new text — the UI renders a diff from it —
+    at the bigger DIFF_LINE_CAP/DIFF_BYTE_CAP; every other argument still clips to INPUT_CHARS.
+    A call whose diff text got clipped carries `truncated: true` (a new field; never repurposed)."""
     if not isinstance(inp, dict):
         return {"value": str(inp)[:INPUT_CHARS]} if inp not in (None, "") else {}
+    is_edit = name.split(".")[-1] in EDIT_TOOLS
     out = {}
+    truncated = False
     for k, v in list(inp.items())[:12]:
         if k == "questions" and isinstance(v, list):
             out[k] = v  # AskUserQuestion: the UI renders the choices and answers them
+        elif k == "edits" and is_edit and isinstance(v, list):
+            # MultiEdit: each hunk's old/new text, capped the same way a single Edit is.
+            edits = []
+            for e in v[:40]:
+                if not isinstance(e, dict):
+                    continue
+                old, t1 = _cap_diff_text(str(e.get("old_string", "")))
+                new, t2 = _cap_diff_text(str(e.get("new_string", "")))
+                truncated = truncated or t1 or t2
+                edits.append({"old_string": old, "new_string": new, **({"replace_all": e["replace_all"]} if "replace_all" in e else {})})
+            truncated = truncated or len(v) > 40
+            out[k] = edits
+        elif is_edit and k in DIFF_FIELDS and isinstance(v, str):
+            capped, t = _cap_diff_text(v)
+            truncated = truncated or t
+            out[k] = capped
         elif isinstance(v, str):
             out[k] = v[:INPUT_CHARS] + ("…" if len(v) > INPUT_CHARS else "")
         elif isinstance(v, (int, float, bool)) or v is None:
@@ -2377,6 +2427,8 @@ def _compact_input(inp):
         else:
             s = json.dumps(v, ensure_ascii=False)
             out[k] = s[:INPUT_CHARS] + ("…" if len(s) > INPUT_CHARS else "")
+    if truncated:
+        out["truncated"] = True
     return out
 
 
@@ -2398,7 +2450,7 @@ class _Timeline:
 
     def tool(self, ts, id_, name, inp, summary):
         self.tool_names[name] = self.tool_names.get(name, 0) + 1
-        b = {"type": "tool_call", "id": str(id_ or ""), "name": name, "summary": str(summary or "")[:200], "input": _compact_input(inp), "status": "running", "ts": ts}
+        b = {"type": "tool_call", "id": str(id_ or ""), "name": name, "summary": str(summary or "")[:200], "input": _compact_input(inp, name), "status": "running", "ts": ts}
         if b["id"]:
             self.pending[b["id"]] = b
         return b

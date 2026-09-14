@@ -95,6 +95,46 @@ class SessionDetailClaude(unittest.TestCase):
         os.unlink(f.name)
 
 
+class CompactInputDiffCaps(unittest.TestCase):
+    """The timeline's tool_call.input keeps enough of an edit's old/new text to diff (capped),
+    while a non-edit tool (or a non-diff argument on an edit tool) still clips at INPUT_CHARS."""
+
+    def test_edit_keeps_full_old_new_under_the_diff_cap(self):
+        out = dispatch._compact_input({"file_path": "/x/a.ts", "old_string": "a" * 1000, "new_string": "b" * 1000}, "Edit")
+        self.assertEqual(len(out["old_string"]), 1000)
+        self.assertEqual(len(out["new_string"]), 1000)
+        self.assertNotIn("truncated", out)
+
+    def test_edit_old_new_are_capped_and_marked_truncated(self):
+        out = dispatch._compact_input({"file_path": "/x/a.ts", "old_string": "x" * 100_000, "new_string": "y\n" * 1000}, "Edit")
+        self.assertLessEqual(len(out["old_string"].encode("utf-8")), dispatch.DIFF_BYTE_CAP)
+        self.assertLessEqual(out["new_string"].count("\n") + 1, dispatch.DIFF_LINE_CAP)
+        self.assertTrue(out["truncated"])
+
+    def test_non_edit_tool_still_uses_the_small_cap(self):
+        out = dispatch._compact_input({"command": "x" * 1000}, "Bash")
+        self.assertEqual(len(out["command"]), dispatch.INPUT_CHARS + 1)  # clipped text + the "…" marker
+        self.assertNotIn("truncated", out)
+
+    def test_multiedit_keeps_each_hunk_old_new(self):
+        edits = [{"old_string": "a", "new_string": "b"}, {"old_string": "c" * 100_000, "new_string": "d", "replace_all": True}]
+        out = dispatch._compact_input({"file_path": "/x/a.ts", "edits": edits}, "MultiEdit")
+        self.assertEqual(len(out["edits"]), 2)
+        self.assertEqual(out["edits"][0], {"old_string": "a", "new_string": "b"})
+        self.assertEqual(out["edits"][1]["replace_all"], True)
+        self.assertLessEqual(len(out["edits"][1]["old_string"].encode("utf-8")), dispatch.DIFF_BYTE_CAP)
+        self.assertTrue(out["truncated"])
+
+    def test_write_content_kept_for_diff(self):
+        out = dispatch._compact_input({"file_path": "/x/a.ts", "content": "line\n" * 50}, "Write")
+        self.assertEqual(out["content"], "line\n" * 50)
+
+    def test_codex_apply_patch_input_kept_for_diff(self):
+        patch = "*** Begin Patch\n*** Update File: x/y.py\n@@\n-old\n+new\n*** End Patch"
+        out = dispatch._compact_input({"input": patch}, "apply_patch")
+        self.assertEqual(out["input"], patch)
+
+
 class SessionDetailBlocks(unittest.TestCase):
     """The block timeline: thinking, text and tool calls paired with their results, for every agent."""
 

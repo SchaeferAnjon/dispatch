@@ -1459,6 +1459,7 @@ a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text
 .tool-card summary{list-style:none;cursor:pointer;display:flex;gap:7px;align-items:baseline;padding:4px 8px;min-width:0}
 .tool-card summary::-webkit-details-marker{display:none}
 .tool-card summary b{font-weight:500;color:var(--ink);flex:0 1 auto;min-width:0;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool-card summary .diffstat{flex:none}.tool-card summary .diffstat .add{color:var(--s-done)}.tool-card summary .diffstat .del{color:var(--s-block)}
 .tool-card .tool-sum{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
 .tool-card .tool-sum.mono{font-family:var(--mono);font-size:11px}
 .tool-card[open] .tool-sum{white-space:normal;word-break:break-all}
@@ -1476,6 +1477,14 @@ a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text
 .tool-args dd{margin:0;white-space:pre-wrap;word-break:break-word;color:var(--ink-2);max-height:9em;overflow:auto}
 .tool-result{margin:0;font-family:var(--mono);font-size:11px;line-height:1.45;white-space:pre-wrap;word-break:break-word;max-height:16em;overflow:auto;padding:6px 8px;background:var(--win);border:1px solid var(--line);border-radius:5px;color:var(--ink-2)}
 .tool-result.err{border-color:color-mix(in srgb,var(--s-block) 45%,var(--line));color:var(--s-block)}
+/* An Edit/Write/MultiEdit/apply_patch card: no 80ch cap (a diff wants the width, and scrolls
+   inside itself when it doesn't fit), and its diff table sits flush under the summary like the
+   文件 tab's does, instead of inside the padded generic tool-body. */
+.tool-card.edit-card{max-width:100%}
+.tool-card.edit-card .tool-body{padding:0;gap:0;border-top:0}
+.tool-card.edit-card .hunk:first-child{border-top:0}
+.tool-card.edit-card .hunk-h{padding:6px 10px}
+.tool-card.edit-card .tool-result{margin:6px 10px 8px}
 .session-live .live-step{margin-left:6px;color:var(--ink-3)}
 .disc-bubble .l1 .disc-step{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11px}
 .checks .ac-by{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:5px;white-space:nowrap;flex:none;color:var(--ink-3);background:var(--panel-2)}.checks .ac-by.me{color:var(--s-done);background:var(--s-done-bg)}.checks .ac-by.self{color:var(--s-prog);background:var(--s-prog-bg)}.checks .ac-by.peer{color:var(--accent-ink);background:var(--accent-soft)}

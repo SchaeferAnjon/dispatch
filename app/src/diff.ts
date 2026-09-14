@@ -140,3 +140,95 @@ export function patchRows(text: string): DiffRow[] {
 }
 
 export const diffStat = (rows: DiffRow[]) => rows.reduce((s, r) => (r.kind === "add" ? { ...s, add: s.add + 1 } : r.kind === "del" ? { ...s, del: s.del + 1 } : s), { add: 0, del: 0 });
+
+// ---- Codex apply_patch: its own tiny patch DSL ("*** Begin Patch / *** Update File: … / @@ … /
+// +/-/space lines / *** End Patch"), not a real unified diff — no numbered @@ headers, so
+// patchRows (which gates on those) would show it as inert text. Line numbers here are relative to
+// the hunk (Codex's patches don't carry real ones either).
+export function codexPatchRows(text: string): DiffRow[] {
+  const rows: DiffRow[] = [];
+  const block: Exclude<DiffRow, { kind: "skip" | "hunk" }>[] = [];
+  let o = 1, nn = 1;
+  const flush = () => { if (block.length) { markPairs(block); rows.push(...block); block.length = 0; } };
+  for (const raw of text.split("\n")) {
+    if (raw.startsWith("*** ") || raw.startsWith("@@")) {
+      flush();
+      if (raw !== "*** Begin Patch" && raw !== "*** End Patch") rows.push({ kind: "hunk", text: raw });
+      continue;
+    }
+    if (raw.startsWith("+")) { block.push({ kind: "add", text: raw.slice(1), oldNo: null, newNo: nn++ }); continue; }
+    if (raw.startsWith("-")) { block.push({ kind: "del", text: raw.slice(1), oldNo: o++, newNo: null }); continue; }
+    flush();
+    if (raw === "") continue;
+    rows.push({ kind: "same", text: raw.startsWith(" ") ? raw.slice(1) : raw, oldNo: o++, newNo: nn++ });
+  }
+  flush();
+  return rows;
+}
+
+// ---- turning a tool call's (capped) input into something diffable, the same way across agents:
+// Claude Code's Edit/MultiEdit/Write/NotebookEdit, pi's lowercase edit/write, Codex's apply_patch
+// and edit_file/write_file (a plain overwrite — no old text to diff against). Field names come
+// straight from `_compact_input` in cli/dispatch.py (a cross-end contract); this only reads them.
+export type ToolDiff =
+  | { kind: "pair"; path: string; old: string; new: string; truncated: boolean }
+  | { kind: "edits"; path: string; edits: { old: string; new: string }[]; truncated: boolean }
+  | { kind: "write"; path: string; new: string; truncated: boolean }
+  | { kind: "patch"; path: string; text: string; truncated: boolean };
+
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+export function diffOfTool(rawName: string, input: Record<string, unknown>): ToolDiff | null {
+  const name = rawName.split(".").pop() || rawName;
+  const path = str(input.file_path) || str(input.notebook_path) || str(input.path) || str(input.filePath) || "";
+  const truncated = input.truncated === true;
+  switch (name) {
+    case "Edit":
+    case "edit": {
+      const old = str(input.old_string ?? input.oldText);
+      const next = str(input.new_string ?? input.newText);
+      return old || next ? { kind: "pair", path, old, new: next, truncated } : null;
+    }
+    case "MultiEdit": {
+      const list = Array.isArray(input.edits) ? (input.edits as Record<string, unknown>[]) : [];
+      const edits = list.map((e) => ({ old: str(e.old_string), new: str(e.new_string) })).filter((e) => e.old || e.new);
+      return edits.length ? { kind: "edits", path, edits, truncated } : null;
+    }
+    case "Write":
+    case "write":
+    case "write_file":
+    case "edit_file": {
+      const next = str(input.content ?? input.newText);
+      return { kind: "write", path, new: next, truncated };
+    }
+    case "NotebookEdit": {
+      const next = str(input.new_source);
+      return next ? { kind: "write", path, new: next, truncated } : null;
+    }
+    case "apply_patch":
+    case "patch": {
+      const text = str(input.input) || str(input.value);
+      if (!text) return null;
+      const paths = [...text.matchAll(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/gm)].map((m) => m[1].trim());
+      return { kind: "patch", path: path || paths.join(", "), text, truncated };
+    }
+    default:
+      return null;
+  }
+}
+
+// Diff rows to render for a ToolDiff, one block per hunk (MultiEdit has one per edit; every other
+// kind is a single block) — `label` (when given) heads that block.
+export function diffRows(diff: ToolDiff): { label?: string; rows: DiffRow[] }[] {
+  if (diff.kind === "patch") return [{ rows: codexPatchRows(diff.text) }];
+  if (diff.kind === "write") return [{ rows: pairRows("", diff.new) }];
+  if (diff.kind === "pair") return [{ rows: pairRows(diff.old, diff.new) }];
+  return diff.edits.map((e, i) => ({ label: `第 ${i + 1} 处`, rows: pairRows(e.old, e.new) }));
+}
+
+// A tool call's file_path is absolute; show it relative to the session's cwd when it lives there.
+export function relPath(full: string, cwd?: string): string {
+  if (!full || !cwd) return full;
+  const base = cwd.replace(/\/+$/, "");
+  return full === base ? full : full.startsWith(base + "/") ? full.slice(base.length + 1) : full;
+}

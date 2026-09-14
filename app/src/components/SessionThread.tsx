@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive, makeAssistantToolUI, useAuiState, useExternalStoreRuntime, type MessageStatus, type ReasoningMessagePartProps, type TextMessagePartProps, type ThreadMessageLike, type ToolCallMessagePartProps } from "@assistant-ui/react";
 import { fmtTime } from "../derive";
 import { blocksOf, foldLabel } from "../timeline";
+import { diffOfTool, diffRows, relPath, diffStat } from "../diff";
 import type { Block, TimelineMsg } from "../types";
 import { ImageGrid } from "./Media";
 import { Markdown, Linkified } from "./Markdown";
+import { DiffTable } from "./Diff";
 
 // The conversation drawn with assistant-ui: every turn is one Thread message, an assistant turn's
 // steps are its parts — thinking as a Reasoning part (folded), a tool call as a tool-call part
@@ -72,6 +74,9 @@ function toMessages(list: TimelineMsg[], name: string, running: boolean): Msg[] 
 }
 
 const useCustom = () => useAuiState((s) => s.message.metadata.custom as Custom);
+// The session's working directory, so an Edit/Write card can show a path relative to it
+// ("Update(app/cli/move.py)" instead of the full absolute path).
+const CwdContext = createContext<string | undefined>(undefined);
 
 // Text: Markdown, with a caret while it is still the newest thing.
 // No typewriter smoothing any more: the library's smoothing hook writes to a per-part status
@@ -104,23 +109,42 @@ const ARG_ORDER = ["command", "cmd", "file_path", "filePath", "path", "pattern",
 const argEntries = (input: Record<string, unknown>) => Object.entries(input).sort(([a], [b]) => (ARG_ORDER.indexOf(a) + 1 || 99) - (ARG_ORDER.indexOf(b) + 1 || 99));
 
 // The tool card: name, the argument that identifies the call, its status; open it for every
-// argument and the result.
+// argument and the result. An Edit/Write/MultiEdit/apply_patch call instead gets an
+// "Update(path) +N −M" header and a real diff body — the same rendering as the 文件 tab uses.
 function CardView({ name, status, summary, input, result, ts, shell }: { name: string; status: ToolBlock["status"]; summary: string; input: Record<string, unknown>; result: string; ts?: string; shell?: boolean }) {
   const [tick, setTick] = useState(0);
   useEffect(() => { if (status !== "running" || !ts) return; const t = window.setInterval(() => setTick((n) => n + 1), 1000); return () => window.clearInterval(t); }, [status, ts]);
   const secs = status === "running" && ts ? Math.max(0, Math.round((Date.now() - Date.parse(ts)) / 1000)) : 0;
   void tick;
+  const cwd = useContext(CwdContext);
+  const diff = useMemo(() => diffOfTool(name, input), [name, input]);
+  const blocks = useMemo(() => (diff ? diffRows(diff) : null), [diff]);
+  const stat = useMemo(() => blocks?.reduce((s, b) => { const d = diffStat(b.rows); return { add: s.add + d.add, del: s.del + d.del }; }, { add: 0, del: 0 }), [blocks]);
+  const path = diff ? relPath(diff.path, cwd) || "?" : "";
   return (
-    <details className={`tool-card ${status}`}>
-      <summary title={summary || undefined}>
+    <details className={`tool-card ${status}${diff ? " edit-card" : ""}`}>
+      <summary title={diff ? diff.path : summary || undefined}>
         <span className={`tool-status ${status}`} aria-label={STATUS_TEXT[status]}>{status === "running" ? <span className="spin" /> : STATUS_MARK[status]}</span>
-        <b>{name}</b>
-        {summary && <span className={`tool-sum${shell ? " mono" : ""}`}>{summary}</span>}
+        {diff ? (
+          <>
+            <b className="mono">{diff.kind === "write" ? "Write" : "Update"}({path})</b>
+            {stat && (stat.add > 0 || stat.del > 0) && <span className="mono small diffstat"><span className="add">+{stat.add}</span> <span className="del">−{stat.del}</span></span>}
+            {diff.truncated && <span className="muted small" title="改动超出展示上限，只截了前面一部分">已截断</span>}
+            <span className="spacer" />
+          </>
+        ) : (
+          <>
+            <b>{name}</b>
+            {summary && <span className={`tool-sum${shell ? " mono" : ""}`}>{summary}</span>}
+          </>
+        )}
         <span className="muted small tool-state">{status === "running" ? `正在调用${secs > 2 ? ` · ${secs}s` : ""}` : STATUS_TEXT[status]}</span>
       </summary>
       <div className="tool-body">
-        {Object.keys(input).length > 0 && <dl className="tool-args">{argEntries(input).map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="sel-text">{typeof v === "string" ? v : JSON.stringify(v)}</dd></div>)}</dl>}
-        {result ? <pre className={`tool-result${status === "error" ? " err" : ""}`}>{result}</pre> : status === "done" ? <div className="muted small">（没有输出）</div> : null}
+        {blocks
+          ? blocks.map((b, i) => <div key={i} className="hunk">{b.label && <div className="hunk-h muted small">{b.label}</div>}<DiffTable rows={b.rows} /></div>)
+          : Object.keys(input).length > 0 && <dl className="tool-args">{argEntries(input).map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="sel-text">{typeof v === "string" ? v : JSON.stringify(v)}</dd></div>)}</dl>}
+        {result && (!diff || status === "error") ? <pre className={`tool-result${status === "error" ? " err" : ""}`}>{result}</pre> : !diff && status === "done" ? <div className="muted small">（没有输出）</div> : null}
       </div>
     </details>
   );
@@ -189,16 +213,18 @@ function SystemLine() {
 }
 const MESSAGES = { UserMessage: Turn, AssistantMessage: Turn, SystemMessage: SystemLine };
 
-interface Props { list: TimelineMsg[]; name: string; running?: boolean }
+interface Props { list: TimelineMsg[]; name: string; running?: boolean; cwd?: string }
 
-export function SessionThread({ list, name, running = false }: Props) {
+export function SessionThread({ list, name, running = false, cwd }: Props) {
   const messages = useMemo(() => toMessages(list, name, running), [list, name, running]);
   // Read-only: the reply box under the page sends messages, not this thread.
   const runtime = useExternalStoreRuntime<Msg>({ messages, isRunning: running, convertMessage: (m) => m, onNew: async () => {} });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      {ShellToolUIs.map((T, i) => <T key={i} />)}<FoldToolUI />
-      <div className="chat"><ThreadPrimitive.Messages components={MESSAGES} /></div>
+      <CwdContext.Provider value={cwd}>
+        {ShellToolUIs.map((T, i) => <T key={i} />)}<FoldToolUI />
+        <div className="chat"><ThreadPrimitive.Messages components={MESSAGES} /></div>
+      </CwdContext.Provider>
     </AssistantRuntimeProvider>
   );
 }
