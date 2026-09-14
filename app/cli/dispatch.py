@@ -4917,6 +4917,51 @@ def project_flags_load():
     return project_flags_parse(d.get(PROJECT_FLAGS_KEY, ""))
 
 
+# Which Mac a project lives on after `dispatch move` handed it over. Shared board memory, so both
+# Macs agree; a Mac is named the way it names itself (local_host_name) plus its Tailscale IP, since
+# the two Macs know each other under different hosts.json ids.
+PROJECT_OWNERS_KEY = "dispatch-project-owners"
+
+
+def project_owners_parse(raw):
+    try:
+        d = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    return {k: {"host": v["host"], "ip": v.get("ip") or "", "at": v.get("at") or 0} for k, v in d.items()
+            if isinstance(k, str) and isinstance(v, dict) and isinstance(v.get("host"), str) and v["host"]}
+
+
+def project_owners_load():
+    code, o, _ = sh(["bd", "memories", "--json"])
+    try:
+        return project_owners_parse(json.loads(o[o.find("{"):]).get(PROJECT_OWNERS_KEY, "")) if code == 0 else {}
+    except ValueError:
+        return {}
+
+
+def project_owner_set(project, host, ip):
+    project = (project or "").strip()
+    if not project or len(project) > 120 or any(ord(c) < 32 for c in project):
+        raise ValueError("无效的项目名称")
+    owners = project_owners_load()
+    if host:
+        owners[project] = {"host": host, "ip": ip or "", "at": int(time.time())}
+    else:
+        owners.pop(project, None)
+    wiki_store(PROJECT_OWNERS_KEY, json.dumps(owners, ensure_ascii=False, sort_keys=True))
+    return {"project": project, **owners.get(project, {"host": ""})}
+
+
+def project_owner_is_here(rec):
+    """True when an owner record names this Mac (by its own name, an old name, or its Tailscale IP)."""
+    if not rec:
+        return False
+    return rec.get("host") in ({local_host_name()} | set(local_host_aliases())) or (bool(rec.get("ip")) and rec.get("ip") == tailscale_ip())
+
+
 # ---------------------------------------------------------------- settings (shared, one bd memory)
 SETTINGS_KEY = "dispatch-settings"
 # Who each discussion member is (one line) and the group's rules on length: stable
@@ -5000,6 +5045,21 @@ def cmd_settings(a):
 
 
 def cmd_project(a):
+    if a.move_to:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import move
+        return move.main_project(a)
+    if a.owner:
+        if a.owner == "none":
+            r = project_owner_set(a.name, "", "")
+        elif a.owner == "local":
+            r = project_owner_set(a.name, local_host_name(), tailscale_ip() or "")
+        else:
+            h = next((x for x in hosts() if a.owner in (x["id"], x["name"]) or a.owner in (x.get("aliases") or [])), None)
+            if not h:
+                raise SystemExit(f"hosts.json 里没有 {a.owner}")
+            r = project_owner_set(a.name, h["name"], h.get("ssh", "").split("@")[-1])
+        return out(r, a.json, lambda r: print(f"{a.name}：" + (f"归 {r['host']}" if r.get("host") else "不指定电脑")))
     flags = project_flags_load()
     changes = {}
     if a.star: changes["starred"] = True
@@ -7548,7 +7608,8 @@ def main():
     s = sub.add_parser("editing", help="files each active session changed in the last 30 min, aggregated per file, with conflicts"); s.add_argument("--dir", help="only sessions working in this directory (default: every directory)"); s.add_argument("--window", type=int, default=30, help="minutes back to look (default 30)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_editing)
     s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days / task_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
     s = sub.add_parser("task-archive", help="archive closed tasks older than task_archive_days (default: the setting)"); s.add_argument("--days", type=int); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_task_archive)
-    s = sub.add_parser("project", help="star / archive a project (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
+    s = sub.add_parser("project", help="star / archive a project, or hand it to another Mac (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true")
+    s.add_argument("--move-to", help="把整个项目（目录、Git、在跑的会话）交给这台 Mac"); s.add_argument("--owner", help="只记录项目归哪台 Mac（名字；local = 本机；none = 清除）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--force", action="store_true"); s.add_argument("--keep-original", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
     s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)
     s = sub.add_parser("session-preferences", help="classify a conversation without changing its transcript"); s.add_argument("key"); s.add_argument("changes"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_preferences)
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply; reply=unread drops the receipt"); s.add_argument("key"); s.add_argument("reply", help="reply id, or `unread` to mark the session unread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)
@@ -7620,7 +7681,7 @@ def main():
     s = sub.add_parser("lineage", help="项目→任务→会话→进展：谁在哪个会话做哪个任务、做到哪、能不能关"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir"); s.add_argument("--days", type=int, default=14); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_lineage)
     s = sub.add_parser("session-summary", help="让模型给一段会话写一段总结（Claude 订阅或 dispatch env 里的 Key）"); s.add_argument("op", nargs="?", default="run", choices=["run", "provider", "providers", "auto", "unread"]); s.add_argument("key", nargs="?", help="会话 key，如 claude-code:<session_id>（unread：这段会话待读那一轮的摘要）"); s.add_argument("--force", action="store_true", help="已有总结也重新生成"); s.add_argument("--limit", type=int, default=2, help="auto: 本次最多总结几段"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_summary)
     s = sub.add_parser("summarize", help="总结用的模型与各用途开关：providers（可选模型）/ set-key（从 stdin 存 Key）/ uses（用途表）"); s.add_argument("op", nargs="?", default="providers", choices=["providers", "set-key", "uses"]); s.add_argument("provider", nargs="?", help="set-key: zhipu | deepseek | kimi | minimax | openai"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_summarize)
-    s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
+    s = sub.add_parser("move", help="把一段会话连同项目目录搬到另一台 Mac 接着做"); s.add_argument("session", help="会话 id（前缀即可）"); s.add_argument("--to", required=True, help="hosts.json 里的机器 id 或名字"); s.add_argument("--prompt", help="交接时额外交代的话"); s.add_argument("--no-files", action="store_true", help="不同步项目目录（对方已有）"); s.add_argument("--dry-run", action="store_true", help="只预检：Git 冲突、要改哪些文件、缺哪些工具"); s.add_argument("--force", action="store_true", help="Git 预检有冲突也迁（会覆盖对方的改动）"); s.add_argument("--keep-original", action="store_true", help="不停这边的原会话"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_move)
     s = sub.add_parser("update", help="检查 / 安装 GitHub Release 上的新版本"); s.add_argument("op", nargs="?", choices=["check", "apply"]); s.add_argument("--no-relaunch", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_update)
     s = sub.add_parser("init", help="首次设置向导：装依赖、建/接入任务板、选 Agent、同步规则与技能（无参数=交互式）"); s.add_argument("op", nargs="?", choices=["wizard", "status", "run", "hub-info", "add-host", "rename-self", "rename-peer", "remove-host", "skip", "finish", "reset", "peers"]); s.add_argument("args", nargs="*", help="run: <deps|cli|board|agents|rules|review|reverse-ssh> [参数…]; rename-self <新名字>; rename-peer <ssh或id> <新名字>; remove-host <id>"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_init)
     s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "export", "import", "path"]); s.add_argument("name", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="用途，一句话"); s.add_argument("--project", "-P", default=None, help="set/import: 只属于这个项目；list: 只看这个项目的。空串清除归属"); s.add_argument("--stdin", action="store_true", help="set: 值从 stdin 读（不进 shell 历史）"); s.add_argument("--fish", action="store_true", help="export: fish 语法"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
