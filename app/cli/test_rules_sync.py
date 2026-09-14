@@ -133,7 +133,10 @@ class Reconcile(unittest.TestCase):
         os.makedirs(RS.RULES_DIR, exist_ok=True)
         self.host = {"id": "apple-mac-mini", "name": "Apple", "ssh": "apple@1.2.3.4"}
         self.pushed = []
+        self.refreshed = []
         patch.object(dispatch, "local_host_name", lambda: "hub-mac").start()
+        # Never let a test rewrite the real ~/.codex/AGENTS.md & co.
+        patch.object(RS, "refresh_local_blocks", lambda: self.refreshed.append(True) or True).start()
         self.addCleanup(patch.stopall)
 
     def tearDown(self):
@@ -192,6 +195,18 @@ class Reconcile(unittest.TestCase):
         self.assertEqual(report2[0]["action"], "noop")
         self.assertEqual(self.pushed, [])  # nothing to send either time -- already in sync from the start
 
+    def test_pulled_global_rules_refresh_this_macs_agent_copies_once(self):
+        remote = {"GLOBAL.md": state(True, "new rules", mtime=1), "PROFILE.md": state(True, "me", mtime=1)}
+        report = self._run(remote, files=["GLOBAL.md", "PROFILE.md"])
+        self.assertEqual([r["action"] for r in report], ["to_local", "to_local"])
+        self.assertEqual(self.refreshed, [True])
+        self.assertIn("规则副本已刷新", report[0]["detail"])
+
+    def test_other_files_or_a_dry_run_never_refresh(self):
+        self._run({"PROFILE.md": state(True, "me", mtime=1)}, files=["PROFILE.md"])
+        self._run({"GLOBAL.md": state(True, "new rules", mtime=1)}, files=["GLOBAL.md"], dry_run=True)
+        self.assertEqual(self.refreshed, [])
+
     def test_state_prevents_a_stale_fast_forward_from_reverting_a_later_local_edit(self):
         # sync once so both sides agree on "v1"; then local moves on to "v2" while remote stays put.
         open(RS.local_path("FACTS.md"), "w", encoding="utf-8").write("v1")
@@ -200,6 +215,23 @@ class Reconcile(unittest.TestCase):
         open(RS.local_path("FACTS.md"), "w", encoding="utf-8").write("v2")
         report = self._run(remote, files=["FACTS.md"])  # remote unchanged since last sync
         self.assertEqual(report[0]["action"], "to_remote")  # fast-forward, not a conflict
+
+
+class RemotePush(unittest.TestCase):
+    def script(self, updates):
+        sent = []
+        fake_move = types.SimpleNamespace(run_remote=lambda h, script, timeout=20: sent.append(script) or types.SimpleNamespace(returncode=0, stdout="", stderr=""))
+        with patch.object(dispatch, "_mod", lambda name: fake_move):
+            RS.remote_push({"id": "apple-mac-mini", "name": "Apple", "ssh": "apple@1.2.3.4", "dispatch": "$HOME/.local/bin/dispatch"}, updates)
+        return sent[0]
+
+    def test_pushing_global_rules_refreshes_the_other_macs_agent_copies_in_the_same_trip(self):
+        s = self.script({"GLOBAL.md": {"content": "rules", "backup_suffix": None}})
+        self.assertIn("$HOME/.local/bin/dispatch rules sync", s)
+        self.assertLess(s.index("GLOBAL.md\""), s.index("rules sync"))  # after the file is written
+
+    def test_pushing_other_files_does_not_touch_agent_instructions(self):
+        self.assertNotIn("rules sync", self.script({"PROFILE.md": {"content": "me", "backup_suffix": None}}))
 
 
 class LocalIsHub(unittest.TestCase):

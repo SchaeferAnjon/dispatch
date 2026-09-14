@@ -111,7 +111,8 @@ def remote_fetch(h, timeout=20):
 
 def remote_push(h, updates, timeout=20):
     """updates: {filename: {"content": str, "backup_suffix": str|None}}. One ssh round trip for
-    every file that needs to move, whatever the direction analysis decided."""
+    every file that needs to move, whatever the direction analysis decided. A new GLOBAL.md is
+    followed, in the same trip, by `dispatch rules sync` over there (see refresh_local_blocks)."""
     if not updates:
         return
     move = D._mod("move")
@@ -122,6 +123,8 @@ def remote_push(h, updates, timeout=20):
             lines.append(f'[ -f "{path}" ] && cp -p "{path}" "{path}.{u["backup_suffix"]}.bak"')
         b64 = base64.b64encode(u["content"].encode("utf-8")).decode()
         lines.append(f'printf %s {b64} | base64 -d > "{path}"')
+    if "GLOBAL.md" in updates:
+        lines.append(f'BEADS_DIR=$HOME/tasks/.beads {h.get("dispatch", "$HOME/.local/bin/dispatch")} rules sync >/dev/null 2>&1 || true')
     r = move.run_remote(h, "\n".join(lines) + "\n", timeout=timeout)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or r.stdout or "ssh 失败").strip()[:300])
@@ -199,6 +202,20 @@ def select_peers(host_filter=""):
     return [h for h in peers if hf in (h.get("id"), h.get("name")) or hf in (h.get("aliases") or [])]
 
 
+def refresh_local_blocks():
+    """GLOBAL.md just arrived here from the other Mac. Claude Code reads it through an @import, but
+    Codex, pi, OpenCode, Gemini and ZCode carry a pasted copy in their own instruction files: without
+    this they keep following the old rules until someone runs `dispatch rules sync` by hand (seen
+    2026-09-15: a rule changed on the Mini reached the MacBook's GLOBAL.md, its Codex still had the
+    old text). Same command, so the managed-block logic stays in one place."""
+    try:
+        r = subprocess.run([sys.executable, os.path.abspath(D.__file__), "rules", "sync"], cwd=D.HOME,
+                           capture_output=True, text=True, errors="replace", timeout=60)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def reconcile(h, prefer="auto", files=None, dry_run=False):
     """Reconcile every file in `files` (default SYNCED_FILES) between this Mac and host `h`.
     prefer: 'push' (local wins conflicts), 'pull' (remote wins), 'auto' (newer mtime wins, hub
@@ -224,10 +241,14 @@ def reconcile(h, prefer="auto", files=None, dry_run=False):
             final_hash = rem["hash"]
             if not dry_run:
                 _write_local(name, rem["content"], backup_suffix=_slug(D.local_host_name()) if action == "conflict_to_local" else None)
+        if name == "GLOBAL.md" and not dry_run and action != "noop":
+            detail += "；本机各 Agent 的规则副本已刷新" if action in ("to_local", "conflict_to_local") else "；对面各 Agent 的规则副本随之刷新"
         report.append({"file": name, "action": action, "detail": detail})
         peer_state[name] = {"hash": final_hash, "at": time.time()}
     if to_remote:
         remote_push(h, to_remote)
+    if not dry_run and any(r["file"] == "GLOBAL.md" and r["action"] in ("to_local", "conflict_to_local") for r in report):
+        refresh_local_blocks()
     if not dry_run:
         state[h["id"]] = peer_state
         save_state(state)
