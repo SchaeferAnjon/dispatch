@@ -402,18 +402,22 @@ def _osascript_file(body, timeout=8):
 
 def _ghostty_terminals():
     """[{id, name, cwd}] for every terminal surface Ghostty currently has open, across all its
-    windows and tabs (the `terminals` element is flat at the application level)."""
+    windows and tabs (the `terminals` element is flat at the application level). Fields are
+    joined with ASCII 31/30 (unit/record separator), not `tab`/`linefeed` — inside a `tell
+    application "Ghostty"` block those names resolve to Ghostty's own `tab` *class* and are not
+    the whitespace constants, so a literal `& tab &` silently outputs the letters "tab" and this
+    used to never parse into 3 fields."""
     body = ('tell application "Ghostty"\n'
             'set out to ""\n'
             'repeat with t in terminals\n'
-            'set out to out & (id of t) & tab & (name of t) & tab & (working directory of t) & linefeed\n'
+            'set out to out & (id of t) & (character id 31) & (name of t) & (character id 31) & (working directory of t) & (character id 30)\n'
             'end repeat\n'
             'return out\n'
             'end tell\n')
     raw = _osascript_file(body)
     rows = []
-    for line in raw.splitlines():
-        parts = line.split('\t')
+    for row in raw.split('\x1e'):
+        parts = row.split('\x1f')
         if len(parts) == 3:
             rows.append({'id': parts[0], 'name': parts[1], 'cwd': parts[2]})
     return rows
@@ -471,7 +475,9 @@ def _ghostty_terminal_id(d, tty):
     window must never be reused) skips the probe on the common case of sending twice in a row;
     otherwise flash a unique marker onto the tty's title and see which terminal shows it. Returns
     None when the marker never showed up on exactly one terminal (not found, or — several tabs
-    somehow sharing the same pty display — ambiguous); never guesses."""
+    somehow sharing the same pty display — ambiguous); never guesses. The title is restored on
+    every exit from the probe — found, ambiguous, not found, or an error mid-probe — so a user's
+    tab is never left stuck reading our marker."""
     cached = _ghostty_cache_get(d, tty)
     if cached and _ghostty_terminal_exists(cached):
         return cached
@@ -482,21 +488,25 @@ def _ghostty_terminal_id(d, tty):
     except OSError as e:
         raise Rejected('没能连上 Ghostty 的终端设备（%s），请重新连接。' % e)
     found = None
-    for _ in range(10):
-        hits = [t['id'] for t in _ghostty_terminals() if t['name'] == marker]
-        if len(hits) == 1:
-            found = hits[0]
-            break
-        if len(hits) > 1:
-            return None
-        time.sleep(0.15)
-    if not found:
-        return None
     try:
-        _write_tty_title(tty, before.get(found, ''))
-    except OSError:
-        pass  # Claude Code redraws its own status-line title on the next turn regardless
-    _ghostty_cache_put(d, tty, found)
+        for _ in range(10):
+            hits = [t['id'] for t in _ghostty_terminals() if t['name'] == marker]
+            if len(hits) == 1:
+                found = hits[0]
+                break
+            if len(hits) > 1:
+                found = None
+                break
+            time.sleep(0.15)
+    finally:
+        try:
+            hits_now = [t['id'] for t in _ghostty_terminals() if t['name'] == marker]
+            if hits_now:
+                _write_tty_title(tty, before.get(hits_now[0], ''))
+        except Exception:
+            pass  # Claude Code redraws its own status-line title on the next turn regardless
+    if found:
+        _ghostty_cache_put(d, tty, found)
     return found
 
 

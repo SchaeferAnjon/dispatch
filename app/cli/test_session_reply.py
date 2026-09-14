@@ -1,6 +1,9 @@
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -320,6 +323,99 @@ class GhosttyReply(unittest.TestCase):
         self.assertTrue(st['available'])
         self.assertEqual(st['terminal'], 'ghostty')
         self.assertIn('Ghostty', st['label'])
+
+
+def _ghostty_probe_available():
+    """True only when this machine can actually drive Ghostty via osascript right now (macOS,
+    Ghostty installed, Apple Events already authorized) — this integration test runs only
+    opportunistically on a real dev box, never in CI."""
+    if sys.platform != 'darwin' or not os.path.isdir('/Applications/Ghostty.app'):
+        return False
+    try:
+        r = subprocess.run(['osascript', '-e', 'tell application "Ghostty" to count windows'], capture_output=True, text=True, timeout=5)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+@unittest.skipUnless(_ghostty_probe_available(), '需要本机装了 Ghostty 且已授权自动化，跳过（CI 里没有）')
+class GhosttyLiveIntegration(unittest.TestCase):
+    """Drives the real osascript path — never faked — against a scratch Ghostty window this test
+    opens and closes itself, never the user's own terminals. This exists specifically to catch
+    what the faked GhosttyReply tests structurally cannot: `tab`/`linefeed` written inside a
+    `tell application "Ghostty"` block resolve to Ghostty's own terminology (its `tab` class),
+    not the whitespace constants — the fakes return already-parsed dicts, so they never exercise
+    real AppleScript output at all. Only a real osascript round trip catches that."""
+
+    PROBE = '#!/bin/bash\nLOG=%s\n: > "$LOG"\nwhile IFS= read -r line; do echo "$line" >> "$LOG"; done\n'
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        script_path = os.path.join(self.tmp.name, 'probe.sh')
+        with open(script_path, 'w') as f:
+            f.write(self.PROBE % json.dumps(os.path.join(self.tmp.name, 'stdin.log')))
+        os.chmod(script_path, 0o755)
+        self.script_path = script_path
+        open_script = (
+            'tell application "Ghostty"\n'
+            'set cfg to {command:%s, initial working directory:"/tmp"}\n'
+            'set w to new window with configuration cfg\n'
+            'delay 0.8\n'
+            'set t to focused terminal of (selected tab of w)\n'
+            'return (id of w) & "|" & (id of t)\n'
+            'end tell\n'
+        ) % reply._as_lit('/bin/bash ' + script_path)
+        out = subprocess.run(['osascript', '-e', open_script], capture_output=True, text=True, timeout=10)
+        if out.returncode != 0 or '|' not in out.stdout:
+            self.skipTest('没能开出 scratch Ghostty 窗口：%s' % (out.stderr or out.stdout).strip())
+        self.window_id, self.terminal_id = out.stdout.strip().split('|', 1)
+        self.addCleanup(self._close_window)
+        # The scratch shell's own tty (a direct child of Ghostty's `login`), matched by its
+        # command line naming our own throwaway script path — never an existing shell of the
+        # user's, and unique enough that nothing else on the box could match it.
+        self.tty = None
+        for _ in range(20):
+            r = subprocess.run(['ps', '-axo', 'pid=,tty=,command='], capture_output=True, text=True, timeout=3)
+            for line in r.stdout.splitlines():
+                if script_path in line:
+                    parts = line.strip().split(None, 2)
+                    if len(parts) == 3 and parts[1] != '??':
+                        self.tty = parts[1]
+                        break
+            if self.tty:
+                break
+            time.sleep(0.2)
+        if not self.tty:
+            self.skipTest('没能找到 scratch 窗口的 tty')
+
+    def _close_window(self):
+        try:
+            subprocess.run(['pkill', '-9', '-f', self.script_path], capture_output=True, timeout=3)
+        except Exception:
+            pass
+        try:
+            subprocess.run(['osascript', '-e', 'tell application "Ghostty"\nset w to window id %s\nclose window w\nend tell' % reply._as_lit(self.window_id)], capture_output=True, timeout=5)
+        except Exception:
+            pass
+
+    def test_real_ghostty_terminals_parses_id_name_cwd(self):
+        rows = reply._ghostty_terminals()
+        mine = [r for r in rows if r['id'] == self.terminal_id]
+        self.assertEqual(len(mine), 1, 'real Ghostty output did not parse into exactly one row for the scratch terminal')
+        # Ghostty doesn't populate `working directory` for a surface launched with a custom
+        # `command:` override (unlike a plain shell) — that's a real quirk, not something this
+        # fix touches, and matching never relies on cwd anyway; just confirm the field parsed
+        # into a plain string rather than swallowing the rest of the row.
+        self.assertIsInstance(mine[0]['cwd'], str)
+
+    def test_real_marker_resolves_and_restores_title(self):
+        d = SimpleNamespace(DISPATCH_DIR=self.tmp.name)
+        before = next(t['name'] for t in reply._ghostty_terminals() if t['id'] == self.terminal_id)
+        found = reply._ghostty_terminal_id(d, self.tty)
+        self.assertEqual(found, self.terminal_id)
+        after = next(t['name'] for t in reply._ghostty_terminals() if t['id'] == self.terminal_id)
+        self.assertEqual(after, before)
 
 
 if __name__ == '__main__': unittest.main()
