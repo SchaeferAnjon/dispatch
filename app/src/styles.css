@@ -288,13 +288,15 @@ td .t{font-weight:500}
 .reply-slash li span{flex:1;min-width:0;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .reply-slash li i{flex:none;font-style:normal;font-size:11px;color:var(--ink-3);border:1px solid var(--line);border-radius:6px;padding:0 5px}
 .reply-slash-loading{padding:8px 12px;font-size:12px;color:var(--ink-3)}
-.session-reply textarea{min-width:0;flex:1;resize:vertical;min-height:40px;max-height:160px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--panel);color:var(--ink);font:inherit;line-height:1.45;box-sizing:border-box}
+.session-reply textarea{min-width:0;flex:1;width:100%;resize:none;min-height:40px;max-height:160px;border:1px solid var(--line);border-radius:9px;padding:9px 34px 9px 11px;background:var(--panel);color:var(--ink);font:inherit;line-height:1.45;box-sizing:border-box}
+.reply-box{position:relative;flex:1 1 200px;min-width:0;display:flex}
 .session-reply .btn{flex:none;min-height:40px}
 .session-reply form{flex-wrap:wrap}
 .session-reply .reply-attach{padding:0 10px;font-size:16px}
-.session-reply .reply-expand{display:none;padding:0 10px;font-size:16px}
-@media(max-width:760px){.session-reply .reply-expand{display:inline-flex}.session-reply.big textarea{height:26vh;max-height:34vh;flex-basis:100%}.session-reply.big form{flex-wrap:wrap}}
-.session-reply textarea{flex:1 1 200px}
+.session-reply .reply-expand{position:absolute;top:3px;right:4px;min-height:0;height:26px;padding:0 6px;font-size:14px;line-height:26px;border:0;background:transparent;color:var(--ink-3);display:inline-flex;align-items:center}.session-reply .reply-expand:hover{color:var(--ink);background:var(--panel-2)}
+.session-reply.big textarea{height:32vh;max-height:45vh}
+@media(max-width:760px){.session-reply.big .reply-box{flex-basis:100%}.session-reply.big textarea{height:26vh;max-height:34vh}.session-reply.big form{flex-wrap:wrap}}
+.session-reply .reply-box{flex:1 1 200px}
 .reply-images{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .reply-desktop{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
 .reply-request{border:1px solid var(--line);border-left:3px solid var(--s-prog);border-radius:8px;padding:8px 10px;background:var(--panel);display:flex;flex-direction:column;gap:6px}
@@ -307,7 +309,7 @@ td .t{font-weight:500}
 .reply-queued{padding:2px 0}.reply-queued+.reply-queued{border-top:1px dashed var(--line);margin-top:4px;padding-top:4px}.reply-queued p{margin:2px 0 0}
 .reply-receipt span{color:var(--ink-3);font-size:11px}.reply-receipt p{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .reply-error{font-size:12px;color:var(--s-block);margin-top:6px;overflow-wrap:anywhere}.reply-error button{margin-left:8px}
-@media(max-width:760px){.app{height:var(--reply-viewport,100dvh)!important}.session-reply{padding:8px 12px}.session-reply textarea{font-size:16px;height:40px;min-height:40px;max-height:110px;flex:1 1 90px;padding:8px 11px}.session-reply .btn{padding:0 10px}.chat .tl{max-width:100%}.chat .tl-t{font-size:15px;line-height:1.7}.tool-fold>summary{font-size:14px}.reply-keyboard .m-nav{display:none}.reply-keyboard .body{padding-bottom:env(safe-area-inset-bottom)}.reply-keyboard .session-context,.reply-keyboard .session-live{display:none}.reply-receipt{max-height:68px}}
+@media(max-width:760px){.app{height:var(--reply-viewport,100dvh)!important}.session-reply{padding:8px 12px}.session-reply textarea{font-size:16px;height:40px;min-height:40px;max-height:110px;padding:8px 34px 8px 11px}.session-reply .reply-box{flex:1 1 90px}.session-reply .btn{padding:0 10px}.chat .tl{max-width:100%}.chat .tl-t{font-size:15px;line-height:1.7}.tool-fold>summary{font-size:14px}.reply-keyboard .m-nav{display:none}.reply-keyboard .body{padding-bottom:env(safe-area-inset-bottom)}.reply-keyboard .session-context,.reply-keyboard .session-live{display:none}.reply-receipt{max-height:68px}}
 .session-context{flex:none;border-bottom:1px solid var(--line)}
 .session-context summary{cursor:pointer;padding:6px 16px;color:var(--ink-2);font-size:12px}
 .session-context summary span{float:right;color:var(--ink-3)}

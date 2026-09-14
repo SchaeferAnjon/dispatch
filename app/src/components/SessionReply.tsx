@@ -227,7 +227,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
       </div>}
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={e => { void addFiles(Array.from(e.target.files || [])); e.target.value = ''; }} />
       <button className="btn reply-attach" type="button" disabled={busy || !!unknown} onClick={() => fileInput.current?.click()} title="发图片：手机可拍照或选相册，电脑也可以直接粘贴" aria-label="添加图片">📷</button>
-      <textarea ref={textarea} onPaste={onPaste} aria-label="回复内容" placeholder={connection?.working ? "" : images.length ? "说说这张图要干什么（可不填）" : "在这里回复…"} value={draft} maxLength={16000} rows={1} disabled={busy || !!unknown}
+      <div className="reply-box"><textarea ref={textarea} onPaste={onPaste} aria-label="回复内容" placeholder={connection?.working ? "" : images.length ? "说说这张图要干什么（可不填）" : "在这里回复…"} value={draft} maxLength={16000} rows={1} disabled={busy || !!unknown}
         onChange={e => { setDraft(e.target.value); if (receipt?.state === 'failed') setReceipt(null); }}
         onKeyDown={e => {
           if (e.nativeEvent.isComposing) return;
@@ -238,7 +238,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
           else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(menu[Math.min(cursor, menu.length - 1)]); }
           else if (e.key === 'Escape') { e.preventDefault(); setMenuClosed(draft); }
         }} />
-      <button className="btn reply-expand" type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setBig(b => !b); textarea.current?.focus(); }} title={big ? '收起输入框' : '放大输入框'} aria-label={big ? '收起输入框' : '放大输入框'}>{big ? '⤡' : '⤢'}</button>
+      <button className="btn reply-expand" type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setBig(b => !b); textarea.current?.focus(); }} title={big ? '收起输入框' : '放大输入框'} aria-label={big ? '收起输入框' : '放大输入框'}>{big ? '⤡' : '⤢'}</button></div>
       {connection?.working && <button className="btn" type="button" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title="先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导">打断并发送</button>}
       <button className="btn primary" type="submit" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} title={connection?.working ? '排进队列，本轮结束 Agent 就会看到' : undefined}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : connection?.working ? '排队发送' : '发送'}</button>
     </form>
