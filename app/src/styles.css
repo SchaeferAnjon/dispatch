@@ -375,9 +375,12 @@ td .t{font-weight:500}
 .hosts-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--line-2)}
 .hosts-bar .dot.on{background:var(--s-done)}
 .host-chip{display:inline-block;margin-left:6px;padding:0 6px;border-radius:9px;font-size:10.5px;line-height:16px;background:var(--accent-soft);color:var(--accent-ink);vertical-align:1px;white-space:nowrap}
-.host-manage{align-items:flex-start;cursor:default}
-.host-list{display:flex;flex-direction:column;gap:6px;min-width:0}
-.host-row{display:flex;align-items:center;gap:8px}
+/* The machine list sits under its description, full width: beside it the text squeezed names to 「Ap…」 or nothing. */
+.host-manage{flex-direction:column;align-items:stretch;cursor:default;gap:10px}
+.host-list{display:flex;flex-direction:column;gap:2px;min-width:0;width:100%}
+.host-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;border-top:1px dashed var(--line)}
+.host-row:first-child{border-top:0}
+.host-row .host-name{flex:1 1 12em;min-width:0}
 .host-row .dot{width:7px;height:7px;border-radius:50%;background:var(--line-2);flex:none}
 .host-row .dot.on{background:var(--s-done)}
 .host-name{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -565,7 +568,7 @@ pre.diff .skip{padding:0 12px;color:var(--ink-3);font-style:italic}
 .agent-delegations>div{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .agent-delegations .lbl{color:var(--ink-3);white-space:nowrap}
 .dialog.delegate{width:min(600px,calc(100vw - 24px))}
-.settings{padding:20px 24px 40px;max-width:760px;display:flex;flex-direction:column;gap:16px}
+.settings{padding:20px 24px 40px;display:flex;flex-direction:column;gap:16px}
 .settings-card{border:1px solid var(--line);border-radius:12px;background:var(--win);padding:6px 18px}
 .settings-card h3{margin:10px 0 4px;font-size:14px}
 .settings-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:12px 0;border-top:1px solid var(--line);cursor:pointer}
