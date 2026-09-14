@@ -494,6 +494,16 @@ def project_summary(name, force=False, if_stale=False, model="", use="project"):
     m = project_material(name)
     if not m["sessions"] and not m["open"] and not m["closed"]:
         raise RuntimeError("这个项目还没有会话或任务")
+    # A Mac that has never had this project's own directory has no session material for it
+    # either (project_material only sees sessions whose cwd resolved to this project) — it would
+    # write a summary blind to what actually happened, from bare task titles alone, and (being
+    # the only Mac asked right now) overwrite the good one another Mac already wrote. Fall back
+    # to whatever is cached instead of generating here; a Mac that does have the directory will
+    # refresh it later.
+    if not m["sessions"] and not D.project_home(name):
+        if old:
+            return {**old, "cached": True}
+        raise RuntimeError("这台机器没有这个项目的目录和会话记录，等有目录的机器生成总结")
     text = chat(p, PROJECT_PROMPT, f"项目：{name}\n\n{m['text']}", timeout=120, use=use).strip().strip('"“”').replace("\n", " ")[:500]
     if not text:
         raise RuntimeError("模型没有返回内容")

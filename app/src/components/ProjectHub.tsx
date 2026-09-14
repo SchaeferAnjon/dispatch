@@ -11,14 +11,14 @@ import { MediaContext, MediaProvider, type AttachmentData } from './Media';
 import { useOpenSession } from './SessionActions';
 
 // A research / review / design write-up found in the project's folders or registered by hand.
-type Doc = { id: string; title: string; kind: string; path: string; url?: boolean; html?: boolean; size?: number; mtime?: number; ext?: string; dir?: string; source?: string };
+type Doc = { id: string; title: string; kind: string; path: string; url?: boolean; html?: boolean; size?: number; mtime?: number; ext?: string; dir?: string; source?: string; host?: string; host_name?: string };
 const shortPath = (p: string) => p.replace(/^\/(?:Users|home)\/[^/]+/, '~').replace('/Library/Mobile Documents/com~apple~CloudDocs', '/iCloud').replace('/Library/Mobile Documents/iCloud~md~obsidian/Documents', '/Obsidian');
 const openExternal = (url: string) => import('@tauri-apps/plugin-opener').then((o) => o.openUrl(url)).catch(() => { window.open(url, '_blank'); });
 
 // Images referenced relatively inside a document are read through the CLI (it only serves files
 // next to the document); the Markdown component then renders them like conversation pictures.
-function DocMedia({ api, project, id, dir, children }: { api: Api; project: string; id: string; dir?: string; children: ReactNode }) {
-  const read = useCallback((ref: string) => api.on('local', ['docs', 'read', project, id, '--asset', ref, '--json']).then((t) => { const d = JSON.parse(t.slice(Math.max(0, t.indexOf('{')))) as AttachmentData & { error?: string }; if (d.error) throw new Error(d.error); return d; }), [api, project, id]);
+function DocMedia({ api, project, id, dir, host, children }: { api: Api; project: string; id: string; dir?: string; host?: string; children: ReactNode }) {
+  const read = useCallback((ref: string) => api.on(host || 'local', ['docs', 'read', project, id, '--asset', ref, '--json']).then((t) => { const d = JSON.parse(t.slice(Math.max(0, t.indexOf('{')))) as AttachmentData & { error?: string }; if (d.error) throw new Error(d.error); return d; }), [api, project, id, host]);
   const open = useCallback((ref: string) => { void api.openPath(/^\//.test(ref) ? ref : `${dir || ''}/${ref}`).catch(() => {}); }, [api, dir]);
   const value = useMemo(() => ({ read, open, thumb: () => undefined }), [read, open]);
   return <MediaContext.Provider value={value}>{children}</MediaContext.Provider>;
@@ -73,20 +73,25 @@ export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: str
   const open = async (doc: Doc) => {
     setErr('');
     if (doc.url) { void openExternal(doc.path); return; }
-    if (doc.html || doc.ext === 'html' || doc.ext === 'htm') { await api.openPath(doc.path).catch((e) => setErr(String(e))); return; }
-    try { const d = parse(await api.on('local', ['docs', 'read', name, doc.id, '--json'])); setOpened({ doc, text: String(d.text || ''), dir: d.dir as string | undefined }); } catch (e) { setErr(String(e)); }
+    if (doc.html || doc.ext === 'html' || doc.ext === 'htm') {
+      if (doc.host) { setErr(`这份文档在 ${doc.host_name || doc.host}，暂时只能在这里读 Markdown 文档`); return; }
+      await api.openPath(doc.path).catch((e) => setErr(String(e))); return;
+    }
+    try { const d = parse(await api.on(doc.host || 'local', ['docs', 'read', name, doc.id, '--json'])); setOpened({ doc, text: String(d.text || ''), dir: d.dir as string | undefined }); } catch (e) { setErr(String(e)); }
   };
   const add = async () => { setBusy(true); setErr(''); try { parse(await api.on('local', ['docs', 'add', name, path.trim(), '--kind', kind, '--json'])); setPath(''); onReload(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
   const remove = async (doc: Doc) => { setBusy(true); setErr(''); try { parse(await api.on('local', ['docs', 'rm', name, doc.id, '--json'])); onReload(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
-  const actions = (d: Doc) => <>{d.url ? <button className="btn sm" onClick={() => void openExternal(d.path)}>打开链接</button> : <><button className="btn sm" onClick={() => void api.openPath(d.path).catch(() => {})}>在 Finder 打开</button><button className="btn sm" onClick={() => void api.copy(d.path).catch(() => {})}>复制路径</button></>}{d.source === 'registered' && <button className="btn sm" disabled={busy} onClick={() => void remove(d)}>移除登记</button>}</>;
+  const actions = (d: Doc) => <>{d.url ? <button className="btn sm" onClick={() => void openExternal(d.path)}>打开链接</button>
+    : d.host ? <span className="muted small" title={d.path}>在 {d.host_name || d.host}</span>
+    : <><button className="btn sm" onClick={() => void api.openPath(d.path).catch(() => {})}>在 Finder 打开</button><button className="btn sm" onClick={() => void api.copy(d.path).catch(() => {})}>复制路径</button></>}{d.source === 'registered' && <button className="btn sm" disabled={busy} onClick={() => void remove(d)}>移除登记</button>}</>;
   if (opened) {
     const d = opened.doc;
-    return <div className="doc-reader"><div className="hub-tools"><button className="btn sm" onClick={() => setOpened(null)}>‹ 文档列表</button><span className="chip">{d.kind}</span><b>{d.title}</b><code className="muted small doc-path" title={d.path}>{shortPath(d.path)}</code><span className="spacer" />{actions(d)}</div><DocMedia api={api} project={name} id={d.id} dir={opened.dir}><Markdown src={opened.text} /></DocMedia></div>;
+    return <div className="doc-reader"><div className="hub-tools"><button className="btn sm" onClick={() => setOpened(null)}>‹ 文档列表</button><span className="chip">{d.kind}</span><b>{d.title}</b><code className="muted small doc-path" title={d.path}>{shortPath(d.path)}</code>{d.host && <span className="chip" title={d.path}>{d.host_name || d.host}</span>}<span className="spacer" />{actions(d)}</div><DocMedia api={api} project={name} id={d.id} dir={opened.dir} host={d.host}><Markdown src={opened.text} /></DocMedia></div>;
   }
   return <div className="docs-tab">
     <form className="doc-add" onSubmit={(e) => { e.preventDefault(); void add(); }}><input aria-label="文档路径或 URL" placeholder="路径或 URL，例如 design/research-2026-09-09.md" value={path} onChange={(e) => setPath(e.target.value)} /><select aria-label="文档类型" value={kind} onChange={(e) => setKind(e.target.value)}>{['调研', '复审', '设计', '文档', '其他'].map((k) => <option key={k}>{k}</option>)}</select><button className="btn primary sm" disabled={busy || !path.trim()}>登记文档…</button></form>
     {err && <p className="err">{err}</p>}
-    {docs === null ? <p className="empty">正在扫描这个项目的 design/、docs/、研究/…</p> : docs.length === 0 ? <p className="empty">还没有文档。调研、复审产出写到项目的 design/ 目录，或在这里登记一个路径 / URL。</p> : <div className="doc-list">{docs.map((d) => <div className="hub-task doc-row" key={d.id}><button className="link doc-title" onClick={() => void open(d)}>{d.title}</button><span className="chip">{d.kind}</span><span className="muted small">{d.mtime ? new Date(d.mtime * 1000).toLocaleDateString('zh-CN') : ''}{d.size ? ` · ${d.size >= 1048576 ? `${(d.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(d.size / 1024))} KB`}` : ''}</span><code className="muted small doc-path" title={d.path}>{shortPath(d.path)}</code><span className="spacer" />{actions(d)}</div>)}</div>}
+    {docs === null ? <p className="empty">正在扫描这个项目的 design/、docs/、研究/…</p> : docs.length === 0 ? <p className="empty">还没有文档。调研、复审产出写到项目的 design/ 目录，或在这里登记一个路径 / URL。</p> : <div className="doc-list">{docs.map((d) => <div className="hub-task doc-row" key={d.id}><button className="link doc-title" onClick={() => void open(d)}>{d.title}</button><span className="chip">{d.kind}</span>{d.host && <span className="chip" title={d.path}>{d.host_name || d.host}</span>}<span className="muted small">{d.mtime ? new Date(d.mtime * 1000).toLocaleDateString('zh-CN') : ''}{d.size ? ` · ${d.size >= 1048576 ? `${(d.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(d.size / 1024))} KB`}` : ''}</span><code className="muted small doc-path" title={d.path}>{shortPath(d.path)}</code><span className="spacer" />{actions(d)}</div>)}</div>}
   </div>;
 }
 
@@ -94,11 +99,11 @@ export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: str
 // two weeks as a day-grouped timeline, unfinished tasks, and the live sessions in this directory
 // with a close-or-not verdict. Read-only; the CLI caches the model-written summary.
 type ReviewKind = 'task' | 'done' | 'commit' | 'session';
-type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string; task?: string; task_title?: string; host?: string };
+type ReviewEntry = { ts: number; kind: ReviewKind; ref?: string; text: string; task?: string; task_title?: string; tasks?: { id: string; title: string }[]; host?: string };
 type ReviewDay = { day: string; weekday: string; entries: ReviewEntry[] };
 type ReviewTask = { id: string; title: string; status: string; assignee: string; acceptance_done: number; acceptance_total: number; last_at: number; last_note: string };
 type ReviewSession = { agent: string; session_id: string; title: string; pane_id?: string; cwd?: string; source_app?: string; summary: string; state: string; last_at?: number; tasks: { id: string; title: string; status: string }[]; tasks_all_done: boolean; files_count: number; verdict: string; reason: string };
-type ReviewData = { project: string; detected: boolean; cwd: string; timeline_days: number; summary: { text: string; at?: number; by?: string; cached?: boolean; error?: string; pending?: boolean }; timeline: ReviewDay[]; open_tasks: ReviewTask[]; sessions: ReviewSession[] };
+type ReviewData = { project: string; detected: boolean; cwd: string; timeline_days: number; summary: { text: string; at?: number; by?: string; cached?: boolean; error?: string; pending?: boolean }; timeline: ReviewDay[]; open_tasks: ReviewTask[]; sessions: ReviewSession[]; stale_hosts?: { name: string; age: number }[] };
 const REVIEW_KIND: Record<string, string> = { task: '进展', done: '完成', commit: '提交', session: '会话' };
 const REVIEW_STATE: Record<string, string> = { working: '在跑', idle: '等你', unknown: '未登记' };
 const reviewStatus = (s: string) => s === 'closed' ? '已完成' : s === 'in_progress' ? '进行中' : s === 'blocked' ? '阻塞' : s === 'deferred' ? '搁置' : '待办';
@@ -125,11 +130,16 @@ function ReviewTimeline({ timeline, onOpen, onTask }: { timeline: ReviewDay[]; o
     const map = new Map<string, { task: string; title: string; entries: ReviewEntry[] }>();
     const loose: ReviewEntry[] = [];
     for (const day of shown) for (const e of day.entries) {
-      if (!e.task) { loose.push(e); continue; }
-      let g = map.get(e.task);
-      if (!g) { g = { task: e.task, title: e.task_title || '', entries: [] }; map.set(e.task, g); order.push(e.task); }
-      if (!g.title && e.task_title) g.title = e.task_title;
-      g.entries.push(e);
+      // A session tied to several tasks (`tasks`, from session:/session-origin: labels on each)
+      // shows under every one of them — the same session row repeated, not just its last claim.
+      const links = e.kind === 'session' && e.tasks?.length ? e.tasks : e.task ? [{ id: e.task, title: e.task_title || '' }] : [];
+      if (!links.length) { loose.push(e); continue; }
+      for (const { id, title } of links) {
+        let g = map.get(id);
+        if (!g) { g = { task: id, title: title || '', entries: [] }; map.set(id, g); order.push(id); }
+        if (!g.title && title) g.title = title;
+        g.entries.push(e);
+      }
     }
     const list = order.map((k) => map.get(k)!);
     for (const g of list) g.entries.sort((a, b) => b.ts - a.ts);
@@ -304,7 +314,30 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
   const [review,setReview]=useState<ReviewData|null>(null),[reviewBusy,setReviewBusy]=useState(false),[reviewErr,setReviewErr]=useState(''),[termBusy,setTermBusy]=useState(false),[err,setErr]=useState(''),[doneView,setDoneView]=useState(false),[doneQuery,setDoneQuery]=useState('');
   // Two calls: the timeline / tasks / sessions come back in a second, the 现状 paragraph may take
   // the model half a minute the first time — the page must not stay blank for it.
-  const loadReview=useCallback(()=>{setReview(null);setReviewErr('');setReviewBusy(true);if(!selected)return;const name=selected;void api.on('local',['here',name,'--no-summary','--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))) as ReviewData&{error?:string};if(d.error){setReviewErr(d.error);return;}setReview({...d,summary:{text:'',pending:true}});return api.on('local',['project-summary',name,'--if-stale','--json']).then(u=>{const r=JSON.parse(u.slice(Math.max(0,u.indexOf('{')))) as {summary?:string;at?:number;by?:string;cached?:boolean;error?:string;skipped?:boolean;reason?:string};setReview(prev=>prev&&prev.project===d.project?{...prev,summary:r.error?{text:'',error:r.error}:r.skipped?{text:'',error:r.reason}:{text:r.summary||'',at:r.at,by:r.by,cached:r.cached}}:prev);}).catch(e=>setReview(prev=>prev&&prev.project===d.project?{...prev,summary:{text:'',error:String(e)}}:prev));}).catch((e)=>setReviewErr(String(e))).finally(()=>setReviewBusy(false));},[api,selected]);
+  const loadReview=useCallback(()=>{
+    setReview(null);setReviewErr('');setReviewBusy(true);
+    if(!selected)return;
+    const name=selected;
+    // `here` merges other Macs' cached answers without waiting for them (the page must paint
+    // now); a cache that had gone stale kicks off a background refresh over there that lands a
+    // few seconds later. `stale_hosts` says that happened — ask again once, shortly after, so a
+    // Mac with no local session/commit material for this project (no checkout here) still ends
+    // up showing the other Mac's rows instead of freezing on the first, incomplete answer.
+    const fetchHere=()=>api.on('local',['here',name,'--no-summary','--json']);
+    void fetchHere().then(t=>{
+      const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))) as ReviewData&{error?:string};
+      if(d.error){setReviewErr(d.error);return;}
+      setReview({...d,summary:{text:'',pending:true}});
+      if(d.stale_hosts&&d.stale_hosts.length){
+        setTimeout(()=>{void fetchHere().then(t2=>{
+          const d2=JSON.parse(t2.slice(Math.max(0,t2.indexOf('{')))) as ReviewData&{error?:string};
+          if(d2.error)return;
+          setReview(prev=>prev&&prev.project===d2.project?{...prev,timeline:d2.timeline,sessions:d2.sessions,open_tasks:d2.open_tasks,cwd:d2.cwd,stale_hosts:d2.stale_hosts}:prev);
+        }).catch(()=>{});},6000);
+      }
+      return api.on('local',['project-summary',name,'--if-stale','--json']).then(u=>{const r=JSON.parse(u.slice(Math.max(0,u.indexOf('{')))) as {summary?:string;at?:number;by?:string;cached?:boolean;error?:string;skipped?:boolean;reason?:string};setReview(prev=>prev&&prev.project===d.project?{...prev,summary:r.error?{text:'',error:r.error}:r.skipped?{text:'',error:r.reason}:{text:r.summary||'',at:r.at,by:r.by,cached:r.cached}}:prev);}).catch(e=>setReview(prev=>prev&&prev.project===d.project?{...prev,summary:{text:'',error:String(e)}}:prev));
+    }).catch((e)=>setReviewErr(String(e))).finally(()=>setReviewBusy(false));
+  },[api,selected]);
   useEffect(()=>{loadReview();},[loadReview]);
   const verdicts=useMemo(()=>new Map((review?.sessions||[]).map(s=>[s.session_id,s])),[review]);
   const groups=useMemo(()=>projectGroups(rows,tasks,outcomes),[rows,tasks,outcomes]);

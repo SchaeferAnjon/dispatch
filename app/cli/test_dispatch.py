@@ -1313,6 +1313,45 @@ class SummaryUses(unittest.TestCase):
         self.assertTrue(by["session"]["enabled"])
         self.assertIsNone(by["project"]["last"])
 
+    def test_project_summary_on_a_host_without_the_project_dir_falls_back_to_cached(self):
+        """A Mac with no local checkout of the project also has none of its sessions in
+        `project_material` — it must not write a summary blind to what happened, or overwrite
+        the good one another Mac already cached."""
+        cached = {"summary": "好的总结", "at": int(time.time()) - 90000, "by": "zhipu:glm-5.3-flash", "sessions": 5, "open": 1, "closed": 2}
+        key = dispatch.INTERNAL_MEMORY_PREFIX + "project-summary-kanban"
+        with patch.object(self.sd, "sh", return_value=(0, json.dumps({key: json.dumps(cached)}), "")), \
+             patch.object(self.summarize, "provider", return_value={"id": "zhipu", "base": "x", "model": "glm-5.3-flash", "key": "k"}), \
+             patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": ""}), \
+             patch.object(self.sd, "project_home", return_value=""), \
+             patch.object(self.summarize, "chat") as chat_mock:
+            r = self.summarize.project_summary("kanban", if_stale=True)
+        self.assertEqual(r, {**cached, "cached": True})
+        chat_mock.assert_not_called()
+
+    def test_project_summary_on_a_host_without_dir_or_cache_raises_instead_of_guessing(self):
+        with patch.object(self.sd, "sh", return_value=(0, "{}", "")), \
+             patch.object(self.summarize, "provider", return_value={"id": "zhipu", "base": "x", "model": "glm-5.3-flash", "key": "k"}), \
+             patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": ""}), \
+             patch.object(self.sd, "project_home", return_value=""), \
+             patch.object(self.summarize, "chat") as chat_mock, \
+             self.assertRaises(RuntimeError) as cm:
+            self.summarize.project_summary("kanban")
+        self.assertIn("没有这个项目的目录", str(cm.exception))
+        chat_mock.assert_not_called()
+
+    def test_project_summary_generates_when_this_host_has_the_project_dir(self):
+        with patch.object(self.sd, "sh", return_value=(0, "{}", "")), \
+             patch.object(self.summarize, "provider", return_value={"id": "zhipu", "base": "x", "model": "glm-5.3-flash", "key": "k"}), \
+             patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": "材料"}), \
+             patch.object(self.sd, "project_home", return_value="/Users/x/Projects/kanban"), \
+             patch.object(self.summarize, "chat", return_value="新的总结") as chat_mock, \
+             patch.object(self.sd, "wiki_store") as store_mock:
+            r = self.summarize.project_summary("kanban")
+        self.assertFalse(r["cached"])
+        self.assertEqual(r["summary"], "新的总结")
+        chat_mock.assert_called_once()
+        store_mock.assert_called_once()
+
 
 class RemoteBackground(unittest.TestCase):
     """`here` must not wait on the other Mac: it answers from the cache (even a stale one) and

@@ -172,6 +172,25 @@ class ProjectDocuments(unittest.TestCase):
             hp=dispatch.docs_read('P','h');self.assertTrue(hp['html']);self.assertEqual(hp['text'],'')
             a=dispatch.docs_read('P','m','screenshots/shot.png');self.assertTrue(a['data']);self.assertEqual(a['mime'],'image/png')
         with self.assertRaises(ValueError): dispatch.docs_asset(str(p),'../../etc/passwd')
+    def test_merge_remote_docs_adds_peer_rows_tagged_with_host_and_dedupes_by_id(self):
+        local_rows=[{'id':'local1','title':'本机文档','kind':'文档','path':'/here/a.md','mtime':500}]
+        remote={'docs':[{'id':'remote1','title':'那台机器的文档','kind':'调研','path':'/there/b.md','mtime':400},
+                         {'id':'local1','title':'重复','kind':'文档','path':'/there/a.md','mtime':300}]}
+        host={'id':'mini','name':'mini','ssh':'mini'}
+        with patch.object(dispatch,'hosts',return_value=[host]),patch.object(dispatch,'remote_dispatch',return_value=remote) as rd:
+            rows,seen,unavailable=dispatch.merge_remote_docs('kanban',local_rows)
+        self.assertEqual(unavailable,[])
+        self.assertEqual(seen,['mini'])
+        by=(lambda rs:{r['id']:r for r in rs})(rows)
+        self.assertEqual(sorted(by),['local1','remote1'])          # local1 not duplicated
+        self.assertEqual(by['remote1']['host'],'mini');self.assertEqual(by['remote1']['host_name'],'mini')
+        self.assertNotIn('host',by['local1'])                      # local row untouched
+        rd.assert_called_once_with(host,['docs','kanban','--local','--json'],dispatch.DOCS_REMOTE_TTL,timeout=20,background=True)
+    def test_merge_remote_docs_reports_unreachable_host_without_raising(self):
+        host={'id':'mini','name':'mini','ssh':'mini'}
+        with patch.object(dispatch,'hosts',return_value=[host]),patch.object(dispatch,'remote_dispatch',return_value=None):
+            rows,seen,unavailable=dispatch.merge_remote_docs('kanban',[])
+        self.assertEqual((rows,seen,unavailable),([],[],['mini']))
 
 
 if __name__=='__main__':unittest.main()

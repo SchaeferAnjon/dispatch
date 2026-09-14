@@ -73,6 +73,31 @@ class HereView(unittest.TestCase):
         by = {e["ref"]: e["task"] for d in days for e in d["entries"] if e["kind"] == "session"}
         self.assertEqual(by, {"s1": "", "s2": "task-a", "s3": "task-b"})
 
+    def test_timeline_session_entry_lists_every_linked_task_not_just_the_claimed_one(self):
+        """A session on several tasks' session:/session-origin: labels belongs under each of
+        them on the 项目回顾 timeline (`tasks`), not only the one it claimed (`task`)."""
+        now = time.time()
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+        issues = [{"id": "task-a", "title": "甲", "status": "open", "updated_at": iso, "labels": ["session-origin:s2", "session:s2"]},
+                  {"id": "task-b", "title": "乙", "status": "open", "updated_at": iso, "labels": ["session:s2"]}]
+        idx = {"1": {"session_id": "s1", "agent": "claude-code", "user_msgs": 3, "mtime": now, "cwd": "/p", "title": "只是提到", "tasks": {"task-a": 5}, "claims": []},
+               "2": {"session_id": "s2", "agent": "claude-code", "user_msgs": 3, "mtime": now, "cwd": "/p", "title": "发起甲也做乙", "tasks": {"task-b": 1}, "claims": []},
+               "3": {"session_id": "s3", "agent": "claude-code", "user_msgs": 3, "mtime": now, "cwd": "/p", "title": "认领乙", "tasks": {}, "claims": ["task-b"]}}
+        prefs = {f"claude-code:{k}": {"summary": "总结"} for k in ("s1", "s2", "s3")}
+        import activity
+        with patch.object(dispatch, "git_root_of", return_value=""), patch.object(dispatch, "project_names", return_value={}), \
+             patch.object(dispatch, "settings_load", return_value={}), patch.object(dispatch, "load_index", return_value=idx), \
+             patch.object(dispatch, "project_of_cwd", return_value="p"), patch.object(activity, "session_preferences", return_value=prefs):
+            days = lineage.here_timeline("p", issues, {}, 14, "/p")
+        by = {e["ref"]: sorted(t["id"] for t in e["tasks"]) for d in days for e in d["entries"] if e["kind"] == "session"}
+        self.assertEqual(by, {"s1": [], "s2": ["task-a", "task-b"], "s3": ["task-b"]})
+
+    def test_session_task_links_collects_origin_and_participant_labels_per_task(self):
+        issues = [{"id": "task-a", "labels": ["session-origin:s1", "session:s1"]},
+                  {"id": "task-b", "labels": ["session:s1", "session:s2"]}]
+        links = lineage.session_task_links(issues)
+        self.assertEqual(links, {"s1": {"task-a", "task-b"}, "s2": {"task-b"}})
+
     def test_here_comments_reads_off_the_export_instead_of_shelling_out(self):
         iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         issues = [

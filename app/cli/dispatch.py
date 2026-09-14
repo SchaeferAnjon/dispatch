@@ -5195,6 +5195,31 @@ def docs_list(project, dirs=None):
                       docs_registered_rows(docs_registered(name)))
 
 
+DOCS_REMOTE_TTL = 120
+
+
+def merge_remote_docs(project, rows):
+    """A Mac without this project's directory scans nothing local — ask every other Mac in
+    hosts.json for its own `docs <project> --local --json` and fold in what it found, tagged
+    `host` so the UI reads (and later, opens) those through that host instead of this one."""
+    hosts_seen, unavailable = [], []
+    seen = {r["id"] for r in rows}
+    for h in hosts():
+        rargs = ["docs", project, "--local", "--json"]
+        r = remote_dispatch(h, rargs, DOCS_REMOTE_TTL, timeout=20, background=True)
+        if not isinstance(r, dict) or "docs" not in r:
+            unavailable.append(h["name"])
+            continue
+        hosts_seen.append(h["name"])
+        for d in r.get("docs") or []:
+            if not isinstance(d, dict) or d.get("id") in seen:
+                continue
+            seen.add(d.get("id"))
+            rows.append(dict(d, host=h["id"], host_name=h["name"]))
+    rows.sort(key=lambda r: r.get("mtime") or 0, reverse=True)
+    return rows, hosts_seen, unavailable
+
+
 def docs_register(project, value, title="", kind=""):
     name = (project or "").strip()
     if not name:
@@ -5283,7 +5308,10 @@ def cmd_docs(a):
     try:
         if op == "list":
             rows = docs_list(project)
-            result = {"project": project, "docs": rows, "dirs": docs_project_dirs(project)}
+            hosts_seen, unavailable = [], []
+            if not getattr(a, "local", False):
+                rows, hosts_seen, unavailable = merge_remote_docs(project, rows)
+            result = {"project": project, "docs": rows, "dirs": docs_project_dirs(project), "hosts": hosts_seen, "unavailable_hosts": unavailable}
             out(result, a.json, lambda r: print(f"{r['project']}：{len(r['docs'])} 份文档") or [print(f"  {d['kind']} · {d['title']} · {d['path']}") for d in r["docs"]])
             return
         if op == "read":
@@ -7480,7 +7508,7 @@ def main():
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
     s = sub.add_parser("notify", help="push a message to the phone (ntfy / Bark) or a macOS banner; channels come from dispatch env NTFY_URL / BARK_KEY"); s.add_argument("title"); s.add_argument("body", nargs="?", default=""); s.add_argument("--url", default="", help="link to open when the notification is tapped"); s.add_argument("--level", choices=["normal", "high"], default="normal"); s.add_argument("--key", default="", help="dedup key: the same key inside 5 minutes is sent once"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_notify)
-    s = sub.add_parser("docs", help="项目页「文档」：扫描 design/ docs/ 研究/ 下的 .md/.html，加上登记过的路径/URL"); s.add_argument("op", nargs="?", default="", help="add | rm | read（省略时第一个参数就是项目名，列出它的文档）"); s.add_argument("project", nargs="?"); s.add_argument("extra", nargs="*", help="add/read/rm：路径或 URL、文档 id"); s.add_argument("--title", help="add：显示标题（默认取首个 # 行或文件名）"); s.add_argument("--kind", choices=list(DOC_KINDS), help="add：类型"); s.add_argument("--asset", default="", help="read：读文档同目录下的相对文件（图片），返回 base64"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_docs)
+    s = sub.add_parser("docs", help="项目页「文档」：扫描 design/ docs/ 研究/ 下的 .md/.html，加上登记过的路径/URL"); s.add_argument("op", nargs="?", default="", help="add | rm | read（省略时第一个参数就是项目名，列出它的文档）"); s.add_argument("project", nargs="?"); s.add_argument("extra", nargs="*", help="add/read/rm：路径或 URL、文档 id"); s.add_argument("--title", help="add：显示标题（默认取首个 # 行或文件名）"); s.add_argument("--kind", choices=list(DOC_KINDS), help="add：类型"); s.add_argument("--asset", default="", help="read：读文档同目录下的相对文件（图片），返回 base64"); s.add_argument("--local", action="store_true", help="list：只看这台机器（其他机器问它时用）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_docs)
     s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
     for _here_name in ("here", "project-view"):
         s = sub.add_parser(_here_name, help="一个项目此刻的样子：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话能不能关（默认当前目录）"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir", help="看这个目录（默认当前目录）"); s.add_argument("--days", type=int, default=14, help="时间线回看天数（默认 14）"); s.add_argument("--no-summary", action="store_true", help="不调模型，跳过现状一段话"); s.add_argument("--refresh-summary", action="store_true", help="现状重新生成，不用缓存"); s.add_argument("--summary-model", default="", help="现状用哪个模型（默认设置里的总结模型）"); s.add_argument("--local", action="store_true", help="只看这台 Mac（默认把另一台的提交和会话合并进来）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_here)
