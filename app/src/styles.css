@@ -269,6 +269,7 @@ td .t{font-weight:500}
 .sess-head .sess-host{display:flex;gap:4px;align-items:center;margin-bottom:2px;min-width:0}
 .sess-head .sess-host .host-chip{margin-left:0;opacity:1}
 .conversation-title .conversation-host{margin:0 6px 0 0;flex-shrink:0}
+.hub-header-actions .project-owner{align-self:center;margin-left:0;padding:0 10px;font-size:12px;line-height:24px;border-radius:12px}
 .sess-meta{padding:4px 16px 10px;grid-template-columns:auto minmax(0,1fr)}
 .sess-meta .subs{display:flex;flex-direction:column;gap:3px}
 .sub-chip{font-size:12px}
