@@ -2470,10 +2470,11 @@ def read_session_detail(ref, limit=400, since=None):
                     # The "[Image: original …]" caption only describes the picture; show the picture.
                     txt = re.sub(r"\[Image:[^\]]*\]", "", txt).strip()
                 images += [i for i in _text_images(txt, ref.get("cwd", "")) if i not in images]
-                if is_synthetic_user(txt) and not images:
+                if is_synthetic_user(txt):
                     # Hook output / background-task notice: shown as a system event, never as "you said".
+                    # A sub-agent's notice can carry a picture it produced (a QR code, a screenshot): keep it.
                     m2 = re.search(r"<summary>([\s\S]*?)</summary>", txt)
-                    other(tl.add(ts, "user", [{"type": "text", "text": (m2.group(1).strip() if m2 else txt.strip())[:600]}], synthetic=True))
+                    other(tl.add(ts, "user", [{"type": "text", "text": (m2.group(1).strip() if m2 else txt.strip())[:600]}], synthetic=True, **({"images": images} if images else {})))
                     continue
                 if txt.strip() or images:
                     other(tl.add(ts, "user", [{"type": "text", "text": txt[:LONG_TEXT]}], **({"images": images} if images else {})))

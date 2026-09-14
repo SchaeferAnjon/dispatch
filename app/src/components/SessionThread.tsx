@@ -14,7 +14,7 @@ import { Markdown, Linkified } from "./Markdown";
 type ToolBlock = Extract<Block, { type: "tool_call" }>;
 type Custom =
   | { kind: "turn"; role: "user" | "assistant" | "tool"; name: string; ts: string; cont: boolean; images?: string[]; tools: Record<string, ToolBlock>; folds: Record<string, ToolBlock[]> }
-  | { kind: "system"; text: string }
+  | { kind: "system"; text: string; images?: string[] }
   | { kind: "gap"; text: string }
   | { kind: "typing"; name: string };
 type Msg = ThreadMessageLike & { readonly metadata: { readonly custom: Custom } };
@@ -33,7 +33,7 @@ function toMessages(list: TimelineMsg[], name: string, running: boolean): Msg[] 
   list.forEach((x, i) => {
     const id = `${i}:${x.ts}`;
     if (x.role === "gap") { out.push({ id, role: "system", content: [{ type: "text", text: x.text || "…" }], metadata: { custom: { kind: "gap", text: x.text } } }); return; }
-    if (x.synthetic) { out.push({ id, role: "system", content: [{ type: "text", text: x.text || "…" }], metadata: { custom: { kind: "system", text: x.text } } }); return; }
+    if (x.synthetic) { out.push({ id, role: "system", content: [{ type: "text", text: x.text || "…" }], metadata: { custom: { kind: "system", text: x.text, images: x.images } } }); return; }
     if (x.role === "user" || x.role === "tool") {
       out.push({ id, role: "user", content: [{ type: "text", text: x.text || (x.images?.length ? "[图片]" : "…") }], metadata: { custom: { kind: "turn", role: x.role, name: x.role === "user" ? "你" : "工具", ts: x.ts, cont: x.role === "tool" && out[out.length - 1]?.role === "assistant", images: x.images, tools: {}, folds: {} } } });
       return;
@@ -184,7 +184,7 @@ function UserText() {
 function SystemLine() {
   const c = useCustom();
   if (c.kind === "gap") return <div className="tl gap"><div className="muted">{c.text}</div></div>;
-  if (c.kind === "system") return <div className="tl system"><div className="muted small tl-system" title="不是你发的：Claude Code 的后台任务 / hook 通知，Agent 看到后可能会接一句">系统事件 · {c.text}</div></div>;
+  if (c.kind === "system") return <div className="tl system"><div className="muted small tl-system" title="不是你发的：Claude Code 的后台任务 / 子 Agent / hook 的通知，Agent 看到后可能会接一句">{/^Agent "/.test(c.text || "") ? "子 Agent" : "系统事件"} · {c.text}</div>{c.images && c.images.length > 0 && <div className="tl-system-images"><ImageGrid ids={c.images} /></div>}</div>;
   return null;
 }
 const MESSAGES = { UserMessage: Turn, AssistantMessage: Turn, SystemMessage: SystemLine };
