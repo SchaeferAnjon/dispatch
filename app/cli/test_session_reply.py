@@ -165,50 +165,161 @@ class AdoptFromReply(unittest.TestCase):
             st = reply.status(self.d, self.ref)
         self.assertNotIn('adoptable', st)
 
-    def test_submit_auto_adopts_an_idle_session_then_sends(self):
+    def test_submit_never_auto_adopts_even_when_idle_and_adoptable(self):
+        """The session prefers to stay where it is (Ghostty, VS Code, …): submit() must never
+        take it into Herdr as a side effect of sending, even when it's idle and adoption would
+        succeed. Only the explicit "接进 Herdr 再发" button (session_control.adopt, called
+        straight from the UI) may do that."""
         live = dict(self.ref, agent='claude-code', state='idle', source_app='Ghostty', herdr=None)
         self.d.live_sessions = lambda local_only=True: [live]
-        self.d.refresh_index = lambda: None
-        pane = {'pane_id': 'p1', 'tab_id': 't1', 'busy': False}
-        calls = []
-        def herdr(host, args, timeout=30, raw=False):
-            calls.append(args)
-            if args[:2] == ['agent', 'prompt']: return {'result': {'agent': {}}}
-            return '' if raw else {'result': {}}
-        self.d.herdr = herdr
-        with patch.object(reply, 'target', side_effect=[self.not_found, {'kind': 'herdr', 'pane': pane, 'label': 'x'}]), \
-             patch.object(reply, 'herdr_target', return_value=pane), \
-             patch.object(session_control, 'adopt', return_value={'request_id': 'launch-1', 'state': 'starting'}) as m_adopt, \
-             patch.object(session_control, 'status', return_value={'request_id': 'launch-1', 'state': 'ready'}), \
-             patch.object(reply.time, 'sleep'):
-            r = reply.submit(self.d, self.ref, 'hello', str(uuid.uuid4()))
-        self.assertEqual(r['state'], 'accepted')
-        m_adopt.assert_called_once()
-        self.assertEqual(m_adopt.call_args.args[1]['session_id'], 'session-exact')
-        self.assertTrue(any(a[:2] == ['agent', 'prompt'] for a in calls))
-
-    def test_submit_gives_up_when_adoption_does_not_finish(self):
-        live = dict(self.ref, agent='claude-code', state='idle', source_app='Ghostty', herdr=None)
-        self.d.live_sessions = lambda local_only=True: [live]
-        self.d.refresh_index = lambda: None
-        with patch.object(reply, 'target', side_effect=self.not_found), \
-             patch.object(session_control, 'adopt', return_value={'request_id': 'launch-1', 'state': 'starting'}), \
-             patch.object(session_control, 'status', return_value={'request_id': 'launch-1', 'state': 'attention', 'message': '启动尚未确认，请查看电脑终端。'}), \
-             patch.object(reply.time, 'sleep'):
+        with patch.object(reply, 'target', side_effect=self.not_found), patch.object(session_control, 'adopt') as m_adopt:
             with self.assertRaises(reply.Rejected) as cm:
                 reply.submit(self.d, self.ref, 'hello', str(uuid.uuid4()))
-        self.assertIn('查看电脑终端', str(cm.exception))
+        self.assertIn('无法确认原会话所在的终端', str(cm.exception))
+        m_adopt.assert_not_called()
+        with reply.connect(self.d) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM replies').fetchone()[0], 0)
 
     def test_submit_never_interrupts_a_working_session_to_adopt_it(self):
         live = dict(self.ref, agent='claude-code', state='working', source_app='VS Code', herdr=None)
         self.d.live_sessions = lambda local_only=True: [live]
         with patch.object(reply, 'target', side_effect=self.not_found), patch.object(session_control, 'adopt') as m_adopt:
-            with self.assertRaises(reply.Rejected) as cm:
+            with self.assertRaises(reply.Rejected):
                 reply.submit(self.d, self.ref, 'hello', str(uuid.uuid4()))
-        self.assertIn('VS Code', str(cm.exception))
         m_adopt.assert_not_called()
         with reply.connect(self.d) as db:
             self.assertEqual(db.execute('SELECT count(*) FROM replies').fetchone()[0], 0)
+
+
+class GhosttyReply(unittest.TestCase):
+    """Delivery into a plain Ghostty window: no Herdr pane, matched by tty (never cwd — several
+    sessions routinely share a working directory) via a one-off OSC 2 title marker."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = SimpleNamespace(HOME=self.tmp.name, DISPATCH_DIR=self.tmp.name, SESS_DIR=self.tmp.name, herdr_agents=lambda: [])
+        self.ref = dict(agent='claude-code', session_id='session-exact', cwd='/project')
+        with open(os.path.join(self.tmp.name, 'session.json'), 'w') as f:
+            json.dump(dict(self.ref, agent_pid=500, last_at=2, state='idle'), f)
+        # A process tree shaped like the real one: the agent sits on a *nested* pty of its own
+        # (500, ttys010 — Claude Code's CLI re-execs itself through its updater wrapper), climbing
+        # through the wrapper and the shell to `login`, whose tty (ttys007) is the one Ghostty
+        # itself owns and actually renders.
+        self.table = {
+            500: (400, 'ttys010', '/Users/x/.local/share/claude/versions/1.2.3'),
+            400: (300, '??', '/Users/x/.local/share/claude/ClaudeCode.app/Contents/MacOS/claude'),
+            300: (200, 'ttys007', '/usr/bin/login'),
+            200: (1, '??', '/Applications/Ghostty.app/Contents/MacOS/ghostty'),
+        }
+        self.written = []
+
+    def _write_title(self, tty, text):
+        self.written.append((tty, text))
+
+    def test_matches_by_tty_marker_not_cwd(self):
+        """Two terminals share the session's cwd — cwd alone would be ambiguous — but only the
+        one whose pty actually shows the marker gets picked, and the marker lands on the outer
+        tty (Ghostty's own), not the agent's nested one."""
+        def terminals():
+            marker = self.written[-1][1] if self.written else ''
+            return [{'id': 'OTHER', 'name': '', 'cwd': '/project'}, {'id': 'MINE', 'name': marker, 'cwd': '/project'}]
+        with patch.object(reply, '_ps_table_tty', return_value=self.table), \
+             patch.object(reply, '_write_tty_title', side_effect=self._write_title), \
+             patch.object(reply, '_ghostty_terminals', side_effect=terminals):
+            t = reply.ghostty_target(self.d, self.ref)
+        self.assertEqual(t['kind'], 'ghostty')
+        self.assertEqual(t['terminal_id'], 'MINE')
+        self.assertEqual(self.written[0][0], 'ttys007')
+
+    def test_ambiguous_terminal_refuses_rather_than_guess(self):
+        def terminals():
+            marker = self.written[-1][1] if self.written else ''
+            return [{'id': 'A', 'name': marker, 'cwd': '/project'}, {'id': 'B', 'name': marker, 'cwd': '/project'}]
+        with patch.object(reply, '_ps_table_tty', return_value=self.table), \
+             patch.object(reply, '_write_tty_title', side_effect=self._write_title), \
+             patch.object(reply, '_ghostty_terminals', side_effect=terminals):
+            with self.assertRaises(reply.Rejected) as cm:
+                reply.ghostty_target(self.d, self.ref)
+        self.assertIn('没能唯一定位', str(cm.exception))
+
+    def test_not_ghostty_falls_through_quietly(self):
+        """A pid whose ancestry never reaches a Ghostty.app process isn't a Ghostty failure at
+        all — ghostty_target() returns None so target() falls back to the plain Herdr message."""
+        table = {500: (1, 'ttys099', '/usr/bin/something')}
+        with patch.object(reply, '_ps_table_tty', return_value=table):
+            self.assertIsNone(reply.ghostty_target(self.d, self.ref))
+        with patch.object(reply, '_ps_table_tty', return_value=table):
+            with self.assertRaises(reply.Rejected) as cm:
+                reply.target(self.d, self.ref)
+        self.assertIn('无法确认原会话所在的终端', str(cm.exception))
+
+    def test_submit_pastes_images_then_text_then_enter(self):
+        pics = [tempfile.NamedTemporaryFile(suffix='.png', delete=False).name for _ in range(2)]
+        scripts = []
+        def terminals():
+            marker = self.written[-1][1] if self.written else ''
+            return [{'id': 'MINE', 'name': marker, 'cwd': '/project'}]
+        def osascript_file(body, timeout=8):
+            scripts.append(body)
+            return ''
+        with patch.object(reply, '_ps_table_tty', return_value=self.table), \
+             patch.object(reply, '_write_tty_title', side_effect=self._write_title), \
+             patch.object(reply, '_ghostty_terminals', side_effect=terminals), \
+             patch.object(reply, '_ghostty_terminal_exists', return_value=True), \
+             patch.object(reply, '_osascript_file', side_effect=osascript_file), \
+             patch.object(reply.time, 'sleep'):
+            r = reply.submit(self.d, self.ref, '看看颜色', str(uuid.uuid4()), images=pics)
+        self.assertEqual((r['state'], r['text']), ('accepted', '看看颜色'))
+        send_script = scripts[-1]
+        self.assertLess(send_script.index(pics[0]), send_script.index(pics[1]))
+        self.assertLess(send_script.index(pics[1]), send_script.index('看看颜色'))
+        self.assertLess(send_script.rindex('input text'), send_script.rindex('send key "enter"'))
+        self.assertTrue(send_script.strip().endswith('end tell'))
+
+    def test_submit_interrupt_sends_escape_before_pasting(self):
+        with open(os.path.join(self.tmp.name, 'session.json'), 'w') as f:
+            json.dump(dict(self.ref, agent_pid=500, last_at=2, state='working'), f)
+        scripts = []
+        def terminals():
+            marker = self.written[-1][1] if self.written else ''
+            return [{'id': 'MINE', 'name': marker, 'cwd': '/project'}]
+        def osascript_file(body, timeout=8):
+            scripts.append(body)
+            return ''
+        with patch.object(reply, '_ps_table_tty', return_value=self.table), \
+             patch.object(reply, '_write_tty_title', side_effect=self._write_title), \
+             patch.object(reply, '_ghostty_terminals', side_effect=terminals), \
+             patch.object(reply, '_ghostty_terminal_exists', return_value=True), \
+             patch.object(reply, '_osascript_file', side_effect=osascript_file), \
+             patch.object(reply.time, 'sleep'):
+            r = reply.submit(self.d, self.ref, '停一下', str(uuid.uuid4()), mode='interrupt')
+        self.assertEqual(r['state'], 'accepted')
+        self.assertIn('已打断并送达', r['note'])
+        send_script = scripts[-1]
+        self.assertLess(send_script.index('escape'), send_script.index('停一下'))
+
+    def test_status_reports_permission_denied_clearly(self):
+        with patch.object(reply, '_ps_table_tty', return_value=self.table), \
+             patch.object(reply, '_ghostty_tty', return_value='ttys007'), \
+             patch.object(reply, '_ghostty_terminal_id', side_effect=reply.Rejected(
+                 '这台电脑还没给 Ghostty 自动化权限：系统设置 → 隐私与安全性 → 自动化，找到运行 dispatch 的程序（通常显示为 osascript）并勾选允许它控制 Ghostty，授权后重试。')):
+            st = reply.status(self.d, self.ref)
+        self.assertFalse(st['available'])
+        self.assertIn('系统设置', st['label'])
+        self.assertIn('自动化', st['label'])
+
+    def test_status_available_reports_terminal_field(self):
+        def terminals():
+            marker = self.written[-1][1] if self.written else ''
+            return [{'id': 'MINE', 'name': marker, 'cwd': '/project'}]
+        with patch.object(reply, '_ps_table_tty', return_value=self.table), \
+             patch.object(reply, '_write_tty_title', side_effect=self._write_title), \
+             patch.object(reply, '_ghostty_terminals', side_effect=terminals):
+            st = reply.status(self.d, self.ref)
+        self.assertTrue(st['available'])
+        self.assertEqual(st['terminal'], 'ghostty')
+        self.assertIn('Ghostty', st['label'])
 
 
 if __name__ == '__main__': unittest.main()

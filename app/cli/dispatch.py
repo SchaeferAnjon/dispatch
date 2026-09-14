@@ -3024,15 +3024,19 @@ def cmd_resume(a):
 
 
 def host_app_of(pid, table):
-    """Walk up from a pid to the .app that owns it (e.g. Ghostty hosting Herdr)."""
+    """Walk up from a pid to the .app that owns it (e.g. Ghostty hosting Herdr). Skips the
+    `claude` CLI's own updater wrapper (~/.local/share/claude/ClaudeCode.app/…) — that's part
+    of the agent's own process, not the terminal/editor hosting it — and keeps climbing past it
+    for the real host."""
     for _ in range(30):
         ent = table.get(pid)
         if not ent:
             return None
         ppid, comm = ent
-        m = re.search(r"/([^/]+)\.app/", comm)
-        if m:
-            return m.group(1)
+        if "/.local/share/claude/" not in comm:
+            m = re.search(r"/([^/]+)\.app/", comm)
+            if m:
+                return m.group(1)
         if ppid <= 1:
             return None
         pid = ppid

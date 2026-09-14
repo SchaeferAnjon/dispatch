@@ -56,6 +56,19 @@ class HostApp(unittest.TestCase):
         table = {10: (1, "fish"), 1: (0, "launchd")}
         self.assertIsNone(dispatch.host_app_of(10, table))
 
+    def test_skips_the_claude_cli_own_updater_wrapper(self):
+        # The `claude` CLI re-execs itself through its own updater's .app on the way up from any
+        # terminal — that used to be mistaken for the hosting app; the real host (Ghostty here)
+        # is one hop further up the chain.
+        table = {
+            20: (15, "/Users/x/.local/share/claude/versions/1.2.3"),
+            15: (10, "/Users/x/.local/share/claude/ClaudeCode.app/Contents/MacOS/claude"),
+            10: (5, "/opt/homebrew/bin/fish"),
+            5: (1, "/Applications/Ghostty.app/Contents/MacOS/ghostty"),
+            1: (0, "launchd"),
+        }
+        self.assertEqual(dispatch.host_app_of(20, table), "Ghostty")
+
 
 class SessionDetailClaude(unittest.TestCase):
     def test_timeline_and_file_changes(self):

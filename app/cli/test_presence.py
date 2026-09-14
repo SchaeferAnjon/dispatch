@@ -25,6 +25,23 @@ class PresenceSignals(unittest.TestCase):
         self.assertEqual(event_status("PostToolUseFailure", {"is_interrupt": True}, {"state": "working"}), ("working", None))
     def test_codex_desktop_source(self):
         self.assertEqual(classify(["/Applications/Codex.app/Contents/MacOS/Codex"]), ("desktop", "Codex 桌面端"))
+    def test_claude_cli_wrapper_is_skipped_not_misread_as_vs_code(self):
+        # "ClaudeCode.app/" literally contains the substring "Code.app/" — a bare (unanchored)
+        # pattern used to match it and misreport the CLI's own updater wrapper as VS Code,
+        # hiding the real host (e.g. Ghostty) one hop further up the chain.
+        chain = [
+            "/Users/x/.local/share/claude/versions/1.2.3",
+            "/Users/x/.local/share/claude/ClaudeCode.app/Contents/MacOS/claude",
+            "/Users/x/.local/bin/claude",
+            "claude",
+            "-/opt/homebrew/bin/fish",
+            "/usr/bin/login",
+            "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+        ]
+        self.assertEqual(classify(chain), ("terminal", "Ghostty"))
+    def test_real_vs_code_is_still_recognised(self):
+        self.assertEqual(classify(["/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper"]), ("editor", "VS Code"))
+        self.assertEqual(classify(["/Applications/Code.app/Contents/MacOS/Electron"]), ("editor", "VS Code"))
     def test_install_preserves_hooks_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "settings.json")

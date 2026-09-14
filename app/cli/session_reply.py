@@ -12,6 +12,7 @@ import socket
 import sqlite3
 import struct
 import subprocess
+import tempfile
 import time
 import uuid
 from contextlib import closing
@@ -316,39 +317,265 @@ def adoptable(d, ref):
     return None
 
 
-def auto_adopt(d, ref, live):
-    """Take `live` (confirmed idle by the caller) into Herdr and wait for the resumed transcript
-    to become reachable again. Reuses session_control.adopt — it stops the old process and
-    resumes the same transcript in a new Herdr tab — rather than reimplementing that dance."""
-    import session_control
-    launch = session_control.adopt(d, dict(session_id=live['session_id'], request_id=str(uuid.uuid4())))
-    st = launch
-    deadline = time.time() + 45
-    while st.get('request_id') and st.get('state') in ('starting', 'running') and time.time() < deadline:
-        time.sleep(1.0)
-        st = session_control.status(d, st['request_id'])
-    if st.get('state') != 'ready':
-        raise Rejected(st.get('message') or '接进 Herdr 还没完成，请稍候几秒再发送。')
+# ---------------------------------------------------------------- Ghostty (no Herdr pane)
+#
+# A session running in a plain Ghostty window (never taken into Herdr) has no pane Herdr can
+# address, but Ghostty's own AppleScript dictionary can paste text and press keys into one of
+# its terminal surfaces — if we can point at the right one. Ghostty's `terminal` class exposes
+# only id / name / working directory: no pid, no tty (see ghostty.org/docs/features/applescript).
+# Matching by cwd alone is never enough — several sessions routinely share a working directory —
+# so `id` is the only thing we can reliably send to, and the only way to find it is to make the
+# terminal say something unique back: write a one-off OSC 2 title straight to the pty device
+# Ghostty itself owns (found from the process tree, since Claude Code's own CLI re-execs itself
+# onto a *different*, nested pty — writing there would never reach Ghostty's display), then read
+# it back off every terminal Ghostty knows about and see which one changed.
 
 
-def _ensure_reachable(d, ref):
-    """Before resolving where to send: if the session cannot be reached because it runs outside
-    Herdr on this machine, take it in first — but only while idle, never interrupting a working
-    agent. A session that is genuinely unreachable, or busy, is left for `target` to reject."""
+def _ps_table_tty():
+    """Like dispatch.ps_table() but with each process's controlling tty, needed only to find the
+    pty Ghostty itself created for a session (dispatch.ps_table()'s 3-column shape is a contract
+    other callers unpack positionally, so this stays a separate helper)."""
+    r = subprocess.run(['ps', '-axo', 'pid=,ppid=,tty=,comm='], capture_output=True, text=True, timeout=3)
+    t = {}
+    for line in r.stdout.splitlines():
+        parts = line.strip().split(None, 3)
+        if len(parts) == 4:
+            try:
+                t[int(parts[0])] = (int(parts[1]), parts[2], parts[3])
+            except ValueError:
+                pass
+    return t
+
+
+def _ghostty_tty(pid, table):
+    """The terminal device of the process Ghostty itself spawned directly for this session (its
+    `login`), found by climbing from `pid` until a process' parent is the Ghostty binary. That is
+    the only pty guaranteed to reach Ghostty's display — the agent's own pid can sit on a nested
+    pty of its own (Claude Code's CLI re-execs into one), and writes there go nowhere Ghostty
+    reads. None when this pid's ancestry isn't hosted by Ghostty at all."""
+    current = pid
+    for _ in range(30):
+        ent = table.get(current)
+        if not ent:
+            return None
+        ppid, tty, _comm = ent
+        parent = table.get(ppid)
+        if parent and '/Ghostty.app/' in parent[2]:
+            return tty if tty and tty != '??' else None
+        if ppid <= 1:
+            return None
+        current = ppid
+    return None
+
+
+def _as_lit(s):
+    """A Python string as an AppleScript string literal (backslash/quote escaped; a real
+    newline inside the source is valid AppleScript and needs no escaping)."""
+    return '"' + str(s).replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
+def _osascript_file(body, timeout=8):
+    """Run one Ghostty AppleScript from a temp file — never `-e`: a message can carry quotes,
+    backslashes and literal newlines that only a real script file handles safely. Raises Rejected
+    with a specific, actionable message when macOS has not granted Ghostty automation permission
+    yet (error -1743) rather than a generic failure."""
+    path = os.path.join(tempfile.gettempdir(), f'dispatch-ghostty-{uuid.uuid4().hex}.applescript')
     try:
-        target(d, ref)
-        return
-    except Rejected:
-        pass
-    live = adoptable(d, ref)
-    if live is None:
-        return
-    if live.get('state') == 'working':
-        raise Rejected('它正在 %s 里跑，等这轮结束后会自动接进 Herdr 再发' % (live.get('source_app') or '原终端'))
-    auto_adopt(d, ref, live)
-    refresh_index = getattr(d, 'refresh_index', None)
-    if callable(refresh_index):
-        refresh_index()
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(body)
+        try:
+            r = subprocess.run(['osascript', path], capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise Rejected('Ghostty 没有及时响应，请稍候重试。')
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    if r.returncode != 0:
+        err = (r.stderr or '').strip()
+        if '-1743' in err or 'not authorized' in err.lower():
+            raise Rejected('这台电脑还没给 Ghostty 自动化权限：系统设置 → 隐私与安全性 → 自动化，找到运行 dispatch 的程序（通常显示为 osascript）并勾选允许它控制 Ghostty，授权后重试。')
+        raise Rejected('Ghostty 没有响应' + ('：' + err.splitlines()[-1][:200] if err else '') + '。')
+    return r.stdout
+
+
+def _ghostty_terminals():
+    """[{id, name, cwd}] for every terminal surface Ghostty currently has open, across all its
+    windows and tabs (the `terminals` element is flat at the application level)."""
+    body = ('tell application "Ghostty"\n'
+            'set out to ""\n'
+            'repeat with t in terminals\n'
+            'set out to out & (id of t) & tab & (name of t) & tab & (working directory of t) & linefeed\n'
+            'end repeat\n'
+            'return out\n'
+            'end tell\n')
+    raw = _osascript_file(body)
+    rows = []
+    for line in raw.splitlines():
+        parts = line.split('\t')
+        if len(parts) == 3:
+            rows.append({'id': parts[0], 'name': parts[1], 'cwd': parts[2]})
+    return rows
+
+
+def _ghostty_terminal_exists(term_id):
+    out = _osascript_file('tell application "Ghostty" to exists terminal id %s\n' % _as_lit(term_id))
+    return out.strip() == 'true'
+
+
+def _write_tty_title(tty, text):
+    """Set the OSC 2 title on `tty` — output written to a pty's slave device is exactly what a
+    foreground process on it would print to its own stdout, so this reaches Ghostty's display
+    without touching that process' stdin (no keystrokes are injected)."""
+    with open('/dev/' + tty, 'w') as f:
+        f.write('\x1b]2;%s\x07' % text)
+
+
+_GHOSTTY_CACHE_TTL = 30
+
+
+def _ghostty_cache_path(d):
+    return os.path.join(d.DISPATCH_DIR, 'ghostty-tty-cache.json')
+
+
+def _ghostty_cache_get(d, tty):
+    try:
+        with open(_ghostty_cache_path(d)) as f:
+            c = json.load(f)
+    except (OSError, ValueError):
+        return None
+    e = c.get(tty)
+    return e.get('id') if e and time.time() - e.get('ts', 0) < _GHOSTTY_CACHE_TTL else None
+
+
+def _ghostty_cache_put(d, tty, term_id):
+    path = _ghostty_cache_path(d)
+    try:
+        with open(path) as f:
+            c = json.load(f)
+    except (OSError, ValueError):
+        c = {}
+    now = time.time()
+    c[tty] = {'id': term_id, 'ts': now}
+    c = {k: v for k, v in c.items() if now - v.get('ts', 0) < 300}  # never let this grow stale
+    os.makedirs(d.DISPATCH_DIR, exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(c, f)
+    os.replace(tmp, path)
+
+
+def _ghostty_terminal_id(d, tty):
+    """The Ghostty terminal id whose pty is `tty`. A short-lived cache (re-verified — a closed
+    window must never be reused) skips the probe on the common case of sending twice in a row;
+    otherwise flash a unique marker onto the tty's title and see which terminal shows it. Returns
+    None when the marker never showed up on exactly one terminal (not found, or — several tabs
+    somehow sharing the same pty display — ambiguous); never guesses."""
+    cached = _ghostty_cache_get(d, tty)
+    if cached and _ghostty_terminal_exists(cached):
+        return cached
+    marker = 'dispatch-probe-' + uuid.uuid4().hex[:12]
+    before = {t['id']: t['name'] for t in _ghostty_terminals()}
+    try:
+        _write_tty_title(tty, marker)
+    except OSError as e:
+        raise Rejected('没能连上 Ghostty 的终端设备（%s），请重新连接。' % e)
+    found = None
+    for _ in range(10):
+        hits = [t['id'] for t in _ghostty_terminals() if t['name'] == marker]
+        if len(hits) == 1:
+            found = hits[0]
+            break
+        if len(hits) > 1:
+            return None
+        time.sleep(0.15)
+    if not found:
+        return None
+    try:
+        _write_tty_title(tty, before.get(found, ''))
+    except OSError:
+        pass  # Claude Code redraws its own status-line title on the next turn regardless
+    _ghostty_cache_put(d, tty, found)
+    return found
+
+
+def _hook_or_transcript_busy(d, ref, rec):
+    """Two witnesses shared by every target kind (Herdr adds its own pane status on top): the
+    hook record's own state, and the transcript itself (a turn with no final reply yet — catches
+    e.g. an interrupted turn whose hook record lagged)."""
+    if rec.get('state') == 'working':
+        return True
+    try:
+        from activity import activity_list
+        row = next((a for a in activity_list(d.HOME, d.DISPATCH_DIR, d.load_index()) if a.get('session_id') == ref['session_id']), None)
+        return bool(row and row.get('state') == 'working' and not row.get('stale'))
+    except Exception:
+        return False
+
+
+def ghostty_target(d, ref):
+    """When `ref`'s agent process tree is hosted inside a plain Ghostty window (not Herdr), the
+    terminal surface running it — or None when it plainly isn't a Ghostty session (no hook
+    record, or its process tree isn't under Ghostty at all). Once we know it *is* Ghostty-hosted,
+    any further failure to pin down exactly one terminal is a Rejected with a specific message,
+    not a silent None — the caller should not fall back to the generic "can't find it" wording."""
+    records = []
+    for name in os.listdir(d.SESS_DIR) if os.path.isdir(d.SESS_DIR) else []:
+        try:
+            with open(os.path.join(d.SESS_DIR, name)) as f:
+                records.append(json.load(f))
+        except (OSError, ValueError):
+            pass
+    rec = next((r for r in records if r.get('session_id') == ref['session_id'] and r.get('agent') == ref['agent']), None)
+    if not rec or not rec.get('agent_pid'):
+        return None
+    pid = rec['agent_pid']
+    if any(r.get('agent_pid') == pid and r.get('session_id') != ref['session_id'] and r.get('last_at', 0) >= rec.get('last_at', 0) for r in records):
+        return None
+    table = _ps_table_tty()
+    if pid not in table:
+        return None
+    tty = _ghostty_tty(pid, table)
+    if not tty:
+        return None
+    term_id = _ghostty_terminal_id(d, tty)
+    if term_id is None:
+        raise Rejected('在 Ghostty 里没能唯一定位到这个会话的窗口（可能有几个标签同名或同目录），没有发送；可以先在电脑上手动切到那个窗口，或点「接进 Herdr 再发」。')
+    working = _hook_or_transcript_busy(d, ref, rec)
+    label = 'Agent 正在执行：可以排队（本轮结束就看到）或打断' if working else '回复到 Ghostty 里的原会话'
+    return {'kind': 'ghostty', 'terminal_id': term_id, 'working': working, 'label': label}
+
+
+def ghostty_submit(d, ref, t, text, wire, mode, images, attach):
+    """Deliver into the Ghostty terminal `target()` resolved. Re-resolves right before sending —
+    a window can close between status() and send — and refuses if it now points somewhere else,
+    same discipline as the Herdr path's own pid re-check. One AppleScript does the whole
+    sequence in order: Esc first when interrupting a busy turn, each image path pasted alone with
+    a beat after (Claude Code only turns a lone pasted path into an attachment — the same trick
+    the Herdr path uses), the words, Enter."""
+    check = ghostty_target(d, ref)
+    if check is None or check['terminal_id'] != t['terminal_id']:
+        raise Rejected('会话位置发生变化，消息未发送，请重试。')
+    term_id = check['terminal_id']
+    lines = ['tell application "Ghostty"']
+    if check['working'] and mode == 'interrupt':
+        lines.append('send key "escape" to terminal id %s' % _as_lit(term_id))
+        lines.append('delay 1.2')
+    if attach:
+        for p in images:
+            lines.append('input text %s to terminal id %s' % (_as_lit(p), _as_lit(term_id)))
+            lines.append('delay 0.9')
+        lines.append('input text %s to terminal id %s' % (_as_lit(' ' + text.strip()), _as_lit(term_id)))
+    else:
+        lines.append('input text %s to terminal id %s' % (_as_lit(wire), _as_lit(term_id)))
+    lines.append('send key "enter" to terminal id %s' % _as_lit(term_id))
+    lines.append('end tell')
+    timeout = 10 + len(images) * 2 + (2 if check['working'] and mode == 'interrupt' else 0)
+    _osascript_file('\n'.join(lines) + '\n', timeout=timeout)
+    if check['working']:
+        return '已打断并送达，Agent 会先处理这条' if mode == 'interrupt' else '已排队，本轮结束后 Agent 就会看到'
+    return '已送达 Ghostty 里的原会话'
 
 
 def target(d, ref):
@@ -369,7 +596,17 @@ def target(d, ref):
     if ref['agent'] in ('claude-code', 'pi', 'codex'):
         # A working agent can still take a message: the TUIs queue typed input for the next turn,
         # and Esc interrupts the current one — the app offers both.
-        pane = herdr_target(d, ref, require_idle=False)
+        try:
+            pane = herdr_target(d, ref, require_idle=False)
+        except Rejected as herdr_err:
+            # Not in Herdr — maybe it's a plain Ghostty window instead. A definite Ghostty
+            # failure (found it, couldn't pin the exact terminal) surfaces its own message;
+            # "not Ghostty at all" falls through to the original Herdr rejection (and its
+            # adoptable-elsewhere hint from status()).
+            g = ghostty_target(d, ref)
+            if g is not None:
+                return g
+            raise herdr_err
         working = bool(pane.get('busy'))
         return {'kind': 'herdr', 'pane': pane, 'working': working, 'label': 'Agent 正在执行：可以排队（本轮结束就看到）或打断' if working else '回复到电脑上的原会话'}
     raise Rejected('此 Agent 暂未提供直接回复接口。可打开电脑屏幕继续对话。')
@@ -465,6 +702,8 @@ def status(d, ref):
     try:
         t = target(d, ref)
         extra = tui_state(d, t['pane']['pane_id']) if t['kind'] == 'herdr' and ref['agent'] == 'claude-code' else {}
+        if t['kind'] == 'ghostty':
+            extra = dict(extra, terminal='ghostty')
         return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts, **({'desktop': t['desktop']} if t.get('desktop') else {}), **extra)
     except Exception as e:
         info = dict(available=False, label=str(e) if isinstance(e, Rejected) else '暂时无法连接原 Agent，请重新连接。', receipts=receipts)
@@ -513,7 +752,6 @@ def submit(d, ref, text, request_id, mode='queue', images=()):
     except (ValueError, TypeError):
         raise Rejected('无效的消息编号，请刷新页面。')
     digest = hashlib.sha256((ref['agent'] + '\0' + ref['session_id'] + '\0' + text + '\0' + '\n'.join(images)).encode()).hexdigest()
-    _ensure_reachable(d, ref)
     with closing(connect(d)) as db, db:
         db.execute('BEGIN IMMEDIATE')
         old = db.execute('SELECT * FROM replies WHERE id=?', (request_id,)).fetchone()
@@ -529,7 +767,7 @@ def submit(d, ref, text, request_id, mode='queue', images=()):
         t = target(d, ref)
         # Claude Code takes pictures as attachments (each path pasted alone becomes [Image #n]); the
         # others read them from a note in the text. The receipt keeps the text only.
-        attach = bool(images) and t['kind'] == 'herdr' and ref['agent'] == 'claude-code'
+        attach = bool(images) and t['kind'] in ('herdr', 'ghostty') and ref['agent'] == 'claude-code'
         wire = text if attach else with_images(text, images)
         db.execute('INSERT INTO replies VALUES (?,?,?,?,?,?,?,?)', (request_id, ref['session_id'], ref['agent'], digest, with_images(text, images) if not attach else text, 'sending', '正在发送', time.time()))
     state, note = 'accepted', ''
@@ -537,6 +775,8 @@ def submit(d, ref, text, request_id, mode='queue', images=()):
         if t['kind'] == 'codex-desktop':
             with closing(DesktopIPC(d.HOME)) as ipc:
                 note = ipc.send(ref, wire, request_id)
+        elif t['kind'] == 'ghostty':
+            note = ghostty_submit(d, ref, t, text, wire, mode, images, attach)
         else:
             pane = herdr_target(d, ref, require_idle=False)
             focus = d.herdr(None, ['tab', 'focus', pane['tab_id']])

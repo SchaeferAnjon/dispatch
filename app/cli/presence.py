@@ -11,26 +11,34 @@ import json, os, sys, time, subprocess, glob
 DIR = os.path.expanduser("~/tasks/.dispatch/sessions")
 
 SHELLS = {"sh", "bash", "zsh", "fish", "-fish", "-zsh", "-bash", "login", "python3", "python", "env", "node"}
-# comm/app name → (kind, label)
+# comm/app name → (kind, label). Matched with a leading "/" so a real bundle path
+# ("/Applications/Ghostty.app/...") always matches, but "Code.app/" never fires on
+# "ClaudeCode.app/" — the CLI's own self-update wrapper, not a real host app (see below).
 APPS = [
-    ("Codex.app/", ("desktop", "Codex 桌面端")),
-    ("Claude.app/", ("desktop", "Claude 桌面端")),
-    ("ChatGPT.app/", ("desktop", "ChatGPT 桌面端")),
-    ("Cursor.app/", ("editor", "Cursor")),
-    ("Visual Studio Code.app/", ("editor", "VS Code")),
-    ("Code.app/", ("editor", "VS Code")),
-    ("Windsurf.app/", ("editor", "Windsurf")),
-    ("Zed.app/", ("editor", "Zed")),
-    ("Warp.app/", ("terminal", "Warp")),
-    ("iTerm.app/", ("terminal", "iTerm2")),
-    ("Terminal.app/", ("terminal", "Terminal")),
-    ("Ghostty.app/", ("terminal", "Ghostty")),
-    ("kitty.app/", ("terminal", "kitty")),
-    ("Alacritty.app/", ("terminal", "Alacritty")),
-    ("WezTerm.app/", ("terminal", "WezTerm")),
-    ("Hyper.app/", ("terminal", "Hyper")),
+    ("/Codex.app/", ("desktop", "Codex 桌面端")),
+    ("/Claude.app/", ("desktop", "Claude 桌面端")),
+    ("/ChatGPT.app/", ("desktop", "ChatGPT 桌面端")),
+    ("/Cursor.app/", ("editor", "Cursor")),
+    ("/Visual Studio Code.app/", ("editor", "VS Code")),
+    ("/Code.app/", ("editor", "VS Code")),
+    ("/Windsurf.app/", ("editor", "Windsurf")),
+    ("/Zed.app/", ("editor", "Zed")),
+    ("/Warp.app/", ("terminal", "Warp")),
+    ("/iTerm.app/", ("terminal", "iTerm2")),
+    ("/Terminal.app/", ("terminal", "Terminal")),
+    ("/Ghostty.app/", ("terminal", "Ghostty")),
+    ("/kitty.app/", ("terminal", "kitty")),
+    ("/Alacritty.app/", ("terminal", "Alacritty")),
+    ("/WezTerm.app/", ("terminal", "WezTerm")),
+    ("/Hyper.app/", ("terminal", "Hyper")),
 ]
 BARE = {"herdr": ("terminal", "Herdr"), "tmux": ("terminal", "tmux"), "zellij": ("terminal", "zellij"), "screen": ("terminal", "screen")}
+# The `claude` CLI re-execs itself through its own updater wrapper on the way up from any
+# terminal (…/​.local/share/claude/ClaudeCode.app/Contents/MacOS/claude, then a versioned
+# binary) — not a hosting app. Left unskipped, "ClaudeCode.app/" used to satisfy the bare
+# "Code.app/" pattern above and get misread as VS Code, hiding the real host (e.g. Ghostty)
+# one hop further up the chain.
+_CLAUDE_CLI_OWN_PATH = "/.local/share/claude/"
 
 
 def ps_table():
@@ -46,6 +54,8 @@ def ps_table():
 def classify(chain):
     """chain: list of comm strings from the hook's parent upward."""
     for comm in chain:
+        if _CLAUDE_CLI_OWN_PATH in comm:
+            continue  # the CLI's own updater wrapper — keep climbing to the real host
         for key, val in APPS:
             if key in comm:
                 return val
