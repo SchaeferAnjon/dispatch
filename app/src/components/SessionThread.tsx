@@ -96,13 +96,9 @@ function Reasoning(p: ReasoningMessagePartProps) {
   const text = (p.text || "").trim();
   // No readable thinking (signature only, redacted, summaries off): one quiet line, not a fold.
   if (!text) return <div className={`tl-think bare${running ? " running" : ""}`}><span className="think-mark">💭</span>{running ? <span className="shimmer">思考中…</span> : <span className="muted">思考了{p.unstable_summary ? ` · ${p.unstable_summary}` : ""}</span>}</div>;
-  const first = text.split("\n").find((l) => l.trim()) ?? "";
-  return (
-    <details className="tl-think">
-      <summary><span className="think-mark">💭</span><span className="think-peek">{first.length > 120 ? first.slice(0, 120) + "…" : first}</span></summary>
-      <div className="think-body sel-text">{text}</div>
-    </details>
-  );
+  // Shown whole, the way the terminal prints it: these are often the agent's running commentary
+  // ("found it: …, next I'll …"), unreadable as a one-line peek. Muted so replies still stand out.
+  return <div className="tl-think shown"><span className="think-mark">💭</span><div className="think-text sel-text"><Markdown src={text} className="compact" /></div></div>;
 }
 
 const ARG_ORDER = ["command", "cmd", "file_path", "filePath", "path", "pattern", "url", "prompt", "description", "query", "old_string", "new_string"];
@@ -121,8 +117,10 @@ function CardView({ name, status, summary, input, result, ts, shell }: { name: s
   const blocks = useMemo(() => (diff ? diffRows(diff) : null), [diff]);
   const stat = useMemo(() => blocks?.reduce((s, b) => { const d = diffStat(b.rows); return { add: s.add + d.add, del: s.del + d.del }; }, { add: 0, del: 0 }), [blocks]);
   const path = diff ? relPath(diff.path, cwd) || "?" : "";
+  // Like the terminal, a small change is shown opened; a big one stays one line until tapped.
+  const [open, setOpen] = useState(() => !!blocks && blocks.reduce((n, b) => n + b.rows.length, 0) <= 40);
   return (
-    <details className={`tool-card ${status}${diff ? " edit-card" : ""}`}>
+    <details className={`tool-card ${status}${diff ? " edit-card" : ""}`} open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary title={diff ? diff.path : summary || undefined}>
         <span className={`tool-status ${status}`} aria-label={STATUS_TEXT[status]}>{status === "running" ? <span className="spin" /> : STATUS_MARK[status]}</span>
         {diff ? (

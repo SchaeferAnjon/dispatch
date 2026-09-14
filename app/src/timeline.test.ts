@@ -28,6 +28,11 @@ describe("visibleTurns", () => {
     const bare = visibleTurns([msg("user", [{ type: "text", text: "嗯" }]), msg("assistant", [{ type: "thinking", text: "" }, { type: "text", text: "好" }])], opts);
     expect(bare[1].blocks!.map((b) => b.type)).toEqual(["text"]);
   });
+  it("an edit is never folded away: it stays a card between the folds around it", () => {
+    const v = visibleTurns([msg("user", [{ type: "text", text: "改" }]), msg("assistant", [tool("r", "Read", "done"), tool("e", "Edit", "done"), tool("b", "Bash", "done"), tool("w", "functions.Write", "done")])], opts);
+    expect(v[1].blocks!.map((b) => (b.type === "tool_call" ? b.id : b.type))).toEqual(["tool_fold", "e", "tool_fold", "w"]);
+  });
+
   it("consecutive tool-only turns read as one fold; the running call stays a card", () => {
     const run = [
       msg("user", [{ type: "text", text: "跑" }]),

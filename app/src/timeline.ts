@@ -60,6 +60,8 @@ export function visibleTurns(messages: TimelineMsg[], o: ViewOptions): TimelineM
       keep = [];
       let run: ToolBlock[] | null = null;
       for (const b of blocks) {
+        // An edit is what you want to see (the terminal prints its diff): it stays a card of its own.
+        if (b.type === "tool_call" && EDIT.has(b.name.split(".").pop() || b.name)) { run = null; keep.push(b); continue; }
         if (b.type === "tool_call" && !(live && b.status === "running")) { if (!run) { run = []; keep.push({ type: "tool_fold", tools: run }); } run.push(b); continue; }
         run = null;
         // Real thinking stays (folded); a signature-only thinking line says nothing and goes.

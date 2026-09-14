@@ -228,7 +228,8 @@ export function diffRows(diff: ToolDiff): { label?: string; rows: DiffRow[] }[] 
 
 // A tool call's file_path is absolute; show it relative to the session's cwd when it lives there.
 export function relPath(full: string, cwd?: string): string {
-  if (!full || !cwd) return full;
+  const home = (p: string) => p.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
+  if (!full || !cwd) return full ? home(full) : full;
   const base = cwd.replace(/\/+$/, "");
-  return full === base ? full : full.startsWith(base + "/") ? full.slice(base.length + 1) : full;
+  return full === base ? home(full) : full.startsWith(base + "/") ? full.slice(base.length + 1) : home(full);
 }
