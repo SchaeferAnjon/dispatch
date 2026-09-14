@@ -3541,7 +3541,8 @@ def cmd_need_you(a):
     the person ticks it off there."""
     title, cut = trim_title(a.title or "")
     if cut:
-        print(f"⚠ 标题超过 {TITLE_MAX} 字，已截为「{title}」", file=sys.stderr)
+        print(f"⚠ 标题超过 {TITLE_MAX} 字，已截为「{title}」；完整的一句记进描述", file=sys.stderr)
+        a.desc = f"{(a.title or '').strip()}\n\n{a.desc or ''}".rstrip()
     labels = ["dispatch:needs-you", f"host:{local_host_name()}"] + ([f"project:{a.project}"] if a.project else [])
     sid = os.environ.get('CODEX_THREAD_ID') or os.environ.get('CLAUDE_SESSION_ID') or os.environ.get('CLAUDE_CODE_SESSION_ID')
     if sid and re.fullmatch(r'[A-Za-z0-9_-]{8,120}', sid):
