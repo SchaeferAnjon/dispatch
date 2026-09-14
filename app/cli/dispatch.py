@@ -418,9 +418,12 @@ def remote_dispatch(h, args, ttl, timeout=12, background=False):
     So a cold cache still blocks once, briefly (bounded by `timeout` the same as the blocking
     path below): it kicks the same detached refresh and polls for its cache file, rather than
     running its own second ssh, so two cold callers for the same host+command still make one ssh
-    call between them. Use background=True where the page must paint now and slightly old
-    remote rows are fine (`here`, `docs`); callers that need the answer itself keep the
-    blocking default."""
+    call between them. It stops waiting as soon as that refresh has actually finished — its lock
+    file gone, or a `.down` marker freshly written during the wait — instead of always sitting
+    out the full timeout when the host is simply unreachable (asleep, off Tailscale): otherwise
+    every cold page-open against a down host would hang for the whole `timeout`. Use
+    background=True where the page must paint now and slightly old remote rows are fine (`here`,
+    `docs`); callers that need the answer itself keep the blocking default."""
     import shlex
     os.makedirs(REMOTE_DIR, exist_ok=True)
     cache = remote_cache_path(h, args)
@@ -449,12 +452,21 @@ def remote_dispatch(h, args, ttl, timeout=12, background=False):
         if cache_exists:
             _spawn_remote_refresh(h, args, timeout)
             return stale()
-        _spawn_remote_refresh(h, args, timeout)
-        deadline = time.time() + timeout + 3   # a little slack past the subprocess's own ssh timeout for its startup
+        lock = remote_cache_path(h, args)[:-5] + ".lock"
+        wait_start = time.time()
+        _spawn_remote_refresh(h, args, timeout)   # creates/touches `lock` before returning — no race with the checks below
+        deadline = wait_start + timeout + 3        # a little slack past the subprocess's own ssh timeout for its startup
         while time.time() < deadline:
             got = stale()
             if got is not None:
                 return got
+            if not os.path.exists(lock):
+                return None   # the refresh (ours or another caller's) already ended with no cache — no point waiting out the timeout
+            try:
+                if os.stat(down).st_mtime >= wait_start:
+                    return None   # ...or it just found the host unreachable and wrote a fresh .down
+            except OSError:
+                pass
             time.sleep(0.2)
         return stale()
     # The remote login shell is fish, so use `env` rather than FOO=bar prefixes.
@@ -489,14 +501,20 @@ def remote_dispatch(h, args, ttl, timeout=12, background=False):
 
 def cmd_remote_refresh(a):
     """The detached half of remote_dispatch(background=True): do the ssh, write the cache, drop
-    the lock. Not meant to be typed — prints nothing, so it can be spawned and forgotten."""
+    the lock. Not meant to be typed — prints nothing, so it can be spawned and forgotten.
+
+    The lock always comes off, exception included: a cold caller in remote_dispatch is watching
+    it (and the `.down` marker) to know the refresh has ended even when it produced no cache, so
+    a stuck lock would make that caller sit out its full wait for no reason."""
     h = next((x for x in hosts() if x.get("id") == a.host), {"id": a.host})
-    if h.get("ssh"):
-        remote_dispatch(h, a.args, 0, timeout=max(5, a.timeout))
     try:
-        os.remove(remote_cache_path(h, a.args)[:-5] + ".lock")  # even when the host is gone, or the next open never refreshes
-    except OSError:
-        pass
+        if h.get("ssh"):
+            remote_dispatch(h, a.args, 0, timeout=max(5, a.timeout))
+    finally:
+        try:
+            os.remove(remote_cache_path(h, a.args)[:-5] + ".lock")  # even when the host is gone, or the next open never refreshes
+        except OSError:
+            pass
 
 
 def tailscale_ip():

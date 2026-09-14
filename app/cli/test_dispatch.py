@@ -1530,14 +1530,58 @@ class RemoteBackground(unittest.TestCase):
         self.assertEqual(pop.call_count, 1)
 
     def test_cold_cache_gives_up_and_answers_none_if_the_refresh_never_lands(self):
+        # A refresh that neither produces a cache nor ever ends (lock and no .down stay in place
+        # throughout — unlike the two regression tests below) still must not wait forever: the
+        # timeout is the backstop. timeout=5 leaves comfortable margin over the couple of extra
+        # `time.time()` calls the spawn/lock bookkeeping makes against the fake clock's fixed step.
         clock = _StepClock()
         with patch("subprocess.Popen") as pop, \
              patch("subprocess.run", side_effect=AssertionError("ssh 不该在前台跑")), \
              patch("time.time", side_effect=clock), patch("time.sleep", return_value=None) as sl:
-            self.assertIsNone(dispatch.remote_dispatch(self.h, self.args, 30, timeout=1, background=True))
+            self.assertIsNone(dispatch.remote_dispatch(self.h, self.args, 30, timeout=5, background=True))
         self.assertEqual(pop.call_count, 1)      # exactly one refresh spawned, not one per poll
         self.assertTrue(sl.called)               # it waited for the refresh rather than answering instantly
         self.assertIsNone(dispatch.remote_cache_age(self.h, self.args))
+
+    def test_cold_cache_stops_waiting_once_the_refresh_ends_without_a_cache(self):
+        """Regression: a host that is simply unreachable (asleep, off Tailscale) must not make a
+        cold caller sit out the full timeout (~48s for `here`) — once the detached refresh has
+        actually ended (its lock gone, exactly what cmd_remote_refresh does on every exit path,
+        cache or not) there is nothing left to wait for."""
+        lock = dispatch.remote_cache_path(self.h, self.args)[:-5] + ".lock"
+
+        def fake_popen(cmd, **kw):
+            # stands in for the whole detached `dispatch remote-refresh …` run finishing near
+            # instantly with nothing to show for it — e.g. ssh couldn't even connect — and
+            # dropping its lock the way cmd_remote_refresh always does.
+            os.remove(lock)
+            return unittest.mock.MagicMock()
+
+        with patch("subprocess.Popen", side_effect=fake_popen), \
+             patch("subprocess.run", side_effect=AssertionError("ssh 不该直接在这里跑")):
+            t0 = time.time()
+            r = dispatch.remote_dispatch(self.h, self.args, 30, timeout=45, background=True)
+            elapsed = time.time() - t0
+        self.assertIsNone(r)
+        self.assertLess(elapsed, 2)   # nowhere near the 48s worst case a stuck wait would cost
+
+    def test_cold_cache_stops_waiting_once_a_fresh_down_marker_appears(self):
+        """Same regression, the other exit a failed refresh takes: ConnectTimeout/ssh-unreachable
+        writes `<host>.down` instead of removing the lock outright — that must also end the
+        wait immediately rather than only once the timeout elapses."""
+        down = os.path.join(self.dir, f"{self.h['id']}.down")
+
+        def fake_popen(cmd, **kw):
+            open(down, "w").close()   # what the blocking ssh path writes on ConnectionError/TimeoutExpired
+            return unittest.mock.MagicMock()
+
+        with patch("subprocess.Popen", side_effect=fake_popen), \
+             patch("subprocess.run", side_effect=AssertionError("ssh 不该直接在这里跑")):
+            t0 = time.time()
+            r = dispatch.remote_dispatch(self.h, self.args, 30, timeout=45, background=True)
+            elapsed = time.time() - t0
+        self.assertIsNone(r)
+        self.assertLess(elapsed, 2)
 
     def test_second_cold_caller_reuses_the_in_flight_refresh_instead_of_spawning_another(self):
         lock = dispatch.remote_cache_path(self.h, self.args)[:-5] + ".lock"
