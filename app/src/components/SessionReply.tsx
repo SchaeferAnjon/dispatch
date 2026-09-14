@@ -238,9 +238,9 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
           else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(menu[Math.min(cursor, menu.length - 1)]); }
           else if (e.key === 'Escape') { e.preventDefault(); setMenuClosed(draft); }
         }} />
-      <button className="btn reply-expand" type="button" onClick={() => { setBig(b => !b); textarea.current?.focus(); }} title={big ? '收起输入框' : '放大输入框'} aria-label={big ? '收起输入框' : '放大输入框'}>{big ? '⤡' : '⤢'}</button>
-      {connection?.working && <button className="btn" type="button" disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title="先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导">打断并发送</button>}
-      <button className="btn primary" type="submit" disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} title={connection?.working ? '排进队列，本轮结束 Agent 就会看到' : undefined}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : connection?.working ? '排队发送' : '发送'}</button>
+      <button className="btn reply-expand" type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setBig(b => !b); textarea.current?.focus(); }} title={big ? '收起输入框' : '放大输入框'} aria-label={big ? '收起输入框' : '放大输入框'}>{big ? '⤡' : '⤢'}</button>
+      {connection?.working && <button className="btn" type="button" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title="先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导">打断并发送</button>}
+      <button className="btn primary" type="submit" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} title={connection?.working ? '排进队列，本轮结束 Agent 就会看到' : undefined}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : connection?.working ? '排队发送' : '发送'}</button>
     </form>
     {(error || unknown || last?.state==='failed') && <div className="reply-error" role="alert">{error || last?.note}{unknown && <><button className="link" onClick={() => { setReceipt(null); void load(); }}>检查送达状态</button><button className="link" onClick={()=>{setDismissed(last.id);forgetAttempt();setError('');}}>已核对，继续编辑</button></>}</div>}
   </section>;

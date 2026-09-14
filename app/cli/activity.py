@@ -169,11 +169,15 @@ def observe(state, d):
     raw_user = text if role == 'user' else ''
     if role == 'user': text = user_text(text)
     if not ts: return
-    if role == 'user' and raw_user.strip() and not text.strip() and '<task-notification' not in raw_user:
-        # A harness event (hook, command echo). Remember when, so the reply it provokes is not
-        # counted as an answer the person is waiting for. A background task finishing is different:
-        # the report the agent writes after it is the reply the person actually waits for.
-        state['synthetic_at'] = max(ts, state.get('synthetic_at', 0))
+    if role == 'user' and raw_user.strip() and not text.strip():
+        if '<task-notification' in raw_user:
+            # A background task finishing is not harness noise: the report the agent writes after it
+            # is the reply the person actually waits for, so earlier hook events stop counting.
+            state['synthetic_at'] = 0
+        else:
+            # A harness event (hook, command echo). Remember when, so the reply it provokes is not
+            # counted as an answer the person is waiting for.
+            state['synthetic_at'] = max(ts, state.get('synthetic_at', 0))
     events = state.setdefault('events', [])
     def event(kind, summary, **extra):
         eid = hashlib.sha256((str(ts)+kind+summary).encode()).hexdigest()[:20]
