@@ -717,7 +717,7 @@ def move_project(name, to, dry=False, force=False, keep_original=False, prompt_e
             "git": {k: v for k, v in git.items() if not k.startswith("_")}, "files": plan_files(h, top, remote_top, git)}
     live = [s for s in D.live_sessions(local_only=True) if s.get("agent") in ("claude-code", "codex") and not str(s.get("session_id", "")).startswith("pid-")
             and (os.path.normpath(s.get("cwd") or "") == top or os.path.normpath(s.get("cwd") or "").startswith(top + os.sep))]
-    plan["sessions"] = [{"session_id": s["session_id"], "agent": s["agent"], "title": s.get("title") or "", "state": s.get("state")} for s in live]
+    plan["sessions"] = [{"session_id": s["session_id"], "agent": s["agent"], "title": s.get("title") or (s.get("herdr") or {}).get("title") or os.path.basename(s.get("cwd") or ""), "state": s.get("state")} for s in live]
     history = project_history(top, {s["session_id"] for s in live})
     plan["history"] = {"count": len(history), "mb": round(sum(os.path.getsize(r["path"]) for r in history) / 1e6)}
     if dry:
