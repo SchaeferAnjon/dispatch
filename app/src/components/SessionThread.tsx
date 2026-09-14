@@ -35,7 +35,7 @@ function toMessages(list: TimelineMsg[], name: string, running: boolean): Msg[] 
     if (x.role === "gap") { out.push({ id, role: "system", content: [{ type: "text", text: x.text || "…" }], metadata: { custom: { kind: "gap", text: x.text } } }); return; }
     if (x.synthetic) { out.push({ id, role: "system", content: [{ type: "text", text: x.text || "…" }], metadata: { custom: { kind: "system", text: x.text, images: x.images } } }); return; }
     if (x.role === "user" || x.role === "tool") {
-      out.push({ id, role: "user", content: [{ type: "text", text: x.text || (x.images?.length ? "[图片]" : "…") }], metadata: { custom: { kind: "turn", role: x.role, name: x.role === "user" ? "你" : "工具", ts: x.ts, cont: x.role === "tool" && out[out.length - 1]?.role === "assistant", images: x.images, tools: {}, folds: {} } } });
+      out.push({ id, role: "user", content: [{ type: "text", text: x.text || (x.images?.length ? "[图片]" : "…") }], metadata: { custom: { kind: "turn", role: x.role, name: x.role === "user" ? (x.queued ? "你 · 排队时发的" : "你") : "工具", ts: x.ts, cont: x.role === "tool" && out[out.length - 1]?.role === "assistant", images: x.images, tools: {}, folds: {} } } });
       return;
     }
     const blocks = blocksOf(x);

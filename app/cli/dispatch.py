@@ -2349,6 +2349,21 @@ def read_session_detail(ref, limit=400, since=None):
             if not isinstance(d, dict):
                 continue
             t = d.get("type")
+            if t == "attachment" and ref["agent"] == "claude-code":
+                # A message the person queued while Claude Code was working: it never becomes a user
+                # turn — Claude Code folds it into the running turn and logs this record at that moment.
+                # Show it as the person's message so the conversation reads the way it happened.
+                att = d.get("attachment") if isinstance(d.get("attachment"), dict) else {}
+                prompt = str(att.get("prompt") or "")
+                if att.get("type") == "queued_command" and prompt.strip():
+                    ts_q = d.get("timestamp") or att.get("timestamp") or ""
+                    if is_synthetic_user(prompt):
+                        # Background-task notices ride the same queue: a system event, not the person.
+                        m2 = re.search(r"<summary>([\s\S]*?)</summary>", prompt)
+                        other(tl.add(ts_q, "user", [{"type": "text", "text": (m2.group(1).strip() if m2 else prompt.strip())[:600]}], synthetic=True))
+                    else:
+                        other(tl.add(ts_q, "user", [{"type": "text", "text": prompt[:LONG_TEXT]}], queued=True))
+                continue
             if ref["agent"] == "pi":
                 if t != "message":
                     continue
