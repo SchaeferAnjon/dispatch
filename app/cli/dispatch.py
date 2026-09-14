@@ -2469,8 +2469,16 @@ def cmd_activity(a):
     from activity import activity_list
     rows = activity_list(HOME, DISPATCH_DIR, load_index())
     _tag_host(rows, {"id": "local", "name": local_host_name()})
+    key = getattr(a, "key", "") or ""
+    if key:
+        rows = [r for r in rows if r.get("key") == key or r.get("session_id") == key]
+    if not getattr(a, "events", False):
+        # The per-session event log is 80 % of this payload and only the open session's page reads
+        # it (`--events --key <key>`); the app polls this every few seconds, so leave it out here.
+        for r in rows:
+            r["events"] = []
     unavailable = []
-    if not a.local:
+    if not a.local and not key:
         for h in hosts():
             remote = remote_dispatch(h, ["activity", "--local"], 5)
             if not isinstance(remote, dict) or time.time() - remote.get("updated_at", 0) > 25:
@@ -7115,7 +7123,7 @@ def main():
     s = sub.add_parser('task', help='recoverable task removal'); s.add_argument('op', choices=['trash', 'restore']); s.add_argument('task'); s.add_argument('--json', action='store_true'); s.set_defaults(fn=cmd_task)
     s = sub.add_parser("sessions", help="live Agent sessions"); s.add_argument("--local", action="store_true", help="this Mac only (what other Macs ask for)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_sessions)
     s = sub.add_parser("attachment", help="read a file linked in a conversation; --thumbs returns every image as a small thumbnail in one call"); s.add_argument("key"); s.add_argument("ref", nargs="?", default=""); s.add_argument("--thumbs", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_attachment)
-    s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
+    s = sub.add_parser("activity", help="incremental conversation activity and unread replies"); s.add_argument("--local", action="store_true"); s.add_argument("--events", action="store_true", help="include each session's event log (large; the session page asks for one session with --key)"); s.add_argument("--key", default="", help="only this session (agent:session_id or session id)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_activity)
     s = sub.add_parser("editing", help="files each active session changed in the last 30 min, aggregated per file, with conflicts"); s.add_argument("--dir", help="only sessions working in this directory (default: every directory)"); s.add_argument("--window", type=int, default=30, help="minutes back to look (default 30)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_editing)
     s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days / task_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
     s = sub.add_parser("task-archive", help="archive closed tasks older than task_archive_days (default: the setting)"); s.add_argument("--days", type=int); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_task_archive)

@@ -104,6 +104,19 @@ export function SessionsView({ onBack, archivedProjects, refs, scriptCount, refs
   const [atLatest, setAtLatest] = useState(true);
   const [isVisible, setIsVisible] = useState(document.visibilityState === 'visible');
   const current = activities.find(a => a.session_id === sel);
+  // The event log is not in the activity feed any more (too big to poll for every session): the
+  // open session asks for its own while the 实时活动 dock is showing.
+  const [liveEvents, setLiveEvents] = useState<Activity["events"]>([]);
+  useEffect(() => {
+    setLiveEvents([]);
+    if (!current || !liveLog) return;
+    let alive = true;
+    const key = current.key, host = current.host || "local";
+    const tick = async () => { try { const raw = await api.on(host, ["activity", "--local", "--events", "--key", key, "--json"]); const d = JSON.parse(raw.slice(raw.indexOf("{"))) as { sessions: Activity[] }; if (alive) setLiveEvents(d.sessions[0]?.events ?? []); } catch { /* next tick */ } };
+    void tick();
+    const t = window.setInterval(tick, 5000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [current?.key, current?.host, liveLog, api]);
   useEffect(() => {
     const changed = () => setIsVisible(document.visibilityState === 'visible');
     document.addEventListener('visibilitychange', changed);
@@ -294,13 +307,13 @@ export function SessionsView({ onBack, archivedProjects, refs, scriptCount, refs
                     <span className="kinds" title="怎么看这段对话">
                       <button className={`chip${brief ? " on" : ""}`} onClick={toggleBrief} title="只显示你的问题和每一轮最后的回复，不看思考和工具调用">只看结论</button>
                       <button className={`chip${kinds.tool ? " on" : ""}`} disabled={brief} onClick={() => flip("tool")} title="显示或隐藏工具调用卡片（正在运行的总会显示）">工具调用 <span className="mono muted">{nT}</span></button>
-                      {current && <button className={`chip${liveLog ? " on" : ""}`} onClick={toggleLiveLog} title="在对话上方显示 Agent 正在做的事：工具调用、回复、报错，最新在前">实时活动 <span className="mono muted">{current.events.filter((e) => e.kind !== "result").length}</span></button>}
+                      {current && <button className={`chip${liveLog ? " on" : ""}`} onClick={toggleLiveLog} title="在对话上方显示 Agent 正在做的事：工具调用、回复、报错，最新在前">实时活动 <span className="mono muted">{(liveLog ? liveEvents : current.events).filter((e) => e.kind !== "result").length}</span></button>}
                     </span>
                   );
                 })()}
               </div>
               {tab === 'timeline' && current && liveLog && (() => {
-                const ev = current.events.filter((e) => e.kind !== 'result').slice(-40).reverse();
+                const ev = liveEvents.filter((e) => e.kind !== 'result').slice(-40).reverse();
                 const label = (k: string) => k === 'error' ? '执行失败' : k === 'user' ? '你的消息' : k === 'reply' ? 'Agent 回复' : '进展';
                 return <div className={`activity-dock${dockOpen ? "" : " folded"}`} aria-label="实时活动" onClick={() => setDockOpen((o) => !o)}>{ev.length === 0 ? <div className="muted small">还没有记录到活动</div> : ev.map((e) => <div key={e.id} className={`activity-event ${e.kind}`} title={e.text}><span className="muted mono small">{new Date(e.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false })}</span><b>{e.kind === 'tool' ? e.tool : label(e.kind)}</b><span className="t">{e.text}</span></div>)}</div>;
               })()}
