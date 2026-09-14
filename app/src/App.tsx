@@ -515,6 +515,8 @@ export default function App() {
   const inArchivedProject = useCallback((x: { cwd: string; project: string; project_override?: string }) => isArchived(projectFlags, resolveProject(x, known, settings.workspace_roots)), [projectFlags, known, settings.workspace_roots]);
   const inbox = useMemo<InboxItems>(() => { const unread = activityF.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)); return {
     unread,
+    // Conversations working right now (transcript still moving), most recent first.
+    running: activityF.filter(a => a.state === "working" && !a.stale && !a.scheduled && !a.archived && !inArchivedProject(a)).sort((a, b) => b.last_at - a.last_at),
     // Read replies of the last week, newest first: what was in 未读回复 and has been looked at.
     read: activityF.filter(a => a.reply_id && !a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && (a.reply_at ?? 0) > Date.now() / 1000 - 7 * 86400).sort((a, b) => (b.reply_at ?? 0) - (a.reply_at ?? 0)).slice(0, 60),
     waiting: presenceF.sessions.filter((s) => !s.daemon && needsAttention(s) && !s.scheduled && !inArchivedProject(s)).sort((a, b) => b.last_at - a.last_at),

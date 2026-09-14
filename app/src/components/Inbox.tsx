@@ -5,7 +5,7 @@ import { ConversationRows } from "./Workspace";
 import type { Activity, Issue, Session } from "../types";
 import { Avatar, Pri, ProjectTag } from "./ui";
 
-export interface InboxItems { unread: Activity[]; read: Activity[]; waiting: Session[]; idle: Session[]; review: Issue[]; blocked: Issue[] }
+export interface InboxItems { unread: Activity[]; running: Activity[]; read: Activity[]; waiting: Session[]; idle: Session[]; review: Issue[]; blocked: Issue[] }
 
 interface Props { onSummarize?: (a: Activity) => Promise<void>; onRead: (a: Activity) => Promise<void>; onOpen: (id: string) => void; initialTab?: keyof InboxItems | null; items: InboxItems; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void }
 
@@ -19,11 +19,12 @@ export function InboxView({ onSummarize, onRead, onOpen, initialTab, items, me, 
   return (
     <div className="inbox">
       <div className="inbox-tabs views" aria-label="待处理分类">
-        {([["unread", "未读回复"], ["read", "已读"], ["waiting", "等待确认"], ["blocked", "被卡住"], ["review", "Agent 复核"], ["idle", "空闲会话"]] as const).map(([key, label]) => <button key={key} className={`${tab === key ? "on" : ""}${items[key].length === 0 ? " zero" : ""}`} aria-pressed={tab === key} onClick={() => setTab(key)}>{label} <span className="mono">{items[key].length}</span></button>)}
+        {([["unread", "未读回复"], ["running", "在跑"], ["read", "已读"], ["waiting", "等待确认"], ["blocked", "被卡住"], ["review", "Agent 复核"], ["idle", "空闲会话"]] as const).map(([key, label]) => <button key={key} className={`${tab === key ? "on" : ""}${items[key].length === 0 ? " zero" : ""}`} aria-pressed={tab === key} onClick={() => setTab(key)}>{label} <span className="mono">{items[key].length}</span></button>)}
       </div>
-      {(total > 0 || tab === "review" || tab === "idle" || tab === "read") && items[tab].length === 0 && <div className="empty">{tab === "read" ? "最近七天没有读过的回复" : "这个分类没有待处理事项"}</div>}
-      {total === 0 && tab !== "idle" && tab !== "review" && tab !== "read" && <div className="empty big">✓ 暂时没有等我的事项<br /><span className="muted">新回复会出现在这里；读到最新后自动移出。</span></div>}
+      {(total > 0 || tab === "review" || tab === "idle" || tab === "read" || tab === "running") && items[tab].length === 0 && <div className="empty">{tab === "read" ? "最近七天没有读过的回复" : tab === "running" ? "现在没有在跑的会话" : "这个分类没有待处理事项"}</div>}
+      {total === 0 && tab !== "idle" && tab !== "review" && tab !== "read" && tab !== "running" && <div className="empty big">✓ 暂时没有等我的事项<br /><span className="muted">新回复会出现在这里；读到最新后自动移出。</span></div>}
       {tab === "unread" && items.unread.length > 1 && <div className="inbox-bulk"><span className="muted small">{items.unread.length} 条未读 · 每条只留一行摘要，展开看全文请「查看并回复」</span><button className="btn sm" disabled={readingAll} onClick={() => void readAll()}>{readingAll ? "标记中…" : "全部标记已读"}</button></div>}
+      {tab === "running" && items.running.length > 0 && <section><ConversationRows compact showProject onSummarize={onSummarize} onRead={onRead} rows={items.running} me={me} onOpen={onOpen}/></section>}
       {tab === "read" && items.read.length > 0 && <div className="inbox-bulk"><span className="muted small">最近七天读过的回复，最新在前；再看一眼或接着回复</span></div>}
       {tab === "read" && items.read.length > 0 && <section><ConversationRows compact showProject onSummarize={onSummarize} onRead={onRead} rows={items.read} me={me} onOpen={onOpen}/></section>}
       {tab === "unread" && [...new Set(items.unread.map(conversationProject))].map(project=><section key={project}><h3>{project}</h3><ConversationRows compact onSummarize={onSummarize} onRead={onRead} rows={items.unread.filter(a=>conversationProject(a)===project)} me={me} onOpen={onOpen}/></section>)}
