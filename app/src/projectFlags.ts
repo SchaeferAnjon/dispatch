@@ -35,6 +35,38 @@ export function withProjectFlag(flags: ProjectFlags, name: string, change: { sta
   return out;
 }
 
+// Which Mac a project lives on after it was handed over (`dispatch move` / `dispatch project <名> --move-to`).
+// Same key and shape as PROJECT_OWNERS_KEY in the CLI: the Mac's own name plus its Tailscale IP.
+export const PROJECT_OWNERS_KEY = "dispatch-project-owners";
+export type ProjectOwner = { host: string; ip: string; at: number };
+export function parseProjectOwners(memories: Memory[]): Record<string, ProjectOwner> {
+  const raw = memories.find((m) => m.key === PROJECT_OWNERS_KEY)?.value;
+  if (!raw) return {};
+  let d: unknown;
+  try { d = JSON.parse(raw); } catch { return {}; }
+  if (!d || typeof d !== "object" || Array.isArray(d)) return {};
+  const out: Record<string, ProjectOwner> = {};
+  for (const [name, v] of Object.entries(d as Record<string, unknown>)) {
+    const o = v as Partial<ProjectOwner> | null;
+    if (o && typeof o.host === "string" && o.host) out[name] = { host: o.host, ip: typeof o.ip === "string" ? o.ip : "", at: typeof o.at === "number" ? o.at : 0 };
+  }
+  return out;
+}
+// The hosts-list id ("local" for this Mac) an owner record points at: by name, an old name, or IP.
+export function ownerHostId(owner: ProjectOwner | undefined, hosts: { id: string; name: string; local?: boolean; aliases?: string[]; ip?: string }[]): string | undefined {
+  if (!owner) return undefined;
+  const h = hosts.find((x) => x.name === owner.host || (x.aliases ?? []).includes(owner.host) || (!!owner.ip && x.ip === owner.ip));
+  return h ? (h.local ? "local" : h.id) : undefined;
+}
+// Where 「新建会话」 opens for a project: on its owner Mac when it has one. A folder seen on the other
+// Mac becomes the same place under this one's home (dispatch move keeps home-relative paths).
+export function newSessionTarget(ownerId: string | undefined, ctx: { host?: string; cwd?: string } | undefined, fallback: string): { initialHost: string; initialCwd?: string } {
+  const ctxHost = ctx?.host || fallback;
+  if (!ownerId || ownerId === ctxHost) return { initialHost: ctxHost, initialCwd: ctx?.cwd };
+  const m = (ctx?.cwd || "").match(/^\/Users\/[^/]+(\/.*)?$/);
+  return { initialHost: ownerId, initialCwd: m ? `~${m[1] ?? ""}` : undefined };
+}
+
 // Shared settings live next to the flags, in their own memory (`dispatch settings`).
 export const SETTINGS_KEY = "dispatch-settings";
 export interface DispatchSettings { session_archive_days: number; task_archive_days: number; home_expanded: number; sdk_sessions_scheduled: boolean; workspace_roots: string[]; summary_auto: boolean; summary_model: string; summary_uses?: Record<string, number>; discuss_rules: string; discuss_persona_claude: string; discuss_persona_codex: string; discuss_persona_pi: string }

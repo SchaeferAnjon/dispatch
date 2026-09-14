@@ -18,7 +18,7 @@ import { InboxView, type InboxItems } from "./components/Inbox";
 import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
 import { SearchPalette } from "./components/Search";
-import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, parseProjectFlags, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags } from "./projectFlags";
+import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, newSessionTarget, ownerHostId, parseProjectFlags, parseProjectOwners, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags, type ProjectOwner } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
 import { SetupView, type InitStatus } from "./components/Setup";
 import type { PhoneHost, ScreenSetupResult, UpdateInfo } from "./components/Settings";
@@ -450,10 +450,11 @@ export default function App() {
   const projectRows = useMemo(()=>projectConversations(activityF,[...refsF.values()]),[activityF,refsF]);
   // 收藏 / 归档 per project: one shared bd memory, re-read whenever the board changes.
   const [projectFlags, setProjectFlags] = useState<ProjectFlags>({});
+  const [projectOwners, setProjectOwners] = useState<Record<string, ProjectOwner>>({});
   useEffect(() => {
     if (!api) return;
     let alive = true;
-    api.memories().then((m) => { if (alive) { setProjectFlags(parseProjectFlags(m)); setSettings(parseSettings(m)); } }).catch(() => {});
+    api.memories().then((m) => { if (alive) { setProjectFlags(parseProjectFlags(m)); setProjectOwners(parseProjectOwners(m)); setSettings(parseSettings(m)); } }).catch(() => {});
     return () => { alive = false; };
   }, [api, version]);
   const setProjectFlag = async (name: string, change: { starred?: boolean; archived?: boolean }) => {
@@ -735,7 +736,34 @@ export default function App() {
   }
 
   return (
-    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{const patch=<T extends {title:string}>(r:T):T=>({...r,...c,...(c.title_override?{title:c.title_override}:{})});setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?patch(r):r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?patch(x):x)}));say(c.title_override!==undefined?(c.title_override?`已改名为「${c.title_override}」`:'已恢复自动标题'):c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onUnread: markUnread, onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), onSummarize: summarizeSession, hosts, onMove: async (a, hostId, hostName) => { say(`正在把会话和项目目录搬到 ${hostName}…`); try { const r = JSON.parse((await api!.on("local", ["move", a.session_id, "--to", hostId, "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(`已迁移到 ${hostName}：${r.remote_cwd}，那边会话页能看到它继续；这里的原会话可以关了`); } catch (e) { say(String(e), true); } } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectHome(projectRows.filter((a) => conversationProject(a) === n))); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
+    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{const patch=<T extends {title:string}>(r:T):T=>({...r,...c,...(c.title_override?{title:c.title_override}:{})});setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?patch(r):r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?patch(x):x)}));say(c.title_override!==undefined?(c.title_override?`已改名为「${c.title_override}」`:'已恢复自动标题'):c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onUnread: markUnread, onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), onSummarize: summarizeSession, hosts, onMove: async (a, hostId, hostName) => {
+        const run = async (extra: string[]) => JSON.parse((await api!.on("local", ["move", a.session_id, "--to", hostId, "--json", ...extra])).replace(/^[^{]*/, ""));
+        say(`正在预检：${hostName} 上的 Git 状态、要改哪些文件…`);
+        try {
+          // Preflight first: what the hand-over would change or refuse, before anything moves.
+          const p = await run(["--dry-run"]);
+          if (p.error) { say(String(p.error), true); return; }
+          const conflicts: string[] = p.git?.conflicts ?? [];
+          if (conflicts.length) { say(`没有迁移，${hostName} 那边会丢东西：${conflicts.join("；")}`, true); return; }
+          const f = p.files;
+          const others: { title: string; state: string }[] = p.others_here ?? [];
+          const lines = [`把会话和项目 ${p.project} 交给 ${hostName}：${p.remote_cwd}`,
+            f ? `文件：同步 ${f.send} 个${f.delete ? `、删除 ${f.delete} 个（这边已删）` : ""}${f.skipped?.length ? `；构建产物不搬：${f.skipped.join("、")}` : ""}` : "不同步文件",
+            p.git?.history ? "Git 历史用 git push 过去，那边的 stash 保留" : "",
+            p.already_there ? `${hostName} 上已经在跑这个会话，不会再开一份` : "",
+            others.length ? `⚠ 这边还有 ${others.length} 个会话在这个项目里（${others.map((o) => `${o.title || "未命名"}·${o.state}`).join("、")}），它们会继续改这边的文件` : "",
+            "这边的原会话空闲时会停掉；项目以后归那台，新建会话默认开在那边。"].filter(Boolean);
+          if (!window.confirm(lines.join("\n"))) return;
+          say(`正在把项目交给 ${hostName}…`);
+          const r = await run([]);
+          if (r.error) { say(String(r.error), true); return; }
+          const v = r.git?.verify;
+          const original: Record<string, string> = { stopped: "这边的原会话已停掉", working: "这边的原会话还在跑，跑完关掉它", self: "这边的原会话就是发起迁移的，说完这轮关掉", failed: "这边的原会话没停下，手动关掉", "not-running": "", kept: "" };
+          say([`已交给 ${hostName}：${r.remote_cwd}`, v?.checked ? (v.head_match && v.dirty_match ? "Git 两边一致" : `Git 没对上，去 ${hostName} 看 git status`) : "", original[r.original?.state] ?? "",
+            others.length ? `这边还有 ${others.length} 个会话在改这个项目` : ""].filter(Boolean).join("；"), !!(v?.checked && !(v.head_match && v.dirty_match)));
+          api!.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
+        } catch (e) { say(String(e), true); }
+      } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectHome(projectRows.filter((a) => conversationProject(a) === n))); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b className="lead-mobile">Dispatch</b></div>
         <div className="crumb" data-tauri-drag-region>
@@ -819,7 +847,7 @@ export default function App() {
 
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
-      {newSession && api && <NewSession api={api} hosts={hosts} initialHost={newSessionContext?.host || hostId} initialCwd={newSessionContext?.cwd} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
+      {newSession && api && <NewSession api={api} hosts={hosts} {...newSessionTarget(ownerHostId(newSessionProject ? projectOwners[newSessionProject] : undefined, hosts), newSessionContext, hostId)} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
       {discuss && api && <DiscussDialog api={api} me={me} issues={issuesF} projects={projects.map((p) => p.name).filter(Boolean)} initialProject={discuss.project} initialTask={discuss.task} onClose={() => { setDiscuss(null); void reload(); }} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, kind: leader?.kind, model: leader?.model })} onAll={openDiscussion} onDone={say} onError={(m) => say(m, true)} />}
       {delegate && api && <Delegate api={api} hosts={hosts} initialHost={delegate.host} initialTask={delegate.task} initialPrompt={delegate.prompt} initialLabel={delegate.label} initialKind={delegate.kind} initialModel={delegate.model} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} />}
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
