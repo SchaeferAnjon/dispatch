@@ -2,6 +2,8 @@ import type { Activity, Issue, SessionRef } from './types';
 import { UNGROUPED_PROJECT, conversationProject } from './activity';
 import { projectOf } from './derive';
 export const isOutcome = (i:Issue) => !!i.labels?.includes('dispatch:outcome');
+// Something only the person can do (send the email, pay, log in, present): the 只能你做 column.
+export const isNeedsYou = (i:Issue) => !!i.labels?.includes('dispatch:needs-you');
 export const originSession = (i:Issue) => i.labels?.find(l=>l.startsWith('session-origin:'))?.slice(15) || '';
 export const linkedSessions = (i:Issue) => [...new Set([originSession(i), ...(i.labels||[]).filter(l=>l.startsWith('session:')).map(l=>l.slice(8))].filter(Boolean))];
 export const sourceTasks = (i:Issue) => (i.labels||[]).filter(l=>l.startsWith('outcome-task:')).map(l=>l.slice(13));

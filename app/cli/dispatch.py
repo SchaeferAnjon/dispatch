@@ -3535,6 +3535,33 @@ def cmd_begin(a):
     out({"id": tid, "title": title, "project": a.project}, a.json, lambda o: print(f"「{title}」（{tid}）已创建并认领。接下来在对话里提到 {tid}，进展用 `dispatch log {tid} \"…\"`，做完 `dispatch done {tid} --reason \"…\"`。"))
 
 
+def cmd_need_you(a):
+    """File something only the person can do (send the email, pay, log in, present): a task
+    labelled dispatch:needs-you. It sits in the 只能你做 column of the project's task board and
+    the person ticks it off there."""
+    title, cut = trim_title(a.title or "")
+    if cut:
+        print(f"⚠ 标题超过 {TITLE_MAX} 字，已截为「{title}」", file=sys.stderr)
+    labels = ["dispatch:needs-you", f"host:{local_host_name()}"] + ([f"project:{a.project}"] if a.project else [])
+    sid = os.environ.get('CODEX_THREAD_ID') or os.environ.get('CLAUDE_SESSION_ID') or os.environ.get('CLAUDE_CODE_SESSION_ID')
+    if sid and re.fullmatch(r'[A-Za-z0-9_-]{8,120}', sid):
+        labels.append('session-origin:' + sid)
+    argv = ["create", title, "-t", "task", "-p", str(a.priority), "--json", "-l", ",".join(labels)]
+    desc = (a.desc or "").strip()
+    if a.task:
+        desc = (desc + f"\n\n来自任务 {a.task}").strip()
+    if desc:
+        argv += ["--description", desc]
+    issue = bd_json(argv)
+    tid = issue.get("id")
+    if not tid:
+        print("创建失败", file=sys.stderr)
+        sys.exit(1)
+    if a.task:
+        sh(["bd", "comments", "add", a.task, f"需要你出面：「{title}」（{tid}）"], env={"BEADS_ACTOR": os.environ.get("BEADS_ACTOR", "schaefer")})
+    out({"id": tid, "title": title, "project": a.project}, a.json, lambda o: print(f"「{title}」（{tid}）已记到「只能你做」；用户在项目任务板上做完打勾即可。"))
+
+
 def tick_acceptance(tid, issue, match=None, who=None):
     """Mark acceptance items done and sign them: `- [x] text @<who>` — who checked is part of the
     record (the assignee ticking its own work reads as 自审 in the app, someone else as 复核).
@@ -6926,6 +6953,7 @@ def cmd_prime(a):
     ptag = proj or "<项目名>"
     lines = [f"# Dispatch 中央任务板" + (f" · 当前项目 {proj}" if proj else "") + (f" · 你是 {actor}" if actor else "")]
     lines.append(f"任务：明白要做什么后 `dispatch begin \"标题\" -P {ptag} -d \"背景+要做什么\" -a \"- [ ] 验收项\"`（已有任务则 `bd update <id> --claim`）；进展 `dispatch log <id> \"…\"`；收尾 `dispatch done <id> --reason \"做了什么、怎么验证\" [--verified] [--retro \"【技术】…【做对】…【做错】…\"] [--next \"后续\"]`。")
+    lines.append(f"只有用户能做的事（发邮件、付款、登录、当面演示、做决定）：别只在回复里列出来，`dispatch need-you \"要用户做什么\" -P {ptag} -d \"为什么、怎么做\" [--task <id>]` 记成「只能你做」，用户在任务板上打勾。")
     lines.append(f"知识库：动手前 `dispatch wiki search <词>`；踩坑 `dispatch wiki add --kind pit \"现象\" --fix \"解法\" -P {ptag}`，做对 `--kind win`。")
     # board
     code, o, err = sh(["bd", "list", "--all", "--json"])
@@ -7106,6 +7134,7 @@ def main():
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash", "new", "import"]); s.add_argument("name", nargs="?", help="技能名；import 时是仓库地址（owner/repo 或 GitHub URL）"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", action="append", choices=["claude", "codex", "all"], help="可重复；不传 = enable/disable 两个都动、new/import 不挂载"); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--description", help="new/import: 一句话触发描述（写进 frontmatter）"); s.add_argument("--trigger", help="new: 触发条件"); s.add_argument("--constraint", help="new: 关键约束"); s.add_argument("--path", help="import: 仓库里的子目录"); s.add_argument("--as", dest="as_name", help="import: 落进技能池的名字"); s.add_argument("--force", action="store_true", help="import: 覆盖同名技能（旧的改名 .bak-时间戳）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
+    s = sub.add_parser("need-you", help="只有用户能做的事（发邮件、付款、登录、当面演示…）：记成一条「只能你做」的任务，用户在项目任务板上做完打勾"); s.add_argument("title", help="一句话说清要用户做什么"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d", help="为什么要做、怎么做、材料在哪"); s.add_argument("--task", help="它源自哪个任务（会在那条任务上留记录）"); s.add_argument("--priority", "-p", type=int, default=1); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_need_you)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing); the title must say what + why, the description the trigger"); s.add_argument("title", help="「<对象> <怎么改>：<为什么>」，8–80 字"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d", help="触发原因 + 期望结果，≥20 字"); s.add_argument("--force", action="store_true", help="create even when the title/description checks fail"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("log", help="progress note on a task (the process log)"); s.add_argument("task"); s.add_argument("text", nargs="?", default=""); s.add_argument("--tick", nargs="*", help="acceptance items (substring) to mark done"); s.set_defaults(fn=cmd_log)

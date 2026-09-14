@@ -12,6 +12,7 @@ dispatch begin "<对象> <怎么改>：<为什么>" -P 项目 -d "触发原因 +
 dispatch claim TASK_ID
 dispatch log TASK_ID "关键进展"
 dispatch done TASK_ID --reason "交付与验证" --verified
+dispatch need-you "要用户做什么" -P 项目 -d "为什么、怎么做" [--task TASK_ID]   # 只有用户能做的事（发邮件、付款、登录、演示、决定）：记成「只能你做」，别只写在回复里
 dispatch wiki search "关键词"
 dispatch editing [--dir <cwd>]   # 谁在改哪些文件；两个以上会话改同一个会标冲突
 dispatch here [--dir <cwd>] [-P 项目]   # 这个项目/目录此刻：现状一段话、最近 14 天时间线、没做完的任务、活会话能不能关（别名 project-view）

@@ -1062,6 +1062,12 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .mentioned-tasks{margin-top:12px;border-top:1px solid var(--line);padding-top:12px;font-size:12px}
 .mentioned-tasks summary{cursor:pointer;color:var(--ink-3)}
 .titlebar .crumb button{pointer-events:auto}
+.hub-board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+.hub-col{display:flex;flex-direction:column;gap:8px;min-width:0}.hub-col h4{margin:0 0 2px;font-size:13px;color:var(--ink-2);display:flex;align-items:center;gap:6px}.hub-col h4 .n{font-family:var(--mono);font-size:11px;color:var(--ink-3);background:var(--panel-2);border-radius:999px;padding:0 7px}
+.hub-col.needs-you{background:var(--s-prog-bg);border-radius:12px;padding:10px}.hub-col.needs-you h4{color:var(--s-prog)}
+.hub-task.needs-you-task{display:flex;gap:10px;align-items:flex-start}.hub-task.needs-you-task .tick{flex:none;padding-top:2px}.hub-task.needs-you-task .tick input{width:18px;height:18px;accent-color:var(--s-done);cursor:pointer}.needs-you-body{min-width:0;flex:1}.needs-you-body .task-title{text-align:left}
+@media(max-width:1100px){.hub-board{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.hub-board{grid-template-columns:1fr}}
 .mobile-host-filter,.mobile-context-back{display:none}
 .conversation-project-chip{font-size:11px;color:var(--ink-2);background:var(--panel-2);border-radius:5px;padding:1px 6px;margin-right:6px;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle}
 /* A menu opened by a long press stays inert until the finger that opened it has lifted. */
