@@ -96,12 +96,12 @@ def open_original(d, data):
                         return old
             return enqueue(d, dict(request_id=data.get('request_id') or str(uuid.uuid4()),
                                    agent=agent, cwd=directory(d, ref['cwd']), prompt='', resume=sid, title=ref.get('title') or ''))
-        checked(d, ['agent', 'focus', pane['pane_id']])
-        table = d.ps_table()
-        host = next((d.host_app_of(pid, table) for pid, (_, comm) in table.items() if os.path.basename(comm) == 'herdr'), None)
-        d.activate(host or 'Ghostty')
         title = (pane.get('terminal_title_stripped') or '').strip()
-        return dict(message=f"已在 {host or '终端'} 里切到 Herdr 页签 {pane.get('tab_id') or pane['pane_id']}" + (f"「{title}」" if title else ''), pane_id=pane['pane_id'], tab_id=pane.get('tab_id'))
+        tab = (pane.get('tab_id') or pane['pane_id']) + (f"「{title}」" if title else '')
+        app, how = d.show_herdr_pane(pane['pane_id'])
+        if how == 'none':
+            raise Rejected(f"会话在 Herdr 页签 {tab} 里，但这台电脑上没有窗口显示它。{d.herdr_attach_hint(d.herdr_session_name())}")
+        return dict(message=(f"已开 {app} 窗口接上 Herdr，切到页签 {tab}" if how == 'attached' else f"已在 {app} 里切到 Herdr 页签 {tab}"), pane_id=pane['pane_id'], tab_id=pane.get('tab_id'))
     raise Rejected('这个 Agent 暂不支持精确打开原会话，可在 Dispatch 查看记录。')
 
 
@@ -250,6 +250,18 @@ def worker(d, rid):
         result['state'] = 'running'
         db.execute('UPDATE launches SET result=? WHERE id=?', (json.dumps(result), rid))
     p = json.loads(row['payload']); agent = p['agent']; start = time.time()
+    if p.get('resume'):
+        # Two processes resuming one id write into the same transcript. If it already runs here
+        # (another terminal, a hand-typed `claude --resume`), say where instead of starting a copy.
+        try:
+            live = next((s for s in d.live_sessions(local_only=True) if s.get('session_id') == p['resume'] and s.get('agent', agent) == agent), None)
+        except Exception:
+            live = None
+        if live:
+            h = live.get('herdr') or {}
+            where = f"Herdr 页签 {h.get('tab_id')}" if h else f"{live.get('source_app') or '终端'}（进程 {live.get('agent_pid')}）"
+            save(d, rid, state='attention', message=f'这个会话已经在这台电脑的 {where} 里运行，没有再开一份。')
+            return
     try:
         before = {r.get('session_id') for r in d.load_index().values()}
         label = tab_label(d, p)

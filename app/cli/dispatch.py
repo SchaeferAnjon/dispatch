@@ -145,6 +145,80 @@ def herdr_local_command(args):
     return [HERDR] + (['--session', 'main'] if named else []) + args
 
 
+def herdr_session_name():
+    """The persistent Herdr session this Mac's panes live in: "main" or None for the default one."""
+    cmd = herdr_local_command([])
+    return cmd[cmd.index("--session") + 1] if "--session" in cmd else None
+
+
+def herdr_clients(session, rows=None):
+    """Herdr *clients* (the TUI that draws panes, not `herdr server`) attached to `session`,
+    each with the .app hosting it. A client under tmux or a bare login has no app: nobody sees it."""
+    if rows is None:
+        _, o, _ = sh(["ps", "-axo", "pid=,ppid=,args="])
+        rows = o.splitlines()
+    table, found = {}, []
+    for line in rows:
+        p = line.strip().split(None, 2)
+        if len(p) == 3 and p[0].isdigit() and p[1].isdigit():
+            table[int(p[0])] = (int(p[1]), p[2])
+    for pid, (_, args) in table.items():
+        argv = args.split()
+        if not argv or os.path.basename(argv[0]) != "herdr" or "server" in argv[1:2]:
+            continue
+        rest = argv[1:]
+        if rest[:1] == ["session"] and rest[1:2] == ["attach"]:
+            name = rest[2] if len(rest) > 2 else None
+        elif "--session" in rest:
+            i = rest.index("--session")
+            name = rest[i + 1] if i + 1 < len(rest) else None
+        elif rest and not rest[0].startswith("-"):
+            continue  # `herdr agent list` and friends: one-shot commands, not a client
+        else:
+            name = None
+        if name == session:
+            found.append({"pid": pid, "app": host_app_of(pid, table)})
+    return found
+
+
+def ghostty_attach_herdr(session):
+    """Open a Ghostty window that runs the Herdr client for `session`. AppleScript first (one
+    automation prompt the first time), then a new Ghostty instance. True when either was accepted."""
+    cmd = HERDR + (f" --session {session}" if session else "")
+    script = ('tell application "Ghostty"\nactivate\nset cfg to new surface configuration\n'
+              f'set command of cfg to "{cmd}"\nnew window with configuration cfg\nend tell\n')
+    try:
+        if sh(["osascript", "-e", script], timeout=10)[0] == 0:
+            return True
+    except Exception:
+        pass
+    try:
+        return sh(["open", "-na", "Ghostty", "--args", f"--command={cmd}"], timeout=10)[0] == 0
+    except Exception:
+        return False
+
+
+def show_herdr_pane(pane_id):
+    """Put a Herdr pane in front of the person at this Mac. Focusing inside Herdr is not enough
+    when no window draws that server — the Mac mini's "main" runs headless under tmux, so a plain
+    `open -a Ghostty` showed an unrelated shell. Returns (app, how): how is focused / attached / none."""
+    sh(herdr_local_command(["agent", "focus", pane_id]), timeout=5)
+    session = herdr_session_name()
+    visible = [c for c in herdr_clients(session) if c["app"]]
+    if visible:
+        activate(visible[0]["app"])
+        return visible[0]["app"], "focused"
+    if ghostty_attach_herdr(session):
+        time.sleep(1.5)
+        sh(herdr_local_command(["agent", "focus", pane_id]), timeout=5)  # the new client opens on the focused tab
+        return "Ghostty", "attached"
+    return None, "none"
+
+
+def herdr_attach_hint(session):
+    return f"没能打开窗口：在终端里运行 `herdr{' --session ' + session if session else ''}` 就能看到它"
+
+
 def herdr_agents():
     if not os.path.exists(HERDR):
         return []
@@ -917,12 +991,8 @@ def cmd_terminal(a):
     pane = tab.get("root_pane", {}).get("pane_id") or tab.get("pane_id")
     tab_id = tab.get("root_pane", {}).get("tab_id") or tab.get("tab_id")
     app = ""
-    if host is None:
-        table = ps_table()
-        for pid, (_, comm) in table.items():
-            if os.path.basename(comm) == "herdr" and not app:
-                app = host_app_of(pid, table)
-        activate(app or "Ghostty")
+    if host is None and pane:
+        app = show_herdr_pane(pane)[0] or ""
     res = {"host": where, "cwd": cwd, "pane_id": pane, "tab_id": tab_id, "label": a.label or "", "app": app}
     out(res, a.json, lambda r: print(f"已在 {r['host']} 的 Herdr 开了终端标签 {r['tab_id']}（{r['cwd'].replace(HOME, '~')}）" + (f"，切到 {r['app']}" if r["app"] else "")))
 
@@ -3167,13 +3237,10 @@ def focus_session(s):
     table = ps_table()
     h = s.get("herdr")
     if h:
-        sh([HERDR, "agent", "focus", h["pane_id"]], timeout=5)
-        host = None
-        for pid, (_, comm) in table.items():
-            if os.path.basename(comm) == "herdr" and host is None:
-                host = host_app_of(pid, table)
-        activate(host or "Ghostty")
-        return f"已切到 {host or '终端'} 里的 Herdr 标签 {h['tab_id']}：{h.get('title', '')}"
+        app, how = show_herdr_pane(h["pane_id"])
+        if how == "none":
+            return f"Herdr 标签 {h['tab_id']}：{h.get('title', '')}——{herdr_attach_hint(herdr_session_name())}"
+        return f"{'已开 ' + app + ' 窗口接上 Herdr，并切到' if how == 'attached' else '已切到 ' + app + ' 里的 Herdr'}标签 {h['tab_id']}：{h.get('title', '')}"
     if agent == "zcode":
         title = s.get("title") or ""
         if not title:
@@ -3228,8 +3295,7 @@ def cmd_focus(a):
     for r in refs:
         for ag in herdr_agents():
             if ag.get("cwd") == r["cwd"]:
-                sh([HERDR, "agent", "focus", ag["pane_id"]], timeout=5)
-                activate("Ghostty")
+                show_herdr_pane(ag["pane_id"])
                 print(f"这个会话已结束；已切到同目录的 Herdr 标签 {ag['tab_id']}")
                 return
         if r["agent"] == "zcode":

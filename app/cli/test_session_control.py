@@ -65,11 +65,39 @@ class SessionControl(unittest.TestCase):
 
     def test_focus_allows_working_session_but_still_requires_exact_identity(self):
         self.d.load_index=lambda:{'file':dict(session_id='exact',agent='claude-code')}
-        self.d.ps_table=lambda:{}; self.d.activate=Mock()
+        self.d.show_herdr_pane=Mock(return_value=('Ghostty','focused'))
         with patch.object(c,'herdr_target',return_value=dict(pane_id='right')) as target:
             c.open_original(self.d,dict(session_id='exact',agent='claude-code'))
             self.assertFalse(target.call_args.kwargs['require_idle'])
-            self.assertEqual(self.d.herdr.call_args.args[1],['agent','focus','right'])
+            self.d.show_herdr_pane.assert_called_once_with('right')
+
+    def test_pane_nobody_can_see_says_how_to_attach(self):
+        # Mac mini: the pane lives in a headless "main" under tmux and no window could be opened.
+        self.d.load_index=lambda:{'file':dict(session_id='exact',agent='claude-code')}
+        self.d.show_herdr_pane=Mock(return_value=(None,'none')); self.d.herdr_session_name=lambda:'main'
+        self.d.herdr_attach_hint=dispatch.herdr_attach_hint
+        with patch.object(c,'herdr_target',return_value=dict(pane_id='w1:p3',tab_id='w1:t3')):
+            with self.assertRaises(Rejected) as e: c.open_original(self.d,dict(session_id='exact',agent='claude-code'))
+        self.assertIn('herdr --session main', str(e.exception))
+
+    def test_herdr_clients_only_counts_windows_attached_to_that_session(self):
+        rows = ['20621 1 /Applications/Ghostty.app/Contents/MacOS/ghostty',
+                '24414 20621 /usr/bin/login -flp apple fish', '24415 24414 herdr',  # default session, in Ghostty
+                '50932 1 /opt/homebrew/bin/tmux new -d -s herdr', '50941 50932 /opt/homebrew/bin/herdr --session main',  # main, headless
+                '50942 50941 /opt/homebrew/bin/herdr server', '60000 24414 /opt/homebrew/bin/herdr agent list']
+        main = dispatch.herdr_clients('main', rows)
+        self.assertEqual([(x['pid'], x['app']) for x in main], [(50941, None)])
+        self.assertEqual([(x['pid'], x['app']) for x in dispatch.herdr_clients(None, rows)], [(24415, 'Ghostty')])
+
+    def test_resume_already_running_here_is_not_started_twice(self):
+        with patch.object(c.subprocess,'Popen'):
+            c.enqueue(self.d,{**self.data,'prompt':'','resume':'exact'})
+        self.d.live_sessions=lambda **kw:[dict(session_id='exact',agent='claude-code',source_app='Ghostty',agent_pid=24520)]
+        self.d.herdr=Mock(return_value={'result':{}})
+        c.worker(self.d,self.data['request_id'])
+        r=c.status(self.d,self.data['request_id'])
+        self.assertEqual(r['state'],'attention'); self.assertIn('Ghostty',r['message'])
+        self.assertFalse(any(call.args[1][:2]==['agent','start'] for call in self.d.herdr.call_args_list))
 
     def test_unmapped_live_session_does_not_open_same_directory_or_duplicate(self):
         self.d.load_index=lambda:{'file':dict(session_id='exact',agent='claude-code')}
