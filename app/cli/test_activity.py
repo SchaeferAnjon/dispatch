@@ -151,6 +151,47 @@ class ActivityTests(unittest.TestCase):
         self.presence(sid, os.getpid(), state='idle')
         self.assertTrue(self.row()['stale'])
 
+    def test_background_sub_agents_keep_a_finished_turn_working(self):
+        iso = lambda ts: datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).isoformat()
+        folder = os.path.join(self.home, '.claude/projects/-p')
+        os.makedirs(os.path.join(folder, 's1', 'subagents'))
+        path = os.path.join(folder, 's1.jsonl')
+        sub = os.path.join(folder, 's1', 'subagents', 'agent-abc.jsonl')
+        def add(*records):
+            with open(path, 'a') as f:
+                for r in records: f.write(json.dumps(r) + '\n')
+        t = self.t - 600
+        add({'type': 'user', 'timestamp': iso(t), 'message': {'role': 'user', 'content': '做两件事'}},
+            {'type': 'assistant', 'timestamp': iso(t + 1), 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'tu1', 'name': 'Agent', 'input': {'description': '同步规则'}}]}},
+            {'type': 'user', 'timestamp': iso(t + 2), 'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'tu1', 'content': 'Async agent launched'}]},
+             'toolUseResult': {'isAsync': True, 'status': 'async_launched', 'agentId': 'abc', 'description': '同步规则'}},
+            {'type': 'assistant', 'timestamp': iso(t + 3), 'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': '子 Agent 在做，做完告诉你。'}]}})
+        row = lambda: next(r for r in activity_list(self.home, self.store, {}) if r['agent'] == 'claude-code')
+        # The reply is out and the sub-agent's file has not appeared for ten minutes: just a finished turn.
+        self.assertEqual(row()['state'], 'idle')
+        # The sub-agent writes: the session is still working, and says who.
+        open(sub, 'w').write('{}\n'); os.utime(sub, (self.t, self.t))
+        r = row()
+        self.assertEqual((r['state'], r['stale']), ('working', False))
+        self.assertIn('子 Agent 在跑 · 同步规则', r['activity'])
+        self.assertEqual([a['id'] for a in r['background_agents']], ['abc'])
+        self.assertGreaterEqual(r['last_at'], self.t - 1)
+        self.assertNotIn('bg_agents', r)
+        # Its completion notification arrives (a queued_command attachment): the turn is done.
+        os.utime(sub, (self.t - 30, self.t - 30))
+        add({'type': 'attachment', 'timestamp': iso(self.t - 20), 'attachment': {'type': 'queued_command', 'commandMode': 'task-notification',
+             'prompt': '<task-notification>\n<task-id>abc</task-id>\n<status>completed</status>\n</task-notification>'}})
+        self.assertEqual(row()['state'], 'idle')
+        # Resumed with SendMessage: it writes after its report, so the session works again.
+        os.utime(sub, (self.t, self.t))
+        self.assertEqual(row()['state'], 'working')
+        # Silent for longer than BACKGROUND_QUIET (crashed, hung): no longer claims the session.
+        from activity import BACKGROUND_QUIET
+        old = self.t - BACKGROUND_QUIET - 60
+        os.utime(sub, (old, old)); os.utime(path, (old, old))
+        add({'type': 'queue-operation', 'timestamp': iso(old), 'content': 'noop'})
+        self.assertEqual(row()['state'], 'idle')
+
     def test_transcript_states_answer_for_the_asked_sessions(self):
         from activity import transcript_states
         self.append(record('user', '问题', self.t - 50), record('assistant', '答完了', self.t - 40))

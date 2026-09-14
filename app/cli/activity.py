@@ -117,10 +117,56 @@ def remember_topic(state, text):
     state['overview'] = ('最初：' + selected[0] + '；后续：' + '；'.join(selected[1:])) if len(selected) > 1 else selected[0]
 
 
+TASK_DONE = ('completed', 'failed', 'killed', 'stopped', 'cancelled', 'error')
+
+
+def observe_background(state, d, t, p, ts):
+    """Claude Code background sub-agents. Launching one writes a tool result whose toolUseResult is
+    {isAsync, status: async_launched, agentId}; it ending comes back as a <task-notification> (in a
+    queued_command attachment, a queue-operation or a user record — idempotent here). The turn that
+    launched them can end long before they do; activity_list uses this to keep the session working."""
+    tr = d.get('toolUseResult')
+    if isinstance(tr, dict) and tr.get('isAsync') and tr.get('agentId'):
+        bg = state.setdefault('bg_agents', {})
+        bg[str(tr['agentId'])] = {'at': ts, 'desc': str(tr.get('description') or '')[:120]}
+        if len(bg) > 40: state['bg_agents'] = dict(list(bg.items())[-40:])
+    if not state.get('bg_agents'): return
+    a = d.get('attachment') if isinstance(d.get('attachment'), dict) else {}
+    raw = a.get('prompt') if a.get('type') == 'queued_command' else d.get('content') if t == 'queue-operation' else text_of(p.get('content')) if t == 'user' and isinstance(p, dict) else ''
+    if not isinstance(raw, str) or '<task-notification>' not in raw: return
+    for block in raw.split('<task-notification>')[1:]:
+        tid = re.search(r'<task-id>([^<]+)</task-id>', block); status = re.search(r'<status>([^<]+)</status>', block)
+        rec = state['bg_agents'].get(tid.group(1).strip()) if tid else None
+        if rec is not None and status and status.group(1).strip() in TASK_DONE:
+            rec['done_at'] = max(ts, rec.get('done_at', 0))
+
+
+def background_running(s, path, now=None):
+    """The session's background sub-agents still at work: not reported finished, or written to again
+    after their last report (resumed with SendMessage), and their own transcript touched recently.
+    A launch whose file never appeared counts only for a minute (it may be starting)."""
+    now = now or time.time()
+    folder = os.path.join(path[:-len('.jsonl')] if path.endswith('.jsonl') else path, 'subagents')
+    out = []
+    for aid, rec in (s.get('bg_agents') or {}).items():
+        try: mtime = os.stat(os.path.join(folder, f'agent-{aid}.jsonl')).st_mtime
+        except OSError: mtime = 0
+        if not mtime:
+            if not rec.get('done_at') and now - rec.get('at', 0) < 60: out.append((aid, rec, rec.get('at', 0)))
+            continue
+        if now - mtime > BACKGROUND_QUIET: continue
+        if not rec.get('done_at') or mtime > rec['done_at'] + 2: out.append((aid, rec, mtime))
+    return out
+
+
+BACKGROUND_QUIET = 15 * 60  # a sub-agent silent this long has died or hangs; stop claiming the session works
+
+
 def observe(state, d):
     t = d.get('type')
     p = d.get('payload') or d.get('message') or {}
     ts = epoch(d.get('timestamp'))
+    if ts: observe_background(state, d, t, p, ts)
     role = ''; text = ''; tools = []; results = []; finished = False
     if t == 'session_meta':
         state['session_id'] = p.get('id') or p.get('session_id') or state.get('session_id')
@@ -258,9 +304,9 @@ def read_stream(db, path, agent):
     st = os.stat(path)
     row = db.execute('SELECT inode,off,mtime,data FROM streams WHERE path=?', (path,)).fetchone()
     state = json.loads(row[3]) if row and row[0] == st.st_ino and row[1] <= st.st_size else {}
-    if state.get('parser_version') != 6: state = {}
+    if state.get('parser_version') != 7: state = {}  # 7: background sub-agents (bg_agents)
     off = row[1] if state else 0
-    state['parser_version'] = 6
+    state['parser_version'] = 7
     if row and off > 0 and row[2] == st.st_mtime and off == st.st_size: return state
     state.setdefault('agent', agent)
     state.setdefault('session_id', os.path.basename(path).removesuffix('.jsonl'))
@@ -612,12 +658,22 @@ def activity_list(home, directory, index):
             s['unread'] = bool(s.get('reply_at', 0) > max(started_at, s.get('user_at', 0)) and (not receipt or receipt[0] != s.get('reply_id')))
             s['tracking_since'] = started_at
             live = presence.get(s['session_id'])
+            if agent == 'claude-code' and s.get('bg_agents'):
+                running = background_running(s, path)
+                if running:
+                    # The reply is out but its sub-agents still work: the session is not done. Their
+                    # writes are its latest activity (so a Stop hook's "idle" does not win the merge).
+                    first = running[0][1].get('desc') or '子 Agent'
+                    s['state'] = 'working'
+                    s['activity'] = f'子 Agent 在跑 · {first}' + (f' 等 {len(running)} 个' if len(running) > 1 else '')
+                    s['last_at'] = max(s['last_at'], *(m for _, _, m in running))
+                    s['background_agents'] = [{'id': aid, 'description': rec.get('desc', '')} for aid, rec, _ in running]
             quiet = s.get('state') == 'working' and time.time() - s['last_at'] > 180
             # A quiet transcript with a live process whose hooks still say working is a long tool
             # call or a long reply being written, not a dead session.
             s['stale'] = quiet and not (live and live.get('state') == 'working')
             s['source'] = 'transcript'
-            s.pop('topics', None); s.pop('pending', None); s.pop('reply_digest', None)
+            s.pop('topics', None); s.pop('pending', None); s.pop('reply_digest', None); s.pop('bg_agents', None)
             rows.append(s)
         for _, path, agent in paths[:120]:
             try: s = dict(read_stream(db, path, agent))
