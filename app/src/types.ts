@@ -46,7 +46,7 @@ export interface Insights { days: number; total_sessions: number; per_agent: Rec
 export interface EnvVar { name: string; note: string; masked: string; length: number; project?: string }
 export interface RulesStatus { hash: string; source: string; targets: RuleTarget[] }
 
-export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string }
+export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string; running?: boolean }
 export interface SessionRef {
   scheduled?: boolean; project_override?: string; starred?: boolean; archived?: boolean; summary?: string;
   agent: string;

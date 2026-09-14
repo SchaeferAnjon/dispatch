@@ -1068,6 +1068,10 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
 .hub-task.needs-you-task{display:flex;gap:10px;align-items:flex-start}.hub-task.needs-you-task .tick{flex:none;padding-top:2px}.hub-task.needs-you-task .tick input{width:18px;height:18px;accent-color:var(--s-done);cursor:pointer}.needs-you-body{min-width:0;flex:1}.needs-you-body .task-title{text-align:left}
 @media(max-width:1100px){.hub-board{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.hub-board{grid-template-columns:1fr}}
+.subagent-row.running{border-color:var(--s-prog)}.subagent-row .st.prog{margin-right:6px;display:inline-flex;align-items:center;gap:4px}
+.done-archive .hub-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.done-archive .hub-tools input{flex:1;min-width:180px}
+.done-week{margin-bottom:18px}.done-week h4{margin:0 0 8px;font-size:13px;color:var(--ink-2);display:flex;align-items:center;gap:6px}.done-week h4 .n{font-family:var(--mono);font-size:11px;color:var(--ink-3);background:var(--panel-2);border-radius:999px;padding:0 7px}
+.hub-col h4 .link.small{margin-left:auto;font-size:12px}
 .mobile-host-filter,.mobile-context-back{display:none}
 .conversation-project-chip{font-size:11px;color:var(--ink-2);background:var(--panel-2);border-radius:5px;padding:1px 6px;margin-right:6px;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle}
 /* A menu opened by a long press stays inert until the finger that opened it has lifted. */

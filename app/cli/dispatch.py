@@ -1588,7 +1588,7 @@ def subagents_of(path):
     if path.startswith("hermes:"):
         # Hermes delegations run as child sessions (sessions.parent_session_id).
         rows = hermes_query("select id, title, source, started_at, ended_at, last_activity_at from sessions where parent_session_id = ? order by started_at", (path[7:],))
-        return [{"agent_id": r["id"], "type": r["source"] or "子会话", "description": r["title"] or "", "tool_use_id": "", "depth": 1, "size": 0, "last_at": hermes_session_last(r), "path": "hermes:" + r["id"]} for r in rows]
+        return [{"agent_id": r["id"], "type": r["source"] or "子会话", "description": r["title"] or "", "tool_use_id": "", "depth": 1, "size": 0, "last_at": hermes_session_last(r), "path": "hermes:" + r["id"], "running": r["ended_at"] is None and time.time() - hermes_session_last(r) < 300} for r in rows]
     base = os.path.splitext(path)[0]
     res = []
     for meta in sorted(glob.glob(os.path.join(base, "subagents", "*.meta.json"))):
@@ -1599,7 +1599,8 @@ def subagents_of(path):
         jl = meta.replace(".meta.json", ".jsonl")
         aid = os.path.basename(meta).replace(".meta.json", "").replace("agent-", "")
         st = os.stat(jl) if os.path.exists(jl) else None
-        res.append({"agent_id": aid, "type": m.get("agentType", ""), "description": m.get("description", ""), "tool_use_id": m.get("toolUseId", ""), "depth": m.get("spawnDepth", 1), "size": st.st_size if st else 0, "last_at": st.st_mtime if st else 0, "path": jl})
+        # A background sub-agent keeps appending to its transcript; one that stopped writing two minutes ago is done.
+        res.append({"agent_id": aid, "type": m.get("agentType", ""), "description": m.get("description", ""), "tool_use_id": m.get("toolUseId", ""), "depth": m.get("spawnDepth", 1), "size": st.st_size if st else 0, "last_at": st.st_mtime if st else 0, "path": jl, "running": bool(st) and time.time() - st.st_mtime < 120})
     return res
 
 
