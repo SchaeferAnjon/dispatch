@@ -353,7 +353,8 @@ def cmd_here(a):
             model = getattr(a, "summary_model", "") or ""
             try:
                 r = summarize.project_summary(proj, force=getattr(a, "refresh_summary", False),
-                                              if_stale=not getattr(a, "refresh_summary", False), model=model, use="here")
+                                              if_stale=not getattr(a, "refresh_summary", False), model=model, use="here",
+                                              local_only=getattr(a, "local", False))
                 summary = {"text": r.get("summary", ""), "at": r.get("at", 0), "by": r.get("by", ""), "cached": r.get("cached", False)}
             except Exception as e:
                 summary = {"text": "", "error": str(e)}

@@ -1326,44 +1326,160 @@ class SummaryUses(unittest.TestCase):
         self.assertTrue(by["session"]["enabled"])
         self.assertIsNone(by["project"]["last"])
 
-    def test_project_summary_on_a_host_without_the_project_dir_falls_back_to_cached(self):
-        """A Mac with no local checkout of the project also has none of its sessions in
-        `project_material` — it must not write a summary blind to what happened, or overwrite
-        the good one another Mac already cached."""
-        cached = {"summary": "好的总结", "at": int(time.time()) - 90000, "by": "zhipu:glm-5.3-flash", "sessions": 5, "open": 1, "closed": 2}
+    def test_project_summary_untrusted_local_cache_is_replaced_by_a_trusted_remote_answer(self):
+        """The mini scenario, verified on device: `bd memories` is NOT shared between the two
+        Macs, so a bad summary the mini generated blind (no directory, no sessions) sits under
+        its own copy of the key forever unless something replaces it. With no local material and
+        no trust marker on its own cached copy, ask the other Mac for ITS summary and adopt (and
+        store) that one instead — never keep serving the blind guess."""
+        bad_local = {"summary": "Codex 是一个桌面端和手机端的会话与项目管理应用……", "at": int(time.time()) - 3600, "by": "claude:haiku", "sessions": 0, "open": 3, "closed": 1}
+        good_remote = {"summary": "kanban 是任务管理与项目追踪系统……", "at": int(time.time()) - 90000, "by": "claude:haiku", "sessions": 68, "open": 32, "closed": 138, "trusted": True, "material_sessions": 68, "cached": True}
         key = dispatch.INTERNAL_MEMORY_PREFIX + "project-summary-kanban"
-        with patch.object(self.sd, "sh", return_value=(0, json.dumps({key: json.dumps(cached)}), "")), \
-             patch.object(self.summarize, "provider", return_value={"id": "zhipu", "base": "x", "model": "glm-5.3-flash", "key": "k"}), \
-             patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": ""}), \
+        host = {"id": "hub", "name": "大哥", "ssh": "hub"}
+        stored = {}
+        with patch.object(self.sd, "sh", return_value=(0, json.dumps({key: json.dumps(bad_local)}), "")), \
+             patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
+             patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 32, "closed": 138, "text": ""}), \
              patch.object(self.sd, "project_home", return_value=""), \
-             patch.object(self.summarize, "chat") as chat_mock:
+             patch.object(self.sd, "hosts", return_value=[host]), \
+             patch.object(self.sd, "remote_dispatch", return_value=good_remote) as rd, \
+             patch.object(self.summarize, "chat") as chat_mock, \
+             patch.object(self.sd, "wiki_store", side_effect=lambda k, v: stored.update({k: v})):
             r = self.summarize.project_summary("kanban", if_stale=True)
-        self.assertEqual(r, {**cached, "cached": True})
-        chat_mock.assert_not_called()
+        self.assertEqual(r["summary"], good_remote["summary"])
+        self.assertTrue(r["trusted"])
+        self.assertEqual(r["from_host"], "hub")
+        self.assertFalse(r["cached"])
+        chat_mock.assert_not_called()   # never generates locally once a trusted remote answer exists
+        self.assertEqual(json.loads(stored[key])["summary"], good_remote["summary"])   # bad local copy overwritten
+        rargs = rd.call_args[0][1]
+        self.assertEqual(rargs[:2], ["project-summary", "kanban"])
+        self.assertIn("--local", rargs)   # the peer answers only for itself — no recursive hop
 
-    def test_project_summary_on_a_host_without_dir_or_cache_raises_instead_of_guessing(self):
+    def test_project_summary_ignores_an_untrusted_remote_answer(self):
+        host = {"id": "hub", "name": "大哥", "ssh": "hub"}
+        blind_remote = {"summary": "瞎猜的", "at": int(time.time()), "by": "claude:haiku", "sessions": 0, "open": 3, "closed": 1}   # no "trusted"
         with patch.object(self.sd, "sh", return_value=(0, "{}", "")), \
-             patch.object(self.summarize, "provider", return_value={"id": "zhipu", "base": "x", "model": "glm-5.3-flash", "key": "k"}), \
+             patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
              patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": ""}), \
              patch.object(self.sd, "project_home", return_value=""), \
+             patch.object(self.sd, "hosts", return_value=[host]), \
+             patch.object(self.sd, "remote_dispatch", return_value=blind_remote), \
              patch.object(self.summarize, "chat") as chat_mock, \
              self.assertRaises(RuntimeError) as cm:
             self.summarize.project_summary("kanban")
-        self.assertIn("没有这个项目的目录", str(cm.exception))
+        self.assertIn("连不上有记录的机器", str(cm.exception))
         chat_mock.assert_not_called()
+
+    def test_project_summary_without_material_or_reachable_peers_raises_instead_of_guessing(self):
+        with patch.object(self.sd, "sh", return_value=(0, "{}", "")), \
+             patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
+             patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": ""}), \
+             patch.object(self.sd, "project_home", return_value=""), \
+             patch.object(self.sd, "hosts", return_value=[]), \
+             patch.object(self.summarize, "chat") as chat_mock, \
+             self.assertRaises(RuntimeError) as cm:
+            self.summarize.project_summary("kanban")
+        self.assertIn("没有这个项目的目录和会话记录", str(cm.exception))
+        chat_mock.assert_not_called()
+
+    def test_project_summary_falls_back_to_a_trusted_local_cache_when_no_peer_answers(self):
+        """A record this host itself explicitly marked trusted (fetched from a peer earlier, or
+        generated while it still had the directory) stays good even once the directory is gone
+        and peers are unreachable right now — unlike an unmarked legacy entry, which would not."""
+        trusted_local = {"summary": "之前记的总结", "at": int(time.time()) - 90000, "by": "claude:haiku", "sessions": 40, "open": 3, "closed": 1, "trusted": True, "material_sessions": 40}
+        key = dispatch.INTERNAL_MEMORY_PREFIX + "project-summary-kanban"
+        with patch.object(self.sd, "sh", return_value=(0, json.dumps({key: json.dumps(trusted_local)}), "")), \
+             patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
+             patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": ""}), \
+             patch.object(self.sd, "project_home", return_value=""), \
+             patch.object(self.sd, "hosts", return_value=[]), \
+             patch.object(self.summarize, "chat") as chat_mock:
+            r = self.summarize.project_summary("kanban", if_stale=True)
+        self.assertEqual(r, {**trusted_local, "trusted": True, "cached": True})
+        chat_mock.assert_not_called()
+
+    def test_project_summary_local_only_never_consults_other_hosts(self):
+        """`--local` is what a peer is asked with — it must answer for itself only, or two Macs
+        with no material could bounce a request between each other forever."""
+        with patch.object(self.sd, "sh", return_value=(0, "{}", "")), \
+             patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
+             patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": ""}), \
+             patch.object(self.sd, "project_home", return_value=""), \
+             patch.object(self.sd, "hosts") as hosts_mock, \
+             patch.object(self.summarize, "chat") as chat_mock, \
+             self.assertRaises(RuntimeError) as cm:
+            self.summarize.project_summary("kanban", local_only=True)
+        hosts_mock.assert_not_called()
+        self.assertNotIn("连不上有记录的机器", str(cm.exception))
+        chat_mock.assert_not_called()
+
+    def test_fetch_remote_summary_picks_the_newest_trusted_answer_and_skips_untrusted_ones(self):
+        older = {"summary": "旧一点", "at": 1000, "trusted": True, "by": "claude:haiku"}
+        newer = {"summary": "新一点", "at": 2000, "trusted": True, "by": "claude:haiku"}
+        blind = {"summary": "瞎猜的", "at": 5000, "by": "claude:haiku"}   # no "trusted": newest by time, must still lose
+        hub = {"id": "hub", "name": "大哥", "ssh": "hub"}
+        third = {"id": "third", "name": "third", "ssh": "third"}
+        answers = {"hub": older, "third": newer}
+        with patch.object(self.sd, "hosts", return_value=[hub, third]), \
+             patch.object(self.sd, "remote_dispatch", side_effect=lambda h, *a, **kw: answers[h["id"]]):
+            r = self.summarize.fetch_remote_summary("kanban")
+        self.assertEqual(r["summary"], "新一点")
+        self.assertEqual(r["from_host"], "third")
+        # an untrusted-but-newer answer never wins even if it happened to come back
+        with patch.object(self.sd, "hosts", return_value=[hub]), \
+             patch.object(self.sd, "remote_dispatch", return_value=blind):
+            self.assertIsNone(self.summarize.fetch_remote_summary("kanban"))
+
+    def test_fetch_remote_summary_none_when_no_host_answers(self):
+        with patch.object(self.sd, "hosts", return_value=[{"id": "hub", "name": "大哥", "ssh": "hub"}]), \
+             patch.object(self.sd, "remote_dispatch", return_value=None):
+            self.assertIsNone(self.summarize.fetch_remote_summary("kanban"))
 
     def test_project_summary_generates_when_this_host_has_the_project_dir(self):
         with patch.object(self.sd, "sh", return_value=(0, "{}", "")), \
              patch.object(self.summarize, "provider", return_value={"id": "zhipu", "base": "x", "model": "glm-5.3-flash", "key": "k"}), \
              patch.object(self.summarize, "project_material", return_value={"sessions": 0, "open": 3, "closed": 1, "text": "材料"}), \
              patch.object(self.sd, "project_home", return_value="/Users/x/Projects/kanban"), \
+             patch.object(self.sd, "hosts") as hosts_mock, \
              patch.object(self.summarize, "chat", return_value="新的总结") as chat_mock, \
              patch.object(self.sd, "wiki_store") as store_mock:
             r = self.summarize.project_summary("kanban")
         self.assertFalse(r["cached"])
         self.assertEqual(r["summary"], "新的总结")
+        self.assertTrue(r["trusted"])
+        self.assertEqual(r["material_sessions"], 0)
         chat_mock.assert_called_once()
         store_mock.assert_called_once()
+        hosts_mock.assert_not_called()   # has its own directory: never asks another Mac
+
+    def test_project_summary_never_adopts_a_remote_answer_when_this_host_has_material(self):
+        """The reverse of the mini bug: the MacBook (has the directory) must never fetch or
+        adopt a peer's summary, blind or not — its own trusted cache always wins."""
+        good_local = {"summary": "kanban 是任务管理与项目追踪系统……", "at": int(time.time()) - 1000, "by": "claude:haiku", "sessions": 68, "open": 32, "closed": 138, "trusted": True, "material_sessions": 68}
+        key = dispatch.INTERNAL_MEMORY_PREFIX + "project-summary-kanban"
+        with patch.object(self.sd, "sh", return_value=(0, json.dumps({key: json.dumps(good_local)}), "")), \
+             patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
+             patch.object(self.sd, "project_home", return_value="/Users/macbook14/Projects/kanban"), \
+             patch.object(self.sd, "hosts") as hosts_mock, \
+             patch.object(self.summarize, "chat") as chat_mock:
+            r = self.summarize.project_summary("kanban", if_stale=True)
+        self.assertEqual(r, {**good_local, "trusted": True, "cached": True})
+        chat_mock.assert_not_called()
+        hosts_mock.assert_not_called()
+
+
+class _StepClock:
+    """A fake `time.time` that jumps forward a couple of seconds on every call, so a
+    deadline-polling loop exits after a handful of (real-instant) iterations instead of
+    actually waiting on the wall clock."""
+    def __init__(self, start=1000.0, step=2.0):
+        self.t = start
+        self.step = step
+
+    def __call__(self):
+        self.t += self.step
+        return self.t
 
 
 class RemoteBackground(unittest.TestCase):
@@ -1397,12 +1513,45 @@ class RemoteBackground(unittest.TestCase):
         self.assertIn("remote-refresh", pop.call_args[0][0])
         self.assertGreaterEqual(dispatch.remote_cache_age(self.h, self.args), 600)
 
-    def test_no_cache_at_all_answers_none_instead_of_waiting(self):
-        with patch("subprocess.Popen") as pop, \
-             patch("subprocess.run", side_effect=AssertionError("ssh 不该在前台跑")):
-            self.assertIsNone(dispatch.remote_dispatch(self.h, self.args, 30, background=True))
+    def test_cold_cache_blocks_once_and_returns_the_fresh_answer(self):
+        """Root fix: a host+command that has never answered before must not hand back nothing on
+        the first call (that left the mini's docs/commits/sessions empty forever, since nothing
+        ever asked again) — it blocks once, bounded, reusing the same detached remote-refresh +
+        lock the stale-cache path uses, and returns as soon as that refresh's cache lands."""
+        def fake_popen(cmd, **kw):
+            # stands in for the detached `dispatch remote-refresh …` process finishing and
+            # writing the cache the way cmd_remote_refresh would.
+            self.write_cache({"timeline": ["新的"]})
+            return unittest.mock.MagicMock()
+        with patch("subprocess.Popen", side_effect=fake_popen) as pop, \
+             patch("subprocess.run", side_effect=AssertionError("ssh 不该直接在这里跑")):
+            r = dispatch.remote_dispatch(self.h, self.args, 30, timeout=5, background=True)
+        self.assertEqual(r, {"timeline": ["新的"]})
         self.assertEqual(pop.call_count, 1)
+
+    def test_cold_cache_gives_up_and_answers_none_if_the_refresh_never_lands(self):
+        clock = _StepClock()
+        with patch("subprocess.Popen") as pop, \
+             patch("subprocess.run", side_effect=AssertionError("ssh 不该在前台跑")), \
+             patch("time.time", side_effect=clock), patch("time.sleep", return_value=None) as sl:
+            self.assertIsNone(dispatch.remote_dispatch(self.h, self.args, 30, timeout=1, background=True))
+        self.assertEqual(pop.call_count, 1)      # exactly one refresh spawned, not one per poll
+        self.assertTrue(sl.called)               # it waited for the refresh rather than answering instantly
         self.assertIsNone(dispatch.remote_cache_age(self.h, self.args))
+
+    def test_second_cold_caller_reuses_the_in_flight_refresh_instead_of_spawning_another(self):
+        lock = dispatch.remote_cache_path(self.h, self.args)[:-5] + ".lock"
+        open(lock, "w").close()   # another process's cold refresh is already in flight
+
+        def fake_sleep(secs):
+            self.write_cache({"timeline": ["来自另一个刷新"]})   # ...which finishes while we wait
+
+        with patch("subprocess.Popen") as pop, \
+             patch("subprocess.run", side_effect=AssertionError("不该再跑一次 ssh")), \
+             patch("time.sleep", side_effect=fake_sleep):
+            r = dispatch.remote_dispatch(self.h, self.args, 30, timeout=5, background=True)
+        self.assertEqual(r, {"timeline": ["来自另一个刷新"]})
+        pop.assert_not_called()   # the fresh lock stopped a second refresh from being spawned
 
     def test_fresh_cache_needs_no_refresh(self):
         self.write_cache({"ok": 1})
@@ -1421,8 +1570,12 @@ class RemoteBackground(unittest.TestCase):
 
     def test_remote_refresh_writes_the_cache_and_drops_the_lock(self):
         lock = dispatch.remote_cache_path(self.h, self.args)[:-5] + ".lock"
+        # Exercises the spawn helper directly (not the full remote_dispatch(background=True)
+        # call): that path now polls for the refresh's own cache write on a cold cache, which
+        # this test's mocked Popen never produces — the spawn + lock-file bookkeeping under test
+        # here is unrelated to that wait.
         with patch("subprocess.Popen") as pop, patch("subprocess.run", side_effect=AssertionError("ssh 不该在前台跑")):
-            dispatch.remote_dispatch(self.h, self.args, 30, background=True)
+            dispatch._spawn_remote_refresh(self.h, self.args, 45)
         self.assertTrue(os.path.exists(lock))
         spawned = pop.call_args[0][0]
         args = spawned[spawned.index("--") + 1:]

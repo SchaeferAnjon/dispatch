@@ -411,10 +411,16 @@ def remote_dispatch(h, args, ttl, timeout=12, background=False):
     the caller for more than ~10s, and remembers an unreachable host for a minute so the
     app's 5-second presence polls stay cheap. Returns the stale cache (or None) on failure.
 
-    background=True never blocks at all: hand back whatever the cache holds (stale, or None
-    when the host has never answered) and refresh it in a detached process for the next call.
-    Use it where the page must paint now and slightly old remote rows are fine (`here`);
-    callers that need the answer itself keep the blocking default."""
+    background=True hands back whatever the cache holds and refreshes it in a detached process
+    for the next call — *when there is a cache to hand back*. On a cold cache (this host+command
+    has never answered before) a detached-only refresh would leave the very first caller with
+    nothing, and — nothing else prompting a retry — the page can stay wrong until it is reopened.
+    So a cold cache still blocks once, briefly (bounded by `timeout` the same as the blocking
+    path below): it kicks the same detached refresh and polls for its cache file, rather than
+    running its own second ssh, so two cold callers for the same host+command still make one ssh
+    call between them. Use background=True where the page must paint now and slightly old
+    remote rows are fine (`here`, `docs`); callers that need the answer itself keep the
+    blocking default."""
     import shlex
     os.makedirs(REMOTE_DIR, exist_ok=True)
     cache = remote_cache_path(h, args)
@@ -427,18 +433,29 @@ def remote_dispatch(h, args, ttl, timeout=12, background=False):
         except Exception:
             return None
 
-    try:
-        if now - os.stat(cache).st_mtime < ttl:
-            return stale()
-    except OSError:
-        pass
+    cache_exists = os.path.exists(cache)
+    if cache_exists:
+        try:
+            if now - os.stat(cache).st_mtime < ttl:
+                return stale()
+        except OSError:
+            cache_exists = False
     try:
         if now - os.stat(down).st_mtime < 60:
             return stale()
     except OSError:
         pass
     if background:
+        if cache_exists:
+            _spawn_remote_refresh(h, args, timeout)
+            return stale()
         _spawn_remote_refresh(h, args, timeout)
+        deadline = time.time() + timeout + 3   # a little slack past the subprocess's own ssh timeout for its startup
+        while time.time() < deadline:
+            got = stale()
+            if got is not None:
+                return got
+            time.sleep(0.2)
         return stale()
     # The remote login shell is fish, so use `env` rather than FOO=bar prefixes.
     cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in args) + " --json"
@@ -5210,7 +5227,7 @@ def merge_remote_docs(project, rows):
     seen = {r["id"] for r in rows}
     for h in hosts():
         rargs = ["docs", project, "--local", "--json"]
-        r = remote_dispatch(h, rargs, DOCS_REMOTE_TTL, timeout=20, background=True)
+        r = remote_dispatch(h, rargs, DOCS_REMOTE_TTL, timeout=12, background=True)
         if not isinstance(r, dict) or "docs" not in r:
             unavailable.append(h["name"])
             continue
@@ -5829,7 +5846,7 @@ def cmd_project_summary(a):
     if not summarize.use_enabled("project"):
         return out({"skipped": True, "reason": summarize.gate_message("project")}, a.json, lambda x: print(x["reason"]))
     try:
-        r = summarize.project_summary(a.name, force=a.force, if_stale=a.if_stale)
+        r = summarize.project_summary(a.name, force=a.force, if_stale=a.if_stale, local_only=getattr(a, "local", False))
     except Exception as e:
         print(json.dumps({"error": str(e)}, ensure_ascii=False) if a.json else f"✗ {e}")
         sys.exit(1)
@@ -7513,7 +7530,7 @@ def main():
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
     s = sub.add_parser("notify", help="push a message to the phone (ntfy / Bark) or a macOS banner; channels come from dispatch env NTFY_URL / BARK_KEY"); s.add_argument("title"); s.add_argument("body", nargs="?", default=""); s.add_argument("--url", default="", help="link to open when the notification is tapped"); s.add_argument("--level", choices=["normal", "high"], default="normal"); s.add_argument("--key", default="", help="dedup key: the same key inside 5 minutes is sent once"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_notify)
     s = sub.add_parser("docs", help="项目页「文档」：扫描 design/ docs/ 研究/ 下的 .md/.html，加上登记过的路径/URL"); s.add_argument("op", nargs="?", default="", help="add | rm | read（省略时第一个参数就是项目名，列出它的文档）"); s.add_argument("project", nargs="?"); s.add_argument("extra", nargs="*", help="add/read/rm：路径或 URL、文档 id"); s.add_argument("--title", help="add：显示标题（默认取首个 # 行或文件名）"); s.add_argument("--kind", choices=list(DOC_KINDS), help="add：类型"); s.add_argument("--asset", default="", help="read：读文档同目录下的相对文件（图片），返回 base64"); s.add_argument("--local", action="store_true", help="list：只看这台机器（其他机器问它时用）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_docs)
-    s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
+    s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--local", action="store_true", help="只回答这台机器自己的（不问别的机器）——其他机器问它时用，防止跨机递归"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)
     for _here_name in ("here", "project-view"):
         s = sub.add_parser(_here_name, help="一个项目此刻的样子：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话能不能关（默认当前目录）"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir", help="看这个目录（默认当前目录）"); s.add_argument("--days", type=int, default=14, help="时间线回看天数（默认 14）"); s.add_argument("--no-summary", action="store_true", help="不调模型，跳过现状一段话"); s.add_argument("--refresh-summary", action="store_true", help="现状重新生成，不用缓存"); s.add_argument("--summary-model", default="", help="现状用哪个模型（默认设置里的总结模型）"); s.add_argument("--local", action="store_true", help="只看这台 Mac（默认把另一台的提交和会话合并进来）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_here)
     s = sub.add_parser("lineage", help="项目→任务→会话→进展：谁在哪个会话做哪个任务、做到哪、能不能关"); s.add_argument("project", nargs="?", default=""); s.add_argument("--project", "-P", dest="project_opt", default=""); s.add_argument("--dir"); s.add_argument("--days", type=int, default=14); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_lineage)

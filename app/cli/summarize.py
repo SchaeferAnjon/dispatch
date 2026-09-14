@@ -471,7 +471,41 @@ def project_material(name):
             "text": "## 最近的会话\n" + "\n".join(lines) + "\n\n## 未完成的任务\n" + "\n".join(open_t[:15]) + "\n\n## 最近完成的任务\n" + "\n".join(t for _, t in closed_t[:10])}
 
 
-def project_summary(name, force=False, if_stale=False, model="", use="project"):
+PROJECT_SUMMARY_REMOTE_TTL = 300
+
+
+def _summary_trusted(rec, has_dir):
+    """Whether a stored summary was (or, read on this host right now, effectively still is)
+    written by a Mac that actually had material for the project — never a guess made from bare
+    task titles alone. New records always carry `trusted` explicitly (set when they are written);
+    a legacy record from before this existed has no marker at all, and the only signal left for
+    one of those is whether the host serving it right now has the project's own directory —
+    that is what `bd memories` turned out NOT to make safe to assume across Macs (each Mac's copy
+    of a key can drift; a summary one Mac wrote blind can sit under the same key on another Mac
+    indefinitely, never invalidated by the good one existing elsewhere)."""
+    if rec is None:
+        return False
+    if "trusted" in rec:
+        return bool(rec["trusted"])
+    return has_dir
+
+
+def fetch_remote_summary(name):
+    """This host has neither the project's directory nor any of its sessions — ask every other
+    Mac in hosts.json for its OWN project summary (`--local` so that Mac answers only for
+    itself and never asks a third one back — one hop, no recursion) and take the newest one that
+    is actually trusted. Never adopts another Mac's guess just because it answered first."""
+    best = None
+    for h in D.hosts():
+        r = D.remote_dispatch(h, ["project-summary", name, "--local", "--json"], PROJECT_SUMMARY_REMOTE_TTL, timeout=20, background=True)
+        if not isinstance(r, dict) or not r.get("summary") or not r.get("trusted"):
+            continue
+        if best is None or (r.get("at") or 0) > (best.get("at") or 0):
+            best = dict(r, from_host=h.get("id", ""), from_host_name=h.get("name", ""))
+    return best
+
+
+def project_summary(name, force=False, if_stale=False, model="", use="project", local_only=False):
     if not use_enabled(use):
         raise RuntimeError(gate_message(use))
     key = D.INTERNAL_MEMORY_PREFIX + "project-summary-" + name
@@ -482,31 +516,45 @@ def project_summary(name, force=False, if_stale=False, model="", use="project"):
         old = json.loads(raw) if raw else None
     except (ValueError, AttributeError):
         old = None
+    has_dir = bool(D.project_home(name))
+    trusted_old = _summary_trusted(old, has_dir)
     p = provider(model)
     want = f"{p['id']}:{p['model']}" if p else ""
     other_model = bool(old and want and old.get("by") != want)
-    if old and not force and not other_model and not (if_stale and time.time() - old.get("at", 0) > 86400):
-        return {**old, "cached": True}
+    if trusted_old and old and not force and not other_model and not (if_stale and time.time() - old.get("at", 0) > 86400):
+        return {**old, "trusted": True, "cached": True}
     if if_stale and not force and old is None and not D.settings_load().get("summary_auto", 1):
         return {"summary": "", "cached": True}
-    if not p:
-        raise RuntimeError("没有可用的模型：设置里选一个总结模型")
     m = project_material(name)
     if not m["sessions"] and not m["open"] and not m["closed"]:
         raise RuntimeError("这个项目还没有会话或任务")
     # A Mac that has never had this project's own directory has no session material for it
-    # either (project_material only sees sessions whose cwd resolved to this project) — it would
-    # write a summary blind to what actually happened, from bare task titles alone, and (being
-    # the only Mac asked right now) overwrite the good one another Mac already wrote. Fall back
-    # to whatever is cached instead of generating here; a Mac that does have the directory will
-    # refresh it later.
-    if not m["sessions"] and not D.project_home(name):
-        if old:
-            return {**old, "cached": True}
-        raise RuntimeError("这台机器没有这个项目的目录和会话记录，等有目录的机器生成总结")
+    # either (project_material only sees sessions whose cwd resolved to this project) — it must
+    # not write a summary blind to what actually happened, from bare task titles alone.
+    have_material = bool(m["sessions"]) or has_dir
+    if not have_material:
+        if not local_only:
+            remote = fetch_remote_summary(name)
+            if remote:
+                rec = {"summary": remote["summary"], "at": remote.get("at") or int(time.time()),
+                       "by": remote.get("by", ""), "sessions": remote.get("sessions", 0),
+                       "open": remote.get("open", 0), "closed": remote.get("closed", 0),
+                       "trusted": True, "material_sessions": remote.get("material_sessions", 0),
+                       "from_host": remote.get("from_host", ""), "from_host_name": remote.get("from_host_name", "")}
+                D.wiki_store(key, json.dumps(rec, ensure_ascii=False))
+                return {**rec, "cached": False}
+        # No peer answered with something trustworthy (unreachable, none configured, or `--local`
+        # asked us not to try) — fall back to our own cache only if it is itself trustworthy;
+        # never synthesize one here.
+        if trusted_old:
+            return {**old, "trusted": True, "cached": True}
+        raise RuntimeError("这台机器没有这个项目的目录和会话记录" + ("" if local_only else "，也连不上有记录的机器") + "，等有记录的机器生成总结")
+    if not p:
+        raise RuntimeError("没有可用的模型：设置里选一个总结模型")
     text = chat(p, PROJECT_PROMPT, f"项目：{name}\n\n{m['text']}", timeout=120, use=use).strip().strip('"“”').replace("\n", " ")[:500]
     if not text:
         raise RuntimeError("模型没有返回内容")
-    rec = {"summary": text, "at": int(time.time()), "by": f"{p['id']}:{p['model']}", "sessions": m["sessions"], "open": m["open"], "closed": m["closed"]}
+    rec = {"summary": text, "at": int(time.time()), "by": f"{p['id']}:{p['model']}", "sessions": m["sessions"], "open": m["open"], "closed": m["closed"],
+           "trusted": True, "material_sessions": m["sessions"]}
     D.wiki_store(key, json.dumps(rec, ensure_ascii=False))
     return {**rec, "cached": False}

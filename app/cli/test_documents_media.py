@@ -185,7 +185,7 @@ class ProjectDocuments(unittest.TestCase):
         self.assertEqual(sorted(by),['local1','remote1'])          # local1 not duplicated
         self.assertEqual(by['remote1']['host'],'mini');self.assertEqual(by['remote1']['host_name'],'mini')
         self.assertNotIn('host',by['local1'])                      # local row untouched
-        rd.assert_called_once_with(host,['docs','kanban','--local','--json'],dispatch.DOCS_REMOTE_TTL,timeout=20,background=True)
+        rd.assert_called_once_with(host,['docs','kanban','--local','--json'],dispatch.DOCS_REMOTE_TTL,timeout=12,background=True)
     def test_merge_remote_docs_reports_unreachable_host_without_raising(self):
         host={'id':'mini','name':'mini','ssh':'mini'}
         with patch.object(dispatch,'hosts',return_value=[host]),patch.object(dispatch,'remote_dispatch',return_value=None):
