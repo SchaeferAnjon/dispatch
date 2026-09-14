@@ -822,7 +822,32 @@ export default function App() {
           {err && <div className="err">{err}</div>}
           <section className="view" ref={viewEl} onScroll={(e) => { scrollMemo.current[scrollKeyRef.current] = e.currentTarget.scrollTop; }}>
             {view === "home" && api && <HomeView onDiscuss={() => setDiscuss({})} insight={insight} alertCount={alertCount} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onLocate={locateProject} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
-            {view === "projects" && api && <ProjectHub onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} />}
+            {view === "projects" && api && <ProjectHub onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} hosts={hosts} owners={projectOwners}
+              onMoveProject={async (name, cwd, fromHost, to) => {
+                const run = async (extra: string[]) => { const t = await api.on(fromHost, ["project", cwd, "--move-to", to.name, "--json", ...extra]); return JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); };
+                say(`正在预检：把 ${name} 交给 ${to.name} 会改什么…`);
+                try {
+                  const p = await run(["--dry-run"]);
+                  if (p.error) { say(String(p.error), true); return; }
+                  const conflicts: string[] = p.git?.conflicts ?? [];
+                  if (conflicts.length) { say(`没有迁移，${to.name} 那边会丢东西：${conflicts.join("；")}`, true); return; }
+                  const f = p.files ?? {}; const sessions: { title: string; state: string }[] = p.sessions ?? [];
+                  const lines = [`把项目 ${name} 整个交给 ${to.name}：${p.remote_cwd}`,
+                    `文件：同步 ${f.send ?? 0} 个${f.delete ? `、删除 ${f.delete} 个（这边已删）` : ""}${f.skipped?.length ? `；构建产物不搬：${f.skipped.join("、")}` : ""}`,
+                    p.git?.history ? "Git 历史用 git push 过去，那边的 stash 保留" : "",
+                    sessions.length ? `在跑的 ${sessions.length} 个会话会在 ${to.name} 上接着跑（${sessions.map((s) => `${s.title || "未命名"}·${s.state}`).join("、")}）；这边的空闲后停掉` : "这边没有在跑的会话，只交接文件和归属",
+                    "以后这个项目归那台，新建会话默认开在那边。"].filter(Boolean);
+                  if (!window.confirm(lines.join("\n"))) return;
+                  say(`正在把 ${name} 交给 ${to.name}…`);
+                  const r = await run([]);
+                  if (r.error) { say(String(r.error), true); return; }
+                  const v = r.git?.verify; const failed = (r.moved ?? []).filter((m: { error?: string }) => m.error);
+                  say([`已把 ${name} 交给 ${to.name}`, v?.checked ? (v.head_match && v.dirty_match ? "Git 两边一致" : `Git 没对上，去 ${to.name} 看 git status`) : "",
+                    (r.moved ?? []).length ? `${(r.moved ?? []).length - failed.length} 个会话已在那边接着跑` : "", failed.length ? `${failed.length} 个会话没迁过去：${failed[0].error}` : ""].filter(Boolean).join("；"), !!failed.length || !!(v?.checked && !(v.head_match && v.dirty_match)));
+                  api.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
+                  void reload();
+                } catch (e) { say(String(e), true); }
+              }} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} onOpenSession={openSession} projects={projects} />}
             {view === "inbox" && <InboxView onSummarize={summarizeSession} onDigest={digestUnread} onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onFocus={focusSession} />}
             {view === "board" && <Board sort={boardSort} starred={starredProjects} progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
