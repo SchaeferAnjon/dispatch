@@ -747,8 +747,9 @@ fn start_watcher(app: AppHandle) {
 #[cfg(target_os = "macos")]
 fn compact_tray_title(tray: &tauri::tray::TrayIcon, title: String) -> Result<(), String> {
     use objc2::{AnyThread, MainThreadMarker};
-    use objc2_app_kit::{NSColor, NSFont, NSFontAttributeName, NSForegroundColorAttributeName};
-    use objc2_foundation::{NSMutableAttributedString, NSRange, NSString};
+    use objc2_app_kit::{NSAttributedStringNSStringDrawing, NSBaselineOffsetAttributeName,
+        NSColor, NSFont, NSFontAttributeName, NSForegroundColorAttributeName, NSKernAttributeName};
+    use objc2_foundation::{NSMutableAttributedString, NSNumber, NSRange, NSSize, NSString};
 
     // Tauri schedules this closure on the AppKit main thread. Keep native objects there.
     tray.with_inner_tray_icon(move |inner| {
@@ -758,10 +759,14 @@ fn compact_tray_title(tray: &tauri::tray::TrayIcon, title: String) -> Result<(),
         let text = NSMutableAttributedString::initWithString(
             NSMutableAttributedString::alloc(), &NSString::from_str(&title));
         let full = NSRange::new(0, title.encode_utf16().count());
-        let font = NSFont::monospacedDigitSystemFontOfSize_weight(11.0, 0.0);
-        let dot_font = NSFont::monospacedDigitSystemFontOfSize_weight(8.0, 0.0);
-        // These attribute keys require NSFont and NSColor values respectively.
+        let font = NSFont::monospacedDigitSystemFontOfSize_weight(10.0, 0.0);
+        let dot_font = NSFont::monospacedDigitSystemFontOfSize_weight(5.5, 0.0);
+        let dot = NSMutableAttributedString::initWithString(
+            NSMutableAttributedString::alloc(), &NSString::from_str("●"));
+        // Attribute values follow AppKit's NSFont / NSColor / NSNumber contracts.
         unsafe {
+            dot.addAttribute_value_range(NSFontAttributeName, &dot_font, NSRange::new(0, 1));
+            let dot_width = dot.size().width;
             text.addAttribute_value_range(NSFontAttributeName, &font, full);
             text.addAttribute_value_range(NSForegroundColorAttributeName, &NSColor::labelColor(), full);
             let mut dots = 0;
@@ -771,10 +776,20 @@ fn compact_tray_title(tray: &tauri::tray::TrayIcon, title: String) -> Result<(),
                 let color = if dots == 0 { NSColor::systemBlueColor() } else { NSColor::systemYellowColor() };
                 text.addAttribute_value_range(NSForegroundColorAttributeName, &color, range);
                 text.addAttribute_value_range(NSFontAttributeName, &dot_font, range);
+                text.addAttribute_value_range(NSBaselineOffsetAttributeName,
+                    &NSNumber::new_f64(if dots == 0 { 4.0 } else { -1.0 }), range);
+                // Cancel the first dot's advance: both dots occupy one column between counts.
+                if dots == 0 {
+                    text.addAttribute_value_range(NSKernAttributeName, &NSNumber::new_f64(-dot_width), range);
+                }
                 dots += 1;
             }
         }
         button.setAttributedTitle(&text);
+        if let Some(icon) = button.image() {
+            icon.setSize(NSSize::new(16.0, 16.0));
+            button.setImage(Some(&icon));
+        }
     }).map_err(|e| e.to_string())
 }
 
@@ -813,10 +828,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     TrayIconBuilder::with_id("main")
-        // A template icon: the app icon is a dark rounded square and would render as a solid block in the menu bar.
-        .icon(tauri::image::Image::new(include_bytes!("../icons/tray.rgba"), 44, 44))
-        .icon_as_template(true)
-        .title("bd")
+        // Keep the original colored Dispatch app icon; template mode would erase its colors.
+        .icon(app.default_window_icon().expect("bundled Dispatch icon").clone())
+        .icon_as_template(false)
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, ev| match ev.id().as_ref() {
