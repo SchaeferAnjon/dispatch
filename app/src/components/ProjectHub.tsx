@@ -3,7 +3,7 @@ import type { Activity, Host, Issue } from '../types';
 import type { Api } from '../api';
 import { UNGROUPED_PROJECT, conversationProject, sessionLifecycle } from '../activity';
 import { isNeedsYou, linkedSessions, originSession, projectGroups, projectHome, sourceTasks } from '../projectModel';
-import { isArchived, isStarred, ownerHostId, rankProjects, type ProjectFlags, type ProjectOwner } from '../projectFlags';
+import { isArchived, isStarred, ownerHostId, newSessionTarget, rankProjects, type ProjectFlags, type ProjectOwner } from '../projectFlags';
 import { actorOf, ago, columnOf, projectColor, projectOf, statusLabel } from '../derive';
 import { ConversationRows } from './Workspace';
 import { Markdown } from './Markdown';
@@ -312,7 +312,7 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
   const loadDocs=useCallback(()=>{setDocs(null);if(!selected)return;void api.on('local',['docs',selected,'--json']).then(t=>{const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));setDocs(Array.isArray(d.docs)?d.docs as Doc[]:[]);}).catch(()=>setDocs([]));},[api,selected]);
   useEffect(()=>{loadDocs();},[loadDocs]);
   useEffect(()=>{if(!focusSection)return;if(['review','sessions','tasks','outcomes','unassigned','folders','docs'].includes(focusSection.section)){setTab(focusSection.section);setEditor(false);}onSectionDone?.();},[focusSection]);
-  const [review,setReview]=useState<ReviewData|null>(null),[reviewBusy,setReviewBusy]=useState(false),[reviewErr,setReviewErr]=useState(''),[termBusy,setTermBusy]=useState(false),[err,setErr]=useState(''),[doneView,setDoneView]=useState(false),[doneQuery,setDoneQuery]=useState('');
+  const [review,setReview]=useState<ReviewData|null>(null),[reviewBusy,setReviewBusy]=useState(false),[reviewErr,setReviewErr]=useState(''),[termBusy,setTermBusy]=useState(false),[terminalNotice,setTerminalNotice]=useState<{project:string;text:string;error?:boolean}|null>(null),[err,setErr]=useState(''),[doneView,setDoneView]=useState(false),[doneQuery,setDoneQuery]=useState('');
   // Two calls: the timeline / tasks / sessions come back in a second, the 现状 paragraph may take
   // the model half a minute the first time — the page must not stay blank for it.
   const loadReview=useCallback(()=>{
@@ -358,13 +358,27 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
   const short=shortPath;
   // 「终端」: a plain Herdr shell tab in the project's home directory (the folder most of its sessions ran in).
   const homeAct=projectHome(project.sessions);const home=(homeAct?.cwd||'').replace(/\/+$/,'');
-  const openTerminal=async()=>{if(!home)return;setTermBusy(true);try{const t=await api.on(homeAct?.host||'local',['terminal','--cwd',home,'--label',project.name,'--json']);const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));if(d.error)throw new Error(String(d.error));}catch(e){setReviewErr(String(e));}finally{setTermBusy(false);}};
+  const terminalTarget=newSessionTarget(ownerHostId(owners[project.name],hosts),homeAct,'local');
+  const terminalHost=terminalTarget.initialHost;
+  const terminalMachine=hosts.find(h=>(h.local?'local':h.id)===terminalHost)?.name||terminalHost;
+  const terminalCwd=terminalTarget.initialCwd;
+  const openTerminal=async()=>{
+    if(!terminalCwd||termBusy)return;
+    setTermBusy(true);setTerminalNotice(null);
+    try{
+      const t=await api.on(terminalHost,['terminal','--cwd',terminalCwd,'--label',project.name,'--json']);
+      const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));
+      if(d.error)throw new Error(String(d.error));
+      setTerminalNotice({project:project.name,text:d.app?`已在 ${d.host||terminalMachine} 打开 ${d.app} 终端：${d.cwd}`:`已在 ${d.host||terminalMachine} 创建终端标签，但未能显示窗口。${d.hint||'请检查那台电脑的终端窗口。'}`,error:!d.app});
+    }catch(e){setTerminalNotice({project:project.name,text:String(e),error:true});}
+    finally{setTermBusy(false);}
+  };
   const dirs=[...project.sessions.reduce((m,a)=>{const d=(a.cwd||'').replace(/\/+$/,'');if(!d)return m;const cur=m.get(d)||{count:0,last:0,latest:a};cur.count++;if(a.last_at>cur.last){cur.last=a.last_at;cur.latest=a;}return m.set(d,cur);},new Map<string,{count:number;last:number;latest:Activity}>())].sort((x,y)=>y[1].last-x[1].last);
   return <div className="project-hub"><button className="link" onClick={()=>{setQuery('');onProject(null);}}>‹ 全部项目</button><header className="hub-heading"><div><h2>{project.name}{starBtn(project.name)}{(()=>{
     // The Mac this project is on: its handed-over owner, else where its folder is now.
     const id=ownerHostId(owners[project.name],hosts)||homeAct?.host||'local';const h=hosts.find(x=>(x.local?'local':x.id)===id);
     return h&&<span className="project-owner" title={owners[project.name]?'项目已交接给这台：新建会话默认开在这里':'项目目录目前在这台电脑上'}>{h.name}</span>;
-  })()}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p></div><div className="hub-header-actions"><button className="btn" disabled={termBusy} onClick={()=>void openTerminal()} title={home?`在 ${shortPath(home)} 开一个不带 Agent 的 Herdr 终端标签`:'这个项目还没有记录到目录'}>{termBusy?'开终端…':'终端'}</button>{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}{(()=>{
+  })()}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p></div><div className="hub-header-actions"><button className="btn" disabled={termBusy||!terminalCwd} onClick={()=>void openTerminal()} title={terminalCwd?`在 ${terminalMachine} 的 ${shortPath(terminalCwd)} 开一个不带 Agent 的 Herdr 终端标签`:'这个项目还没有记录到目录'}>{termBusy?'开终端…':`终端 · ${terminalMachine}`}</button>{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}{(()=>{
     // One tap hands the whole project (folder, Git, running conversations) to another Mac:
     // it runs on the Mac the project's folder is on now, and is refused there when Git would lose work.
     const from=homeAct?.host||'local';
@@ -372,6 +386,7 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
     return <>
       {targets.map(h=><button key={h.id} className="btn" disabled={!!moving} onClick={async()=>{setMoving(h.id);try{await onMoveProject!(project.name,home,from,h);}finally{setMoving(null);}}} title={`把项目目录、Git 和这边在跑的会话交给 ${h.name}：先预检，确认后才动手`}>{moving===h.id?'迁移中…':`迁移到 ${h.name}`}</button>)}</>;
   })()}<button className="btn primary" onClick={()=>onNew(projectHome(project.sessions))}>在此项目新建会话</button><button className="btn" onClick={()=>onFlag(project.name,{archived:!isArchived(flags,project.name)})} title={isArchived(flags,project.name)?'恢复到工作台和项目列表':'做完了、暂时不用：从工作台和项目列表隐藏，随时可找回'}>{isArchived(flags,project.name)?'取消归档':'归档'}</button></div></header><div className="hub-tabs views">{[['review','项目回顾'],['sessions','会话',project.sessions.filter(a=>!a.scheduled).length],['tasks','任务',project.items.length],['outcomes','成果',project.results.length],['unassigned','待归属任务',unassigned.length],['folders','目录',dirs.length],['docs','文档',docs?docs.length:'…']].map(([id,label,n])=><button className={tab===id?'on':''} key={id} onClick={()=>{setTab(String(id));setEditor(false);}}>{label}{n!=null?` ${n}`:''}</button>)}</div>
+  {terminalNotice?.project===project.name&&<p role={terminalNotice.error?'alert':'status'} className={terminalNotice.error?'danger':'connection-note'}>{terminalNotice.text}</p>}
   {tab==='review'&&<ProjectReview api={api} data={review} busy={reviewBusy} err={reviewErr} me={me} onOpen={onOpen} onTask={onTask} onReload={loadReview}/>}
   {tab==='sessions'&&<><div className="hub-tools"><input aria-label="搜索项目会话" placeholder="搜索这个项目的会话…" value={query} onChange={e=>setQuery(e.target.value)}/><button className={`btn sm${archived?' on':''}`} onClick={()=>{setArchived(!archived);setScheduled(false);}} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>{archived?'返回最近会话':`已归档 ${archivedCount}`}</button><button className="btn sm" onClick={()=>{setScheduled(!scheduled);setArchived(false);}}>{scheduled?'返回普通会话':`定时会话 ${project.sessions.filter(a=>a.scheduled).length}`}</button></div><ConversationRows rows={visible} me={me} onOpen={onOpen} onRead={onRead} onSummarize={onSummarize} taskContent={a=>{const linked=project.items.filter(i=>linkedSessions(i).includes(a.session_id));const rev=verdicts.get(a.session_id);return <div className="conversation-tasks-line">{rev?<><span className={`review-verdict${rev.verdict==='别关'?' hold':''}`}>{rev.verdict}</span>{rev.reason&&<span className="muted small">{rev.reason}</span>}</>:null}{linked.length?linked.map(i=><button key={i.id} className="chip" onClick={()=>onTask(i.id)}>{i.title}<span className="muted small"> · {i.status==='closed'?'已完成':i.status==='in_progress'?'进行中':'待办'}</span></button>):<span className="muted small">没有明确关联的任务</span>}</div>;}}/>{visible.length===0&&<p className="empty">{archived?'没有归档的会话。':'这个分类没有会话。'}</p>}</>}
   {tab==='tasks'&&(()=>{const needs=project.items.filter(i=>isNeedsYou(i)&&i.status!=='closed');const rest=project.items.filter(i=>!(isNeedsYou(i)&&i.status!=='closed'));const closedAt=(i:Issue)=>Date.parse(i.closed_at||i.updated_at||'')/1000||0;const week=Date.now()/1000-7*86400;const doneAll=rest.filter(i=>columnOf(i)==='done').sort((a,b)=>closedAt(b)-closedAt(a));const doneRecent=doneAll.filter(i=>closedAt(i)>=week);

@@ -18,7 +18,7 @@ import { InboxView, type InboxItems } from "./components/Inbox";
 import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
 import { SearchPalette } from "./components/Search";
-import { dropMovedOriginals } from "./moves";
+import { dropMovedOriginals, migrationCheckPrompt, type MigrationCheck } from "./moves";
 import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, newSessionTarget, ownerHostId, parseProjectFlags, parseProjectOwners, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags, type ProjectOwner } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
 import { SetupView, type InitStatus } from "./components/Setup";
@@ -160,7 +160,8 @@ export default function App() {
   const [boardSort, setBoardSort] = useState<BoardSort>(() => { try { return (localStorage.getItem("dispatch-board-sort") as BoardSort) || "priority"; } catch { return "priority"; } });
   const changeBoardSort = (s: BoardSort) => { setBoardSort(s); try { localStorage.setItem("dispatch-board-sort", s); } catch { /* ignore */ } };
   const [search, setSearch] = useState(false);
-  const [delegate, setDelegate] = useState<{ host?: string; task?: string; prompt?: string; label?: string; kind?: string; model?: string } | null>(null);
+  const [migrationCheck, setMigrationCheck] = useState<MigrationCheck | null>(null);
+  const [delegate, setDelegate] = useState<{ cwd?: string; host?: string; task?: string; prompt?: string; label?: string; kind?: string; model?: string } | null>(null);
   // 讨论一个念头: a topic (optionally under a project) put to several agents at once.
   const [discuss, setDiscuss] = useState<{ project?: string; task?: string } | null>(null);
   const [detailWf, setDetailWf] = useState<"split" | undefined>(undefined);
@@ -743,13 +744,14 @@ export default function App() {
   return (
     <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{const patch=<T extends {title:string}>(r:T):T=>({...r,...c,...(c.title_override?{title:c.title_override}:{})});setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?patch(r):r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?patch(x):x)}));say(c.title_override!==undefined?(c.title_override?`已改名为「${c.title_override}」`:'已恢复自动标题'):c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onUnread: markUnread, onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), onSummarize: summarizeSession, hosts, onMove: async (a, hostId, hostName) => {
         const run = async (extra: string[]) => JSON.parse((await api!.on("local", ["move", a.session_id, "--to", hostId, "--json", ...extra])).replace(/^[^{]*/, ""));
+        setMigrationCheck(null);
         say(`正在预检：${hostName} 上的 Git 状态、要改哪些文件…`);
         try {
           // Preflight first: what the hand-over would change or refuse, before anything moves.
           const p = await run(["--dry-run"]);
           if (p.error) { say(String(p.error), true); return; }
           const conflicts: string[] = p.git?.conflicts ?? [];
-          if (conflicts.length) { say(`没有迁移，${hostName} 那边会丢东西：${conflicts.join("；")}`, true); return; }
+          if (conflicts.length) { setToast(null); setMigrationCheck({ project: p.project || conversationProject(a), host: "local", cwd: p.cwd || a.cwd, target: hostName, remoteCwd: p.remote_cwd || "", conflicts }); return; }
           const f = p.files;
           const others: { title: string; state: string }[] = p.others_here ?? [];
           const lines = [`把会话和项目 ${p.project} 交给 ${hostName}：${p.remote_cwd}`,
@@ -828,12 +830,13 @@ export default function App() {
             {view === "projects" && api && <ProjectHub onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} hosts={hosts} owners={projectOwners}
               onMoveProject={async (name, cwd, fromHost, to) => {
                 const run = async (extra: string[]) => { const t = await api.on(fromHost, ["project", cwd, "--move-to", to.name, "--json", ...extra]); return JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); };
+                setMigrationCheck(null);
                 say(`正在预检：把 ${name} 交给 ${to.name} 会改什么…`);
                 try {
                   const p = await run(["--dry-run"]);
                   if (p.error) { say(String(p.error), true); return; }
                   const conflicts: string[] = p.git?.conflicts ?? [];
-                  if (conflicts.length) { say(`没有迁移，${to.name} 那边会丢东西：${conflicts.join("；")}`, true); return; }
+                  if (conflicts.length) { setToast(null); setMigrationCheck({ project: name, host: fromHost, cwd: p.cwd || cwd, target: to.name, remoteCwd: p.remote_cwd || "", conflicts }); return; }
                   const f = p.files ?? {}; const sessions: { title: string; state: string }[] = p.sessions ?? [];
                   const lines = [`把项目 ${name} 整个交给 ${to.name}：${p.remote_cwd}`,
                     `文件：同步 ${f.send ?? 0} 个${f.delete ? `、删除 ${f.delete} 个（这边已删）` : ""}${f.skipped?.length ? `；构建产物不搬：${f.skipped.join("、")}` : ""}`,
@@ -881,10 +884,17 @@ export default function App() {
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
       {newSession && api && <NewSession api={api} hosts={hosts} {...newSessionTarget(ownerHostId(newSessionProject ? projectOwners[newSessionProject] : undefined, hosts), newSessionContext, hostId)} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
       {discuss && api && <DiscussDialog api={api} me={me} issues={issuesF} projects={projects.map((p) => p.name).filter(Boolean)} initialProject={discuss.project} initialTask={discuss.task} onClose={() => { setDiscuss(null); void reload(); }} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, kind: leader?.kind, model: leader?.model })} onAll={openDiscussion} onDone={say} onError={(m) => say(m, true)} />}
-      {delegate && api && <Delegate api={api} hosts={hosts} initialHost={delegate.host} initialTask={delegate.task} initialPrompt={delegate.prompt} initialLabel={delegate.label} initialKind={delegate.kind} initialModel={delegate.model} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} />}
+      {delegate && api && <Delegate api={api} hosts={hosts} initialHost={delegate.host} initialCwd={delegate.cwd} initialTask={delegate.task} initialPrompt={delegate.prompt} initialLabel={delegate.label} initialKind={delegate.kind} initialModel={delegate.model} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} />}
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
       {creating && <NewTask projects={projectOptions.formal} otherProjects={projectOptions.other} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
-      {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
+      {migrationCheck && <div className="toast err" role="alert" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+        <div>没有迁移，{migrationCheck.target} 那边会丢东西：{migrationCheck.conflicts.join("；")}</div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><button className="btn" style={{ color: 'var(--ink)' }} onClick={() => {
+          setDelegate({ host: hosts.find(h => (h.local ? 'local' : h.id) === migrationCheck.host)?.id || migrationCheck.host, cwd: migrationCheck.cwd, prompt: migrationCheckPrompt(migrationCheck), label: `迁移检查 · ${migrationCheck.project}`, kind: 'pi', model: 'glm-5.3-flash' });
+          setMigrationCheck(null);
+        }}>启动 Agent 检查</button><button className="btn" style={{ color: 'var(--ink)' }} onClick={() => setMigrationCheck(null)}>关闭</button></div>
+      </div>}
+      {!migrationCheck && toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
       {webUpdate && <button className="toast web-update" onClick={() => window.location.reload()}>网页版已更新到 v{webUpdate} · 点这里刷新</button>}
       <GlobalContextMenu issues={issues} sessions={sessionByKey} />
     </div></TaskActions></ItemMenus></ViewMenu></ProjectActions></ConversationActions></SessionActions>
