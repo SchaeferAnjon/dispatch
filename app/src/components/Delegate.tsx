@@ -24,9 +24,10 @@ interface Props {
   dirOfProject: (name: string) => string;
   onClose: () => void;
   onStart: (input: AgentStartInput) => Promise<AgentStartResult | null>;
+  onShowSessions?: (hostName: string) => void;
 }
 
-export function Delegate({ api, hosts, initialHost, initialCwd, initialTask, initialPrompt, initialLabel, initialKind, initialModel, issues, me, dirOfProject, onClose, onStart }: Props) {
+export function Delegate({ api, hosts, initialHost, initialCwd, initialTask, initialPrompt, initialLabel, initialKind, initialModel, issues, me, dirOfProject, onClose, onStart, onShowSessions }: Props) {
   const online = hosts.filter((h) => h.online || h.local);
   const [hostId, setHostId] = useState(initialHost ?? (online.find((h) => h.local)?.id ?? online[0]?.id ?? ""));
   const host = hosts.find((h) => h.id === hostId);
@@ -94,13 +95,15 @@ export function Delegate({ api, hosts, initialHost, initialCwd, initialTask, ini
         {err && <div className="err">{err}</div>}
         {res && (
           <div className="sel-text small">
-            <div><b>{res.status}</b> · Herdr {res.pane_id} · {res.actor}{res.warning ? ` · ${res.warning}` : ""}</div>
+            <div><b>{res.prompt_sent ? '会话已启动，第一句话已发送' : '会话已创建，请检查输入状态'}</b> · {res.host}{res.warning ? ` · ${res.warning}` : ""}</div>
+            {res.prompt_sent && <p>Agent 会在后台继续处理，可以到会话页查看进度和回复。</p>}
             {res.output && <pre className="diff" style={{ maxHeight: 220, overflow: "auto" }}>{res.output.split("\n").filter((l) => l.trim()).slice(-25).join("\n")}</pre>}
           </div>
         )}
         <div className="foot">
           <button className="btn ghost" onClick={onClose}>{res ? "关闭" : "取消"}</button>
-          <button className="btn primary" disabled={busy || !host || (!prompt.trim() && !defaultPrompt)} onClick={go}>{busy ? "起中，等它回话…" : res ? "再派一个" : `派给 ${actorName}`}</button>
+          {res && onShowSessions && <button className="btn primary" onClick={() => onShowSessions(res.host)}>查看会话</button>}
+          <button className={`btn ${res ? 'ghost' : 'primary'}`} disabled={busy || !host || (!prompt.trim() && !defaultPrompt)} onClick={go}>{busy ? "正在启动并发送第一句话…" : res ? "再派一个" : `派给 ${actorName}`}</button>
         </div>
       </div>
     </div>

@@ -550,7 +550,7 @@ struct AgentStart {
 // Hand work to another agent through Herdr (dispatch agent start), here or on another Mac.
 #[tauri::command]
 async fn agent_start(input: AgentStart) -> Result<String, String> {
-    let mut a = args(&["agent", "start", &input.kind, "--json"]);
+    let mut a = args(&["agent", "start", &input.kind, "--json", "--no-wait"]);
     for (flag, v) in [("--host", input.host), ("--cwd", input.cwd), ("--model", input.model), ("--task", input.task), ("--prompt", input.prompt), ("--label", input.label)] {
         if let Some(v) = v.filter(|s| !s.trim().is_empty()) {
             a.push(flag.into());

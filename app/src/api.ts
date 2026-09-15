@@ -3,7 +3,7 @@ import { fixtureApi } from "./fixtures";
 import type { Interaction } from "./derive";
 
 export interface AgentStartInput { kind: string; host?: string; cwd?: string; model?: string; task?: string; prompt?: string; label?: string; timeout?: number }
-export interface AgentStartResult { host: string; pane_id: string; tab_id: string; name: string; kind: string; actor: string; cwd: string; status: string; task: string; output: string; warning?: string }
+export interface AgentStartResult { host: string; pane_id: string; tab_id: string; name: string; kind: string; actor: string; cwd: string; status: string; task: string; output: string; warning?: string; prompt_sent?: boolean }
 
 export interface Api {
   info(): Promise<Info>;

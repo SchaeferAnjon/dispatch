@@ -1119,7 +1119,7 @@ def cmd_agent(a):
                 res["dismissed"] = True
             if not ready:
                 res["warning"] = "等了 90 秒 Agent 还没准备好接收输入；提示词已尝试发送，看输出确认"
-            before = strip_pane_chrome(read_pane(host, pane, a.lines))
+            before = strip_pane_chrome(read_pane(host, pane, a.lines)) if a.wait else ""
             pargs = ["agent", "prompt", pane, a.prompt]
             if a.wait:
                 pargs += ["--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(a.timeout)]
@@ -1129,7 +1129,8 @@ def cmd_agent(a):
                 d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
             # Read only after the reply stops drawing: Herdr can report idle before the
             # answer is on screen, and --wait gives up when an agent never flips its state.
-            res["output"] = drop_echoed_prompt(new_pane_text(before, strip_pane_chrome(read_pane(host, pane, a.lines, settle=True, cap=min(max(a.timeout // 1000, 15), 120)))), a.prompt)
+            res["output"] = drop_echoed_prompt(new_pane_text(before, strip_pane_chrome(read_pane(host, pane, a.lines, settle=True, cap=min(max(a.timeout // 1000, 15), 120)))), a.prompt) if a.wait else ""
+            res["prompt_sent"] = not (isinstance(d, dict) and d.get("error"))
             if isinstance(d, dict) and d.get("error"):
                 info = herdr(host, ["agent", "get", pane])
                 now = ((info.get("result") or {}).get("agent") or {}).get("agent_status")
@@ -1138,7 +1139,7 @@ def cmd_agent(a):
                 else:
                     res["status"], res["warning"] = "stalled", (d["error"].get("message") or "")[:200] + "——看输出，可能在等你回答一个对话框（dispatch agent keys <pane> enter）"
             else:
-                res["status"] = (d.get("result") or {}).get("agent", {}).get("agent_status")
+                res["status"] = (d.get("result") or {}).get("agent", {}).get("agent_status") or "started"
 
         def text(r):
             print(f"已在 {r['host']} 起了 {r['kind']}（{r['actor']}）· Herdr {r['pane_id']} · {r['cwd']}" + (f" · 认领「{r.get('task_title') or r['task']}」（{r['task']}）" if r["task"] else ""))

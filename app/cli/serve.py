@@ -166,12 +166,12 @@ def commands():
         return run_dispatch(a)
 
     def agent_start(args, actor):
-        a = ["agent", "start", args["kind"], "--json"]
+        a = ["agent", "start", args["kind"], "--json", "--no-wait"]
         for k, flag in (("host", "--host"), ("cwd", "--cwd"), ("model", "--model"), ("task", "--task"), ("prompt", "--prompt"), ("label", "--label")):
             if args.get(k):
                 a += [flag, str(args[k])]
         timeout = int(args.get("timeout") or 600000)
-        # Read back the whole reply, and give the subprocess more time than the prompt wait.
+        # Return after startup and prompt delivery; the session continues in the background.
         a += ["--timeout", str(timeout), "--lines", str(args.get("lines") or 200)]
         return run_dispatch(a, timeout=timeout // 1000 + 200)
 
