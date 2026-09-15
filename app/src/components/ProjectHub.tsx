@@ -357,7 +357,7 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
   const unassigned=project.items.filter(i=>!linkedSessions(i).length);
   const short=shortPath;
   // 「终端」: a plain Herdr shell tab in the project's home directory (the folder most of its sessions ran in).
-  const homeAct=projectHome(project.sessions);const home=(homeAct?.cwd||'').replace(/\/+$/,'');
+  const homeAct=projectHome(project.sessions);
   const terminalTarget=newSessionTarget(ownerHostId(owners[project.name],hosts),homeAct,'local');
   const terminalHost=terminalTarget.initialHost;
   const terminalMachine=hosts.find(h=>(h.local?'local':h.id)===terminalHost)?.name||terminalHost;
@@ -381,10 +381,10 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
   })()}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p></div><div className="hub-header-actions"><button className="btn" disabled={termBusy||!terminalCwd} onClick={()=>void openTerminal()} title={terminalCwd?`在 ${terminalMachine} 的 ${shortPath(terminalCwd)} 开一个不带 Agent 的 Herdr 终端标签`:'这个项目还没有记录到目录'}>{termBusy?'开终端…':`终端 · ${terminalMachine}`}</button>{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}{(()=>{
     // One tap hands the whole project (folder, Git, running conversations) to another Mac:
     // it runs on the Mac the project's folder is on now, and is refused there when Git would lose work.
-    const from=homeAct?.host||'local';
-    const targets=home&&onMoveProject?hosts.filter(h=>(h.local?'local':h.id)!==from&&(h.local||h.online)):[];
+    const from=terminalTarget.initialHost;const cwd=terminalTarget.initialCwd;
+    const targets=cwd&&onMoveProject?hosts.filter(h=>(h.local?'local':h.id)!==from&&(h.local||h.online)):[];
     return <>
-      {targets.map(h=><button key={h.id} className="btn" disabled={!!moving} onClick={async()=>{setMoving(h.id);try{await onMoveProject!(project.name,home,from,h);}finally{setMoving(null);}}} title={`把项目目录、Git 和这边在跑的会话交给 ${h.name}：先预检，确认后才动手`}>{moving===h.id?'迁移中…':`迁移到 ${h.name}`}</button>)}</>;
+      {targets.map(h=><button key={h.id} className="btn" disabled={!!moving} onClick={async()=>{setMoving(h.id);try{await onMoveProject!(project.name,cwd!,from,h);}finally{setMoving(null);}}} title={`把项目目录、Git 和这边在跑的会话交给 ${h.name}：先预检，确认后才动手`}>{moving===h.id?'迁移中…':`迁移到 ${h.name}`}</button>)}</>;
   })()}<button className="btn primary" onClick={()=>onNew(projectHome(project.sessions))}>在此项目新建会话</button><button className="btn" onClick={()=>onFlag(project.name,{archived:!isArchived(flags,project.name)})} title={isArchived(flags,project.name)?'恢复到工作台和项目列表':'做完了、暂时不用：从工作台和项目列表隐藏，随时可找回'}>{isArchived(flags,project.name)?'取消归档':'归档'}</button></div></header><div className="hub-tabs views">{[['review','项目回顾'],['sessions','会话',project.sessions.filter(a=>!a.scheduled).length],['tasks','任务',project.items.length],['outcomes','成果',project.results.length],['unassigned','待归属任务',unassigned.length],['folders','目录',dirs.length],['docs','文档',docs?docs.length:'…']].map(([id,label,n])=><button className={tab===id?'on':''} key={id} onClick={()=>{setTab(String(id));setEditor(false);}}>{label}{n!=null?` ${n}`:''}</button>)}</div>
   {terminalNotice?.project===project.name&&<p role={terminalNotice.error?'alert':'status'} className={terminalNotice.error?'danger':'connection-note'}>{terminalNotice.text}</p>}
   {tab==='review'&&<ProjectReview api={api} data={review} busy={reviewBusy} err={reviewErr} me={me} onOpen={onOpen} onTask={onTask} onReload={loadReview}/>}

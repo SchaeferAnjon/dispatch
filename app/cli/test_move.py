@@ -1,8 +1,29 @@
 import base64
 import subprocess
 import unittest
+from unittest.mock import patch
 
 import move as M
+
+
+class Ownership(unittest.TestCase):
+    def test_records_owner_on_both_machines_without_waiting_for_board_sync(self):
+        h = {"name": "Apple", "ssh": "apple@100.118.80.86"}
+        with patch.object(M.D, "project_owner_set", return_value={"host": "Apple"}) as local, patch.object(M, "ssh") as remote:
+            self.assertEqual(M.set_owner("my project", h), {"host": "Apple"})
+            local.assert_called_once_with("my project", "Apple", "100.118.80.86")
+            self.assertIn("project 'my project' --owner local --json", remote.call_args.args[1])
+
+    def test_remote_failure_is_reported_after_local_success(self):
+        with patch.object(M.D, "project_owner_set", return_value={"host": "Apple"}), patch.object(M, "ssh", side_effect=RuntimeError("offline")):
+            result = M.set_owner("demo", {"name": "Apple", "ssh": "apple@host"})
+            self.assertEqual(result["host"], "Apple")
+            self.assertIn("目标机器归属记录失败", result["error"])
+
+    def test_local_store_exit_does_not_skip_target_write(self):
+        with patch.object(M.D, "project_owner_set", side_effect=SystemExit(1)), patch.object(M, "ssh") as remote:
+            self.assertIn("来源机器归属记录失败", M.set_owner("demo", {"name": "Apple", "ssh": "apple@host"})["error"])
+            remote.assert_called_once()
 
 
 class GitConflicts(unittest.TestCase):

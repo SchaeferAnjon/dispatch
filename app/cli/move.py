@@ -679,12 +679,21 @@ def move(session_id, to, prompt_extra="", sync=True, dry=False, force=False, kee
 # ---------------------------------------------------------------- project owner
 
 def set_owner(project, h):
-    """Record which Mac a project now lives on, in the shared board memory next to its star/archive
-    flags, so both Macs agree and new sessions for it default there."""
+    """Write ownership on both Macs before returning; board sync may not have arrived yet."""
+    result = {}
+    errors = []
     try:
-        return D.project_owner_set(project, h["name"], h.get("ssh", "").split("@")[-1])
+        result = D.project_owner_set(project, h["name"], h.get("ssh", "").split("@")[-1])
+    except (Exception, SystemExit) as e:
+        errors.append(f"来源机器归属记录失败：{e}")
+    try:
+        dcmd = h.get("dispatch", "$HOME/.local/bin/dispatch")
+        ssh(h, f"BEADS_DIR=$HOME/tasks/.beads {dcmd} project {shlex.quote(project)} --owner local --json", timeout=40)
     except Exception as e:
-        return {"error": str(e)[:200]}
+        errors.append(f"目标机器归属记录失败：{e}")
+    if errors:
+        result["error"] = "；".join(errors)[:400]
+    return result
 
 
 def project_dir(name):

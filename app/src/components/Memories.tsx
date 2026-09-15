@@ -1,3 +1,4 @@
+import { confirmAction } from '../confirm';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import type { Host } from "../types";
@@ -102,9 +103,11 @@ export function MemoriesView({ api, hosts, onDone, onError, hostId = "" }: Props
   };
   const archive = async (e: MemoryEntry) => {
     const label = e.description || cleanName(e.name);
-    if (!window.confirm(`归档「${label}」？文件会移到同目录的 archived/ 文件夹，不再出现在这里。`)) return;
     setBusy(true);
-    try { await api.on(host, ["memories", "archive", "--path", e.path, "--json"]); onDone("已归档"); await loadList(); }
+    try {
+      if (!await confirmAction(`归档「${label}」？文件会移到同目录的 archived/ 文件夹，不再出现在这里。`)) return;
+      await api.on(host, ["memories", "archive", "--path", e.path, "--json"]); onDone("已归档"); await loadList();
+    }
     catch (err) { onError(String(err)); } finally { setBusy(false); }
   };
   const promote = async (e: MemoryEntry) => {

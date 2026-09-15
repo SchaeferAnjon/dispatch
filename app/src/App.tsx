@@ -1,3 +1,4 @@
+import { confirmAction } from './confirm';
 import { ConversationActions } from './components/ConversationActions';
 import { GlobalContextMenu, ItemMenus, ProjectActions, ViewMenu, type ViewMenuItem } from './components/ContextMenu';
 import { TaskActions, isArchivedTask, isTrashed } from "./components/TaskActions";
@@ -760,14 +761,14 @@ export default function App() {
             p.already_there ? `${hostName} 上已经在跑这个会话，不会再开一份` : "",
             others.length ? `⚠ 这边还有 ${others.length} 个会话在这个项目里（${others.map((o) => `${o.title || "未命名"}·${o.state}`).join("、")}），它们会继续改这边的文件` : "",
             "这边的原会话会直接关掉（正在跑的也关），在那边接着跑；项目以后归那台，新建会话默认开在那边。"].filter(Boolean);
-          if (!window.confirm(lines.join("\n"))) return;
+          if (!await confirmAction(lines.join("\n"))) { say("已取消迁移"); return; }
           say(`正在把项目交给 ${hostName}…`);
           const r = await run([]);
           if (r.error) { say(String(r.error), true); return; }
           const v = r.git?.verify;
           const original: Record<string, string> = { stopped: "这边的原会话已停掉", working: "这边的原会话还在跑，跑完关掉它", self: "这边的原会话就是发起迁移的，说完这轮关掉", failed: "这边的原会话没停下，手动关掉", "not-running": "", kept: "" };
           say([`已交给 ${hostName}：${r.remote_cwd}`, v?.checked ? (v.head_match && v.dirty_match ? "Git 两边一致" : `Git 没对上，去 ${hostName} 看 git status`) : "", original[r.original?.state] ?? "",
-            others.length ? `这边还有 ${others.length} 个会话在改这个项目` : ""].filter(Boolean).join("；"), !!(v?.checked && !(v.head_match && v.dirty_match)));
+            others.length ? `这边还有 ${others.length} 个会话在改这个项目` : "", r.owner?.error ? `项目归属更新失败：${r.owner.error}` : ""].filter(Boolean).join("；"), !!r.owner?.error || !!(v?.checked && !(v.head_match && v.dirty_match)));
           api!.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
         } catch (e) { say(String(e), true); }
       } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectHome(projectRows.filter((a) => conversationProject(a) === n))); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
@@ -844,14 +845,14 @@ export default function App() {
                     sessions.length ? `这边开着的 ${sessions.length} 个会话会直接关掉（正在跑的也关），在 ${to.name} 上接着跑：${sessions.map((s) => `${s.title || "未命名"}·${s.state === "working" ? "正在跑" : "空闲"}`).join("、")}` : "这边没有开着的会话",
                     p.history?.count ? `其余 ${p.history.count} 段历史会话（${p.history.mb} MB）的记录也搬过去，Dispatch 里都显示在 ${to.name}` : "",
                     "以后这个项目归那台，新建会话默认开在那边。"].filter(Boolean);
-                  if (!window.confirm(lines.join("\n"))) return;
+                  if (!await confirmAction(lines.join("\n"))) { say("已取消迁移"); return; }
                   say(`正在把 ${name} 交给 ${to.name}…`);
                   const r = await run([]);
                   if (r.error) { say(String(r.error), true); return; }
                   const v = r.git?.verify; const failed = (r.moved ?? []).filter((m: { error?: string }) => m.error);
                   say([`已把 ${name} 交给 ${to.name}`, v?.checked ? (v.head_match && v.dirty_match ? "Git 两边一致" : `Git 没对上，去 ${to.name} 看 git status`) : "",
                     (r.moved ?? []).length ? `${(r.moved ?? []).length - failed.length} 个会话已在那边接着跑` : "", failed.length ? `${failed.length} 个会话没迁过去：${failed[0].error}` : "",
-                    r.history?.copied ? `${r.history.copied} 段历史会话已搬过去` : "", r.history?.failed?.length ? `${r.history.failed.length} 段历史没搬成` : ""].filter(Boolean).join("；"), !!failed.length || !!(v?.checked && !(v.head_match && v.dirty_match)));
+                    r.history?.copied ? `${r.history.copied} 段历史会话已搬过去` : "", r.history?.failed?.length ? `${r.history.failed.length} 段历史没搬成` : "", r.owner?.error ? `项目归属更新失败：${r.owner.error}` : ""].filter(Boolean).join("；"), !!r.owner?.error || !!failed.length || !!(v?.checked && !(v.head_match && v.dirty_match)));
                   api.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
                   void reload();
                 } catch (e) { say(String(e), true); }
