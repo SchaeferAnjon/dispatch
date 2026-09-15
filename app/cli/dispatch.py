@@ -778,6 +778,38 @@ def herdr_target_host(host):
     raise SystemExit(f"hosts.json 里没有叫 {host} 的机器")
 
 
+_HERDR_REMOTE_SESSIONS = {}
+
+
+def choose_remote_herdr_session(configured, sessions):
+    running = [s for s in sessions if s.get("running")]
+    preferred = next((s for s in running if s.get("name") == configured), None)
+    if preferred is None:
+        if len(running) == 1:
+            preferred = running[0]
+        elif not running:
+            raise ValueError("远端没有运行中的 Herdr 会话，请先在那台电脑打开 Herdr")
+        else:
+            names = "、".join(s.get("name", "?") for s in running)
+            raise ValueError(f"远端有多个 Herdr 会话（{names}），请在 hosts.json 的 herdr_session 指定一个运行中的会话")
+    return None if preferred.get("default") else preferred["name"]
+
+
+def remote_herdr_session(host):
+    key = (host["ssh"], host.get("herdr_session"))
+    if key not in _HERDR_REMOTE_SESSIONS:
+        result = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", host["ssh"],
+            "env PATH=$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin herdr session list --json"],
+            capture_output=True, text=True, timeout=10)
+        if result.returncode:
+            raise ValueError((result.stderr or result.stdout).strip()[:400] or "无法读取远端 Herdr 会话")
+        data = json.loads(result.stdout)
+        if not isinstance(data, dict) or not isinstance(data.get("sessions"), list):
+            raise ValueError("远端 Herdr 返回了无效的会话列表")
+        _HERDR_REMOTE_SESSIONS[key] = choose_remote_herdr_session(host.get("herdr_session"), data["sessions"])
+    return _HERDR_REMOTE_SESSIONS[key]
+
+
 def herdr(host, args, timeout=30, raw=False):
     """Run one herdr subcommand here or on another Mac (its headless session), returning the
     parsed JSON — {"result": …} or {"error": …} — or the raw text when raw=True."""
@@ -785,8 +817,12 @@ def herdr(host, args, timeout=30, raw=False):
     if host is None:
         r = subprocess.run(herdr_local_command(args), capture_output=True, text=True, timeout=timeout)
     else:
-        sess = host.get("herdr_session") or "main"
-        remote = "env PATH=$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin herdr --session " + shlex.quote(sess) + " " + " ".join(shlex.quote(x) for x in args)
+        # Resolve before sending a mutating command. Never retry tab creation on a second server.
+        try:
+            sess = remote_herdr_session(host)
+        except (ValueError, subprocess.TimeoutExpired) as error:
+            return "" if raw else {"error": {"message": str(error)}}
+        remote = "env PATH=$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin herdr" + (" --session " + shlex.quote(sess) if sess else "") + " " + " ".join(shlex.quote(x) for x in args)
         r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", host["ssh"], remote], capture_output=True, text=True, timeout=timeout + 15)
     if raw:
         return r.stdout
