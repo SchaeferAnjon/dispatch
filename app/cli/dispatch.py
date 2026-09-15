@@ -895,7 +895,7 @@ def dismiss_startup_dialogs(host, pane, tries=3):
     """Read the pane; if a known dialog is showing, answer it. Returns what was pressed."""
     pressed = []
     for _ in range(tries):
-        txt = herdr(host, ["agent", "read", pane, "--lines", "40"], raw=True) or ""
+        txt = herdr(host, ["agent", "read", pane, "--source", "visible", "--lines", "40"], raw=True) or ""
         hit = next((keys for rx, keys in STARTUP_DIALOGS if rx.search(txt)), None)
         if not hit:
             break
@@ -906,34 +906,27 @@ def dismiss_startup_dialogs(host, pane, tries=3):
 
 
 def wait_interactive(host, pane, timeout=90):
-    """Until the agent can take a prompt: first runs self-update, then may show a trust
-    dialog, and Herdr's `interactive_ready` flips true only once the input box is up.
-    Answers known dialogs along the way. Returns (ready, keys pressed)."""
-    deadline = time.time() + timeout
-    pressed, quiet, last = [], 0, None
-    while time.time() < deadline:
+    """Wait for consecutive ready states, not a still terminal: Codex animates its input
+    even while idle. Stop if someone has already submitted work during startup."""
+    deadline = time.monotonic() + timeout
+    pressed, ready_count = [], 0
+    while time.monotonic() < deadline:
+        info = herdr(host, ["agent", "get", pane])
+        ag = (info.get("result") or {}).get("agent", {}) if isinstance(info, dict) else {}
+        status = ag.get("agent_status")
+        if status == "working":
+            return False, pressed
         hit = dismiss_startup_dialogs(host, pane, tries=1)
         if hit:
             pressed += hit
-            quiet, last = 0, None
+            ready_count = 0
             continue
-        info = herdr(host, ["agent", "get", pane])
-        ag = (info.get("result") or {}).get("agent", {}) if isinstance(info, dict) else {}
-        if ag.get("interactive_ready") or ag.get("agent_status") in ("idle", "ready"):
-            # interactive_ready flips true while the agent is still printing its start-up
-            # (skills, extensions, update notice); a prompt sent then misses the 5-second
-            # state-change window Herdr's `prompt --wait` needs, so wait for a quiet pane.
-            # Compare the body, not the status bar: a blinking cursor or a ticking
-            # context meter would otherwise keep the pane "changing" forever.
-            txt = strip_pane_chrome(herdr(host, ["agent", "read", pane, "--lines", "40"], raw=True) or "")
-            if txt == last:
-                quiet += 1
-                if quiet >= 2:  # two clean reads in a row: no dialog popped up after ready
-                    return True, pressed
-            else:
-                last, quiet = txt, 0
+        if ag.get("interactive_ready", status in ("idle", "ready")) and status != "blocked":
+            ready_count += 1
+            if ready_count >= 2:
+                return True, pressed
         else:
-            quiet, last = 0, None
+            ready_count = 0
         time.sleep(1.5)
     return False, pressed
 
@@ -1117,36 +1110,48 @@ def cmd_agent(a):
             ready, pressed = wait_interactive(host, pane)
             if pressed:
                 res["dismissed"] = True
-            if not ready:
-                res["warning"] = "等了 90 秒 Agent 还没准备好接收输入；提示词已尝试发送，看输出确认"
-            before = strip_pane_chrome(read_pane(host, pane, a.lines)) if a.wait else ""
-            pargs = ["agent", "prompt", pane, a.prompt]
-            if a.wait:
-                pargs += ["--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(a.timeout)]
-            d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
-            if isinstance(d, dict) and d.get("error") and dismiss_startup_dialogs(host, pane):
-                # a dialog appeared after the prompt went in: answer it and send the prompt once more
-                d = herdr(host, pargs, timeout=a.timeout // 1000 + 20)
-            # Read only after the reply stops drawing: Herdr can report idle before the
-            # answer is on screen, and --wait gives up when an agent never flips its state.
-            res["output"] = drop_echoed_prompt(new_pane_text(before, strip_pane_chrome(read_pane(host, pane, a.lines, settle=True, cap=min(max(a.timeout // 1000, 15), 120)))), a.prompt) if a.wait else ""
-            res["prompt_sent"] = not (isinstance(d, dict) and d.get("error"))
-            if isinstance(d, dict) and d.get("error"):
-                info = herdr(host, ["agent", "get", pane])
-                now = ((info.get("result") or {}).get("agent") or {}).get("agent_status")
-                if res["output"] and res["output"] != before and now in ("idle", "done"):
-                    res["status"] = now  # it did answer; Herdr just never saw the state flip
-                else:
-                    res["status"], res["warning"] = "stalled", (d["error"].get("message") or "")[:200] + "——看输出，可能在等你回答一个对话框（dispatch agent keys <pane> enter）"
+            # Recheck after startup: the user may have typed the first message while waiting.
+            info = herdr(host, ["agent", "get", pane])
+            now = ((info.get("result") or {}).get("agent") or {}).get("agent_status")
+            res["prompt_sent"] = False
+            if now == "working":
+                res["status"] = now
+                res["warning"] = "会话已开始处理输入，为避免重复发送，没有再次发送第一句话。请查看会话。"
+            elif not ready:
+                res["status"] = "stalled"
+                res["warning"] = "Agent 尚未准备好接收输入，第一句话未发送。请打开会话检查启动提示。"
             else:
-                res["status"] = (d.get("result") or {}).get("agent", {}).get("agent_status") or "started"
+                before = strip_pane_chrome(read_pane(host, pane, a.lines)) if a.wait else ""
+                # --no-wait skips completion, not delivery confirmation. Herdr's wait first
+                # observes a lifecycle change; accepting `working` returns as soon as it starts.
+                prompt_timeout = a.timeout if a.wait else 15000
+                pargs = ["agent", "prompt", pane, a.prompt, "--wait", "--until", "done", "--until", "idle", "--until", "blocked", "--timeout", str(prompt_timeout)]
+                if not a.wait:
+                    pargs += ["--until", "working"]
+                d = herdr(host, pargs, timeout=prompt_timeout // 1000 + 20)
+                # Only agent_blocked guarantees no input was written. Never replay text on
+                # stalled/timeout errors: it may already be in the input box or being processed.
+                if (d.get("error") or {}).get("code") == "agent_blocked" and dismiss_startup_dialogs(host, pane):
+                    d = herdr(host, pargs, timeout=prompt_timeout // 1000 + 20)
+                res["output"] = drop_echoed_prompt(new_pane_text(before, strip_pane_chrome(read_pane(host, pane, a.lines, settle=True, cap=min(max(a.timeout // 1000, 15), 120)))), a.prompt) if a.wait else ""
+                res["prompt_sent"] = not bool(d.get("error"))
+                if d.get("error"):
+                    info = herdr(host, ["agent", "get", pane])
+                    now = ((info.get("result") or {}).get("agent") or {}).get("agent_status")
+                    if res["output"] and res["output"] != before and now in ("idle", "done"):
+                        res["status"] = now  # it did answer; Herdr just never saw the state flip
+                    else:
+                        res["status"] = "stalled"
+                        res["warning"] = "未确认第一句话已被接收：" + (d["error"].get("message") or "")[:200] + "。请查看会话；为避免重复，未自动重发。"
+                else:
+                    res["status"] = (d.get("result") or {}).get("agent", {}).get("agent_status") or "started"
 
         def text(r):
             print(f"已在 {r['host']} 起了 {r['kind']}（{r['actor']}）· Herdr {r['pane_id']} · {r['cwd']}" + (f" · 认领「{r.get('task_title') or r['task']}」（{r['task']}）" if r["task"] else ""))
             if r["output"]:
                 print(r["output"].rstrip())
             elif a.prompt:
-                print(f"提示词已发，状态 {r['status']}；dispatch agent read {r['pane_id']}" + (f" --host {a.host}" if a.host else "") + " 看输出")
+                print(("提示词已发" if r.get("prompt_sent") else r.get("warning", "未确认提示词送达")) + f"，状态 {r['status']}；dispatch agent read {r['pane_id']}" + (f" --host {a.host}" if a.host else "") + " 看输出")
         return out(res, a.json, text)
 
     pane = resolve_agent(host, a.target)
