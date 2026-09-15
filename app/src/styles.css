@@ -269,7 +269,10 @@ td .t{font-weight:500}
 .sess-head .sess-host{display:flex;gap:4px;align-items:center;margin-bottom:2px;min-width:0}
 .sess-head .sess-host .host-chip{margin-left:0;opacity:1}
 .conversation-title .conversation-host{margin:0 6px 0 0;flex-shrink:0}
-.hub-heading h2 .project-owner{display:inline-block;margin-left:4px;padding:0 8px;border:1.5px solid var(--s-done);border-radius:6px;color:var(--s-done);font-size:14px;font-weight:600;line-height:24px;vertical-align:5px;white-space:nowrap}
+.project-owner{display:inline-block;padding:0 8px;border:1.5px solid var(--s-done);border-radius:6px;color:var(--s-done);font-size:14px;font-weight:600;line-height:24px;vertical-align:5px;white-space:nowrap}
+.hub-heading h2 .project-owner{margin-left:4px}
+.project-card .project-owner,.project-quiet .project-owner{font-size:12px;line-height:22px;padding:0 6px}
+.project-owner.unknown{color:var(--ink-3);border-color:var(--line-2)}
 .sess-meta{padding:4px 16px 10px;grid-template-columns:auto minmax(0,1fr)}
 .sess-meta .subs{display:flex;flex-direction:column;gap:3px}
 .sub-chip{font-size:12px}

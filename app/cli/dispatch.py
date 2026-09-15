@@ -544,7 +544,7 @@ def remote_dispatch(h, args, ttl, timeout=12, background=False):
             time.sleep(0.2)
         return stale()
     # The remote login shell is fish, so use `env` rather than FOO=bar prefixes.
-    cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in args) + " --json"
+    cmd = f"env BEADS_DIR=$HOME/tasks/.beads {remote_cli(h)} " + " ".join(shlex.quote(x) for x in args) + " --json"
     try:
         r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd], capture_output=True, text=True, timeout=timeout)
         if r.returncode == 255:
@@ -4315,10 +4315,7 @@ def quota_codex():
             mins = w.get("window_minutes")
             lab = label if not mins else ("5 小时" if mins <= 360 else "每周" if mins >= 10000 else f"{mins // 60} 小时")
             wins.append({"label": lab, "used_percent": w.get("used_percent"), "resets_at": w.get("resets_at")})
-    try:
-        upd = time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
-    except Exception:
-        upd = None
+    upd = _iso_epoch(ts)
     return {"agent": "codex", "plan": rl.get("plan_type") or "", "windows": wins, "updated_at": upd, "source": "rollout", "note": ""}
 
 
@@ -7634,6 +7631,34 @@ def cmd_prime(a):
 
 # ---------------------------------------------------------------- main
 
+REMOTE_BUNDLED_CLI = "/Applications/Dispatch.app/Contents/Resources/cli/dispatch.py"
+
+
+def remote_cli(h):
+    """Default remote entry follows the installed app, not an abandoned source symlink.
+    Explicit custom CLI commands remain overrides; machines without an app keep their CLI."""
+    import shlex
+    configured = h.get("dispatch") or "dispatch"
+    if configured not in ("dispatch", "$HOME/.local/bin/dispatch", "~/.local/bin/dispatch"):
+        return configured
+    fallback = '"$HOME/.local/bin/dispatch"' if configured != "dispatch" else "dispatch"
+    bundle = shlex.quote(REMOTE_BUNDLED_CLI)
+    script = ('export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; '
+              f'if [ -f {bundle} ]; then exec python3 {bundle} "$@"; '
+              f'else exec {fallback} "$@"; fi')
+    return "/bin/bash -c " + shlex.quote(script) + " dispatch"
+
+
+def migration_command(args):
+    return bool(args) and (args[0] == "move" or (args[0] == "project" and "--move-to" in args))
+
+
+def command_timeout(args, default=60):
+    # Transfers and per-session resumes already have individual timeouts. A fixed outer
+    # deadline kills the SSH client while the remote migration can still be running.
+    return (180 if "--dry-run" in args else None) if migration_command(args) else default
+
+
 def proxy_to_host(argv):
     """`dispatch --host mini <subcommand …>`: run the same command on another Mac from hosts.json
     over ssh. stdin, stdout and the exit code pass straight through, so every subcommand
@@ -7648,15 +7673,18 @@ def proxy_to_host(argv):
     if not h:
         print(f"hosts.json 里没有叫 {hid} 的机器（本机用 local）", file=sys.stderr)
         sys.exit(2)
-    cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} " + " ".join(shlex.quote(x) for x in rest)
+    cmd = f"env BEADS_DIR=$HOME/tasks/.beads {remote_cli(h)} " + " ".join(shlex.quote(x) for x in rest)
+    timeout = command_timeout(rest)
     try:
-        r = subprocess.run(["ssh", "-o", "ConnectTimeout=4", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd],
-                           stdin=(subprocess.DEVNULL if sys.stdin.isatty() else sys.stdin), stderr=subprocess.PIPE, text=True, timeout=60)
+        r = subprocess.run(["ssh", "-o", "ConnectTimeout=4", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd],
+                           stdin=(subprocess.DEVNULL if sys.stdin.isatty() else sys.stdin), stderr=subprocess.PIPE, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        print(f"{h['name']} 没在 60 秒内响应", file=sys.stderr)
+        print(f"{h['name']} 没在 {timeout} 秒内响应" + ("（迁移预检尚未完成，没有开始迁移）" if migration_command(rest) else ""), file=sys.stderr)
         sys.exit(124)
     err = (r.stderr or "").strip()
     if r.returncode == 255:
+        if migration_command(rest) and "--dry-run" not in rest:
+            print("迁移连接中断，结果尚未确认；请先查看目标机器的会话和项目归属，避免重复迁移。", file=sys.stderr)
         if "Permission denied" in err:
             print(f"{h['name']} 拒绝了 ssh 登录（{h['ssh']}）：那台机器没有本机的公钥。把 ~/.ssh/id_*.pub 加进它的 ~/.ssh/authorized_keys，或在 hosts.json 里改成 ~/.ssh/config 里的别名。", file=sys.stderr)
         else:

@@ -2,6 +2,7 @@ import { confirmAction } from './confirm';
 import { ConversationActions } from './components/ConversationActions';
 import { GlobalContextMenu, ItemMenus, ProjectActions, ViewMenu, type ViewMenuItem } from './components/ContextMenu';
 import { TaskActions, isArchivedTask, isTrashed } from "./components/TaskActions";
+import { selectQuotas } from './quotas';
 import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { getApi, isTauri, isServed, type Api, type AgentStartInput } from "./api";
@@ -313,17 +314,30 @@ export default function App() {
   useEffect(() => { if (!api || view !== "overview") return; api.on("local", ["skills", "list", "--json"]).then((s) => setSkillCount((JSON.parse(s.replace(/^[^[]*/, "")) as unknown[]).length)).catch(() => {}); api.memories().then((m) => setWikiCount(m.filter((x) => !x.key.startsWith("dispatch-")).length)).catch(() => {}); }, [api, view]);
 
 
-  // Usage limits per agent, refreshed every minute; shown on the workbench and in the menu bar.
+  // One snapshot drives the header, overview, and menu bar, including manual refresh.
   const [quota, setQuota] = useState<Quota[]>([]);
-  useEffect(() => {
+  const [quotaBusy, setQuotaBusy] = useState(false);
+  const [quotaError, setQuotaError] = useState('');
+  const quotaRequest = useRef(0);
+  const refreshQuota = useCallback(async () => {
     if (!api) return;
-    let alive = true;
-    const tick = async () => { try { const q = await api.quota(); if (alive) setQuota(q); } catch { /* keep last */ } };
-    tick();
-    const t = window.setInterval(tick, 60_000);
-    return () => { alive = false; window.clearInterval(t); };
+    const request = ++quotaRequest.current;
+    setQuotaBusy(true);
+    try {
+      const rows = await api.quota();
+      if (request === quotaRequest.current) { setQuota(rows); setQuotaError(''); }
+    } catch (error) {
+      if (request === quotaRequest.current) setQuotaError(String(error));
+    } finally {
+      if (request === quotaRequest.current) setQuotaBusy(false);
+    }
   }, [api]);
-
+  useEffect(() => {
+    void refreshQuota();
+    const timer = window.setInterval(() => void refreshQuota(), 60_000);
+    return () => { ++quotaRequest.current; window.clearInterval(timer); };
+  }, [refreshQuota]);
+  const selectedQuotas = useMemo(() => selectQuotas(quota, hostFilter), [quota, hostFilter]);
 
   // One line of the cross-agent insights for the workbench; the full card lives on 统计.
   // The proactive half: every few minutes ask for per-session alerts nobody has acknowledged;
@@ -581,8 +595,8 @@ export default function App() {
     const working = observedPresence.sessions.filter((s) => s.alive && s.state === "working" && !s.scheduled).length;
     // Menu bars fill up fast; keep the status text to a few characters.
     const unread = activityRows.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)).length;
-    // Quota in the menu bar: this Mac's worst window per agent, as one letter and a percent.
-    const local = quota.filter((q) => !q.remote && q.windows.length);
+    // Use the same shared readings as the overview and header.
+    const local = selectQuotas(quota).filter(q => q.windows.length);
     const names: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", pi: "pi", zcode: "ZCode", opencode: "OpenCode", hermes: "Hermes" };
     const until = (epoch: number | null) => { if (!epoch) return ""; const m = Math.round((epoch * 1000 - Date.now()) / 60_000); return m <= 0 ? "" : m < 60 ? `${m}m 后重置` : m < 48 * 60 ? `${Math.floor(m / 60)}h 后重置` : `${Math.round(m / 1440)}d 后重置`; };
     // The title stays short; each agent's quota goes into the click menu, one line per window.
@@ -655,7 +669,8 @@ export default function App() {
     return m;
   }, [activityRows, projectRows, refs, observedPresence]);
   // This Mac's usage windows per agent, shown in the title bar.
-  const quotaByAgent = useMemo(() => agents.filter((a) => a.actor.kind !== "human").map((a) => ({ agent: a, qs: quota.filter((x) => x.agent === a.actor.id && x.windows.length && (hostFilter ? (x.host_name ?? "") === hostFilter : !x.remote)) })).filter((x) => x.qs.length), [agents, quota, hostFilter]);
+  const quotaByAgent = useMemo(() => agents.filter(a => a.actor.kind !== "human").flatMap(a =>
+    selectedQuotas.filter(q => q.agent === a.actor.id && q.windows.length).map(q => ({ agent: a, q }))), [agents, selectedQuotas]);
   const viewMenuItems: ViewMenuItem[] = [
     // What this page can do, then what every page can do.
     ...(BOARD_VIEWS.includes(view) ? [
@@ -784,10 +799,11 @@ export default function App() {
           <button className="btn ghost" onClick={() => setSearch(true)} title="搜项目、会话、任务">搜索 <kbd>⌘K</kbd></button>
           <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
           <button className="btn ghost" onClick={nextTheme} title={theme === "dark" ? "主题：深色 · 点一下切浅色" : theme === "light" ? "主题：浅色 · 点一下跟随系统" : "主题：跟随系统 · 点一下切深色"} aria-label="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
-          {quotaByAgent.map(({ agent: a, qs }) => (
-            <button key={a.actor.id} className="home-quota" onClick={() => setView("quota")} title={`${a.actor.name} 的额度${hostFilter ? ` · ${hostFilter}` : ""} · 点开看详情`}>
+          {quotaByAgent.map(({ agent: a, q }) => (
+            <button key={`${a.actor.id}:${q.host_name}`} className="home-quota" onClick={() => setView("quota")} title={`${a.actor.name} 的额度 · ${[q.host_name, ...(q.also ?? [])].join(" + ")} · ${q.updated_at ? new Date(q.updated_at * 1000).toLocaleTimeString() + "更新" : "尚未更新"} · 点开看详情`}>
               <Avatar actor={a.actor} online={a.online} size={16} />
-              {qs[0].windows.map((w) => { const p = w.used_percent ?? 0; return <span key={w.label} className={`q${p >= 90 ? " crit" : p >= 70 ? " warn" : ""}`}><span className="ql">{w.label}</span><span className="qbar"><i style={{ width: `${Math.min(100, p)}%` }} /></span><span className="mono">{w.used_percent === null ? "—" : `${Math.round(p)}%`}</span></span>; })}
+              {!!q.conflict?.length && <span>{q.host_name}</span>}
+              {q.windows.map((w) => { const p = w.used_percent ?? 0; return <span key={w.label} className={`q${p >= 90 ? " crit" : p >= 70 ? " warn" : ""}`}><span className="ql">{w.label}</span><span className="qbar"><i style={{ width: `${Math.min(100, p)}%` }} /></span><span className="mono">{w.used_percent === null ? "—" : `${Math.round(p)}%`}</span></span>; })}
             </button>
           ))}
           {update?.newer && !update.error && <button className="btn ghost update-chip" onClick={() => setView("settings")} title={`有新版本 v${update.latest}，点开设置更新`}>↑ v{update.latest}</button>}
@@ -866,7 +882,7 @@ export default function App() {
             {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} onBack={previousView ? { label: VIEW_LABEL[previousView], go: goBack } : undefined} localHostName={hosts.find(h => h.local)?.name} />}
             {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
-            {(view === "stats" || view === "quota") && api && <UsageView key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
+            {(view === "stats" || view === "quota") && api && <UsageView quota={{ rows: quota, busy: quotaBusy, error: quotaError, refresh: refreshQuota }} key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "settings" && <SettingsView onTestNotify={testNotify} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} screen={(() => { const h = hosts.find((x) => x.local); return { url: h?.novnc ?? "", up: !!h?.novnc_up, sharing: !!h?.screen_sharing, issue: h?.novnc_issue ?? "" }; })()} onScreenSetup={screenSetup} update={update} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate} settings={settings} onSave={saveSettings} theme={theme} onTheme={setTheme} api={api ?? undefined} onPhone={phoneLink} phoneQr={phoneQr} phoneHost={phoneHost ?? undefined} onPhoneHost={choosePhoneHost} hosts={hosts} onRenameHost={api ? renameHost : undefined} onDeleteHost={api ? deleteHost : undefined} onRedetectHost={api ? redetectHost : undefined} onSetup={isTauri && api ? async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } } : undefined} />}

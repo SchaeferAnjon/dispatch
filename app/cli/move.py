@@ -464,7 +464,7 @@ def unblock_start(h, remote_cwd, label):
 
 def running_remote(h, agent, sid):
     """Is this id already running over there (moved before, or resumed by hand)?"""
-    dcmd = h.get("dispatch", "$HOME/.local/bin/dispatch")
+    dcmd = D.remote_cli(h)
     r = run_remote(h, f"BEADS_DIR=$HOME/tasks/.beads {dcmd} sessions --local --json", timeout=40)
     try:
         rows = json.loads(r.stdout[r.stdout.find("["):])
@@ -552,7 +552,7 @@ def mark_moved(h, keys):
         D.record_move(agent, sid, moved_to=h["id"])
     me_ip = D.tailscale_ip()
     if me_ip and keys:
-        dcmd = h.get("dispatch", "$HOME/.local/bin/dispatch")
+        dcmd = D.remote_cli(h)
         run_remote(h, "; ".join(f"BEADS_DIR=$HOME/tasks/.beads {dcmd} moves mark {shlex.quote(a + ':' + s)} --from {shlex.quote(me_ip)} >/dev/null" for a, s in keys), timeout=30 + 5 * len(keys))
 
 
@@ -645,7 +645,7 @@ def move(session_id, to, prompt_extra="", sync=True, dry=False, force=False, kee
     # 3. transcript (+ sub-agent transcripts for Claude)
     copy_transcript(h, agent, path, sid, target, rewrite, remote_home)
     # 4. resume over there, unless that copy already runs (a second resume would fork the transcript)
-    dcmd = h.get("dispatch", "$HOME/.local/bin/dispatch")
+    dcmd = D.remote_cli(h)
     if plan["already_there"]:
         plan["started"] = {"already_running": True}
     else:
@@ -687,7 +687,7 @@ def set_owner(project, h):
     except (Exception, SystemExit) as e:
         errors.append(f"来源机器归属记录失败：{e}")
     try:
-        dcmd = h.get("dispatch", "$HOME/.local/bin/dispatch")
+        dcmd = D.remote_cli(h)
         ssh(h, f"BEADS_DIR=$HOME/tasks/.beads {dcmd} project {shlex.quote(project)} --owner local --json", timeout=40)
     except Exception as e:
         errors.append(f"目标机器归属记录失败：{e}")

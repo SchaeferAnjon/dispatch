@@ -97,11 +97,12 @@ def _rules_path():
 # cmd -> (args dict, actor) -> result (str stays a string; anything else is JSON)
 def commands():
     def dispatch_on(a, actor):
+        import dispatch as d
         argv = a.get('args')
         if not isinstance(argv, list) or not argv or not all(isinstance(x,str) for x in argv): raise ValueError('无效的命令参数')
         host = a.get('host')
         full = ['--host', host] if host and host != 'local' else []
-        return sh(['python3', DISPATCH_PY, *full, *argv], env={'BEADS_ACTOR': actor}, timeout=300, input=a.get('stdin'))
+        return sh(['python3', DISPATCH_PY, *full, *argv], env={'BEADS_ACTOR': actor}, timeout=d.command_timeout(argv, default=300), input=a.get('stdin'))
     def bd(*a):
         return lambda args, actor: json_only(run_bd(list(a), actor))
 
