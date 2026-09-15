@@ -749,7 +749,7 @@ fn compact_tray_title(tray: &tauri::tray::TrayIcon, title: String) -> Result<(),
     use objc2::{AnyThread, MainThreadMarker};
     use objc2_app_kit::{NSAttributedStringNSStringDrawing, NSBaselineOffsetAttributeName,
         NSColor, NSFont, NSFontAttributeName, NSForegroundColorAttributeName, NSKernAttributeName};
-    use objc2_foundation::{NSMutableAttributedString, NSNumber, NSRange, NSSize, NSString};
+    use objc2_foundation::{NSMutableAttributedString, NSNumber, NSRange, NSString};
 
     // Tauri schedules this closure on the AppKit main thread. Keep native objects there.
     tray.with_inner_tray_icon(move |inner| {
@@ -786,10 +786,6 @@ fn compact_tray_title(tray: &tauri::tray::TrayIcon, title: String) -> Result<(),
             }
         }
         button.setAttributedTitle(&text);
-        if let Some(icon) = button.image() {
-            icon.setSize(NSSize::new(16.0, 16.0));
-            button.setImage(Some(&icon));
-        }
     }).map_err(|e| e.to_string())
 }
 
@@ -828,9 +824,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     TrayIconBuilder::with_id("main")
-        // Keep the original colored Dispatch app icon; template mode would erase its colors.
-        .icon(app.default_window_icon().expect("bundled Dispatch icon").clone())
-        .icon_as_template(false)
+        // Original monochrome menu bar icon, at its original size.
+        .icon(tauri::image::Image::new(include_bytes!("../icons/tray.rgba"), 44, 44))
+        .icon_as_template(true)
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, ev| match ev.id().as_ref() {
