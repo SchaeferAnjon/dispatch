@@ -774,7 +774,6 @@ fn compact_tray_title(tray: &tauri::tray::TrayIcon, title: String) -> Result<(),
                 dots += 1;
             }
         }
-        button.setImage(None);
         button.setAttributedTitle(&text);
     }).map_err(|e| e.to_string())
 }
