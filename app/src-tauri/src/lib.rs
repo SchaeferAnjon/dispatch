@@ -742,14 +742,51 @@ fn start_watcher(app: AppHandle) {
     });
 }
 
-// ---------- menu bar item: "2 在跑 · 1 等你" ----------
+// ---------- compact menu bar status ----------
+
+#[cfg(target_os = "macos")]
+fn compact_tray_title(tray: &tauri::tray::TrayIcon, title: String) -> Result<(), String> {
+    use objc2::{AnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSColor, NSFont, NSFontAttributeName, NSForegroundColorAttributeName};
+    use objc2_foundation::{NSMutableAttributedString, NSRange, NSString};
+
+    // Tauri schedules this closure on the AppKit main thread. Keep native objects there.
+    tray.with_inner_tray_icon(move |inner| {
+        let Some(mtm) = MainThreadMarker::new() else { return };
+        let Some(item) = inner.ns_status_item() else { return };
+        let Some(button) = item.button(mtm) else { return };
+        let text = NSMutableAttributedString::initWithString(
+            NSMutableAttributedString::alloc(), &NSString::from_str(&title));
+        let full = NSRange::new(0, title.encode_utf16().count());
+        let font = NSFont::monospacedDigitSystemFontOfSize_weight(11.0, 0.0);
+        let dot_font = NSFont::monospacedDigitSystemFontOfSize_weight(8.0, 0.0);
+        // These attribute keys require NSFont and NSColor values respectively.
+        unsafe {
+            text.addAttribute_value_range(NSFontAttributeName, &font, full);
+            text.addAttribute_value_range(NSForegroundColorAttributeName, &NSColor::labelColor(), full);
+            let mut dots = 0;
+            for (index, ch) in title.encode_utf16().enumerate() {
+                if ch != '●' as u16 { continue; }
+                let range = NSRange::new(index, 1);
+                let color = if dots == 0 { NSColor::systemBlueColor() } else { NSColor::systemYellowColor() };
+                text.addAttribute_value_range(NSForegroundColorAttributeName, &color, range);
+                text.addAttribute_value_range(NSFontAttributeName, &dot_font, range);
+                dots += 1;
+            }
+        }
+        button.setImage(None);
+        button.setAttributedTitle(&text);
+    }).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 fn tray_update(app: AppHandle, title: String, tooltip: String, lines: Vec<String>) -> Result<(), String> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     if let Some(tray) = app.tray_by_id("main") {
-        let t = if title.is_empty() { None } else { Some(title) };
-        tray.set_title(t).map_err(|e| e.to_string())?;
+        #[cfg(target_os = "macos")]
+        compact_tray_title(&tray, title)?;
+        #[cfg(not(target_os = "macos"))]
+        tray.set_title(Some(title)).map_err(|e| e.to_string())?;
         tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
         // The click menu carries what the title should not: one line per agent's quota.
         let show = MenuItem::with_id(&app, "show", "打开 Dispatch", true, None::<&str>).map_err(|e| e.to_string())?;

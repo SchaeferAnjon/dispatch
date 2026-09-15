@@ -601,8 +601,13 @@ export default function App() {
     const until = (epoch: number | null) => { if (!epoch) return ""; const m = Math.round((epoch * 1000 - Date.now()) / 60_000); return m <= 0 ? "" : m < 60 ? `${m}m 后重置` : m < 48 * 60 ? `${Math.floor(m / 60)}h 后重置` : `${Math.round(m / 1440)}d 后重置`; };
     // The title stays short; each agent's quota goes into the click menu, one line per window.
     const quotaLines = local.flatMap((q) => q.windows.map((w) => `${names[q.agent] ?? q.agent} · ${w.label} ${w.used_percent === null ? "—" : Math.round(w.used_percent) + "%"}${until(w.resets_at) ? ` · ${until(w.resets_at)}` : ""}`));
-    const parts = [unread ? `${unread}未读` : "", working ? `${working}跑` : "", notificationInbox.waiting.length ? `${notificationInbox.waiting.length}等` : "", notificationInbox.review.length ? `${notificationInbox.review.length}审` : ""].filter(Boolean);
-    api.tray(parts.join(" "), `Dispatch · ${unread} 未读回复 · ${working} 在跑 · ${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成`, quotaLines).catch(() => {});
+    const title = `●${unread}\u2009●${working}`;
+    const tooltip = [
+      `Dispatch · 蓝点 ${unread} 未读回复 · 黄点 ${working} 正在运行`,
+      `${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成`,
+      ...(quotaLines.length ? ['', '额度（已使用）', ...quotaLines] : []),
+    ].join('\n');
+    api.tray(title, tooltip, quotaLines).catch(() => {});
   }, [api, observedPresence, notificationInbox, issues, activityRows, quota, inArchivedProject]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
