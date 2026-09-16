@@ -1697,3 +1697,19 @@ class ProjectNamesFromRows(unittest.TestCase):
         rows = [{"labels": ["project:Atrium", "dispatch:outcome"]}, {"labels": []}, {}]
         with patch.object(dispatch, "sh", side_effect=AssertionError("已经有全板数据就别再查一次")):
             self.assertEqual(dispatch.project_names(rows), {"atrium": "Atrium"})
+
+
+class CatalogWindow(unittest.TestCase):
+    def test_routine_runs_do_not_crowd_out_projects(self):
+        import dispatch as D
+        refs = [dict(session_id=f"cron{i}", last_at=1000 - i, entrypoint="cron", project="hermes") for i in range(30)]
+        refs += [dict(session_id=f"p{i}", last_at=500 - i, project="kanban") for i in range(10)]
+        refs += [dict(session_id="old1", last_at=5, project="relecture"), dict(session_id="old2", last_at=4, project="relecture"), dict(session_id="old3", last_at=3, project="relecture"), dict(session_id="old4", last_at=2, project="relecture")]
+        out = D.catalog_window(refs, 12, routine_cap=2, per_project=3)
+        ids = [r["session_id"] for r in out]
+        self.assertEqual(sum(1 for i in ids if i.startswith("cron")), 2)
+        self.assertEqual([i for i in ids if i.startswith("p")], [f"p{i}" for i in range(10)])
+        self.assertEqual([i for i in ids if i.startswith("old")], ["old1", "old2", "old3"])  # newest 3 of the pushed-out project
+        self.assertEqual(ids, sorted(ids, key=lambda i: -next(r["last_at"] for r in refs if r["session_id"] == i)))
+        self.assertIs(D.catalog_window(refs, 0), refs)
+        self.assertEqual(D.catalog_window(refs[:5], 12), refs[:5])

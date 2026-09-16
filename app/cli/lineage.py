@@ -54,7 +54,9 @@ def project_base(proj, cwd, names=None, roots=None):
     roots = (D.settings_load().get("workspace_roots") or []) if roots is None else roots
     if (D.project_of_cwd(cwd, names, roots) or "").lower() == proj.lower():
         return cwd
-    return D.project_home(proj, names, roots=roots) or cwd
+    # A project that is only a label on the board (no folder, no sessions) has no repo to read:
+    # falling back to the caller's directory made 「memories」 show kanban's commits as its own.
+    return D.project_home(proj, names, roots=roots) or ""
 
 
 def acceptance_progress(issue):

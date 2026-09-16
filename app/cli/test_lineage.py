@@ -230,3 +230,12 @@ class RemoteMerge(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProjectBase(unittest.TestCase):
+    def test_label_only_project_has_no_directory_to_read(self):
+        # A project that exists only as task labels must not borrow the caller's repo.
+        with patch.object(dispatch, "project_of_cwd", return_value="kanban"), patch.object(dispatch, "project_home", return_value=""):
+            self.assertEqual(lineage.project_base("memories", "/Users/x/Projects/kanban", {}, []), "")
+            self.assertEqual(lineage.project_base("kanban", "/Users/x/Projects/kanban", {}, []), "/Users/x/Projects/kanban")
+        self.assertEqual(dispatch.git_root_of(""), "")

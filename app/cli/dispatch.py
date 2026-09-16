@@ -2333,12 +2333,36 @@ def cmd_list(a):
     if a.query:
         q = a.query.lower()
         refs = [r for r in refs if q in (r["title"] or "").lower() or q in r["cwd"].lower() or q in r["session_id"]]
-    refs = refs[: a.limit]
+    refs = catalog_window(refs, a.limit)
 
     def text(refs):
         for r in refs:
             print(f"{r['agent']:<12} {r['project']:<18} {ago(r['last_at']):<5} {r['user_msgs']:>4}轮 {len(r['subagents']):>2}子  {r['title'] or '(无标题)'}  {r['session_id'][:8]}")
     out(refs, a.json, text)
+
+
+def catalog_window(refs, limit, routine_cap=None, per_project=3):
+    """The newest `limit` conversations a person would look for — not the newest `limit` files.
+    Routine runs (Hermes cron every half hour, sessions marked scheduled) take a small slice of
+    the window instead of the whole: 306 of 500 slots went to flomo archiving and a project idle
+    for nine days showed 「0 个会话」 while its transcripts sat in the index. Every project keeps
+    its newest few conversations even past the cut, so the catalog still knows it exists."""
+    if not limit or len(refs) <= limit:
+        return refs
+    routine = lambda r: bool(r.get("scheduled")) or r.get("entrypoint") == "cron"
+    cap = routine_cap if routine_cap is not None else max(20, limit // 10)
+    people = [r for r in refs if not routine(r)]
+    keep = people[:limit] + [r for r in refs if routine(r)][:cap]
+    chosen = {id(r) for r in keep}
+    seen = {}
+    for r in people[:limit]:
+        seen[r.get("project") or ""] = seen.get(r.get("project") or "", 0) + 1
+    for r in people[limit:]:
+        proj = r.get("project") or ""
+        if proj and seen.get(proj, 0) < per_project and id(r) not in chosen:
+            seen[proj] = seen.get(proj, 0) + 1
+            keep.append(r)
+    return sorted(keep, key=lambda r: -(r.get("last_at") or 0))
 
 
 def _text_images(txt, cwd):
@@ -2986,6 +3010,8 @@ _HASH_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 
 
 def git_root_of(path):
+    if not path:
+        return ""  # `git -C ""` silently means the current directory — never what the caller asked
     code, o, _ = sh(["git", "-C", path, "rev-parse", "--show-toplevel"], timeout=5)
     return o.strip() if code == 0 else ""
 
