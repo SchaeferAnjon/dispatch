@@ -2,7 +2,7 @@ import { confirmAction } from './confirm';
 import { ConversationActions } from './components/ConversationActions';
 import { GlobalContextMenu, ItemMenus, ProjectActions, ViewMenu, type ViewMenuItem } from './components/ContextMenu';
 import { TaskActions, isArchivedTask, isTrashed } from "./components/TaskActions";
-import { selectQuotas } from './quotas';
+import { selectQuotas, type SharedQuota } from './quotas';
 import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { getApi, isTauri, isServed, type Api, type AgentStartInput } from "./api";
@@ -675,8 +675,11 @@ export default function App() {
     return m;
   }, [activityRows, projectRows, refs, observedPresence]);
   // This Mac's usage windows per agent, shown in the title bar.
+  // The header shows what this machine is spending (a shared subscription read on the other Mac
+  // still counts); the other Macs' own quotas live on 统计与额度. A host filter shows that host's.
+  const mine = (q: SharedQuota) => !!hostFilter || !localHostName || q.host_name === localHostName || !!q.also?.includes(localHostName);
   const quotaByAgent = useMemo(() => agents.filter(a => a.actor.kind !== "human").flatMap(a =>
-    selectedQuotas.filter(q => q.agent === a.actor.id && q.windows.length).map(q => ({ agent: a, q }))), [agents, selectedQuotas]);
+    selectedQuotas.filter(q => q.agent === a.actor.id && q.windows.length && mine(q)).map(q => ({ agent: a, q }))), [agents, selectedQuotas, hostFilter, localHostName]);
   const viewMenuItems: ViewMenuItem[] = [
     // What this page can do, then what every page can do.
     ...(BOARD_VIEWS.includes(view) ? [
