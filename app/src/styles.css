@@ -1062,15 +1062,6 @@ textarea.skill-edit{flex:1;min-height:400px;width:100%;border:1px solid var(--ac
   .host{flex-wrap:wrap;min-width:0}
   .host .mono{font-size:11px}
 }
-/* 实时活动: the tracker's event log docked under the tabs, newest first, a few rows tall. */
-.activity-dock{flex-shrink:0;max-height:132px;overflow:auto;padding:4px 16px;background:var(--panel);border-bottom:1px solid var(--line);font-size:12px}
-.activity-dock>.muted{padding:6px 0}
-.activity-event{display:grid;grid-template-columns:62px auto minmax(0,1fr);gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line);font-size:12px}
-.activity-event:last-child{border-bottom:0}
-.activity-event b{font-weight:550;white-space:nowrap}
-.activity-event .t{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.activity-event.error b{color:var(--s-block)}
-@media(max-width:760px){.activity-dock{max-height:96px;padding:2px 12px}.activity-event{grid-template-columns:54px auto minmax(0,1fr);gap:6px}}
 .mentioned-tasks{margin-top:12px;border-top:1px solid var(--line);padding-top:12px;font-size:12px}
 .mentioned-tasks summary{cursor:pointer;color:var(--ink-3)}
 .titlebar .crumb button{pointer-events:auto}
@@ -1393,7 +1384,6 @@ pre.diff.dv-pre .ln{width:max-content;min-width:100%}pre.diff.dv-pre .ln .tx{fle
 .conversation-preview{cursor:text}.conversation-preview.open{display:block;-webkit-line-clamp:unset;overflow:visible}.conversation-row.compact .conversation-preview.open{display:block;-webkit-line-clamp:unset}
 .session-summary{display:flex;gap:8px;align-items:flex-start;padding:10px 16px;font-size:13px;line-height:1.6;color:var(--ink);background:var(--accent-soft);border-bottom:1px solid var(--line);cursor:pointer}.session-summary .t{flex:1;min-width:0;overflow-wrap:anywhere}
 .session-summary.folded{padding:6px 16px}.session-summary.folded .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.activity-dock.folded{max-height:30px;overflow:hidden;cursor:pointer}
 /* discussion thread */
 .discuss-dialog{width:min(820px,94vw)}.disc-thread{display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow:auto;padding:4px 2px}
 .disc-conclusion{border:1px solid var(--accent);background:var(--accent-soft);border-radius:10px;padding:10px 14px;font-size:13.5px;line-height:1.6}.disc-conclusion .l1{display:flex;gap:10px;align-items:baseline;margin-bottom:4px}

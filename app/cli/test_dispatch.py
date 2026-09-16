@@ -149,6 +149,28 @@ class SessionDetailBlocks(unittest.TestCase):
     def _ref(self, agent, path):
         return {"agent": agent, "path": path, "session_id": "s", "cwd": "/x", "title": "", "tasks": {}, "subagents": []}
 
+    def test_codex_live_operation_summary_stays_on_the_original_call(self):
+        raw = 'text(await tools.exec_command({cmd: "npm test", yield_time_ms: 1000}));'
+        path = self._write([
+            {"type": "response_item", "timestamp": "2026-09-02T10:00:00Z", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "开始检查。"}]}},
+            {"type": "response_item", "timestamp": "2026-09-02T10:00:01Z", "payload": {"type": "custom_tool_call", "name": "functions.exec", "call_id": "live-call", "input": raw}},
+        ])
+        ref = self._ref("codex", path)
+        first = dispatch.read_session_detail(ref)
+        call = next(b for m in first['messages'] for b in m['blocks'] if b['type'] == 'tool_call')
+        self.assertEqual(call['summary'], '运行命令 · npm test')
+        self.assertEqual(call['input'], {'input': raw})
+        self.assertEqual(call['status'], 'running')
+        with open(path, 'a') as f:
+            f.write(json.dumps({"type": "response_item", "timestamp": "2026-09-02T10:00:02Z", "payload": {"type": "custom_tool_call_output", "call_id": "live-call", "output": "42 passed"}}) + '\n')
+        tail = dispatch.read_session_detail(ref, since=first['offset'])
+        self.assertEqual(tail['messages'], [])
+        self.assertEqual(tail['resolved'][0]['id'], 'live-call')
+        full = dispatch.read_session_detail(ref)
+        calls = [b for m in full['messages'] for b in m['blocks'] if b['type'] == 'tool_call']
+        self.assertEqual(len(calls), 1)
+        self.assertEqual((calls[0]['summary'], calls[0]['status'], calls[0]['result']), ('运行命令 · npm test', 'done', '42 passed'))
+
     def test_claude_blocks_merge_one_message_and_pair_results(self):
         # Claude writes each content block as its own line, all sharing message.id.
         lines = [

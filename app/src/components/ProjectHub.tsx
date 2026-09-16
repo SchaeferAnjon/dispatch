@@ -9,6 +9,8 @@ import { ConversationRows } from './Workspace';
 import { Markdown } from './Markdown';
 import { MediaContext, MediaProvider, type AttachmentData } from './Media';
 import { useOpenSession } from './SessionActions';
+import { KINDS } from './Delegate';
+import { MenuItem, MenuPanel } from './ContextMenu';
 
 // A research / review / design write-up found in the project's folders or registered by hand.
 type Doc = { id: string; title: string; kind: string; path: string; url?: boolean; html?: boolean; size?: number; mtime?: number; ext?: string; dir?: string; source?: string; host?: string; host_name?: string };
@@ -313,6 +315,8 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
   useEffect(()=>{loadDocs();},[loadDocs]);
   useEffect(()=>{if(!focusSection)return;if(['review','sessions','tasks','outcomes','unassigned','folders','docs'].includes(focusSection.section)){setTab(focusSection.section);setEditor(false);}onSectionDone?.();},[focusSection]);
   const [review,setReview]=useState<ReviewData|null>(null),[reviewBusy,setReviewBusy]=useState(false),[reviewErr,setReviewErr]=useState(''),[termBusy,setTermBusy]=useState(false),[terminalNotice,setTerminalNotice]=useState<{project:string;text:string;error?:boolean}|null>(null),[err,setErr]=useState(''),[doneView,setDoneView]=useState(false),[doneQuery,setDoneQuery]=useState('');
+  const [terminalMenu,setTerminalMenu]=useState<{x:number;y:number;from:HTMLButtonElement}|null>(null);
+  useEffect(()=>{setTerminalMenu(null);},[selected]);
   // Two calls: the timeline / tasks / sessions come back in a second, the 现状 paragraph may take
   // the model half a minute the first time — the page must not stay blank for it.
   const loadReview=useCallback(()=>{
@@ -363,25 +367,27 @@ export function ProjectHub({onDiscuss,focusSection,onSectionDone,archiveDays,fla
   const visible=project.sessions.filter(a=>scheduled?!!a.scheduled:!a.scheduled&&(archived?life(a)==='archived':life(a)!=='archived')).sort((x,y)=>Number(!!y.starred)-Number(!!x.starred)||y.last_at-x.last_at).filter(a=>`${a.title} ${a.cwd} ${a.overview||''}`.toLowerCase().includes(query.toLowerCase()));
   const unassigned=project.items.filter(i=>!linkedSessions(i).length);
   const short=shortPath;
-  // 「终端」: a plain Herdr shell tab in the project's home directory (the folder most of its sessions ran in).
+  // Shell and Agent entries share the project's owner and home directory.
   const homeAct=projectHome(project.sessions);
   const terminalTarget=newSessionTarget(ownerHostId(owners[project.name],hosts),homeAct,'local');
   const terminalHost=terminalTarget.initialHost;
   const terminalMachine=hosts.find(h=>(h.local?'local':h.id)===terminalHost)?.name||terminalHost;
   const terminalCwd=terminalTarget.initialCwd;
-  const openTerminal=async()=>{
+  const openTerminal=async(kind?:string)=>{
     if(!terminalCwd||termBusy)return;
-    setTermBusy(true);setTerminalNotice(null);
+    terminalMenu?.from.focus();setTerminalMenu(null);setTermBusy(true);setTerminalNotice(null);
     try{
-      const t=await api.on(terminalHost,['terminal','--cwd',terminalCwd,'--label',project.name,'--json']);
+      const args=kind?['agent','start',kind,'--focus','--no-wait']:['terminal'];
+      const t=await api.on(terminalHost,[...args,'--cwd',terminalCwd,'--label',project.name,'--json']);
       const d=JSON.parse(t.slice(Math.max(0,t.indexOf('{'))));
       if(d.error)throw new Error(String(d.error));
-      setTerminalNotice({project:project.name,text:d.app?`已在 ${d.host||terminalMachine} 打开 ${d.app} 终端：${d.cwd}`:`已在 ${d.host||terminalMachine} 创建终端标签，但未能显示窗口。${d.hint||'请检查那台电脑的终端窗口。'}`,error:!d.app});
+      const agentName=KINDS.find(([k])=>k===kind)?.[1]||kind;
+      setTerminalNotice({project:project.name,text:d.app?`已在 ${d.host||terminalMachine} 的 ${d.app} 打开${kind?` ${agentName} 会话`:'终端'}：${d.cwd}`:`已在 ${d.host||terminalMachine} 创建${kind?` ${agentName} 会话`:'终端标签'}，但未能显示窗口。${d.hint||'请检查那台电脑的终端窗口。'}`,error:!d.app});
     }catch(e){setTerminalNotice({project:project.name,text:String(e),error:true});}
     finally{setTermBusy(false);}
   };
   const dirs=[...project.sessions.reduce((m,a)=>{const d=(a.cwd||'').replace(/\/+$/,'');if(!d)return m;const cur=m.get(d)||{count:0,last:0,latest:a};cur.count++;if(a.last_at>cur.last){cur.last=a.last_at;cur.latest=a;}return m.set(d,cur);},new Map<string,{count:number;last:number;latest:Activity}>())].sort((x,y)=>y[1].last-x[1].last);
-  return <div className="project-hub"><button className="link" onClick={()=>{setQuery('');onProject(null);}}>‹ 全部项目</button><header className="hub-heading"><div><h2>{project.name}{starBtn(project.name)}{ownerBadge(project)}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p></div><div className="hub-header-actions"><button className="btn" disabled={termBusy||!terminalCwd} onClick={()=>void openTerminal()} title={terminalCwd?`在 ${terminalMachine} 的 ${shortPath(terminalCwd)} 开一个不带 Agent 的 Herdr 终端标签`:'这个项目还没有记录到目录'}>{termBusy?'开终端…':`终端 · ${terminalMachine}`}</button>{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}{(()=>{
+  return <div className="project-hub"><button className="link" onClick={()=>{setQuery('');onProject(null);}}>‹ 全部项目</button><header className="hub-heading"><div><h2>{project.name}{starBtn(project.name)}{ownerBadge(project)}{isArchived(flags,project.name)&&<span className="st sm open">已归档</span>}</h2><p>{project.sessions.filter(a=>!a.scheduled).length} 个会话 · {project.items.length} 个任务 · {project.results.length} 项成果</p></div><div className="hub-header-actions"><button className="btn" disabled={termBusy||!terminalCwd} aria-haspopup="menu" aria-expanded={!!terminalMenu} onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setTerminalMenu({x:r.left,y:r.bottom+6,from:e.currentTarget});}} title={terminalCwd?`选择 Agent，在 ${terminalMachine} 的 ${shortPath(terminalCwd)} 打开终端会话`:'这个项目还没有记录到目录'}>{termBusy?'正在打开…':`终端 · ${terminalMachine} ▾`}</button>{terminalMenu&&<MenuPanel x={terminalMenu.x} y={terminalMenu.y} returnTo={terminalMenu.from} label="选择终端 Agent" title={`在 ${terminalMachine} 打开`} onClose={()=>setTerminalMenu(null)}>{KINDS.map(([kind,label])=><MenuItem key={kind} onClick={()=>void openTerminal(kind)}>{label}</MenuItem>)}<hr/><MenuItem onClick={()=>void openTerminal()}>普通终端</MenuItem></MenuPanel>}{onDiscuss&&<button className="btn" onClick={()=>onDiscuss(project.name)} title="就这个项目的一个想法，让几个 Agent 各说一次并出结论">讨论…</button>}{(()=>{
     // One tap hands the whole project (folder, Git, running conversations) to another Mac:
     // it runs on the Mac the project's folder is on now, and is refused there when Git would lose work.
     const from=terminalTarget.initialHost;const cwd=terminalTarget.initialCwd;

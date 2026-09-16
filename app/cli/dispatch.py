@@ -1029,6 +1029,18 @@ def cmd_terminal(a):
 def cmd_agent(a):
     host = herdr_target_host(a.host)
     where = host["name"] if host else local_host_name()
+    # Opening a terminal window must happen on the machine that owns the pane, including
+    # callers using `agent start --host` instead of the app's `dispatch --host` transport.
+    if a.op == "start" and getattr(a, "focus", False) and host is not None:
+        argv = ["--host", host["id"], "agent", "start", a.kind, "--focus"]
+        for key in ("cwd", "label", "name", "model", "task", "prompt", "extra", "timeout", "lines"):
+            value = getattr(a, key, None)
+            if value is not None and value != "":
+                argv.append(f"--{key}={value}")
+        if not a.wait: argv.append("--no-wait")
+        if a.auto: argv.append("--auto")
+        if a.json: argv.append("--json")
+        return proxy_to_host(argv)
     if a.op == "list":
         rows = [dict(agent_row(x), host=where) for x in herdr_list_agents(host) if x.get("agent") not in RETIRED_AGENTS]
 
@@ -1046,6 +1058,10 @@ def cmd_agent(a):
             raise SystemExit("该 Agent 已不再支持")
         actor = KIND_ACTOR.get(kind, kind)
         cwd = a.cwd
+        if cwd and host is None:
+            cwd = os.path.abspath(os.path.expanduser(cwd))
+            if getattr(a, "focus", False) and not os.path.isdir(cwd):
+                raise SystemExit(f"目录不存在：{cwd}")
         if not cwd and host is None:
             # From the app there is no meaningful "current directory": use the task's project folder, else home.
             if a.task:
@@ -1102,6 +1118,11 @@ def cmd_agent(a):
             res["dismissed"] = True
         if a.task:
             res["task_title"] = bd_json(["show", a.task, "--json"]).get("title") or ""
+        if getattr(a, "focus", False):
+            app, how = show_herdr_pane(pane)
+            res.update(app=app or "", focus=how)
+            if not app:
+                res["hint"] = herdr_attach_hint(herdr_session_name())
         if a.prompt:
             # Prompts to an unfocused tab are dropped, and a prompt typed before the agent's
             # input box exists (self-update, trust dialogs) is swallowed: wait for both.
@@ -2492,6 +2513,12 @@ class _Timeline:
 
     def tool(self, ts, id_, name, inp, summary):
         self.tool_names[name] = self.tool_names.get(name, 0) + 1
+        # The activity strip used to translate Codex's orchestration source into a readable
+        # operation. Keep that summary on the original call, with its input/result available.
+        if name.split(".")[-1] in ("exec", "apply_patch"):
+            from activity import operation_summary
+            summary = operation_summary(name, inp if isinstance(inp, dict) else {},
+                                        inp.get("input", summary) if isinstance(inp, dict) else summary)
         b = {"type": "tool_call", "id": str(id_ or ""), "name": name, "summary": str(summary or "")[:200], "input": _compact_input(inp, name), "status": "running", "ts": ts}
         if b["id"]:
             self.pending[b["id"]] = b
@@ -7801,6 +7828,7 @@ def main():
     s.add_argument("--json", action="store_true")
     s.add_argument("--extra", default="", help="start: extra args for the agent CLI, as one quoted string (e.g. --extra '--effort high')")
     s.add_argument("--auto", action="store_true", help="start: unattended mode (Codex bypasses sandbox approvals, Claude skips permissions); implied by --task")
+    s.add_argument("--focus", action="store_true", help="start: show the Agent's terminal window on the target Mac")
     s.set_defaults(fn=cmd_agent)
     s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link, `serve qr` prints a scannable QR, `serve host [<id>|local]` shows/sets which Mac the phone link points at"); s.add_argument("what", nargs="?", choices=["run", "url", "qr", "host"], default="run"); s.add_argument("target", nargs="?", default=None, help="host: a hosts.json id/name, or `local` for this Mac"); s.add_argument("--svg", action="store_true", help="qr: print SVG instead of terminal blocks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--refresh", help="clear the cached probe for this host id first, forcing a fresh ssh check"); s.add_argument("op", nargs="?", choices=["rename"], help="rename <id|local|名字> <新名字>: one name for that Mac everywhere, pushed to the other Macs"); s.add_argument("args", nargs="*"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
