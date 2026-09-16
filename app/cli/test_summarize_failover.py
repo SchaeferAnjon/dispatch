@@ -25,7 +25,7 @@ class FailoverTest(unittest.TestCase):
         patcher = patch.object(S, "record_use", lambda *a, **k: None); patcher.start(); self.addCleanup(patcher.stop)
 
     def test_out_of_balance_provider_hands_over_to_the_next_key(self):
-        p = {"id": "zhipu", "base": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-5.3-flash", "key": "z"}
+        p = {"id": "zhipu", "base": "https://open.bigmodel.cn/api/coding/paas/v4", "model": "glm-5.3-flash", "key": "z"}
         seen = []
         def urlopen(req, timeout=0):
             seen.append(req.full_url)
@@ -34,14 +34,14 @@ class FailoverTest(unittest.TestCase):
             return Reply("总结好了")
         with patch.object(S.urllib.request, "urlopen", urlopen):
             self.assertEqual(S.chat(p, "sys", "user"), "总结好了")
-        self.assertEqual(p["id"], "deepseek")  # the caller records who actually wrote it
+        self.assertEqual(p["id"], "kimi")  # the caller records who actually wrote it; DeepSeek is retired
         self.assertEqual(len(seen), 2)
 
     def test_all_keys_out_of_balance_raises_one_named_error(self):
         p = {"id": "zhipu", "base": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-5.3-flash", "key": "z"}
         with patch.object(S.urllib.request, "urlopen", lambda req, timeout=0: (_ for _ in ()).throw(http_error(402, {"error": "insufficient balance"}))):
             with self.assertRaises(S.QuotaExhausted) as cm: S.chat(p, "sys", "user")
-        self.assertIn("智谱", str(cm.exception)); self.assertIn("DeepSeek", str(cm.exception)); self.assertIn("Kimi", str(cm.exception))
+        self.assertIn("智谱", str(cm.exception)); self.assertNotIn("DeepSeek", str(cm.exception)); self.assertIn("Kimi", str(cm.exception))
         self.assertEqual(p["id"], "zhipu")
 
     def test_other_http_errors_are_not_failed_over(self):
@@ -52,3 +52,12 @@ class FailoverTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CodingPlanTest(unittest.TestCase):
+    def test_zhipu_uses_the_coding_plan_endpoint_and_deepseek_is_never_auto_picked(self):
+        self.assertEqual(next(b for _, pid, b, _ in S.PROVIDERS if pid == "zhipu"), "https://open.bigmodel.cn/api/coding/paas/v4")
+        env = [{"name": "DEEPSEEK_API_KEY", "value": "d"}, {"name": "KIMI_API_KEY", "value": "k"}]
+        with patch.object(S.D, "env_read", lambda: env), patch.object(S.D, "settings_load", lambda: {}):
+            self.assertEqual(S.provider()["id"], "kimi")
+            self.assertEqual(S.provider("deepseek:deepseek-chat")["id"], "deepseek")  # explicit choice still honoured

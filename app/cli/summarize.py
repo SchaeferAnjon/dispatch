@@ -14,7 +14,9 @@ import dispatch as D
 PROVIDERS = [
     # env key, provider id, base url, default model — first available wins unless SUMMARY_MODEL says otherwise.
     # 智谱 first: the user's GLM key is the one meant for this kind of housekeeping (see dispatch facts).
-    ("ZHIPU_API_KEY", "zhipu", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3-flash"),
+    # The key is on the GLM Coding Plan: its quota lives behind /api/coding/paas/v4. The pay-as-you-go
+    # endpoint (/api/paas/v4) answers 429 code 1113 「余额不足」 for the same key — not a money problem.
+    ("ZHIPU_API_KEY", "zhipu", "https://open.bigmodel.cn/api/coding/paas/v4", "glm-5.3-flash"),
     ("DEEPSEEK_API_KEY", "deepseek", "https://api.deepseek.com/v1", "deepseek-chat"),
     ("KIMI_API_KEY", "kimi", "https://api.moonshot.cn/v1", "moonshot-v1-8k"),
     ("MINIMAX_API_KEY", "minimax", "https://api.minimax.chat/v1", "MiniMax-Text-01"),
@@ -34,6 +36,9 @@ SUMMARY_USES = [
     ("semantic", "语义搜索索引", "wiki 语义搜索的 embedding（只认 ZHIPU_API_KEY）", 1),
 ]
 DEFAULT_USES = {k: d for k, _, _, d in SUMMARY_USES}
+# Keys the person told us to stop using (dispatch facts: DeepSeek 2026-09-14 起停用): never picked
+# automatically, neither as the default nor as a fallback; an explicit summary_model still works.
+RETIRED_PROVIDERS = {"deepseek"}
 
 
 def use_name(key):
@@ -109,7 +114,7 @@ def provider(model=""):
             if p == pid and env.get(key):
                 return {"id": p, "base": base, "model": model, "key": env[key]}
     for key, p, base, model in PROVIDERS:
-        if env.get(key):
+        if env.get(key) and p not in RETIRED_PROVIDERS:
             return {"id": p, "base": base, "model": model, "key": env[key]}
     if CLAUDE_BIN:
         return {"id": "claude", "base": "", "model": "haiku", "key": ""}
@@ -312,7 +317,7 @@ def fallback_providers(p):
     The Claude subscription is never picked up silently — it is only used when chosen."""
     env = {i["name"]: i["value"] for i in D.env_read()}
     return [{"id": pid, "base": base, "model": model, "key": env[key]}
-            for key, pid, base, model in PROVIDERS if env.get(key) and pid != p.get("id")]
+            for key, pid, base, model in PROVIDERS if env.get(key) and pid != p.get("id") and pid not in RETIRED_PROVIDERS]
 
 
 def chat(p, system, user, timeout=90, max_tokens=None, use=None):
