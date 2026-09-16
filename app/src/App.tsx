@@ -337,7 +337,8 @@ export default function App() {
     const timer = window.setInterval(() => void refreshQuota(), 60_000);
     return () => { ++quotaRequest.current; window.clearInterval(timer); };
   }, [refreshQuota]);
-  const selectedQuotas = useMemo(() => selectQuotas(quota, hostFilter), [quota, hostFilter]);
+  const localHostName = hosts.find(h => h.local)?.name ?? '';
+  const selectedQuotas = useMemo(() => selectQuotas(quota, hostFilter, localHostName), [quota, hostFilter, localHostName]);
 
   // One line of the cross-agent insights for the workbench; the full card lives on 统计.
   // The proactive half: every few minutes ask for per-session alerts nobody has acknowledged;

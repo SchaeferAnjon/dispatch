@@ -40,3 +40,16 @@ it('overview renders exactly the shared snapshot selected for the header', () =>
   expect(html).not.toContain('19%');
   expect(html).toContain('Apple + 大哥');
 });
+
+it('the header lists this machine first, whatever the host names sort like', () => {
+  const brother = row('大哥', 71, 300, 10000); brother.host = 'hub'; brother.remote = true;
+  const apple = row('Apple', 2, 200, 20000); apple.host = 'local';
+  expect(selectQuotas([brother, apple], '', 'Apple').map(q => q.host_name)).toEqual(['Apple', '大哥']);
+  expect(selectQuotas([brother, apple]).map(q => q.host_name)).toEqual(['Apple', '大哥']);
+  // A shared subscription read most recently on the other Mac still counts as this machine's.
+  const shared = row('大哥', 30, 400, 10000); shared.remote = true;
+  const mine = row('Apple', 29, 350, 10000);
+  const other = row('大哥', 50, 500, 30000); other.agent = 'claude-code'; other.remote = true;
+  expect(selectQuotas([shared, mine, other], '', 'Apple').map(q => `${q.agent}:${q.host_name}`)).toEqual(['codex:大哥', 'claude-code:大哥']);
+  expect(selectQuotas([shared, mine, other], '', 'Apple')[0].also).toEqual(['Apple']);
+});
