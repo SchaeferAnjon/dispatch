@@ -84,32 +84,41 @@ def open_original(d, data):
             raise Rejected('这台电脑无法打开 Claude 桌面端。')
         return dict(message='已在 Claude 桌面端打开原会话')
     if agent in KINDS:
-        # Restoring a historical session is explicit. Never focus another
-        # conversation merely because it uses the same working directory.
-        live = next((s for s in d.live_sessions(local_only=True) if s.get('session_id') == sid and s.get('agent', agent) == agent), None)
-        if live:
-            # Running here but not in a Herdr pane we can address: bring its own window forward
-            # rather than claiming it cannot be found; name the place when even that fails.
-            where = getattr(d, 'local_host_name', lambda: '这台电脑')()
-            focus = getattr(d, 'focus_session', None)
-            msg = None
+        return resume_in_herdr(d, ref, data.get('request_id'), focus_running=True)
+    raise Rejected('这个 Agent 暂不支持精确打开原会话，可在 Dispatch 查看记录。')
+
+
+def resume_in_herdr(d, ref, request_id=None, focus_running=False):
+    """Bring a conversation that is not running anywhere on this Mac back as a Herdr tab
+    (`claude --resume` / `codex resume` / pi), so the phone can address it. Restoring a
+    historical session is explicit: never touch another conversation merely because it uses the
+    same working directory. Running already: the desktop button focuses it (`focus_running`), the
+    phone gets told where it is instead of a second copy. One resume in flight per session."""
+    sid, agent = ref['session_id'], ref['agent']
+    live = next((s for s in d.live_sessions(local_only=True) if s.get('session_id') == sid and s.get('agent', agent) == agent), None)
+    if live:
+        # Running here but not in a Herdr pane we can address: bring its own window forward
+        # rather than claiming it cannot be found; name the place when even that fails.
+        where = getattr(d, 'local_host_name', lambda: '这台电脑')()
+        focus = getattr(d, 'focus_session', None)
+        msg = None
+        if focus_running:
             try:
                 msg = focus(live) if callable(focus) else None
             except Exception:
                 msg = None
-            if msg:
-                return dict(message=msg)
-            h = live.get('herdr') or {}
-            place = (f"Herdr 页签 {h.get('tab_id')}（{h.get('pane_id')}）" if h else f"{live.get('source_app') or '终端'}（进程 {live.get('agent_pid')}）")
-            raise Rejected(f'会话正在 {where} 的 {place} 里运行，Dispatch 没能切过去；请在 {where} 上切到它，或用「电脑」页的屏幕共享打开。')
-        with closing(connect(d)) as db:
-            for row in db.execute('SELECT payload,result FROM launches'):
-                old = json.loads(row['result'])
-                if json.loads(row['payload']).get('resume') == sid and old['state'] in ('starting', 'running') and time.time()-old['created'] < 240:
-                    return old
-        return enqueue(d, dict(request_id=data.get('request_id') or str(uuid.uuid4()),
-                               agent=agent, cwd=directory(d, ref['cwd']), prompt='', resume=sid, title=ref.get('title') or ''))
-    raise Rejected('这个 Agent 暂不支持精确打开原会话，可在 Dispatch 查看记录。')
+        if msg:
+            return dict(message=msg)
+        h = live.get('herdr') or {}
+        place = (f"Herdr 页签 {h.get('tab_id')}（{h.get('pane_id')}）" if h else f"{live.get('source_app') or '终端'}（进程 {live.get('agent_pid')}）")
+        raise Rejected(f'会话正在 {where} 的 {place} 里运行，Dispatch 没能切过去；请在 {where} 上切到它，或用「电脑」页的屏幕共享打开。')
+    with closing(connect(d)) as db:
+        for row in db.execute('SELECT payload,result FROM launches'):
+            old = json.loads(row['result'])
+            if json.loads(row['payload']).get('resume') == sid and old['state'] in ('starting', 'running') and time.time()-old['created'] < 240:
+                return old
+    return enqueue(d, dict(request_id=request_id or str(uuid.uuid4()),
+                           agent=agent, cwd=directory(d, ref['cwd']), prompt='', resume=sid, title=ref.get('title') or ''))
 
 
 def adopt(d, data):
@@ -236,6 +245,26 @@ def enqueue(d, data):
     return result
 
 
+def settle_pane(d, pid, timeout=45, quiet=2.0):
+    """Wait until the agent in `pid` is idle and its screen has not changed for `quiet` seconds
+    (or `timeout` passes — the caller then proceeds; the reply path verifies delivery anyway)."""
+    deadline = time.time() + timeout
+    last, since = None, time.time()
+    while time.time() < deadline:
+        try:
+            screen = d.herdr(None, ['agent', 'read', pid, '--source', 'visible'], raw=True) or ''
+            info = d.herdr(None, ['agent', 'get', pid]).get('result', {}).get('agent', {})
+        except Exception:
+            screen, info = '', {}
+        now = time.time()
+        if screen != last:
+            last, since = screen, now
+        elif screen.strip() and info.get('agent_status') in ('idle', 'done') and info.get('interactive_ready', True) and now - since >= quiet:
+            return True
+        time.sleep(0.7)
+    return False
+
+
 def tab_label(d, p):
     """The Herdr tab is named after the project first, then the conversation, so a restored
     session reads as `kanban · 工作台显示 ZCode 会话` instead of a generic 恢复会话."""
@@ -302,6 +331,11 @@ def worker(d, rid):
                 time.sleep(1)
         if prompt_later:
             checked(d, ['agent', 'prompt', name, p['prompt']], timeout=30)
+        if p.get('resume'):
+            # Herdr reports the TUI interactive as soon as it draws; a resumed conversation then
+            # spends seconds (a 16 MB Codex transcript: ~10 s) replaying history, and keys typed
+            # meanwhile vanish. 「已恢复」 means the screen has stopped changing with the agent idle.
+            settle_pane(d, pid)
         # A launch is finished only when its actual transcript is visible.
         # Claude has an assigned UUID; other agents require an unambiguous new
         # transcript with the exact first message, never a cwd-only match.
@@ -325,7 +359,11 @@ def worker(d, rid):
                 record = os.path.join(d.SESS_DIR, agent+'__'+sid+'.json')
                 if not os.path.exists(record):
                     processes = checked(d, ['pane', 'process-info', '--pane', pid]).get('process_info', {}).get('foreground_processes', [])
-                    processes = [process for process in processes if process.get('name') in (KINDS[agent], agent)]
+                    # Claude Code's native binary reports its version as the process name
+                    # ('2.1.273'); argv0 / argv[0] still say what was run.
+                    names = (KINDS[agent], agent)
+                    processes = [process for process in processes if process.get('name') in names or process.get('argv0') in names
+                                 or os.path.basename(str((process.get('argv') or [''])[0])) in names]
                     if len(processes) == 1:
                         os.makedirs(d.SESS_DIR, exist_ok=True)
                         try:
@@ -333,6 +371,17 @@ def worker(d, rid):
                                 json.dump(dict(agent=agent, session_id=sid, agent_pid=processes[0]['pid'], cwd=p['cwd'], source_kind='terminal', source_app='Herdr', state='unknown', last_at=time.time()), f)
                         except FileExistsError:
                             pass
+                if p['resume']:
+                    # A resumed TUI can stop at a dialog before it takes input (Claude Code's
+                    # 「trust this folder?」, a login): that is not 「已恢复」. The record above still
+                    # ties the pane to the conversation, so the phone can answer the dialog by keys.
+                    try:
+                        blocked = checked(d, ['agent', 'get', pid]).get('agent', {}).get('agent_status') == 'blocked'
+                    except Rejected:
+                        blocked = False
+                    if blocked:
+                        save(d, rid, state='attention', session_id=sid, message='已在电脑上恢复，但它停在一个确认框（信任文件夹 / 权限 / 登录）。手机上可以直接按键回答，或打开电脑屏幕处理。')
+                        return
                 save(d, rid, state='ready', session_id=sid, message='会话已创建，可以查看和回复' if not p['resume'] else '已恢复原会话')
                 if p.get('focus'):
                     try: d.focus_session({'agent': agent, 'session_id': sid, 'herdr': {'pane_id': pid, 'tab_id': tid, 'title': label}})

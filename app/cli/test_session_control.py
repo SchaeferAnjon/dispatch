@@ -200,3 +200,23 @@ class SessionControl(unittest.TestCase):
 
 
 if __name__=='__main__': unittest.main()
+
+
+class SettlePane(unittest.TestCase):
+    def test_ready_only_when_idle_and_screen_stopped_changing(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        screens = iter(['加载中…', '加载中……', '历史 1', '历史 1', '历史 1', '历史 1'])
+        clock = [0.0]
+        def herdr(host, args, timeout=30, raw=False):
+            if args[:2] == ['agent', 'read']: return next(screens, '历史 1')
+            return {'result': {'agent': {'agent_status': 'idle', 'interactive_ready': True}}}
+        d = SimpleNamespace(herdr=herdr)
+        with patch.object(c.time, 'time', lambda: clock[0]), patch.object(c.time, 'sleep', lambda s: clock.__setitem__(0, clock[0] + s)):
+            self.assertTrue(c.settle_pane(d, 'p1', timeout=30, quiet=2.0))
+        self.assertGreaterEqual(clock[0], 2.0)
+        # Never idle: gives up at the timeout instead of hanging the launch.
+        d.herdr = lambda host, args, timeout=30, raw=False: '同一屏' if args[:2] == ['agent', 'read'] else {'result': {'agent': {'agent_status': 'working'}}}
+        clock[0] = 0.0
+        with patch.object(c.time, 'time', lambda: clock[0]), patch.object(c.time, 'sleep', lambda s: clock.__setitem__(0, clock[0] + s)):
+            self.assertFalse(c.settle_pane(d, 'p1', timeout=5, quiet=2.0))

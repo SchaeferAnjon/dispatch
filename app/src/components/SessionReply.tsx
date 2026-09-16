@@ -6,7 +6,7 @@ import { control as sessionControl } from './SessionActions';
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number; delivered?: boolean }
 interface DesktopRequest { id: string; kind: 'command' | 'file' | 'permission' | 'question' | 'option' | 'elicitation' | 'other'; summary: string; reason?: string; cwd?: string; files?: string[]; questions?: { id: string; text: string; options: string[] }[] }
 interface Desktop { running: boolean; status: string; requests: DesktopRequest[]; model?: string; approval_policy?: string }
-interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop; adoptable?: boolean; adopt_state?: 'idle' | 'working'; source_app?: string }
+interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop; adoptable?: boolean; adopt_state?: 'idle' | 'working'; source_app?: string; resumable?: boolean; blocked?: boolean; screen?: string }
 const REQUEST_LABEL: Record<DesktopRequest['kind'], string> = { command: '要跑命令', file: '要改文件', permission: '申请权限', question: '在提问', option: '要你选', elicitation: 'MCP 请求', other: '等确认' };
 const MODES: [string, string][] = [['default', '手动确认'], ['acceptEdits', '自动接受编辑'], ['plan', '计划模式'], ['bypassPermissions', '跳过权限']];
 const MODELS: [string, string][] = [['fable', 'Fable 5.1'], ['opus', 'Opus 5'], ['sonnet', 'Sonnet 5'], ['haiku', 'Haiku 4.5']];
@@ -156,14 +156,44 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     } catch (e) { setError(String(e)); }
     finally { setAdopting(false); }
   };
-  const control = async (payload: { mode?: string; model?: string; interrupt?: boolean; request_id?: string; decision?: string; answers?: Record<string, unknown> }) => {
+  // The original session runs nowhere on its host any more (the terminal was closed): bring it
+  // back as a Herdr tab resuming the same transcript, then send what was typed — one tap from
+  // the phone, no desktop app needed. One launch identity per attempt, kept until it settles.
+  const [reviving, setReviving] = useState(false);
+  const reviveRequest = useRef<string | null>(null);
+  const revive = async () => {
+    if (reviving || locked.current) return;
+    setReviving(true); setError('');
+    reviveRequest.current ??= messageId();
+    try {
+      const r = readJson<{ request_id?: string; state: string; message: string }>(await api.on(host, ['reply', 'revive', session.session_id, '--agent', session.agent, '--json'], JSON.stringify({ request_id: reviveRequest.current })));
+      // 「已经在跑」 is a failed revive but a live session: re-check rather than leave the error standing.
+      if (r.state === 'failed') { setError(r.message); reviveRequest.current = null; await load(); return; }
+      let state = r.state;
+      if (r.request_id && ['starting', 'running'].includes(state)) {
+        for (let n = 0; n < 60; n++) {
+          await new Promise(res => window.setTimeout(res, 2000));
+          const s = await sessionControl<{ state: string; message: string }>(api, host, 'status', { request_id: r.request_id });
+          state = s.state;
+          if (!['starting', 'running'].includes(state)) { if (state !== 'ready') setError(s.message); break; }
+        }
+      }
+      reviveRequest.current = null;
+      const c = await load();
+      if (c?.available && (draft.trim() || images.length)) await send('queue', c);
+    } catch (e) { setError(String(e)); }
+    finally { setReviving(false); }
+  };
+  const control = async (payload: { mode?: string; model?: string; interrupt?: boolean; request_id?: string; decision?: string; answers?: Record<string, unknown>; keys?: string[] }) => {
     if (switching) return;
     setSwitching(true); setError('');
     try {
-      const r = readJson<{ state: string; note: string; model?: string; mode?: string; desktop?: Desktop }>(await api.on(host, ['reply', 'control', session.session_id, '--agent', session.agent, '--json'], JSON.stringify(payload)));
+      const r = readJson<{ state: string; note: string; model?: string; mode?: string; desktop?: Desktop; blocked?: boolean; screen?: string }>(await api.on(host, ['reply', 'control', session.session_id, '--agent', session.agent, '--json'], JSON.stringify(payload)));
       if (r.state !== 'accepted') setError(r.note); else if (payload.interrupt || payload.request_id) setNotice(r.note);
-      setConnection(c => c ? { ...c, model: r.model ?? c.model, mode: r.mode ?? c.mode, ...(r.desktop ? { desktop: r.desktop, working: r.desktop.running } : {}) } : c);
+      setConnection(c => c ? { ...c, model: r.model ?? c.model, mode: r.mode ?? c.mode, ...(r.desktop ? { desktop: r.desktop, working: r.desktop.running } : {}), ...(payload.keys ? { blocked: !!r.blocked, screen: r.screen } : {}) } : c);
       if (payload.interrupt || payload.request_id) onSent();
+      // The dialog is gone: re-check right away so the box opens up instead of waiting for the next poll.
+      if (payload.keys && r.state === 'accepted' && !r.blocked) await load();
     } catch (e) { setError(String(e)); }
     finally { setSwitching(false); }
   };
@@ -196,12 +226,12 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     </div>)}
     {desktop.running && <div className="reply-request-actions"><span className="muted small">它正在跑</span><button className="btn sm" type="button" disabled={switching} onClick={() => void control({ interrupt: true })} title="停下当前这轮（桌面端的 Stop）">打断</button></div>}
   </div> : null;
-  const send = async (mode: 'queue' | 'interrupt' = 'queue') => {
+  const send = async (mode: 'queue' | 'interrupt' = 'queue', conn: Connection | null = connection) => {
     // Pictures travel as separate --image arguments: the CLI attaches them the way each agent
     // takes them (Claude Code: one paste per picture, then the words; others: paths in the text).
     const paths = images.map(x => x.path);
     const text = draft.trim() || (paths.length ? '看一下这几张图' : '');
-    if (locked.current || !text || saving || !connection?.available) return;
+    if (locked.current || !text || saving || !conn?.available) return;
     locked.current = true; setBusy(true); setError('');
     const request = attempt.current?.text === text ? attempt.current : { id: messageId(), text };
     attempt.current = request;
@@ -233,6 +263,14 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   return <section className={`session-reply${big ? " big" : ""}`} aria-label="回复当前会话">
     {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map(r => <div key={r.id} className="reply-queued"><span>你 · {r.note}</span><p>{r.text}</p></div>)}</div>}
     {desktopBlock}
+    {connection?.blocked && <div className="reply-desktop reply-blocked" role="status">
+      <div className="reply-request-head"><b>它在电脑上等确认</b><span className="reply-request-text">下面是那块屏幕；按键直接发到原终端</span></div>
+      {connection.screen && <pre className="reply-screen">{connection.screen.split('\n').slice(-14).join('\n')}</pre>}
+      <div className="reply-request-actions reply-keys">
+        {([['up', '↑'], ['down', '↓'], ['enter', '⏎ 确认'], ['esc', 'Esc'], ['y', 'y'], ['n', 'n'], ['1', '1'], ['2', '2'], ['3', '3']] as [string, string][]).map(([k, label]) =>
+          <button key={k} className={`btn sm${k === 'enter' ? ' primary' : ''}`} type="button" disabled={switching} onClick={() => void control({ keys: [k] })}>{label}</button>)}
+      </div>
+    </div>}
     {notice && <div className="reply-receipt" role="status"><span>{notice}</span><button className="link" type="button" onClick={() => setNotice('')}>好</button></div>}
     <div className="reply-connection"><span>{connection?.label || (error ? '连接暂时不可用' : '正在连接原会话…')}</span>
       {connection?.available && (connection.mode || connection.model) && <span className="reply-switches">
@@ -242,6 +280,9 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
       {!connection?.available && connection?.adoptable && <button className="btn sm" type="button" disabled={adopting || connection.adopt_state === 'working'}
         title={connection.adopt_state === 'working' ? `它正在 ${connection.source_app || '原终端'} 里跑，等它停下来再接` : `把它从 ${connection.source_app || '原终端'} 接进那台电脑的 Herdr，再发这条`}
         onClick={() => void adopt()}>{adopting ? '正在接…' : '接进 Herdr 再发'}</button>}
+      {!connection?.available && connection?.resumable && <button className="btn sm primary" type="button" disabled={reviving || busy}
+        title="在电脑的 Herdr 里新开一个页签恢复这段对话（同一份记录），恢复好就把你打的这条发过去"
+        onClick={() => void revive()}>{reviving ? '正在恢复…' : draft.trim() || images.length ? '在电脑上恢复并发送' : '在电脑上恢复这段会话'}</button>}
       {!connection?.available && <button className="link" onClick={() => void load()}>重新连接</button>}</div>
     <form onSubmit={e => { e.preventDefault(); void send(); }}>
       {menu.length > 0 && <ul className="reply-slash" role="listbox" aria-label="可用的 / 命令">

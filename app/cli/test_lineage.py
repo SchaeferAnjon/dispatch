@@ -6,6 +6,9 @@ import json
 import os
 import shutil
 import sys
+
+# Inside every 14-day window the reports use, however long this file sits in the repo.
+RECENT = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 import tempfile
 import time
 import types
@@ -27,10 +30,10 @@ class HereView(unittest.TestCase):
     def test_open_tasks_in_progress_first_with_acceptance_and_last_note(self):
         issues = [
             {"id": "t1", "title": "A", "status": "open", "updated_at": "2026-09-01T00:00:00Z", "acceptance_criteria": "- [x] a\n- [ ] b"},
-            {"id": "t2", "title": "B", "status": "in_progress", "updated_at": "2026-09-02T00:00:00Z", "acceptance_criteria": "- [ ] a\n- [ ] b"},
+            {"id": "t2", "title": "B", "status": "in_progress", "updated_at": RECENT, "acceptance_criteria": "- [ ] a\n- [ ] b"},
             {"id": "t3", "title": "C", "status": "closed", "updated_at": "2026-09-03T00:00:00Z"},
         ]
-        comments = {"t1": [{"created_at": "2026-09-02T00:00:00Z", "text": "最新进展一句话"}]}
+        comments = {"t1": [{"created_at": RECENT, "text": "最新进展一句话"}]}
         rows = lineage.here_open_tasks(issues, comments)
         self.assertEqual([r["id"] for r in rows], ["t2", "t1"])
         self.assertEqual((rows[1]["acceptance_done"], rows[1]["acceptance_total"]), (1, 2))
@@ -116,8 +119,8 @@ class HereView(unittest.TestCase):
 class Lineage(unittest.TestCase):
     def test_tree_links_sessions_events_and_deps(self):
         issues = [{"id": "task-a", "title": "甲", "status": "in_progress", "acceptance_criteria": "- [x] a\n- [ ] b",
-                   "assignee": "claude-code", "updated_at": "2026-09-02T00:00:00Z", "labels": ["session:s1", "project:p"],
-                   "comments": [{"created_at": "2026-09-02T00:00:00Z", "text": "进展一"}],
+                   "assignee": "claude-code", "updated_at": RECENT, "labels": ["session:s1", "project:p"],
+                   "comments": [{"created_at": RECENT, "text": "进展一"}],
                    "dependencies": [{"issue_id": "task-a", "depends_on_id": "task-b", "type": "blocks", "dependency_count": 1}]}]
         live = [{"session_id": "s1", "agent": "claude-code", "title": "会话一", "summary": "在做甲", "state": "idle",
                  "last_at": 1, "verdict": "可关", "reason": "", "files_count": 0,
@@ -125,7 +128,7 @@ class Lineage(unittest.TestCase):
         idx = {"p": {"agent": "claude-code", "session_id": "s1", "tasks": {"task-a": 2}, "claims": ["task-a"],
                      "cwd": "/x", "mtime": 1, "title": "会话一"}}
         with patch.object(lineage, "project_issues", return_value=issues), \
-             patch.object(lineage, "here_comments", return_value={"task-a": [{"created_at": "2026-09-02T00:00:00Z", "text": "进展一"}]}), \
+             patch.object(lineage, "here_comments", return_value={"task-a": [{"created_at": RECENT, "text": "进展一"}]}), \
              patch.object(dispatch, "project_names", return_value={}), \
              patch.object(dispatch, "settings_load", return_value={}), \
              patch.object(lineage, "here_sessions", return_value=live), \
@@ -148,7 +151,7 @@ class Lineage(unittest.TestCase):
 
     def test_origin_session_is_the_main_line_and_others_thin(self):
         """「继续 task-b」in the session that created task-a: 发起 for a, 在做 for b, 提到 for c."""
-        issues = [{"id": "task-a", "title": "甲", "status": "in_progress", "labels": ["session-origin:s1", "session:s1"], "updated_at": "2026-09-02T00:00:00Z"},
+        issues = [{"id": "task-a", "title": "甲", "status": "in_progress", "labels": ["session-origin:s1", "session:s1"], "updated_at": RECENT},
                   {"id": "task-b", "title": "乙", "status": "open", "labels": ["session:s1"], "updated_at": "2026-09-01T00:00:00Z"},
                   {"id": "task-c", "title": "丙", "status": "open", "labels": [], "updated_at": "2026-09-01T00:00:00Z"}]
         idx = {"p": {"agent": "claude-code", "session_id": "s1", "tasks": {"task-a": 2, "task-b": 1, "task-c": 1}, "claims": ["task-a"],

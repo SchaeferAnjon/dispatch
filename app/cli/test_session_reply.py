@@ -59,6 +59,134 @@ class Replies(unittest.TestCase):
         self.d.herdr = Mock(return_value={'result': {}})
         return pane
 
+    def test_gone_session_is_reported_resumable_not_as_a_transient_error(self):
+        # Terminal closed: no Herdr pane, no process anywhere. The Codex desktop socket exists but
+        # answers nothing for a thread it does not own — that silence must not become 「暂时无法连接」.
+        self.codex_pane()
+        self.d.herdr_agents = lambda: []
+        self.d.live_sessions = lambda **kw: []
+        with patch.object(reply, 'DesktopIPC', side_effect=TimeoutError('timed out')):
+            state = reply.status(self.d, self.ref)
+        self.assertFalse(state['available'])
+        self.assertTrue(state['resumable'])
+        self.assertIn('没在电脑上运行', state['label'])
+        self.assertNotIn('adoptable', state)
+        # Same for a Claude Code session with no hook record at all.
+        self.ref['agent'] = 'claude-code'
+        state = reply.status(self.d, self.ref)
+        self.assertTrue(state['resumable'])
+        # Still running somewhere (blocked in Herdr): not resumable, the real reason stays.
+        self.ref['agent'] = 'codex'
+        pane = self.codex_pane('blocked')
+        self.d.live_sessions = lambda **kw: [dict(self.ref, herdr={'pane_id': pane['pane_id']})]
+        with patch.object(reply, 'DesktopIPC') as ipc:
+            state = reply.status(self.d, self.ref)
+        self.assertNotIn('resumable', state)
+        self.assertIn('确认框', state['label'])
+        ipc.assert_not_called()
+
+    def test_desktop_silence_is_bounded_and_falls_through(self):
+        self.codex_pane()
+        self.d.herdr_agents = lambda: []
+        with patch.object(reply, 'DesktopIPC', side_effect=TimeoutError('timed out')), patch.object(reply, 'ghostty_target', return_value=None):
+            with self.assertRaises(reply.Rejected) as cm: reply.target(self.d, self.ref)
+        self.assertIn('未连接', str(cm.exception))
+        with patch.object(reply, 'DesktopIPC', side_effect=ConnectionRefusedError()), patch.object(reply, 'ghostty_target', return_value=None):
+            with self.assertRaises(reply.Rejected): reply.target(self.d, self.ref)
+
+    def test_revive_resumes_in_herdr_once_per_request(self):
+        self.d.live_sessions = lambda **kw: []
+        self.d.load_index = lambda: {'/t': dict(self.ref, mtime=1)}
+        rid = str(uuid.uuid4())
+        with patch.object(session_control, 'enqueue', return_value=dict(request_id=rid, state='starting', message='…')) as enq, \
+             patch.object(session_control, 'directory', side_effect=lambda d, p: p):
+            r = reply.revive(self.d, self.ref, {'request_id': rid})
+        self.assertEqual(r['state'], 'starting')
+        payload = enq.call_args.args[1]
+        self.assertEqual((payload['resume'], payload['agent'], payload['cwd'], payload['prompt'], payload['request_id']), (self.ref['session_id'], 'claude-code', '/project', '', rid))
+        # Already running here: no second copy, told where it is.
+        self.d.live_sessions = lambda **kw: [dict(self.ref, herdr={'pane_id': 'p1', 'tab_id': 't1'})]
+        with self.assertRaises(reply.Rejected) as cm: reply.revive(self.d, self.ref, {'request_id': rid})
+        self.assertIn('正在', str(cm.exception))
+        with self.assertRaises(reply.Rejected): reply.revive(self.d, dict(self.ref, agent='hermes'), {})
+
+    def test_idle_send_is_delivered_only_when_the_transcript_shows_it(self):
+        # A TUI still replaying a resumed transcript swallows typed keys: Herdr says 'prompted',
+        # the conversation never shows the words. That must not become 「已送达」 + a cleared draft.
+        path = os.path.join(self.tmp.name, 'transcript.jsonl')
+        open(path, 'w').close()
+        self.ref['path'] = path
+        self.assertFalse(reply.landed(self.ref, '收到吗', wait=0.05))
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({'role': 'user', 'text': '收到吗'}, ensure_ascii=False) + '\n')
+        self.assertTrue(reply.landed(self.ref, '收到吗', wait=0.05))
+        with open(path, 'a') as f:
+            f.write(json.dumps({'role': 'user', 'text': '第二条 escaped'}) + '\n')  # \uXXXX form
+        self.assertTrue(reply.landed(self.ref, '第二条 escaped', wait=0.05))
+        self.assertFalse(reply.landed(dict(self.ref, path=''), '收到吗', wait=0.05))
+
+    def test_unseen_idle_send_is_unknown_keeps_draft_and_upgrades_once_seen(self):
+        self.d.herdr = lambda host, args, timeout=30, raw=False: ({'result': {'agent': {}}} if args[:2] == ['agent', 'prompt'] else ('' if raw else {'result': {}}))
+        pane = {'pane_id': 'p1', 'tab_id': 't1', 'busy': False}
+        rid = str(uuid.uuid4())
+        with patch.object(reply, 'target', return_value={'kind': 'herdr', 'pane': pane, 'label': 'x'}), patch.object(reply, 'herdr_target', return_value=pane), patch.object(reply, 'landed', return_value=False):
+            r = reply.submit(self.d, self.ref, '还在吗', rid)
+        self.assertEqual(r['state'], 'unknown'); self.assertIn('草稿已保留', r['note'])
+        # Busy agent: queued input is absorbed later by design, so no transcript check and no 'unknown'.
+        with patch.object(reply, 'target', return_value={'kind': 'herdr', 'pane': dict(pane, busy=True), 'label': 'x'}), patch.object(reply, 'herdr_target', return_value=dict(pane, busy=True)), patch.object(reply, 'landed', side_effect=AssertionError('must not wait')):
+            q = reply.submit(self.d, self.ref, '排队这条', str(uuid.uuid4()))
+        self.assertEqual((q['state'], q['note']), ('accepted', '已排队，本轮结束后 Agent 就会看到'))
+        # The words turn up in the conversation later: status() settles the receipt as delivered.
+        self.d.read_session_detail = lambda ref: {'messages': [{'role': 'user', 'text': '还在吗', 'ts': datetime.now(timezone.utc).isoformat()}]}
+        self.d.ref_of = lambda path, ref: ref
+        self.d.live_sessions = lambda **kw: []
+        self.ref['path'] = os.path.join(self.tmp.name, 'none.jsonl')
+        with patch.object(reply, 'target', side_effect=reply.Rejected('x')):
+            st = reply.status(self.d, self.ref)
+        mine = next(x for x in st['receipts'] if x['id'] == rid)
+        self.assertEqual((mine['state'], mine['delivered']), ('accepted', True))
+        with patch.object(reply, 'target', side_effect=reply.Rejected('x')):
+            again = next(x for x in reply.status(self.d, self.ref)['receipts'] if x['id'] == rid)
+        self.assertEqual(again['state'], 'accepted')
+
+    def test_pane_dispatch_resumed_is_addressable_before_hooks_and_blocked_shows_the_screen(self):
+        # `claude --resume <id>` stopped at 「trust this folder?」: no hook record, Herdr has no
+        # session id yet — but Dispatch started that pane itself, so it is the conversation's pane.
+        pane = dict(agent='claude', pane_id='pG', tab_id='tG', agent_status='blocked')
+        self.d.herdr_agents = lambda: [pane]
+        screen = 'Quick safety check: Is this a project you trust?\n ❯ No, exit\n   Yes, I trust this folder\n'
+        self.d.herdr = lambda host, args, timeout=30, raw=False: (screen if args[:2] == ['agent', 'read'] else {'result': {'agent': pane}})
+        self.d.live_sessions = lambda **kw: [dict(agent='claude-code', session_id='pid-9704', probable_session_id=self.ref['session_id'], agent_pid=9704, source_app='Herdr', herdr={'pane_id': 'pG'})]
+        self.d.load_index = lambda: {}
+        self.assertEqual(reply.herdr_target(self.d, self.ref, require_idle=False, allow_blocked=True)['pane_id'], 'pG')
+        st = reply.status(self.d, self.ref)
+        self.assertEqual((st['available'], st['blocked']), (False, True))
+        self.assertIn('Yes, I trust this folder', st['screen'])
+        self.assertIn('确认框', st['label'])
+        with self.assertRaises(reply.Rejected): reply.submit(self.d, self.ref, '继续', str(uuid.uuid4()))
+        # A ChatGPT helper guessed by cwd is not that pane.
+        self.d.live_sessions = lambda **kw: [dict(agent='claude-code', session_id='pid-1', probable_session_id=self.ref['session_id'], agent_pid=1, source_app='ChatGPT')]
+        with self.assertRaises(reply.Rejected): reply.herdr_target(self.d, self.ref, require_idle=False, allow_blocked=True)
+
+    def test_keys_answer_a_blocked_prompt_and_nothing_else(self):
+        pane = dict(agent='claude', pane_id='pG', tab_id='tG', agent_status='blocked', agent_session={'value': self.ref['session_id']})
+        pressed = []
+        state = {'blocked': True}
+        def herdr(host, args, timeout=30, raw=False):
+            if args[:2] == ['agent', 'send-keys']: pressed.append(args[3]); state['blocked'] = False if args[3] == 'enter' else state['blocked']; return {'result': {}}
+            if args[:2] == ['agent', 'read']: return '❯ Yes, I trust this folder'
+            if args[:2] == ['agent', 'get']: return {'result': {'agent': dict(pane, agent_status='blocked' if state['blocked'] else 'idle')}}
+            return {'result': {}}
+        self.d.herdr = herdr; self.d.herdr_agents = lambda: [pane]
+        with patch.object(reply.time, 'sleep'):
+            r = reply.control(self.d, self.ref, {'keys': ['down']})
+            self.assertEqual((r['state'], r['blocked'], pressed), ('accepted', True, ['down']))
+            r = reply.control(self.d, self.ref, {'keys': ['enter']})
+            self.assertEqual((r['blocked'], pressed), (False, ['down', 'enter']))
+            with self.assertRaises(reply.Rejected): reply.control(self.d, self.ref, {'keys': ['ctrl-c']})
+            pane['agent_status'] = 'idle'
+            with self.assertRaises(reply.Rejected): reply.control(self.d, self.ref, {'keys': ['enter']})
+
     def test_working_codex_with_desktop_open_can_queue_into_exact_herdr_pane(self):
         self.codex_pane()
         with open(os.path.join(self.tmp.name, 'session.json'), 'w') as f:
@@ -97,7 +225,7 @@ class Replies(unittest.TestCase):
         with patch.object(reply, 'DesktopIPC') as ipc:
             state = reply.status(self.d, self.ref)
             self.assertFalse(state['available'])
-            self.assertIn('Herdr 等待确认', state['label'])
+            self.assertIn('确认框', state['label'])
             self.assertNotIn('adoptable', state)
             with self.assertRaises(reply.Rejected): reply.submit(self.d, self.ref, '继续', str(uuid.uuid4()))
             ipc.assert_not_called()
@@ -140,7 +268,7 @@ class Replies(unittest.TestCase):
         self.d.herdr = herdr
         pics = [tempfile.NamedTemporaryFile(suffix='.png', delete=False).name for _ in range(2)]
         pane = {'pane_id': 'p1', 'tab_id': 't1', 'busy': False}
-        with patch.object(reply, 'target', return_value={'kind': 'herdr', 'pane': pane, 'label': 'x'}), patch.object(reply, 'herdr_target', return_value=pane), patch.object(reply.time, 'sleep'):
+        with patch.object(reply, 'target', return_value={'kind': 'herdr', 'pane': pane, 'label': 'x'}), patch.object(reply, 'herdr_target', return_value=pane), patch.object(reply.time, 'sleep'), patch.object(reply, 'landed', return_value=True):
             r = reply.submit(self.d, self.ref, '看看颜色', str(uuid.uuid4()), images=pics)
         self.assertEqual((r['state'], r['text']), ('accepted', '看看颜色'))
         self.assertEqual([a for a in calls if a[0] == 'pane'], [['pane', 'send-text', 'p1', pics[0]], ['pane', 'send-text', 'p1', pics[1]]])

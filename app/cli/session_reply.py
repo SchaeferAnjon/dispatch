@@ -22,6 +22,14 @@ class Rejected(Exception):
     """Known not to have submitted input."""
 
 
+class Blocked(Rejected):
+    """The pane is up but the TUI waits at a prompt (trust / permission / picker): the message
+    can't go in yet, but keys from the phone can answer it."""
+    def __init__(self, message, pane):
+        super().__init__(message)
+        self.pane = pane
+
+
 class DesktopIPC:
     def __init__(self, home):
         self.sock = socket.socket(socket.AF_UNIX)
@@ -46,15 +54,16 @@ class DesktopIPC:
             data += chunk
         return data
 
-    def request(self, method, params, owner=None, version=1):
+    def request(self, method, params, owner=None, version=1, wait=9):
         rid = str(uuid.uuid4())
         payload = dict(type='request', requestId=rid, sourceClientId=self.client,
-                       method=method, params=params, version=version, timeoutMs=6000)
+                       method=method, params=params, version=version, timeoutMs=min(6000, int(wait * 1000)))
         if owner:
             payload['targetClientId'] = owner
         raw = json.dumps(payload).encode()
+        self.sock.settimeout(min(8, wait))
         self.sock.sendall(struct.pack('<I', len(raw)) + raw)
-        deadline = time.monotonic() + 9
+        deadline = time.monotonic() + wait
         while time.monotonic() < deadline:
             size = struct.unpack('<I', self.read(4))[0]
             if not 0 < size <= 32 * 1024 * 1024:
@@ -68,7 +77,9 @@ class DesktopIPC:
         raise TimeoutError('Codex 未确认收到消息')
 
     def owner(self, sid):
-        r = self.request('thread-owner-discovery', {'hostId': 'local', 'conversationId': sid})
+        # A thread no desktop window owns gets no answer at all (not an error): keep the wait
+        # short, the phone polls this every 15 s.
+        r = self.request('thread-owner-discovery', {'hostId': 'local', 'conversationId': sid}, wait=4)
         if r.get('resultType') != 'success':
             raise Rejected('请先在电脑的 Codex 中打开这个会话，然后点重新连接。')
         return r['handledByClientId']
@@ -271,6 +282,20 @@ def herdr_target(d, ref, require_idle=True, allow_blocked=False):
         raise Rejected('这个会话同时在多个终端运行，请在电脑上确认保留哪个窗口后重新连接。')
     # Live pane identity is stronger than missing/stale hook files. PID fallback is only for
     # older Herdr versions that do not report a session id; never override a different id.
+    if not exact and not pid:
+        # No hook record yet (a TUI Dispatch just resumed, stopped at a trust/login dialog before
+        # its hooks ran): the pane Dispatch itself started with `--resume <id>` is still exact.
+        live_sessions = getattr(d, 'live_sessions', None)
+        try:
+            rows = live_sessions(local_only=True) if callable(live_sessions) else []
+        except Exception:
+            rows = []
+        for s in rows:
+            h = s.get('herdr') or {}
+            if s.get('agent') == ref['agent'] and s.get('probable_session_id') == ref['session_id'] and s.get('source_app') == 'Herdr' and h.get('pane_id'):
+                exact = [p for p in panes if p.get('pane_id') == h['pane_id'] and not (p.get('agent_session') or {}).get('value')]
+                pid = s.get('agent_pid') or pid
+                break
     if not exact:
         if not pid:
             raise Rejected('这个终端会话未连接。请在电脑上恢复原会话后重新连接。')
@@ -593,6 +618,25 @@ def ghostty_submit(d, ref, t, text, wire, mode, images, attach):
     return '已送达 Ghostty 里的原会话'
 
 
+def codex_desktop_target(d, ref):
+    """The Codex desktop app (ChatGPT.app) owning this thread, or None. The app answers owner
+    discovery only for threads one of its windows has open; for anything else it stays silent
+    until our wait runs out, and a socket left behind by a closed app refuses. Neither is a
+    reason to tell the phone 「暂时无法连接」 — the session is simply not in the desktop."""
+    if not os.path.exists(os.path.join(d.HOME, '.codex', 'ipc', 'ipc.sock')):
+        return None
+    try:
+        with closing(DesktopIPC(d.HOME)) as ipc:
+            owner = ipc.owner(ref['session_id'])
+            try:
+                desktop = desktop_state(ipc.snapshot(ref['session_id'], owner))
+            except Exception:
+                desktop = None
+    except (Rejected, OSError, ValueError):
+        return None
+    return {'kind': 'codex-desktop', 'label': '回复到原 Codex 会话', 'working': bool(desktop and desktop['running']), 'desktop': desktop}
+
+
 def target(d, ref):
     if ref['agent'] in ('claude-code', 'pi', 'codex'):
         # A working agent can still take a message: the TUIs queue typed input for the next turn,
@@ -600,14 +644,9 @@ def target(d, ref):
         try:
             pane = herdr_target(d, ref, require_idle=False, allow_blocked=True)
         except Rejected as herdr_err:
-            if ref['agent'] == 'codex' and os.path.exists(os.path.join(d.HOME, '.codex', 'ipc', 'ipc.sock')):
-                with closing(DesktopIPC(d.HOME)) as ipc:
-                    owner = ipc.owner(ref['session_id'])
-                    try:
-                        desktop = desktop_state(ipc.snapshot(ref['session_id'], owner))
-                    except Exception:
-                        desktop = None
-                return {'kind': 'codex-desktop', 'label': '回复到原 Codex 会话', 'working': bool(desktop and desktop['running']), 'desktop': desktop}
+            desktop_target = codex_desktop_target(d, ref) if ref['agent'] == 'codex' else None
+            if desktop_target:
+                return desktop_target
             # Not in Herdr — maybe it's a plain Ghostty window instead. A definite Ghostty
             # failure (found it, couldn't pin the exact terminal) surfaces its own message;
             # "not Ghostty at all" falls through to the original Herdr rejection (and its
@@ -617,7 +656,7 @@ def target(d, ref):
                 return g
             raise herdr_err
         if pane.get('agent_status') == 'blocked':
-            raise Rejected('原会话正在 Herdr 等待确认，请打开电脑屏幕处理后重新连接。')
+            raise Blocked('原会话在电脑上停在一个确认框，先回答它再发。', pane)
         working = bool(pane.get('busy'))
         return {'kind': 'herdr', 'pane': pane, 'working': working, 'label': 'Agent 正在执行：可以排队（本轮结束就看到）或打断' if working else '回复到电脑上的原会话'}
     raise Rejected('此 Agent 暂未提供直接回复接口。可打开电脑屏幕继续对话。')
@@ -631,6 +670,33 @@ def connect(d):
     db.row_factory = sqlite3.Row
     db.execute('CREATE TABLE IF NOT EXISTS replies (id TEXT PRIMARY KEY, sid TEXT, agent TEXT, digest TEXT, text TEXT, state TEXT, note TEXT, created REAL)')
     return db
+
+
+def landed(ref, text, images=(), wait=12.0):
+    """True once the words (or the picture note) show up in the session's own transcript. The
+    TUIs log the user turn within a second when idle; a resumed Codex replaying 16 MB of history
+    took ~10 s in practice, hence the generous wait. False = not seen, not 'lost'."""
+    path = ref.get('path') or ''
+    if not path or not os.path.exists(path):
+        return False
+    probe = (text.strip() or with_images(text, list(images)) or '').strip()[:60]
+    if not probe:
+        return False
+    needles = {probe.encode(), json.dumps(probe, ensure_ascii=False)[1:-1].encode(), json.dumps(probe)[1:-1].encode()}
+    size0 = os.path.getsize(path)
+    deadline = time.time() + wait
+    while True:
+        try:
+            with open(path, 'rb') as f:
+                f.seek(max(0, size0 - 512 * 1024))
+                tail = f.read()
+        except OSError:
+            tail = b''
+        if any(n in tail for n in needles):
+            return True
+        if time.time() >= deadline:
+            return False
+        time.sleep(0.8)
 
 
 def queued_delivered(ref):
@@ -710,12 +776,23 @@ def status(d, ref):
                     hit = True
                     break
         r['delivered'] = hit
+        if hit and r['state'] == 'unknown':
+            r.update(state='accepted', note='已送达原终端会话（稍后确认到的）')
+            with closing(connect(d)) as db, db:
+                db.execute("UPDATE replies SET state=?,note=? WHERE id=? AND state='unknown'", (r['state'], r['note'], r['id']))
     try:
         t = target(d, ref)
         extra = tui_state(d, t['pane']['pane_id']) if t['kind'] == 'herdr' and ref['agent'] == 'claude-code' else {}
         if t['kind'] == 'ghostty':
             extra = dict(extra, terminal='ghostty')
         return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts, **({'desktop': t['desktop']} if t.get('desktop') else {}), **extra)
+    except Blocked as e:
+        # Show the prompt itself so the person can answer it with the keys below the box.
+        pid = e.pane['pane_id']
+        screen = d.herdr(None, ['agent', 'read', pid, '--source', 'visible'], raw=True)
+        screen = screen if isinstance(screen, str) else ''
+        return dict(available=False, label=str(e), receipts=receipts, blocked=True,
+                    screen='\n'.join(line.rstrip() for line in screen.splitlines() if line.strip())[-1600:])
     except Exception as e:
         info = dict(available=False, label=str(e) if isinstance(e, Rejected) else '暂时无法连接原 Agent，请重新连接。', receipts=receipts)
         live = adoptable(d, ref)
@@ -723,7 +800,38 @@ def status(d, ref):
             info.update(label='原会话在这台电脑的 %s 里跑，没接进 Herdr' % (live.get('source_app') or '其它终端'),
                         adoptable=True, adopt_state='working' if live.get('state') == 'working' else 'idle',
                         source_app=live.get('source_app') or '')
+        elif resumable(d, ref):
+            # Not in Herdr, not in the desktop, not in any other terminal: the process is gone.
+            # 「重新连接」 can never succeed — say so, and offer to bring it back (a Herdr tab
+            # resuming the same transcript), which the phone can do on its own.
+            info.update(label='这个会话现在没在电脑上运行。可以先在电脑上恢复它，再发。', resumable=True)
         return info
+
+
+def resumable(d, ref):
+    """True when the conversation is one Herdr can resume (Claude Code / Codex / pi) and no
+    process on this Mac runs it right now."""
+    import session_control
+    if ref['agent'] not in session_control.KINDS:
+        return False
+    live_sessions = getattr(d, 'live_sessions', None)
+    if not callable(live_sessions):
+        return False
+    try:
+        rows = live_sessions(local_only=True)
+    except Exception:
+        return False
+    return not any(s.get('agent') == ref['agent'] and (s.get('session_id') == ref['session_id'] or s.get('probable_session_id') == ref['session_id']) for s in rows)
+
+
+def revive(d, ref, data):
+    """Phone-side 「在电脑上恢复」: resume the conversation in a Herdr tab on this Mac. Same
+    launch bookkeeping as the desktop's 打开原会话 (one request id → one launch; a resume already
+    in flight is returned, not doubled); unlike it, never opens a desktop app instead."""
+    import session_control
+    if ref['agent'] not in session_control.KINDS:
+        raise Rejected('这个 Agent 不能用命令行恢复。')
+    return session_control.resume_in_herdr(d, ref, data.get('request_id'))
 
 
 IMAGE_NOTE = '附图（用 Read 看）：'
@@ -819,7 +927,15 @@ def submit(d, ref, text, request_id, mode='queue', images=()):
                 raise RuntimeError('终端未确认收到消息')
             if 'result' not in result:
                 raise RuntimeError('终端未确认收到消息')
-            note = ('已打断并送达，Agent 会先处理这条' if mode == 'interrupt' else '已排队，本轮结束后 Agent 就会看到') if busy else '已送达原终端会话'
+            if busy:
+                note = '已打断并送达，Agent 会先处理这条' if mode == 'interrupt' else '已排队，本轮结束后 Agent 就会看到'
+            elif landed(ref, text, images):
+                note = '已送达原终端会话'
+            else:
+                # Herdr typed it, but the conversation does not show it: a TUI still loading a
+                # resumed transcript, a dialog in the way… Do not claim delivery — the phone keeps
+                # the draft, and status() upgrades this receipt if the words turn up later.
+                state, note = 'unknown', '终端收到了键入，但对话里还没出现这条。草稿已保留，稍后点「确认发送结果」核对，不会重复发送。'
     except Rejected as e:
         state, note = 'failed', str(e)
     except Exception:
@@ -988,12 +1104,40 @@ def desktop_control(d, ref, payload):
     return dict(state='accepted', note=note, **({'desktop': desktop} if desktop else {}))
 
 
+KEYS_ALLOWED = {'up', 'down', 'left', 'right', 'enter', 'esc', 'tab', 'space', 'y', 'n', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
+
+
+def press_keys(d, ref, keys):
+    """Answer the dialog a TUI stopped at (trust this folder? allow this command? which option?)
+    from the phone: a few named keys into the pane, only while Herdr reports it blocked — never
+    into a running agent's input box. Returns the screen afterwards."""
+    keys = [str(k).lower() for k in keys][:6]
+    if not keys or any(k not in KEYS_ALLOWED for k in keys):
+        raise Rejected('只能按 ↑ ↓ ← → ⏎ Esc Tab 空格 y n 和数字。')
+    pane = herdr_target(d, ref, require_idle=False, allow_blocked=True)
+    if pane.get('agent_status') != 'blocked':
+        raise Rejected('原终端现在没有在等确认，直接发消息就行。')
+    pid = pane['pane_id']
+    for k in keys:
+        r = d.herdr(None, ['agent', 'send-keys', pid, k])
+        if isinstance(r, dict) and r.get('error'):
+            raise Rejected('按键没发进去，请重试。')
+        time.sleep(0.4)
+    time.sleep(1.2)
+    screen = d.herdr(None, ['agent', 'read', pid, '--source', 'visible'], raw=True) or ''
+    still = (d.herdr(None, ['agent', 'get', pid]).get('result', {}).get('agent', {}).get('agent_status') == 'blocked')
+    return dict(state='accepted', note='已按下' if still else '确认框已过，可以发消息了', blocked=still,
+                screen='\n'.join(line.rstrip() for line in screen.splitlines() if line.strip())[-1600:])
+
+
 def control(d, ref, payload):
     """Switch the permission mode (Shift+Tab cycles: default → acceptEdits → plan → bypass) or
     the model (/model <alias>, confirming the cache warning) of a Claude Code terminal session.
     For a Codex desktop session: approvals, answers and interrupts over its IPC."""
     if ref['agent'] == 'codex' and (payload.get('interrupt') or payload.get('request_id')):
         return desktop_control(d, ref, payload)
+    if payload.get('keys'):
+        return press_keys(d, ref, payload['keys'])
     if ref['agent'] != 'claude-code':
         raise Rejected('只有 Claude Code 的会话能在这里切模式和模型。')
     pane = herdr_target(d, ref, require_idle=False)
@@ -1088,6 +1232,12 @@ def command(d, a):
             result = control(d, ref, json.loads(sys.stdin.read() or '{}'))
         except Rejected as e:
             result = dict(state='failed', note=str(e))
+    elif a.op == 'revive':
+        import sys
+        try:
+            result = revive(d, ref, json.loads(sys.stdin.read() or '{}'))
+        except Rejected as e:
+            result = dict(state='failed', message=str(e))
     elif a.op == 'answer':
         import sys
         try:

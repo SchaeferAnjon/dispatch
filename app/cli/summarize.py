@@ -7,7 +7,7 @@ Claude Code subscription through `claude -p` (`SUMMARY_MODEL=claude:haiku`).
 stored in the session's preferences (next to starred/archived), so every view shows it
 and it is not recomputed until the conversation moves on.
 """
-import json, os, subprocess, sys, time, urllib.request
+import json, os, subprocess, sys, time, urllib.error, urllib.request
 
 import dispatch as D
 
@@ -167,6 +167,9 @@ def auto(limit=2):
             r = summarize(key, force=bool(pr.get("summary")))
             set_preferences(D.DISPATCH_DIR, key, {"summary_mtime": e.get("mtime")})
             done.append({"key": key, "summary": r["summary"][:80], "cached": r.get("cached", False)})
+        except QuotaExhausted as ex:
+            done.append({"key": key, "error": str(ex)[:200]})
+            return {"done": done, "tried": tried, "unread": [], "quota": str(ex)[:300]}
         except Exception as ex:
             done.append({"key": key, "error": str(ex)[:160]})
         if len(done) >= limit:
@@ -294,7 +297,44 @@ def transcript_excerpt(key, limit=12000):
     return text, d.get("meta", {}), (d.get("reply_id") or d.get("activity_version") or "")
 
 
+class QuotaExhausted(RuntimeError):
+    """The provider refused for money/rate reasons (429 / 402, 「余额不足」): retrying the same
+    key later changes nothing; another configured key might."""
+
+
+def _quota_error(code, body):
+    text = (body or "")[:300]
+    return code in (402, 429) or "余额" in text or "insufficient" in text.lower() or "quota" in text.lower()
+
+
+def fallback_providers(p):
+    """Other API-key providers, in PROVIDERS order, that could write this summary instead of `p`.
+    The Claude subscription is never picked up silently — it is only used when chosen."""
+    env = {i["name"]: i["value"] for i in D.env_read()}
+    return [{"id": pid, "base": base, "model": model, "key": env[key]}
+            for key, pid, base, model in PROVIDERS if env.get(key) and pid != p.get("id")]
+
+
 def chat(p, system, user, timeout=90, max_tokens=None, use=None):
+    """One completion. When the provider is out of balance, the next configured API key takes
+    over for this call and `p` is updated in place, so the caller records the model that actually
+    wrote the text. All out of balance: QuotaExhausted names them."""
+    try:
+        return _chat(p, system, user, timeout, max_tokens, use)
+    except QuotaExhausted as first:
+        errors = [str(first)]
+        for q in fallback_providers(p):
+            try:
+                text = _chat(q, system, user, timeout, max_tokens, use)
+            except QuotaExhausted as e:
+                errors.append(str(e))
+                continue
+            p.update(q)
+            return text
+        raise QuotaExhausted("；".join(errors))
+
+
+def _chat(p, system, user, timeout=90, max_tokens=None, use=None):
     if p["id"] == "claude":
         # Headless Claude Code: the prompt is the system text, the transcript comes on stdin.
         # Strip the session markers so a summary started from inside a Claude session still saves nothing odd.
@@ -314,8 +354,18 @@ def chat(p, system, user, timeout=90, max_tokens=None, use=None):
         req_body["reasoning_effort"] = "low"; req_body["max_tokens"] = max_tokens or 1200
     body = json.dumps(req_body).encode()
     req = urllib.request.Request(p["base"].rstrip("/") + "/chat/completions", data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {p['key']}"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        d = json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            d = json.load(r)
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", "replace")
+        except Exception:
+            pass
+        if _quota_error(e.code, detail):
+            raise QuotaExhausted(f"{PROVIDER_LABELS.get(p['id'], p['id'])} 拒绝（HTTP {e.code}）：{detail[:120] or '余额或额度不足'}")
+        raise
     record_use(use, (d.get("usage") or {}).get("total_tokens") or 0, f"{p['id']}:{p['model']}")
     return (d.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
 

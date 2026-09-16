@@ -306,6 +306,8 @@ td .t{font-weight:500}
 .session-reply .reply-box{flex:1 1 200px}
 .reply-images{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .reply-desktop{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.reply-screen{margin:0;padding:8px 10px;border-radius:8px;background:var(--code-bg,rgba(127,127,127,.12));font-size:11px;line-height:1.35;white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto}
+.reply-keys{flex-wrap:wrap;gap:6px}
 .reply-request{border:1px solid var(--line);border-left:3px solid var(--s-prog);border-radius:8px;padding:8px 10px;background:var(--panel);display:flex;flex-direction:column;gap:6px}
 .reply-request.k-question{border-left-color:var(--accent)}
 .reply-request-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.reply-request-head b{white-space:nowrap}.reply-request-text{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
