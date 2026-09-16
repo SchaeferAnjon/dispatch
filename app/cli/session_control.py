@@ -54,9 +54,25 @@ def checked(d, args, timeout=30):
     return r.get('result') or {}
 
 
+def focus_herdr(d, pane):
+    title = (pane.get('terminal_title_stripped') or '').strip()
+    tab = (pane.get('tab_id') or pane['pane_id']) + (f"「{title}」" if title else '')
+    app, how = d.show_herdr_pane(pane['pane_id'])
+    if how == 'none':
+        raise Rejected(f"会话在 Herdr 页签 {tab} 里，但这台电脑上没有窗口显示它。{d.herdr_attach_hint(d.herdr_session_name())}")
+    return dict(message=(f"已开 {app} 窗口接上 Herdr，切到页签 {tab}" if how == 'attached' else f"已在 {app} 里切到 Herdr 页签 {tab}"), pane_id=pane['pane_id'], tab_id=pane.get('tab_id'))
+
+
 def open_original(d, data):
     sid, agent = data.get('session_id', ''), data.get('agent', '')
     ref = exact_ref(d, sid, agent)
+    if agent in KINDS:
+        try:
+            pane = herdr_target(d, ref, require_idle=False, allow_blocked=True)
+        except Rejected:
+            pane = None
+        if pane:
+            return focus_herdr(d, pane)
     if agent == 'codex':
         code, _, _ = d.sh(['open', 'codex://threads/' + quote(sid, safe='')], timeout=10)
         if code:
@@ -68,40 +84,31 @@ def open_original(d, data):
             raise Rejected('这台电脑无法打开 Claude 桌面端。')
         return dict(message='已在 Claude 桌面端打开原会话')
     if agent in KINDS:
-        try:
-            pane = herdr_target(d, ref, require_idle=False)
-        except Rejected:
-            # Restoring a historical session is explicit. Never focus another
-            # conversation merely because it uses the same working directory.
-            live = next((s for s in d.live_sessions(local_only=True) if s.get('session_id') == sid and s.get('agent', agent) == agent), None)
-            if live:
-                # Running here but not in a Herdr pane we can address: bring its own window forward
-                # rather than claiming it cannot be found; name the place when even that fails.
-                where = getattr(d, 'local_host_name', lambda: '这台电脑')()
-                focus = getattr(d, 'focus_session', None)
+        # Restoring a historical session is explicit. Never focus another
+        # conversation merely because it uses the same working directory.
+        live = next((s for s in d.live_sessions(local_only=True) if s.get('session_id') == sid and s.get('agent', agent) == agent), None)
+        if live:
+            # Running here but not in a Herdr pane we can address: bring its own window forward
+            # rather than claiming it cannot be found; name the place when even that fails.
+            where = getattr(d, 'local_host_name', lambda: '这台电脑')()
+            focus = getattr(d, 'focus_session', None)
+            msg = None
+            try:
+                msg = focus(live) if callable(focus) else None
+            except Exception:
                 msg = None
-                try:
-                    msg = focus(live) if callable(focus) else None
-                except Exception:
-                    msg = None
-                if msg:
-                    return dict(message=msg)
-                h = live.get('herdr') or {}
-                place = (f"Herdr 页签 {h.get('tab_id')}（{h.get('pane_id')}）" if h else f"{live.get('source_app') or '终端'}（进程 {live.get('agent_pid')}）")
-                raise Rejected(f'会话正在 {where} 的 {place} 里运行，Dispatch 没能切过去；请在 {where} 上切到它，或用「电脑」页的屏幕共享打开。')
-            with closing(connect(d)) as db:
-                for row in db.execute('SELECT payload,result FROM launches'):
-                    old = json.loads(row['result'])
-                    if json.loads(row['payload']).get('resume') == sid and old['state'] in ('starting', 'running') and time.time()-old['created'] < 240:
-                        return old
-            return enqueue(d, dict(request_id=data.get('request_id') or str(uuid.uuid4()),
-                                   agent=agent, cwd=directory(d, ref['cwd']), prompt='', resume=sid, title=ref.get('title') or ''))
-        title = (pane.get('terminal_title_stripped') or '').strip()
-        tab = (pane.get('tab_id') or pane['pane_id']) + (f"「{title}」" if title else '')
-        app, how = d.show_herdr_pane(pane['pane_id'])
-        if how == 'none':
-            raise Rejected(f"会话在 Herdr 页签 {tab} 里，但这台电脑上没有窗口显示它。{d.herdr_attach_hint(d.herdr_session_name())}")
-        return dict(message=(f"已开 {app} 窗口接上 Herdr，切到页签 {tab}" if how == 'attached' else f"已在 {app} 里切到 Herdr 页签 {tab}"), pane_id=pane['pane_id'], tab_id=pane.get('tab_id'))
+            if msg:
+                return dict(message=msg)
+            h = live.get('herdr') or {}
+            place = (f"Herdr 页签 {h.get('tab_id')}（{h.get('pane_id')}）" if h else f"{live.get('source_app') or '终端'}（进程 {live.get('agent_pid')}）")
+            raise Rejected(f'会话正在 {where} 的 {place} 里运行，Dispatch 没能切过去；请在 {where} 上切到它，或用「电脑」页的屏幕共享打开。')
+        with closing(connect(d)) as db:
+            for row in db.execute('SELECT payload,result FROM launches'):
+                old = json.loads(row['result'])
+                if json.loads(row['payload']).get('resume') == sid and old['state'] in ('starting', 'running') and time.time()-old['created'] < 240:
+                    return old
+        return enqueue(d, dict(request_id=data.get('request_id') or str(uuid.uuid4()),
+                               agent=agent, cwd=directory(d, ref['cwd']), prompt='', resume=sid, title=ref.get('title') or ''))
     raise Rejected('这个 Agent 暂不支持精确打开原会话，可在 Dispatch 查看记录。')
 
 
@@ -118,11 +125,16 @@ def adopt(d, data):
     agent = s.get('agent')
     if agent not in KINDS:
         raise Rejected(f'{agent} 不能用命令行恢复，接不进 Herdr。')
-    if s.get('herdr'):
-        raise Rejected('它已经在 Herdr 里了。')
     sid = s['session_id'] if not s['session_id'].startswith('pid-') else s.get('probable_session_id', '')
     if not sid:
         raise Rejected('没找到这个进程对应的会话记录（它还没写过一条消息，或者目录对不上）；等它说过话再试。')
+    try:
+        pane = herdr_target(d, dict(session_id=sid, agent=agent), require_idle=False, allow_blocked=True)
+    except Rejected:
+        if s.get('herdr'):
+            raise Rejected('会话的终端连接已变化，请重新连接后再试。')
+    else:
+        return dict(state='ready', message='已连接 Herdr 中的原会话', session_id=sid, pane_id=pane['pane_id'], tab_id=pane.get('tab_id'))
     if s.get('state') == 'working' and not data.get('force'):
         raise Rejected('它正在跑，现在接管会打断它；等它停下来（状态变成「等你」）再接。')
     d.refresh_index()

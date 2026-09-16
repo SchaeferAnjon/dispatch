@@ -261,17 +261,22 @@ def herdr_target(d, ref, require_idle=True, allow_blocked=False):
                 records.append(json.load(f))
         except (OSError, ValueError):
             pass
-    rec = next((r for r in records if r.get('session_id') == ref['session_id'] and r.get('agent') == ref['agent']), None)
-    if not rec or not rec.get('agent_pid'):
-        raise Rejected('这个终端会话未连接。请在电脑上恢复原会话后重新连接。')
-    pid = rec['agent_pid']
-    if any(r.get('agent_pid') == pid and r.get('session_id') != ref['session_id'] and r.get('last_at', 0) >= rec.get('last_at', 0) for r in records):
-        raise Rejected('原终端已切换到另一个会话，请重新打开当前会话。')
+    rec = max((r for r in records if r.get('session_id') == ref['session_id'] and r.get('agent') == ref['agent']), key=lambda r: r.get('last_at', 0), default={})
+    pid = rec.get('agent_pid')
     family = {'claude-code': 'claude', 'pi': 'pi', 'codex': 'codex'}.get(ref['agent'])
     panes = [p for p in d.herdr_agents() if p.get('agent') == family]
     # Herdr knows which conversation a pane runs (agent_session); that is exact, so try it first.
     exact = [p for p in panes if (p.get('agent_session') or {}).get('value') == ref['session_id']]
-    for pane in exact + [p for p in panes if p not in exact]:
+    if len(exact) > 1:
+        raise Rejected('这个会话同时在多个终端运行，请在电脑上确认保留哪个窗口后重新连接。')
+    # Live pane identity is stronger than missing/stale hook files. PID fallback is only for
+    # older Herdr versions that do not report a session id; never override a different id.
+    if not exact:
+        if not pid:
+            raise Rejected('这个终端会话未连接。请在电脑上恢复原会话后重新连接。')
+        if any(r.get('agent_pid') == pid and r.get('session_id') != ref['session_id'] and r.get('last_at', 0) >= rec.get('last_at', 0) for r in records):
+            raise Rejected('原终端已切换到另一个会话，请重新打开当前会话。')
+    for pane in exact or [p for p in panes if not (p.get('agent_session') or {}).get('value')]:
         if pane not in exact:
             r = d.herdr(None, ['pane', 'process-info', '--pane', pane['pane_id']])
             processes = r.get('result', {}).get('process_info', {}).get('foreground_processes', [])
@@ -308,13 +313,13 @@ def adoptable(d, ref):
     import session_control
     if ref['agent'] not in session_control.KINDS:
         return None
-    for s in live_sessions(local_only=True):
-        if s.get('agent') != ref['agent'] or s.get('herdr'):
-            continue
-        sid = s.get('session_id') or ''
-        if sid == ref['session_id'] or (sid.startswith('pid-') and s.get('probable_session_id') == ref['session_id']):
-            return s
-    return None
+    rows = [s for s in live_sessions(local_only=True) if s.get('agent') == ref['agent']]
+    exact = [s for s in rows if s.get('session_id') == ref['session_id']]
+    if any(s.get('herdr') for s in exact):
+        return None
+    # A guessed ChatGPT helper process must not override the registered original session.
+    candidates = exact or [s for s in rows if (s.get('session_id') or '').startswith('pid-') and s.get('probable_session_id') == ref['session_id'] and not s.get('herdr')]
+    return max(candidates, key=lambda s: s.get('last_at') or 0, default=None)
 
 
 # ---------------------------------------------------------------- Ghostty (no Herdr pane)
@@ -589,26 +594,20 @@ def ghostty_submit(d, ref, t, text, wire, mode, images, attach):
 
 
 def target(d, ref):
-    if ref['agent'] == 'codex' and os.path.exists(os.path.join(d.HOME, '.codex', 'ipc', 'ipc.sock')):
-        try:
-            herdr_target(d, ref, require_idle=False)
-        except Rejected:
-            pass
-        else:
-            return {'kind': 'herdr', 'pane': herdr_target(d, ref), 'label': '回复到电脑上的原 Codex 会话'}
-        with closing(DesktopIPC(d.HOME)) as ipc:
-            owner = ipc.owner(ref['session_id'])
-            try:
-                desktop = desktop_state(ipc.snapshot(ref['session_id'], owner))
-            except Exception:
-                desktop = None
-        return {'kind': 'codex-desktop', 'label': '回复到原 Codex 会话', 'working': bool(desktop and desktop['running']), 'desktop': desktop}
     if ref['agent'] in ('claude-code', 'pi', 'codex'):
         # A working agent can still take a message: the TUIs queue typed input for the next turn,
         # and Esc interrupts the current one — the app offers both.
         try:
-            pane = herdr_target(d, ref, require_idle=False)
+            pane = herdr_target(d, ref, require_idle=False, allow_blocked=True)
         except Rejected as herdr_err:
+            if ref['agent'] == 'codex' and os.path.exists(os.path.join(d.HOME, '.codex', 'ipc', 'ipc.sock')):
+                with closing(DesktopIPC(d.HOME)) as ipc:
+                    owner = ipc.owner(ref['session_id'])
+                    try:
+                        desktop = desktop_state(ipc.snapshot(ref['session_id'], owner))
+                    except Exception:
+                        desktop = None
+                return {'kind': 'codex-desktop', 'label': '回复到原 Codex 会话', 'working': bool(desktop and desktop['running']), 'desktop': desktop}
             # Not in Herdr — maybe it's a plain Ghostty window instead. A definite Ghostty
             # failure (found it, couldn't pin the exact terminal) surfaces its own message;
             # "not Ghostty at all" falls through to the original Herdr rejection (and its
@@ -617,6 +616,8 @@ def target(d, ref):
             if g is not None:
                 return g
             raise herdr_err
+        if pane.get('agent_status') == 'blocked':
+            raise Rejected('原会话正在 Herdr 等待确认，请打开电脑屏幕处理后重新连接。')
         working = bool(pane.get('busy'))
         return {'kind': 'herdr', 'pane': pane, 'working': working, 'label': 'Agent 正在执行：可以排队（本轮结束就看到）或打断' if working else '回复到电脑上的原会话'}
     raise Rejected('此 Agent 暂未提供直接回复接口。可打开电脑屏幕继续对话。')

@@ -6,7 +6,7 @@ logged in, else GITHUB_TOKEN from `dispatch env`. Once the repo is public neithe
 /Applications with rsync (bundle identity stays, so permissions survive), clears the
 quarantine flag and relaunches.
 """
-import json, os, platform, re, shutil, subprocess, sys, tempfile, time, urllib.request
+import json, os, platform, plistlib, re, shutil, subprocess, sys, tempfile, time, urllib.request
 
 REPO = "SchaeferAnjon/dispatch"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -90,13 +90,38 @@ SERVE_LABEL = "dev.schaefer.dispatch-serve"
 
 
 def restart_serve():
-    """The phone's web UI is a launchd daemon reading this bundle; after an update it must
-    restart to serve the new files. Silent when the daemon is not installed."""
+    """Keep an installed phone service on the same build as the desktop app.
+    Early setup scripts pinned a source checkout; kickstart alone leaves that code running.
+    Silent when the daemon is not installed."""
     uid = os.getuid()
-    r = subprocess.run(["launchctl", "print", f"gui/{uid}/{SERVE_LABEL}"], capture_output=True)
+    label = f"gui/{uid}/{SERVE_LABEL}"
+    r = subprocess.run(["launchctl", "print", label], capture_output=True)
     if r.returncode != 0:
         return False
-    subprocess.run(["launchctl", "kickstart", "-k", f"gui/{uid}/{SERVE_LABEL}"], capture_output=True)
+    path = os.path.realpath(os.path.expanduser(f"~/Library/LaunchAgents/{SERVE_LABEL}.plist"))
+    bundled = os.path.join(APP, 'Contents', 'Resources', 'cli', 'serve.py')
+    if os.path.isfile(path) and os.path.isfile(bundled):
+        with open(path, 'rb') as f:
+            config = plistlib.load(f)
+        args = config.get('ProgramArguments') or [sys.executable]
+        env = config.get('EnvironmentVariables') or {}
+        if args[1:] != [bundled] or 'DISPATCH_DIST' in env:
+            config['ProgramArguments'] = [args[0], bundled]
+            env.pop('DISPATCH_DIST', None)
+            config['EnvironmentVariables'] = env
+            # Preserve the rest of the job (user, board, logs), then reload its definition.
+            with tempfile.NamedTemporaryFile(dir=os.path.dirname(path), delete=False) as f:
+                tmp = f.name
+                plistlib.dump(config, f)
+            try:
+                os.chmod(tmp, os.stat(path).st_mode & 0o777)
+                os.replace(tmp, path)
+            finally:
+                if os.path.exists(tmp): os.unlink(tmp)
+            subprocess.run(['launchctl', 'bootout', label], capture_output=True, check=True)
+            subprocess.run(['launchctl', 'bootstrap', f'gui/{uid}', path], capture_output=True, check=True)
+            return True
+    subprocess.run(["launchctl", "kickstart", "-k", label], capture_output=True, check=True)
     return True
 
 

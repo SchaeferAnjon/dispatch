@@ -204,7 +204,8 @@ async function tauriApi(): Promise<Api> {
 // Served by cli/serve.py: one POST per command, the cookie set by /?token=… carries auth.
 function httpApi(): Api {
   const post = async (cmd: string, args?: Record<string, unknown>) => {
-    const r = await fetch("/api/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd, args: args ?? {} }), credentials: "same-origin" });
+    const r = await fetch("/api/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd, args: args ?? {} }), credentials: "same-origin" })
+      .catch(() => { throw new Error("与电脑的连接暂时中断，请检查网络或电脑是否在线。"); });
     const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
     if (!r.ok || body.error) throw new Error(body.error ?? `HTTP ${r.status}`);
     return body as { result?: string; value?: unknown };

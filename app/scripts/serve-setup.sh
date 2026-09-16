@@ -5,13 +5,15 @@
 set -e
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PY="$(command -v python3)"
+SERVE="/Applications/Dispatch.app/Contents/Resources/cli/serve.py"
+[ -f "$SERVE" ] || SERVE="$REPO/cli/serve.py"
 mkdir -p "$HOME/Library/LaunchAgents"
 cat > "$HOME/Library/LaunchAgents/dev.schaefer.dispatch-serve.plist" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>dev.schaefer.dispatch-serve</string>
-  <key>ProgramArguments</key><array><string>$PY</string><string>$REPO/cli/serve.py</string></array>
+  <key>ProgramArguments</key><array><string>$PY</string><string>$SERVE</string></array>
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin</string>
     <key>BEADS_DIR</key><string>$HOME/tasks/.beads</string>
@@ -27,4 +29,4 @@ U=$(id -u); launchctl bootout gui/$U/dev.schaefer.dispatch-serve 2>/dev/null || 
 pkill -f "cli/serve.py" 2>/dev/null || true
 launchctl bootstrap gui/$U "$HOME/Library/LaunchAgents/dev.schaefer.dispatch-serve.plist"
 sleep 2
-BEADS_DIR="$HOME/tasks/.beads" "$PY" "$REPO/cli/serve.py" url
+BEADS_DIR="$HOME/tasks/.beads" "$PY" "$SERVE" url

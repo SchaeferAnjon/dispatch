@@ -48,6 +48,60 @@ class Replies(unittest.TestCase):
             ipc.send.assert_called_once()
             with self.assertRaises(reply.Rejected): reply.submit(self.d, self.ref, 'changed', rid)
 
+    def codex_pane(self, state='working'):
+        self.ref['agent'] = 'codex'
+        ipc_dir = os.path.join(self.tmp.name, '.codex', 'ipc')
+        os.makedirs(ipc_dir, exist_ok=True)
+        open(os.path.join(ipc_dir, 'ipc.sock'), 'w').close()
+        pane = dict(agent='codex', pane_id='right', tab_id='tab-right', agent_status=state,
+                    agent_session={'value': self.ref['session_id']})
+        self.d.herdr_agents = lambda: [pane]
+        self.d.herdr = Mock(return_value={'result': {}})
+        return pane
+
+    def test_working_codex_with_desktop_open_can_queue_into_exact_herdr_pane(self):
+        self.codex_pane()
+        with open(os.path.join(self.tmp.name, 'session.json'), 'w') as f:
+            json.dump(dict(self.ref, agent_pid=42, state='working'), f)
+        with patch.object(reply, 'DesktopIPC') as ipc:
+            state = reply.status(self.d, self.ref)
+            self.assertTrue(state['available'])
+            self.assertTrue(state['working'])
+            sent = reply.submit(self.d, self.ref, '继续', str(uuid.uuid4()))
+            self.assertEqual(sent['state'], 'accepted')
+            self.assertIn('已排队', sent['note'])
+            ipc.assert_not_called()
+        prompts = [call.args[1] for call in self.d.herdr.call_args_list if call.args[1][:2] == ['agent', 'prompt']]
+        self.assertEqual(prompts, [['agent', 'prompt', 'right', '继续']])
+
+    def test_live_herdr_identity_works_without_hooks_and_overrides_stale_pid(self):
+        self.codex_pane()
+        self.assertEqual(reply.target(self.d, self.ref)['pane']['pane_id'], 'right')
+        for name, sid, ts in [('old', self.ref['session_id'], 1), ('new', 'another-session', 2)]:
+            with open(os.path.join(self.tmp.name, name+'.json'), 'w') as f:
+                json.dump(dict(self.ref, session_id=sid, agent_pid=42, last_at=ts), f)
+        self.assertEqual(reply.target(self.d, self.ref)['pane']['pane_id'], 'right')
+
+    def test_explicit_other_conversation_cannot_be_selected_by_pid(self):
+        pane = self.codex_pane('idle')
+        pane['agent_session']['value'] = 'another-session'
+        with open(os.path.join(self.tmp.name, 'session.json'), 'w') as f:
+            json.dump(dict(self.ref, agent_pid=42), f)
+        self.d.herdr.return_value = {'result': {'process_info': {'foreground_processes': [{'pid': 42}]}}}
+        with self.assertRaises(reply.Rejected): reply.herdr_target(self.d, self.ref)
+
+    def test_blocked_herdr_is_not_rerouted_to_desktop_or_adoption(self):
+        self.codex_pane('blocked')
+        self.d.live_sessions = lambda **kw: [dict(self.ref, herdr={'pane_id': 'right'}),
+            dict(self.ref, session_id='pid-99', probable_session_id=self.ref['session_id'], source_app='ChatGPT')]
+        with patch.object(reply, 'DesktopIPC') as ipc:
+            state = reply.status(self.d, self.ref)
+            self.assertFalse(state['available'])
+            self.assertIn('Herdr 等待确认', state['label'])
+            self.assertNotIn('adoptable', state)
+            with self.assertRaises(reply.Rejected): reply.submit(self.d, self.ref, '继续', str(uuid.uuid4()))
+            ipc.assert_not_called()
+
     def test_timeout_is_unknown_and_never_automatically_replayed(self):
         ipc = Mock(); ipc.send.side_effect = TimeoutError()
         rid = str(uuid.uuid4())
@@ -167,6 +221,13 @@ class AdoptFromReply(unittest.TestCase):
         with patch.object(reply, 'target', side_effect=self.not_found):
             st = reply.status(self.d, self.ref)
         self.assertNotIn('adoptable', st)
+
+    def test_registered_identity_wins_over_an_earlier_guessed_helper(self):
+        known = dict(self.ref, state='working', source_app='Ghostty')
+        self.d.live_sessions = lambda **kw: [dict(self.ref, session_id='pid-99', probable_session_id=self.ref['session_id'], source_app='ChatGPT'), known]
+        self.assertIs(reply.adoptable(self.d, self.ref), known)
+        known['herdr'] = {'pane_id': 'right'}
+        self.assertIsNone(reply.adoptable(self.d, self.ref))
 
     def test_submit_never_auto_adopts_even_when_idle_and_adoptable(self):
         """The session prefers to stay where it is (Ghostty, VS Code, …): submit() must never

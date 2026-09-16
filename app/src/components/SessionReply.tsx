@@ -111,8 +111,11 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   };
   useEffect(() => {
     alive.current = true; void load();
-    const timer = window.setInterval(() => { if (document.visibilityState === 'visible' && !locked.current) void load(); }, 15000);
-    return () => { alive.current = false; window.clearInterval(timer); };
+    const reconnect = () => { if (document.visibilityState === 'visible' && !locked.current) void load(); };
+    const timer = window.setInterval(reconnect, 15000);
+    window.addEventListener('online', reconnect);
+    document.addEventListener('visibilitychange', reconnect);
+    return () => { alive.current = false; window.clearInterval(timer); window.removeEventListener('online', reconnect); document.removeEventListener('visibilitychange', reconnect); };
   }, [api, storageKey]);
   useEffect(() => { try { draft ? sessionStorage.setItem(storageKey, draft) : sessionStorage.removeItem(storageKey); } catch { /* private browser */ } }, [draft, storageKey]);
   // iOS's visual viewport shrinks for the keyboard before the layout viewport does.

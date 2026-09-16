@@ -33,9 +33,13 @@ if codesign -dv "$DST" 2>&1 | grep -q 'Signature=adhoc'; then
 fi
 echo "已更新 ${DST} ($(date '+%H:%M:%S'))"
 # The phone's web UI (launchd daemon) serves from this bundle; restart it so it picks up the new files.
-if launchctl print "gui/$(id -u)/dev.schaefer.dispatch-serve" >/dev/null 2>&1; then
-  launchctl kickstart -k "gui/$(id -u)/dev.schaefer.dispatch-serve" && echo "已重启网页版（dispatch serve）"
-fi
+python3 - "$DST/Contents/Resources/cli" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from updater import restart_serve
+if restart_serve():
+    print("已重启网页版（dispatch serve）")
+PY
 
 if [ "$LAUNCH" = 1 ]; then
   open "$DST"

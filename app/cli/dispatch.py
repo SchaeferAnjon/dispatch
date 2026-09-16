@@ -1368,17 +1368,22 @@ def live_sessions(local_only=False):
             if guess:
                 row["probable_session_id"] = guess["session_id"]; row["title"] = guess.get("title", ""); row["last_at"] = guess.get("mtime", 0)
             sessions.append(row)
-    # Herdr knows tab titles and its own working/idle judgement; match by cwd.
+    # Use the same identity as replies: Herdr's exact session id, then a foreground PID.
+    # A shared cwd (including ChatGPT helper processes) is not a conversation identity.
     for a in herdr_agents():
-        cands = [s for s in sessions if s.get("cwd") == a.get("cwd") and s["agent"].startswith(a.get("agent", "claude"))]
-        cands = [s for s in cands if "herdr" not in s] or cands
-        # Several records can share one directory (cleared/resumed); the pane's own state is
-        # the tiebreak, so an idle pane does not get attached to a session that is still running.
-        if a.get("agent_status") in ("working", "idle"):
-            cands.sort(key=lambda s: s.get("state") != a.get("agent_status"))
+        sid = (a.get("agent_session") or {}).get("value")
+        family = [s for s in sessions if s["agent"].startswith(a.get("agent") or "?")]
+        cands = [s for s in family if sid and s.get("session_id") == sid]
+        if not cands:
+            info = herdr(None, ["pane", "process-info", "--pane", a["pane_id"]])
+            pids = {p.get("pid") for p in info.get("result", {}).get("process_info", {}).get("foreground_processes", [])}
+            cands = [s for s in family if s.get("agent_pid") in pids and (not sid or s["session_id"].startswith("pid-"))]
         if cands:
-            s = cands[0]
-            s["herdr"] = {"pane_id": a.get("pane_id"), "tab_id": a.get("tab_id"), "title": a.get("terminal_title_stripped"), "status": a.get("agent_status"), "focused": a.get("focused")}
+            for s in cands:
+                if sid:
+                    s["session_id"] = sid
+                    s.pop("probable_session_id", None)
+                s["herdr"] = {"pane_id": a.get("pane_id"), "tab_id": a.get("tab_id"), "title": a.get("terminal_title_stripped"), "status": a.get("agent_status"), "focused": a.get("focused")}
     for s in sessions:
         s.setdefault("host", "local")
         s.setdefault("host_name", local_host_name())

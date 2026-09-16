@@ -5,6 +5,7 @@ import unittest
 import uuid
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from contextlib import ExitStack
 
 import dispatch
 import session_control as c
@@ -15,7 +16,7 @@ class SessionControl(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.d = SimpleNamespace(HOME=self.temp.name, DISPATCH_DIR=self.temp.name, SESS_DIR=self.temp.name,
-                                 load_index=lambda: {}, herdr=Mock(return_value={'result': {}}), sh=Mock(return_value=(0,'','')))
+                                 load_index=lambda: {}, herdr_agents=lambda: [], herdr=Mock(return_value={'result': {}}), sh=Mock(return_value=(0,'','')))
         self.data = dict(request_id=str(uuid.uuid4()), agent='claude-code', cwd=self.temp.name, prompt='测试 `literal` $(literal)\n下一行')
 
     def test_named_terminal_fallback_matches_remote_server(self):
@@ -70,6 +71,41 @@ class SessionControl(unittest.TestCase):
             c.open_original(self.d,dict(session_id='exact',agent='claude-code'))
             self.assertFalse(target.call_args.kwargs['require_idle'])
             self.d.show_herdr_pane.assert_called_once_with('right')
+
+    def test_codex_in_herdr_opens_its_terminal_even_when_blocked(self):
+        self.d.load_index=lambda:{'file':dict(session_id='exact',agent='codex')}
+        self.d.show_herdr_pane=Mock(return_value=('Ghostty','focused'))
+        self.d.herdr_agents=lambda:[dict(agent='codex',agent_status='blocked',pane_id='right',agent_session={'value':'exact'})]
+        self.assertEqual(c.open_original(self.d, dict(session_id='exact',agent='codex'))['pane_id'], 'right')
+        self.d.show_herdr_pane.assert_called_once_with('right')
+        self.d.sh.assert_not_called()
+
+    def test_repeated_adoption_reconnects_existing_herdr_without_stopping_it(self):
+        self.d.live_sessions=lambda **kw:[dict(session_id='exact',agent='codex',state='working',agent_pid=42,herdr={'pane_id':'right'})]
+        self.d.herdr_agents=lambda:[dict(agent='codex',agent_status='working',pane_id='right',agent_session={'value':'exact'})]
+        with patch.object(c.os, 'kill') as kill, patch.object(c, 'enqueue') as launch:
+            result=c.adopt(self.d,dict(session_id='exact'))
+        self.assertEqual((result['state'],result['pane_id']), ('ready','right'))
+        kill.assert_not_called(); launch.assert_not_called()
+
+    def test_presence_matches_the_same_exact_identity_as_replies(self):
+        rows = [dict(session_id='one',agent='codex',agent_pid=10,cwd='/shared',state='working'),
+                dict(session_id='two',agent='codex',agent_pid=20,cwd='/shared',state='idle'),
+                dict(session_id='three',agent='codex',agent_pid=30,cwd='/other',state='idle')]
+        for row in rows:
+            with open(os.path.join(self.temp.name, row['session_id']+'.json'), 'w') as f: json.dump(row,f)
+        panes = [dict(agent='codex',pane_id='pane-two',cwd='/shared',agent_status='working',agent_session={'value':'two'}),
+                 dict(agent='codex',pane_id='pane-three',cwd='/shared',agent_status='idle')]
+        patches = dict(SESS_DIR=self.temp.name, ps_table=lambda:{n:(1,'agent') for n in (10,20,30)},
+                       zcode_live=lambda _:[], hermes_live=lambda _:[], reconcile_with_transcripts=lambda _:None,
+                       codex_desktop_overlay=lambda _:None, annotate_moves=lambda _:None, local_host_name=lambda:'Apple',
+                       herdr_agents=lambda:panes, herdr=Mock(return_value={'result':{'process_info':{'foreground_processes':[{'pid':30}]}}}))
+        with ExitStack() as stack:
+            for name,value in patches.items(): stack.enter_context(patch.object(dispatch,name,value))
+            live = {r['session_id']:r for r in dispatch.live_sessions(local_only=True)}
+        self.assertNotIn('herdr', live['one'])
+        self.assertEqual(live['two']['herdr']['pane_id'], 'pane-two')
+        self.assertEqual(live['three']['herdr']['pane_id'], 'pane-three')
 
     def test_pane_nobody_can_see_says_how_to_attach(self):
         # Mac mini: the pane lives in a headless "main" under tmux and no window could be opened.

@@ -102,7 +102,7 @@ export default function App() {
         try {
           const snapshot = await api.sessionActivity();
           if (!stopped) { setActivity({ ...snapshot, sessions: snapshot.sessions.map(a => acknowledged.current.get(activityKey(a)) === a.reply_id ? { ...a, unread: false } : a) }); setActivityError(false); }
-        } catch (e) { if (!stopped) { setActivityError(true); console.error("activity poll failed:", e); } }
+        } catch (e) { if (!stopped) { setActivityError(true); console.warn("activity poll failed:", e); } }
       }
       if (!stopped) timer = window.setTimeout(tick, 3000);
     };
