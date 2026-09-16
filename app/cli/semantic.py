@@ -1,6 +1,7 @@
 """Semantic search over the knowledge base (`dispatch wiki search --semantic`, `wiki related`).
 
-Every wiki entry (pit / win / retro / howto) is embedded with 智谱 `embedding-3` and kept in
+Every wiki entry (pit / win / retro / howto) is embedded (OpenAI `text-embedding-3-small`
+when `OPENAI_API_KEY` is set, else 智谱 `embedding-3` on pay-as-you-go) and kept in
 ~/tasks/.dispatch/semantic.sqlite. When the local `sqlite_vec` package is installed the vectors
 also live in a `vec0` virtual table and KNN runs there; without it the same stored float32 blobs
 are ranked in Python, so the feature still works — only the candidate selection is slower.
@@ -8,7 +9,7 @@ are ranked in Python, so the feature still works — only the candidate selectio
 Incremental: a row is re-embedded only when its text hash changes, so after the first run a
 search costs one embedding call for the query.
 
-No `ZHIPU_API_KEY` (or no network) → `available()` is false and callers keep the old keyword /
+No embedding key at all (or no network) → `available()` is false and callers keep the old keyword /
 project matching. Nothing here is imported at process start, and the index is never synced to
 the board: it is a local cache that can be deleted at any time.
 """
@@ -25,8 +26,15 @@ import urllib.request
 
 import dispatch as D
 
-EMBED_URL = "https://open.bigmodel.cn/api/paas/v4/embeddings"
-EMBED_MODEL = "embedding-3"
+# Embedding providers, first configured key wins. OpenAI first by the person's choice (2026-09-16):
+# the 智谱 key is on the GLM Coding Plan, which does not include embeddings — that endpoint answers
+# 429/1113 「余额不足」 for it, so 智谱 only helps when the pay-as-you-go account has money.
+EMBED_PROVIDERS = [
+    ("OPENAI_API_KEY", "openai", "https://api.openai.com/v1/embeddings", "text-embedding-3-small"),
+    ("ZHIPU_API_KEY", "zhipu", "https://open.bigmodel.cn/api/paas/v4/embeddings", "embedding-3"),
+]
+EMBED_URL = EMBED_PROVIDERS[0][2]
+EMBED_MODEL = EMBED_PROVIDERS[0][3]
 DB_NAME = "semantic.sqlite"
 BATCH = 32
 TIMEOUT = 60
@@ -48,12 +56,28 @@ def _off():
         return None
 
 
-def api_key():
-    """The 智谱 key from `dispatch env`; empty string means semantic search is off."""
+def provider():
+    """{id, url, model, key} of the first embedding provider with a key in `dispatch env`; None = off."""
     try:
-        return next((i["value"] for i in D.env_read() if i["name"] == "ZHIPU_API_KEY" and i["value"]), "")
+        env = {i["name"]: i["value"] for i in D.env_read()}
     except Exception:
-        return ""
+        return None
+    for name, pid, url, model in EMBED_PROVIDERS:
+        if env.get(name):
+            return {"id": pid, "url": url, "model": model, "key": env[name]}
+    return None
+
+
+def api_key():
+    """The embedding key from `dispatch env`; empty string means semantic search is off."""
+    p = provider()
+    return p["key"] if p else ""
+
+
+def model_tag():
+    """Which model the stored vectors must come from; vectors from another model are re-made."""
+    p = provider()
+    return f"{p['id']}:{p['model']}" if p else ""
 
 
 def available():
@@ -75,15 +99,18 @@ def entry_hash(it):
 
 
 def embed(texts, key=None, timeout=TIMEOUT):
-    """Vectors for a batch of strings, in input order. Raises on any API problem."""
-    key = api_key() if key is None else key
+    """Vectors for a batch of strings, in input order. Raises on any API problem. OpenAI and 智谱
+    share the OpenAI response shape (`data[].embedding`, `index`)."""
+    p = provider()
+    key = (p["key"] if p else "") if key is None else key
     if not key:
-        raise RuntimeError("没有 ZHIPU_API_KEY")
+        raise RuntimeError("没有 OPENAI_API_KEY / ZHIPU_API_KEY")
+    url, model = (p["url"], p["model"]) if p else (EMBED_URL, EMBED_MODEL)
     out = []
     for i in range(0, len(texts), BATCH):
         chunk = [(t or " ").strip() or " " for t in texts[i:i + BATCH]]
-        body = json.dumps({"model": EMBED_MODEL, "input": chunk}).encode()
-        req = urllib.request.Request(EMBED_URL, data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+        body = json.dumps({"model": model, "input": chunk}).encode()
+        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             d = json.load(r)
         rows = sorted(d.get("data") or [], key=lambda x: x.get("index", 0))
@@ -118,7 +145,13 @@ def connect(path=None):
     db.execute("CREATE TABLE IF NOT EXISTS entries(id INTEGER PRIMARY KEY, key TEXT UNIQUE NOT NULL, hash TEXT NOT NULL, kind TEXT, vec BLOB NOT NULL, updated REAL NOT NULL)")
     if "kind" not in {r[1] for r in db.execute("PRAGMA table_info(entries)")}:
         db.execute("ALTER TABLE entries ADD COLUMN kind TEXT")
+    db.execute("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT)")
     return db
+
+
+def _stored_model(db):
+    row = db.execute("SELECT v FROM meta WHERE k='model'").fetchone()
+    return row[0] if row else ""
 
 
 def load_vec(db):
@@ -181,6 +214,10 @@ def sync(items, key=None, force=False, path=None, embed_fn=None):
     try:
         known = {r[0]: (r[1], r[2] or "") for r in db.execute("SELECT key, hash, kind FROM entries")}
         want = {it["key"]: entry_hash(it) for it in items}
+        # Vectors from one model are meaningless next to another's: a provider switch re-embeds all.
+        tag = model_tag() if embed_fn is None else (model_tag() or "test")
+        if known and _stored_model(db) != tag:
+            force = True
         todo = [it for it in items if force or known.get(it["key"], ("", ""))[0] != want[it["key"]]]
         gone = [k for k in known if k not in want]
         # A row whose text did not change but whose kind did (schema gained a kind column, or an
@@ -196,6 +233,7 @@ def sync(items, key=None, force=False, path=None, embed_fn=None):
         vectors = (embed_fn or embed)([entry_text(it) for it in todo], key) if todo else []
         for it, vec in zip(todo, vectors):
             _put(db, it, vec)
+        db.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('model', ?)", (tag,))
         # Keep the vec0 mirror in step every run (not only when something changed): a schema or
         # chunk-size change is noticed here, so the freelist below can reclaim the old chunks.
         use_vec = load_vec(db)

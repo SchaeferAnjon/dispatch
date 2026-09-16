@@ -16,7 +16,7 @@ Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
   dispatch wiki add|list|search|show   knowledge base: pits (坑), wins (做对), retros (复盘), howtos (方法)
   dispatch docs <project>           research / review / design documents of a project (design/, docs/, 研究/ + registered ones)
   dispatch docs add|rm|read <project> …   register a path/URL, remove one, or read its markdown
-  dispatch wiki search "<句子>" --semantic   find entries by meaning (智谱 embedding-3 + sqlite-vec), not spelling
+  dispatch wiki search "<句子>" --semantic   find entries by meaning (OpenAI text-embedding-3-small, else 智谱 embedding-3; sqlite-vec), not spelling
   dispatch wiki related <task-id>   the pits that mean the same as this task (task page 右栏)
   dispatch pit add|list|show        = wiki --kind pit
   dispatch insights [--days N] [--alerts] [--ack]   cross-agent signal counts, samples, per-session alerts, an improvement task

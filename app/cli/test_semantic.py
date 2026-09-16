@@ -151,3 +151,28 @@ class RelatedFallback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Providers(unittest.TestCase):
+    def test_openai_first_then_zhipu_and_a_switch_reembeds_everything(self):
+        env = [{"name": "ZHIPU_API_KEY", "value": "z"}, {"name": "OPENAI_API_KEY", "value": "o"}]
+        with patch.object(semantic.D, "env_read", lambda: env):
+            p = semantic.provider()
+            self.assertEqual((p["id"], p["model"], p["key"]), ("openai", "text-embedding-3-small", "o"))
+            self.assertEqual(semantic.model_tag(), "openai:text-embedding-3-small")
+        with patch.object(semantic.D, "env_read", lambda: env[:1]):
+            self.assertEqual(semantic.provider()["id"], "zhipu")
+        with patch.object(semantic.D, "env_read", lambda: []):
+            self.assertIsNone(semantic.provider()); self.assertEqual(semantic.api_key(), "")
+        items = [item("a", "sqlite 坏了"), item("b", "mac 同步")]
+        calls = []
+        def counting(texts, key=None, timeout=60):
+            calls.append(len(texts)); return fake_embed(texts, key, timeout)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "s.sqlite")
+            with patch.object(semantic, "model_tag", return_value="openai:text-embedding-3-small"):
+                semantic.sync(items, key="k", path=path, embed_fn=counting)
+                semantic.sync(items, key="k", path=path, embed_fn=counting)
+            with patch.object(semantic, "model_tag", return_value="zhipu:embedding-3"):
+                semantic.sync(items, key="k", path=path, embed_fn=counting)
+        self.assertEqual(calls, [2, 2])  # first index, nothing on repeat, everything again after the switch
