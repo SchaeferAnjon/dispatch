@@ -1,8 +1,59 @@
-# Dispatch
+<p align="center">
+  <img src="docs/assets/icon.png" width="88" alt="Dispatch">
+</p>
 
-一个以项目为起点的本地 Agent 工作台。项目组织会话，会话延伸出任务，多个任务与会话共同形成一项成果。查看 Claude Code / Codex 的进展、回复、图片和交付文件；管理任务、额度和各 Agent 的全局指令。
+<h1 align="center">Dispatch 调度台</h1>
 
-支持 **macOS 14+**，网页界面适配手机宽度。Dispatch 读取本机已有的 Agent 记录，默认不向任何模型发送文档或聊天内容；不接入 ChatGPT 网页会话。
+<p align="center">
+你的 AI 编程 Agent 越来越多——它们的会话、任务和进展应该放进一个台子。<br>
+Claude Code · Codex · pi · ZCode · Gemini CLI · OpenCode · Hermes
+</p>
+
+<p align="center">
+  <a href="https://schaeferanjon.github.io/dispatch/"><b>官网与演示视频</b></a> ·
+  <a href="https://schaeferanjon.github.io/dispatch/demo/#/home"><b>在线试用（示例数据）</b></a> ·
+  <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest"><b>下载 macOS 版</b></a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/demo.gif" width="880" alt="Dispatch 演示：工作台 → 项目页 → 会话回复">
+</p>
+
+Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent 记录，按**项目**组织每一段会话、每个任务和每项成果：谁在等你、谁在跑、做到哪了，一眼看清；在电脑或手机上直接回复原会话，不另开模型进程，默认不向任何模型发送你的文档或对话。
+
+支持 **macOS 14+**，网页界面适配手机宽度，开源（MIT）。
+
+## 它长什么样
+
+| 工作台：每个项目此刻的情况 | 项目页：一个项目的全部记录 |
+|:--|:--|
+| ![工作台](docs/assets/shot-home.png) | ![项目页](docs/assets/shot-project.png) |
+| 未读回复、等待确认的会话，正在跑的会话和它当前的动作，进行中的任务和验收进度，最新成果。 | 回顾（模型写的现状 + 14 天时间线）、会话、任务、成果、文档、**按项目分的知识库**。 |
+
+| 会话：看 Agent 的每一步，直接回复 | 分屏：几段会话并排看 |
+|:--|:--|
+| ![会话](docs/assets/shot-session.png) | ![分屏](docs/assets/shot-split.png) |
+| 思考、工具调用、改动的文件、图片都在一页，正在跑的实时跟读；排队发送、打断并发送、撤回并编辑。 | 2 格或 4 格各自独立；⧉ 把当前页分离成独立窗口；⌘+点击项目、会话、任务开新窗口。 |
+
+| 等我：只放需要你处理的 | 额度、规则与技能 |
+|:--|:--|
+| ![等我](docs/assets/shot-inbox.png) | ![额度](docs/assets/shot-quota.png) |
+| 未读回复、等待确认、只有你能做的事；正在跑的不算未读。 | 各 Agent 的用量与重置时间；一份共同规则同步到所有 Agent；技能池统一挂载。 |
+
+<p align="center">
+  <img src="docs/assets/shot-phone.png" width="260" alt="手机版"><br>
+  <sub>手机：出门也能看进展、回它一句；会话没在跑就一键在电脑上恢复，停在确认框就直接按键回答。</sub>
+</p>
+
+## 特色一览
+
+- **不用改你的习惯**：Agent 还是在你的终端里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录；OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。
+- **项目是起点**：会话按目录归到项目，任务和成果挂在会话上；项目可收藏、归档、改显示名，两台电脑一致。
+- **回复回到原会话**：从工作台、等我或手机进入会话直接回，消息投递到那个终端里的原会话；正在跑就排队，排错了能撤回。
+- **任务由 Agent 自己记**：新会话开头自动收到身份、本项目任务和相关知识；Agent 用 `dispatch begin / log / done` 记任务、`dispatch wiki` 记坑，你不用在界面里逐个点完成。
+- **两台电脑**：任务板、规则、技能同步一份；项目连同未提交改动、Git 历史、正在跑的会话和历史记录一键迁到另一台，后台跑、带进度条。
+- **手机**：通过 Tailscale 访问，同一套界面；通知走 ntfy / Bark / 系统通知；需要时用 noVNC 看并操作电脑屏幕。
+- **一切可用命令行问到**：界面能看到的，`dispatch … --json` 都能拿到，Agent 也能用。
 
 ## 安装
 
@@ -64,15 +115,16 @@ npm run tauri build
 
 接入后两边每 2 分钟双向同步任务板（Dolt 远程 API），任务、知识库、规则、技能是同一份；侧栏可按机器筛选。
 
-### 把会话迁到另一台继续
+### 把项目或会话迁到另一台继续
 
-会话右键 → 「迁移到 <机器名> 接着做」，或：
+项目页「迁移到 <机器名>」：先预检 Git 与文件差异，确认后把目录（含未提交改动）、Git 历史、正在跑的会话和全部历史记录搬过去，那边直接续上；迁移在后台跑，项目上有进度条。单段会话：会话右键 → 「迁移到 <机器名> 接着做」，或：
 
 ```sh
+dispatch project <项目名> --move-to <机器 id 或名字>
 dispatch move <会话 id 前缀> --to <机器 id 或名字> [--prompt "额外交代"] [--no-files]
 ```
 
-它会：把项目目录（含未提交改动）rsync 到那台的同一相对路径 → 把转录复制进那台的 Agent 历史（改写家目录路径）→ 在那台的 Herdr 里 `--resume` 同一会话并附上交接说明 → 在任务上留一条记录。支持 Claude Code 和 Codex；pi 的会话存在自己的库里，暂不迁移。原会话不会自动关闭，确认对方接管后再关。
+支持 Claude Code 和 Codex；pi 的会话存在自己的库里，暂不迁移。
 
 ## 手机
 
