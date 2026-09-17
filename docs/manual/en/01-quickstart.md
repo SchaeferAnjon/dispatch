@@ -1,12 +1,12 @@
 # Five-minute start
 
-> What this page is for: the complete path from download to seeing your first project, including getting past Gatekeeper, the six steps of first-run setup, and the three things to do right after the workbench first appears.
+> What this page is for: the complete path from download to seeing your first project, including getting past Gatekeeper, the eight steps of first-run setup, and the three things to do right after the workbench first appears.
 
 ## 0. Before you start
 
 - A Mac running macOS 14 or newer.
 - [Homebrew](https://brew.sh): first-run setup uses it to install Dolt, Beads, Herdr and tmux. If you do not have it, step 1 of first-run setup gives you the install command.
-- **Python 3.12 or newer**, with `python3` in your terminal pointing at it (anything from Homebrew's `python@3.12` up works). Dispatch's logic lives in a Python CLI and the app does not ship an interpreter; the 3.9 that comes with macOS cannot run it, and the interface will be empty. To check, run `python3 --version` in a terminal.
+- **Python 3.9 or newer**. Every Mac with the Xcode Command Line Tools or Homebrew has it; Dispatch looks for it itself (Homebrew first, then the system one). With neither, the app is not blank: it shows an "Environment check" page that lists what is missing and gives install commands you can copy (`brew install python@3.12` or `xcode-select --install`).
 - At least one Agent installed (one of Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode, Hermes), used once or twice on this machine, so that Dispatch has something to show the moment you open it.
 
 ## 1. Install
@@ -22,7 +22,7 @@
    - or double-click once, let it be blocked, then go to System Settings → Privacy & Security, scroll to the bottom and click "Open Anyway".
 4. Once it opens, it goes straight into **first-run setup**.
 
-## 2. First-run setup (six steps)
+## 2. First-run setup (eight steps, the last three optional)
 
 The first launch walks you through it. Every step can be run again; "Skip and stop asking" in the top right takes you to the workbench now, and you can come back later through Settings → First-run setup → "Open first-run setup". The top of the page shows this Mac's name and its Tailscale or local network address.
 
@@ -77,7 +77,21 @@ Click "Prepare the rules and sync":
 
 The page lists each Agent's entry path and sync state.
 
-### Step 6: Review and improve (optional)
+### Step 6: Models & summaries (optional)
+
+Dispatch ships no model of its own. Session summaries, project status, memory summaries, insight reports and semantic search have to send excerpts of conversations or documents to a model, so nothing is sent until you choose. Three options:
+
+- **Not now**: nothing is sent; the app works as usual, just without automatically written summaries.
+- **Use the Claude Code subscription**: runs `claude -p` on this Mac, needs no API key, counts against your subscription quota.
+- **Use an API key**: pick a provider and enter the key (kept only in `dispatch env` on this Mac); billed at that provider's prices.
+
+With either of the last two, tick what it may be used for. Everything can be changed later under Settings → Summaries.
+
+### Step 7: Phone & notifications (optional)
+
+Click "Turn on phone access": this Mac keeps a small web service running (it starts at login); scan the QR code once with the phone's camera and it is remembered. Without Tailscale, tick "allow LAN" so the phone can connect. Push notifications to the phone (Bark / ntfy) are configured under Settings → Phone notifications, see [Phone](20-phone.md).
+
+### Step 8: Review and improve (optional)
 
 Pick an Agent with a command line and click "Send it to review and improve": it reads all the rules and skills shared by the Agents on this Mac, subtracts first (removing behavior rules written for older models, step-by-step recipes and anything that duplicates the global rules), keeps architectural constraints, safety boundaries and project knowledge, then edits and syncs directly. You can also use "Copy the prompt" and send it to any Agent. Worth doing even with a single Mac.
 

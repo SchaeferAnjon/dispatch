@@ -6,11 +6,11 @@
 
 **现象**：工作台空白，首次设置不出现，或者页面顶部一条红色的英文错误（`SyntaxError`、`bd: command not found`、`no beads database found`）。
 
-**原因**：Dispatch 的逻辑在 Python CLI 里，应用本身不带解释器，它调用 PATH 里的 `python3`。CLI 需要 **Python 3.12 或更新**；macOS 自带的 3.9 会直接语法错误。另一种情况是依赖（bd、dolt、herdr）没装或没建任务板。
+**原因**：Dispatch 的逻辑在 Python CLI 里，应用本身不带解释器。它会依次找 Homebrew 和系统里的 Python（需要 **3.9 或更新**）；一个都找不到时显示「环境检查」页。另一种情况是依赖（bd、dolt、herdr）没装或没建任务板，这时界面顶部会有一条提示和「打开首次设置」按钮。
 
 **怎么办**：
 
-1. 终端里 `python3 --version`。低于 3.12 就 `brew install python@3.12`（或更新），确认 `which python3` 指向 Homebrew 的（通常 `/opt/homebrew/bin/python3`）。全新 Mac 还没装 Xcode 命令行工具时，`/usr/bin/python3` 只是个占位，会弹「需要安装命令行开发者工具」，先装它。
+1. 看「环境检查」页上带 ✗ 的项，点「复制安装命令」，在终端里粘贴运行，装完回来点「重新检查」。想指定某个解释器：启动前设环境变量 `DISPATCH_PYTHON=/路径/python3`。全新 Mac 还没装 Xcode 命令行工具时，系统的 `python3` 和 `git` 只是占位，`xcode-select --install` 会把它们装上。
 2. 重开 Dispatch，走首次设置第 1 步「装依赖」和第 3 步「任务板」。
 3. 还是不行就在终端里跑 `python3 /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py init status --json`，看具体报错。
 

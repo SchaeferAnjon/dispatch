@@ -6,11 +6,11 @@
 
 **Symptom**: the workbench is blank, first-run setup does not appear, or there is a red English error at the top of the page (`SyntaxError`, `bd: command not found`, `no beads database found`).
 
-**Cause**: Dispatch's logic lives in a Python CLI and the app does not ship an interpreter, so it calls the `python3` on your PATH. The CLI needs **Python 3.12 or newer**; the 3.9 that comes with macOS produces a syntax error straight away. The other possibility is that the dependencies (bd, dolt, herdr) are not installed, or no task board was created.
+**Cause**: Dispatch's logic lives in a Python CLI and the app ships no interpreter. It looks for a Python from Homebrew and then the system (it needs **3.9 or newer**); when none is found it shows the "Environment check" page. The other case is a missing dependency (bd, dolt, herdr) or no task board yet, where a notice with an "Open first-run setup" button appears at the top.
 
 **What to do**:
 
-1. Run `python3 --version` in a terminal. Below 3.12, run `brew install python@3.12` (or newer) and make sure `which python3` points at the Homebrew one (usually `/opt/homebrew/bin/python3`). On a brand-new Mac without the Xcode command line tools, `/usr/bin/python3` is only a placeholder and pops up "command line developer tools required"; install those first.
+1. On the "Environment check" page, look at the items marked ✗, click "Copy install command", paste it into Terminal, and click "Check again" when it is done. To force a specific interpreter, set `DISPATCH_PYTHON=/path/to/python3` before launching. On a brand-new Mac without the Xcode Command Line Tools the system `python3` and `git` are placeholders; `xcode-select --install` installs them.
 2. Reopen Dispatch and go through step 1 ("Install dependencies") and step 3 ("The task board") of first-run setup.
 3. If it still fails, run `python3 /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py init status --json` in a terminal to see the actual error.
 

@@ -96,7 +96,7 @@ The build lands in `app/src-tauri/target/release/bundle/macos/Dispatch.app`. Wit
 
 The task board additionally depends on [Beads](https://github.com/steveyegge/beads) and Dolt; the default task directory is `~/tasks/.beads`, and `BEADS_DIR` overrides it. Sessions, attachments, and instruction checks need neither a model API key nor a task board.
 
-## First-run setup (six steps)
+## First-run setup (eight steps, the last three optional)
 
 It runs once on first launch. Every step can be rerun, and "Skip, don't ask again" at the top right lets you skip it; you can reopen it later from Settings → First-run setup. In order:
 
@@ -105,7 +105,9 @@ It runs once on first launch. Every step can be rerun, and "Skip, don't ask agai
 3. **Task board**: on the first machine, choose "Only this Mac, or this is the first one" to create a new task board; this Mac becomes the hub. If another Mac already runs Dispatch, choose "Join its task board" and enter that Mac's `user@address` (see the next section).
 4. **Agents**: tick the Agents you use on this Mac (Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes) and confirm Herdr is running.
 5. **Rules and skills**: prepares the shared rules in `~/.agents/rules/GLOBAL.md`, syncs them to every Agent, and mounts the skill pool for Claude Code and Codex (other Agents do not support skill mounting yet).
-6. **Review and optimize** (optional): sends an Agent to review the rules and skills and suggest improvements.
+6. **Models & summaries** (optional): Dispatch ships no model of its own. Choose "Not now", the Claude Code subscription, or a provider's API key, and tick what it may be used for (session summaries, project status, memory summaries, insight reports, semantic search). Until you choose, nothing is sent to any model.
+7. **Phone & notifications** (optional): turn on phone access with one click and scan the QR code that appears; push notifications to the phone (Bark / ntfy) are configured under Settings → Phone notifications.
+8. **Review and optimize** (optional): sends an Agent to review the rules and skills and suggest improvements.
 
 "Finish, go to Workbench" unlocks once the first five steps are ticked.
 

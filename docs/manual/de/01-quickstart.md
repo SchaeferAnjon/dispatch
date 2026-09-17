@@ -1,12 +1,12 @@
 # In fünf Minuten startklar
 
-> Worum es auf dieser Seite geht: der vollständige Weg vom Download bis zum ersten sichtbaren Projekt, einschließlich der Freigabe durch Gatekeeper, der sechs Schritte der Ersteinrichtung und der drei Dinge, die Sie nach dem ersten Blick auf den Arbeitsplatz zuerst erledigen.
+> Worum es auf dieser Seite geht: der vollständige Weg vom Download bis zum ersten sichtbaren Projekt, einschließlich der Freigabe durch Gatekeeper, der acht Schritte der Ersteinrichtung und der drei Dinge, die Sie nach dem ersten Blick auf den Arbeitsplatz zuerst erledigen.
 
 ## 0. Voraussetzungen
 
 - Ein Mac mit macOS 14 oder neuer.
 - [Homebrew](https://brew.sh): Die Ersteinrichtung installiert damit Dolt, Beads, Herdr und tmux. Fehlt Homebrew, zeigt Schritt 1 der Ersteinrichtung den Installationsbefehl an.
-- **Python 3.12 oder neuer**, und `python3` im Terminal muss darauf zeigen (jedes über Homebrew installierte `python@3.12` oder höher genügt). Die Logik von Dispatch steckt in einer Python-CLI, die Anwendung bringt selbst keinen Interpreter mit; die von macOS mitgelieferte Version 3.9 reicht nicht, die Oberfläche bleibt dann leer. Prüfen Sie es im Terminal mit `python3 --version`.
+- **Python 3.9 oder neuer**. Jeder Mac mit den Xcode Command Line Tools oder Homebrew hat es; Dispatch sucht es selbst (zuerst Homebrew, dann das System). Fehlt beides, bleibt die App nicht leer: Sie zeigt die Seite „Umgebungsprüfung“ mit dem, was fehlt, und kopierbaren Installationsbefehlen (`brew install python@3.12` oder `xcode-select --install`).
 - Mindestens ein installierter Agent (Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode oder Hermes), der auf diesem Rechner schon ein- bis zweimal gelaufen ist, damit Dispatch beim ersten Start etwas anzeigen kann.
 
 ## 1. Installation
@@ -22,7 +22,7 @@
    - Oder versuchen Sie einmal per Doppelklick zu öffnen, lassen Sie sich blockieren, gehen dann in Systemeinstellungen → Datenschutz & Sicherheit, scrollen ganz nach unten und klicken auf „Dennoch öffnen“.
 4. Nach dem Öffnen startet automatisch die **Ersteinrichtung**.
 
-## 2. Ersteinrichtung (sechs Schritte)
+## 2. Ersteinrichtung (acht Schritte, die letzten drei optional)
 
 Beim ersten Öffnen läuft sie einmal durch. Jeder Schritt lässt sich wiederholen; über „Überspringen und nicht mehr fragen“ rechts oben gelangen Sie vorab zum Arbeitsplatz und später über Einstellungen → Ersteinrichtung → „Ersteinrichtung öffnen“ wieder zurück. Oben auf der Seite stehen der Name dieses Rechners und seine Tailscale- oder LAN-Adresse.
 
@@ -77,7 +77,21 @@ Klicken Sie auf „Regeln vorbereiten und abgleichen“:
 
 Die Seite listet für jeden Agenten den Pfad der Einstiegsdatei und den Abgleichstatus auf.
 
-### Schritt 6: Prüfen und verbessern (optional)
+### Schritt 6: Modelle & Zusammenfassungen (optional)
+
+Dispatch bringt kein eigenes Modell mit. Für Sitzungszusammenfassungen, Projektstand, Gedächtnis-Zusammenfassungen, Insight-Berichte und die semantische Suche müssen Auszüge aus Unterhaltungen oder Dokumenten an ein Modell gehen, deshalb wird bis zu Ihrer Wahl nichts gesendet. Drei Möglichkeiten:
+
+- **Jetzt nicht**: Es wird nichts gesendet; die App funktioniert wie gewohnt, nur ohne automatisch geschriebene Zusammenfassungen.
+- **Das Claude-Code-Abo verwenden**: führt `claude -p` auf diesem Mac aus, braucht keinen API-Schlüssel und zählt zu Ihrem Abo-Kontingent.
+- **Einen API-Schlüssel verwenden**: Anbieter wählen und Schlüssel eintragen (bleibt nur in `dispatch env` auf diesem Mac); abgerechnet wird zu dessen Preisen.
+
+Bei den beiden letzten haken Sie an, wofür das Modell genutzt werden darf. Alles lässt sich später unter Einstellungen → Zusammenfassungen ändern.
+
+### Schritt 7: Handy & Benachrichtigungen (optional)
+
+Klicken Sie auf „Handy-Zugriff einschalten“: Auf diesem Mac läuft dann dauerhaft ein kleiner Webdienst (startet bei der Anmeldung); scannen Sie den QR-Code einmal mit der Handykamera, danach ist er gemerkt. Ohne Tailscale haken Sie „LAN zulassen“ an, damit sich das Handy verbinden kann. Push-Benachrichtigungen aufs Handy (Bark / ntfy) richten Sie unter Einstellungen → Handy-Benachrichtigungen ein, siehe [Handy](20-phone.md).
+
+### Schritt 8: Prüfen und verbessern (optional)
 
 Wählen Sie einen Agenten mit Befehlszeile und klicken Sie auf „Prüfen und verbessern lassen“: Er liest alle Regeln und Skills, die sich die Agenten auf diesem Rechner teilen, räumt zuerst auf (entfernt Verhaltensregeln, die nur ältere Modelle brauchten, Schritt-für-Schritt-Rezepte und Dopplungen zu den globalen Regeln), behält Architekturvorgaben, Sicherheitsgrenzen und Projektwissen, ändert das Ergebnis direkt und gleicht es ab. Alternativ kopieren Sie über „Prompt kopieren“ den Text und geben ihn einem beliebigen Agenten. Auch bei nur einem Rechner lohnt sich das einmal.
 

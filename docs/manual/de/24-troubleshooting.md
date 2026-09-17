@@ -6,11 +6,11 @@
 
 **Symptom**: Der Arbeitsplatz bleibt leer, die Ersteinrichtung erscheint nicht, oder oben auf der Seite steht ein roter englischer Fehler (`SyntaxError`, `bd: command not found`, `no beads database found`).
 
-**Ursache**: Die Logik von Dispatch steckt in einer Python-CLI, die Anwendung selbst bringt keinen Interpreter mit und ruft das `python3` aus dem PATH auf. Die CLI braucht **Python 3.12 oder neuer**; die von macOS mitgelieferte Version 3.9 führt unmittelbar zu einem Syntaxfehler. Die andere Möglichkeit ist, dass die Abhängigkeiten (bd, dolt, herdr) fehlen oder noch kein Aufgabenboard angelegt wurde.
+**Ursache**: Die Logik von Dispatch steckt in einer Python-CLI, die App bringt keinen Interpreter mit. Sie sucht ein Python von Homebrew und danach das des Systems (nötig ist **3.9 oder neuer**); findet sie keines, zeigt sie die Seite „Umgebungsprüfung“. Der andere Fall ist eine fehlende Abhängigkeit (bd, dolt, herdr) oder ein noch nicht angelegtes Board: Dann erscheint oben ein Hinweis mit der Schaltfläche „Ersteinrichtung öffnen“.
 
 **Was zu tun ist**:
 
-1. Im Terminal `python3 --version` ausführen. Liegt die Version unter 3.12, `brew install python@3.12` (oder neuer) ausführen und mit `which python3` prüfen, dass der Pfad auf die Homebrew-Fassung zeigt (meist `/opt/homebrew/bin/python3`). Auf einem ganz neuen Mac ohne die Xcode-Befehlszeilenwerkzeuge ist `/usr/bin/python3` nur ein Platzhalter, und es erscheint der Hinweis, dass die Entwicklerwerkzeuge für die Befehlszeile installiert werden müssen; installieren Sie diese zuerst.
+1. Sehen Sie auf der Seite „Umgebungsprüfung“ die mit ✗ markierten Punkte an, klicken Sie auf „Installationsbefehl kopieren“, fügen Sie ihn im Terminal ein und klicken Sie danach auf „Erneut prüfen“. Einen bestimmten Interpreter erzwingen Sie vor dem Start mit `DISPATCH_PYTHON=/pfad/zu/python3`. Auf einem ganz neuen Mac ohne Xcode Command Line Tools sind `python3` und `git` des Systems nur Platzhalter; `xcode-select --install` installiert sie.
 2. Dispatch neu öffnen und Schritt 1 „Abhängigkeiten installieren“ sowie Schritt 3 „Aufgabenboard“ der Ersteinrichtung durchlaufen.
 3. Hilft das nicht, führen Sie im Terminal `python3 /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py init status --json` aus und sehen sich die genaue Fehlermeldung an.
 

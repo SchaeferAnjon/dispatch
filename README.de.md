@@ -96,7 +96,7 @@ Das Ergebnis liegt in `app/src-tauri/target/release/bundle/macos/Dispatch.app`. 
 
 Das Aufgabenboard benötigt zusätzlich [Beads](https://github.com/steveyegge/beads) und Dolt; das Standardverzeichnis ist `~/tasks/.beads`, mit `BEADS_DIR` lässt es sich ändern. Sitzungen, Anhänge und Anweisungsprüfungen brauchen weder einen Modell-API-Schlüssel noch ein vorher angelegtes Aufgabenboard.
 
-## Ersteinrichtung (sechs Schritte)
+## Ersteinrichtung (acht Schritte, die letzten drei optional)
 
 Beim ersten Öffnen läuft sie einmal durch. Jeder Schritt lässt sich wiederholen, rechts oben können Sie „Überspringen und nicht mehr fragen“ wählen und sie später über Einstellungen → Ersteinrichtung wieder öffnen. Der Reihe nach:
 
@@ -105,7 +105,9 @@ Beim ersten Öffnen läuft sie einmal durch. Jeder Schritt lässt sich wiederhol
 3. **Aufgabenboard**: Auf dem ersten Rechner wählen Sie „Nur dieser Mac, oder dies ist der erste“, um ein neues Aufgabenboard anzulegen; dieser Mac wird der Hub. Läuft Dispatch bereits auf einem anderen Mac, wählen Sie „Dessen Aufgabenboard beitreten“ und tragen dessen `Benutzername@Adresse` ein (siehe nächster Abschnitt).
 4. **Agenten**: Haken Sie die Agenten an, die Sie auf diesem Rechner verwenden (Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes), und stellen Sie sicher, dass Herdr läuft.
 5. **Regeln und Skills**: bereitet das gemeinsame Regelwerk `~/.agents/rules/GLOBAL.md` vor, gleicht es mit allen Agenten ab und stellt den Skill-Pool für Claude Code und Codex bereit (andere Agenten unterstützen das Einbinden von Skills noch nicht).
-6. **Prüfen und optimieren** (optional): schickt einen Agenten los, der Regeln und Skills prüft und Vorschläge macht.
+6. **Modelle & Zusammenfassungen** (optional): Dispatch bringt kein eigenes Modell mit. Wählen Sie „Jetzt nicht“, das Claude-Code-Abo oder den API-Schlüssel eines Anbieters und haken Sie an, wofür er genutzt werden darf (Sitzungszusammenfassungen, Projektstand, Gedächtnis-Zusammenfassungen, Insight-Berichte, semantische Suche). Bis Sie wählen, wird nichts an ein Modell gesendet.
+7. **Handy & Benachrichtigungen** (optional): den Handy-Zugriff mit einem Klick einschalten und den angezeigten QR-Code scannen; Push-Benachrichtigungen aufs Handy (Bark / ntfy) richten Sie unter Einstellungen → Handy-Benachrichtigungen ein.
+8. **Prüfen und optimieren** (optional): schickt einen Agenten los, der Regeln und Skills prüft und Vorschläge macht.
 
 „Fertig, zum Arbeitsplatz“ wird erst frei, wenn die ersten fünf Schritte abgehakt sind.
 
