@@ -1708,3 +1708,7 @@ button.review-verdict:hover{filter:brightness(.96)}
 
 /* A conversation still working: its status line reads green, with the same pulse as the online dot. */
 .sess-item .l3.activity-text.working{color:var(--s-done)!important;font-weight:500;background:var(--s-done-bg,color-mix(in srgb,var(--s-done) 12%,transparent));border-radius:6px;padding:1px 6px;margin-left:-6px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.project-rename{font:inherit;font-size:22px;font-weight:600;padding:0 6px;border:1px solid var(--accent);border-radius:6px;background:var(--win);min-width:220px}
+.project-raw{font-weight:400;margin-left:8px}
+.project-dir{margin:2px 0 4px;word-break:break-all}

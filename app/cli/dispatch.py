@@ -5081,6 +5081,10 @@ def project_flags_parse(raw):
     for name, v in d.items():
         if isinstance(v, dict):
             flags = {f: True for f in PROJECT_FLAG_FIELDS if v.get(f) is True}
+            # 显示名 set in the app: not a flag this command edits, but it must survive a --star here.
+            alias = v.get("alias")
+            if isinstance(alias, str) and alias.strip() and alias.strip() != name:
+                flags["alias"] = alias.strip()[:80]
             if flags:
                 out[name] = flags
     return out
@@ -5093,7 +5097,10 @@ def project_flags_apply(flags, name, changes):
     if set(changes) - set(PROJECT_FLAG_FIELDS) or any(type(v) is not bool for v in changes.values()):
         raise ValueError("只能设置 starred / archived，值为布尔")
     cur = {**flags.get(name, {}), **changes}
+    alias = cur.get("alias")
     cur = {f: True for f in PROJECT_FLAG_FIELDS if cur.get(f)}
+    if isinstance(alias, str) and alias:
+        cur["alias"] = alias
     out = {k: v for k, v in flags.items() if k != name}
     if cur:
         out[name] = cur

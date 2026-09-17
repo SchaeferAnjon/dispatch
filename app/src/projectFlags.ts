@@ -5,7 +5,7 @@ import type { Memory } from "./types";
 // Same key and shape as `dispatch project` in the CLI.
 export const PROJECT_FLAGS_KEY = "dispatch-projects";
 export const INTERNAL_MEMORY_PREFIX = "dispatch-";
-export type ProjectFlag = { starred?: true; archived?: true };
+export type ProjectFlag = { starred?: true; archived?: true; alias?: string };
 export type ProjectFlags = Record<string, ProjectFlag>;
 
 export function parseProjectFlags(memories: Memory[]): ProjectFlags {
@@ -20,20 +20,28 @@ export function parseProjectFlags(memories: Memory[]): ProjectFlags {
     const f: ProjectFlag = {};
     if ((v as ProjectFlag).starred === true) f.starred = true;
     if ((v as ProjectFlag).archived === true) f.archived = true;
-    if (f.starred || f.archived) out[name] = f;
+    const alias = (v as ProjectFlag).alias;
+    if (typeof alias === "string" && alias.trim() && alias.trim() !== name) f.alias = alias.trim().slice(0, 80);
+    if (f.starred || f.archived || f.alias) out[name] = f;
   }
   return out;
 }
 
-export function withProjectFlag(flags: ProjectFlags, name: string, change: { starred?: boolean; archived?: boolean }): ProjectFlags {
+export function withProjectFlag(flags: ProjectFlags, name: string, change: { starred?: boolean; archived?: boolean; alias?: string }): ProjectFlags {
   const cur = { ...(flags[name] ?? {}), ...change };
   const next: ProjectFlag = {};
   if (cur.starred) next.starred = true;
   if (cur.archived) next.archived = true;
+  // 显示名: what the person calls the project; the raw name stays on labels and directories.
+  const alias = (cur.alias ?? "").trim();
+  if (alias && alias !== name) next.alias = alias.slice(0, 80);
   const out: ProjectFlags = { ...flags };
-  if (next.starred || next.archived) out[name] = next; else delete out[name];
+  if (next.starred || next.archived || next.alias) out[name] = next; else delete out[name];
   return out;
 }
+
+/** What to print for a project: its 显示名 when one was set, else the name itself. */
+export const projectLabel = (flags: ProjectFlags, name: string) => flags[name]?.alias || name;
 
 // Which Mac a project lives on after it was handed over (`dispatch move` / `dispatch project <名> --move-to`).
 // Same key and shape as PROJECT_OWNERS_KEY in the CLI: the Mac's own name plus its Tailscale IP.

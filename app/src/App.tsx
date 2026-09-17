@@ -21,7 +21,7 @@ import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
 import { SearchPalette } from "./components/Search";
 import { dropMovedOriginals, migrationCheckPrompt, type MigrationCheck } from "./moves";
-import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, newSessionTarget, ownerHostId, parseProjectFlags, parseProjectOwners, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags, type ProjectOwner } from "./projectFlags";
+import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, newSessionTarget, ownerHostId, parseProjectFlags, parseProjectOwners, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags, type ProjectOwner, projectLabel } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
 import { SetupView, type InitStatus } from "./components/Setup";
 import type { PhoneHost, ScreenSetupResult, UpdateInfo } from "./components/Settings";
@@ -568,10 +568,10 @@ export default function App() {
     api.memories().then((m) => { if (alive) { setProjectFlags(parseProjectFlags(m)); setProjectOwners(parseProjectOwners(m)); setSettings(parseSettings(m)); } }).catch(() => {});
     return () => { alive = false; };
   }, [api, version]);
-  const setProjectFlag = async (name: string, change: { starred?: boolean; archived?: boolean }) => {
+  const setProjectFlag = async (name: string, change: { starred?: boolean; archived?: boolean; alias?: string }) => {
     if (!api) return;
     const next = withProjectFlag(projectFlags, name, change);
-    try { await api.remember(PROJECT_FLAGS_KEY, serializeProjectFlags(next)); setProjectFlags(next); say(change.starred === true ? `已收藏 ${name}` : change.starred === false ? `已取消收藏 ${name}` : change.archived === true ? `已归档 ${name}，工作台不再显示` : `已取消归档 ${name}`); }
+    try { await api.remember(PROJECT_FLAGS_KEY, serializeProjectFlags(next)); setProjectFlags(next); say(change.alias !== undefined ? (change.alias.trim() && change.alias.trim() !== name ? `${name} 现在显示为「${change.alias.trim()}」` : `${name} 恢复原名`) : change.starred === true ? `已收藏 ${name}` : change.starred === false ? `已取消收藏 ${name}` : change.archived === true ? `已归档 ${name}，工作台不再显示` : `已取消归档 ${name}`); }
     catch (e) { say(String(e), true); }
   };
   // One name per Mac: labels and saved filters written under an old name (rename, system name) map to the current one.
@@ -890,7 +890,7 @@ export default function App() {
         <div className="crumb" data-tauri-drag-region>
           {backTarget ? <button className="btn ghost sm" onClick={goBackPlace} title="返回上一页（按你刚才的路径倒退一步）">‹ 返回{backLabel(backTarget)}</button>
             : backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}{hostFilter && <><span>{hostFilter}</span><span className="sep">›</span></>}<b>{VIEW_LABEL[view]}</b>
-          {view === "projects" && projectSelection && <><span className="sep">›</span><span>{projectSelection}</span></>}
+          {view === "projects" && projectSelection && <><span className="sep">›</span><span>{projectLabel(projectFlags, projectSelection)}</span></>}
           {BOARD_VIEWS.includes(view) && filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
           <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && (isServed ? " · 网页连接" : " · 示例数据")}</span>
         </div>
