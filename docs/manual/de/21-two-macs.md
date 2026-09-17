@@ -9,7 +9,7 @@ Der erste Rechner ist nach der Ersteinrichtung der **Hub**: Aufgabenboard (die D
 1. Aktivieren Sie auf dem Hub unter Systemeinstellungen → Allgemein → Freigabe die **Entfernte Anmeldung** (der Beitritt braucht SSH).
 2. Installieren Sie Dispatch auf dem zweiten Rechner, wählen Sie in Schritt 3 der Ersteinrichtung „Auf einem Rechner ist Dispatch bereits installiert“ und tragen Sie `Benutzername@Adresse` des Hubs ein: im selben WLAN die LAN-IP, unterwegs die Tailscale-Adresse (auf der Seite lässt sich ein Rechner aus der Tailscale-Liste wählen). Unter Einstellungen → Rechner können Sie ebenso auf „Weiteren Mac verbinden …“ klicken.
 3. Geben Sie einmalig das Anmeldekennwort des Hubs ein (nur einmal verwendet, nicht gespeichert). Dispatch legt den öffentlichen Schlüssel dieses Rechners dort ab, danach geht der Zugriff in beide Richtungen ohne Kennwort. Wenn Sie kein Kennwort eingeben möchten, klicken Sie auf „Den lokalen Agenten machen lassen“, dann erledigt ein Agent das im Terminal.
-4. Klicken Sie auf „Verbinden und beitreten“. Nach dem Beitritt zeigt die Seite „Verbunden mit <Name>, Abgleich in beide Richtungen alle 2 Minuten“.
+4. Klicken Sie auf „Verbinden und beitreten“. Nach dem Beitritt zeigt die Seite „Verbunden mit &lt;Name&gt;, Abgleich in beide Richtungen alle 2 Minuten“.
 5. „Jetzt prüfen“ prüft, ob der Hub den Weg zurück zu diesem Rechner findet (das braucht der Hub, um die Sitzungen dieses Rechners zusammenzuführen). Schlägt es fehl, sagt die Seite, wo Sie die entfernte Anmeldung aktivieren müssen.
 
 Haben Sie lokal bereits ein Board und wollen stattdessen beitreten, wählen Sie in Schritt 3 „Auf das Aufgabenboard eines anderen Rechners wechseln …“. Das lokale Board wird angehalten und unter neuem Namen aufbewahrt (`~/tasks/.beads.retired-DATUM`), nicht gelöscht.
@@ -29,7 +29,7 @@ Oben in der Seitenleiste erscheint „Alle / Rechner A / Rechner B“: Wählen S
 
 ## Ein Projekt verschieben
 
-Über „Nach <Rechner> verschieben“ im Kopf der Projektseite:
+Über „Nach &lt;Rechner&gt; verschieben“ im Kopf der Projektseite:
 
 1. **Vorprüfung**: Unterschiede in Git und Dateien sowie fehlende Werkzeuge; bei Konflikten wird abgelehnt (nur `--force` überschreibt die Änderungen der Gegenseite).
 2. Nach der Bestätigung wandern das Verzeichnis (samt nicht übernommener Änderungen), die Git-Historie, die laufenden Sitzungen und alle Aufzeichnungen hinüber, und dort geht es unmittelbar weiter.
@@ -45,18 +45,18 @@ dispatch project <Projektname> --owner <Rechner|local|none>     # nur die Zugeh�
 
 ## Eine einzelne Sitzung verschieben
 
-Rechtsklick auf die Sitzung → „Nach <Rechnername> verschieben und dort weiterarbeiten“, oder:
+Rechtsklick auf die Sitzung → „Nach &lt;Rechnername&gt; verschieben und dort weiterarbeiten“, oder:
 
 ```sh
 dispatch move <Anfang der Sitzungs-ID> --to <Rechner> [--prompt "zusätzlicher Hinweis"] [--no-files] [--dry-run]
 ```
 
-Nachdem die Gegenseite übernommen hat, steht die Sitzung auf beiden Seiten in der Liste: die ursprüngliche mit „verschoben nach <Rechner>“, die neue mit „verschoben von <Rechner>“. Die Ursprungssitzung wird vorab angehalten (mit `--keep-original` nicht). Unterstützt werden Claude Code und Codex; die Sitzungen von pi liegen in einer eigenen Datenbank und lassen sich vorerst nicht verschieben. `dispatch resume <id> --on <Rechner>` legt fest, auf welchem Rechner fortgesetzt wird.
+Nachdem die Gegenseite übernommen hat, steht die Sitzung auf beiden Seiten in der Liste: die ursprüngliche mit „verschoben nach &lt;Rechner&gt;“, die neue mit „verschoben von &lt;Rechner&gt;“. Die Ursprungssitzung wird vorab angehalten (mit `--keep-original` nicht). Unterstützt werden Claude Code und Codex; die Sitzungen von pi liegen in einer eigenen Datenbank und lassen sich vorerst nicht verschieben. `dispatch resume <id> --on <Rechner>` legt fest, auf welchem Rechner fortgesetzt wird.
 
 ## Verhalten bei fehlender Verbindung
 
-- Oben im Arbeitsplatz steht „<Rechner> vorübergehend nicht erreichbar“, und die bereits gelesenen Aufzeichnungen bleiben erhalten. Öffnen Sie eine Sitzung des anderen Rechners, erscheint der Hinweis „Diese Sitzung liegt auf <Rechner>; dieser Mac ist gerade nicht erreichbar (sein Tailscale ist offline oder er schläft). Sobald er wieder online ist, wird sie automatisch gelesen“.
-- In der Auswahlliste des ausführenden Rechners beim Anlegen einer neuen Sitzung sind nicht erreichbare Rechner nicht wählbar; wählen Sie auf einer Konfigurationsseite (Skills, Regeln, Notizen) einen nicht erreichbaren Rechner, wird der Grund angezeigt („Tailscale ist auf diesem Mac nicht aktiv“ oder „<Rechner> ist offline“).
+- Oben im Arbeitsplatz steht „&lt;Rechner&gt; vorübergehend nicht erreichbar“, und die bereits gelesenen Aufzeichnungen bleiben erhalten. Öffnen Sie eine Sitzung des anderen Rechners, erscheint der Hinweis „Diese Sitzung liegt auf &lt;Rechner&gt;; dieser Mac ist gerade nicht erreichbar (sein Tailscale ist offline oder er schläft). Sobald er wieder online ist, wird sie automatisch gelesen“.
+- In der Auswahlliste des ausführenden Rechners beim Anlegen einer neuen Sitzung sind nicht erreichbare Rechner nicht wählbar; wählen Sie auf einer Konfigurationsseite (Skills, Regeln, Notizen) einen nicht erreichbaren Rechner, wird der Grund angezeigt („Tailscale ist auf diesem Mac nicht aktiv“ oder „&lt;Rechner&gt; ist offline“).
 - Aufgabenboard: Jede Seite lässt sich lokal lesen und beschreiben, und nach dem Verbinden wird in beide Richtungen zusammengeführt. Wird dieselbe Aufgabe auf beiden Seiten geändert, kann ein Dolt-Konflikt entstehen, siehe [Fehlerbehebung](24-troubleshooting.md#zwei-macs-synchronisieren-nicht).
 - Kontingent: Ein Konto teilt sich sein Kontingent über beide Rechner, es summiert sich nicht; ist ein Datensatz veraltet, weist die Karte darauf hin.
 

@@ -19,7 +19,7 @@ Click "⇤ Hide list" to give the conversation the full page (remembered per dev
 
 ### Header
 
-"‹ Sessions" or "‹ Back to <previous page>", the avatar, this Mac / machine name, the title, and `folder · branch · session ID`; on the right: "Project · <name> ›" to go back to the project page, "⊞ Split", "Into Herdr" (when the session lives in another terminal), "Open <Agent> session ↗" (opens or resumes it in the original Agent on that Mac), "Copy resume command" (paste it in a terminal and press Enter to carry on) and the ⋯ menu.
+"‹ Sessions" or "‹ Back to &lt;previous page&gt;", the avatar, this Mac / machine name, the title, and `folder · branch · session ID`; on the right: "Project · &lt;name&gt; ›" to go back to the project page, "⊞ Split", "Into Herdr" (when the session lives in another terminal), "Open &lt;Agent&gt; session ↗" (opens or resumes it in the original Agent on that Mac), "Copy resume command" (paste it in a terminal and press Enter to carry on) and the ⋯ menu.
 
 Below the header:
 
@@ -54,7 +54,7 @@ Input:
 
 After you send:
 
-- An accepted message appears above the box as "You · <note>" with its text; with several, it says "N queued, handled in order at the end of this turn". The line disappears once the message enters the conversation.
+- An accepted message appears above the box as "You · &lt;note&gt;" with its text; with several, it says "N queued, handled in order at the end of this turn". The line disappears once the message enters the conversation.
 - With Claude Code, the last message still in the queue can be **withdrawn** (taken back, not sent) or **withdrawn and edited** (put back in the input box to fix and send again).
 - When delivery is uncertain, "Confirm delivery" and "Checked, keep editing" appear; clicking send again never sends a duplicate, and one message is only ever sent once.
 
@@ -78,11 +78,11 @@ The limits on replying: a message is only delivered to the original session on t
 - **⊞ Split**: the current session goes on the left, and you click another one in the list to fill the highlighted pane; "2 panes" and "4 panes" switch the layout; each pane is an independent session page (its own record, reply box and polling), ✕ closes one pane, and "Leave split view" returns to a single page.
 - **⧉ Detach** (top bar): move the current page into its own window, while the original window goes back a step or to its project.
 - **Right-click → Open in New Window**, or <kbd>⌘</kbd>-click a project, session or task: opens a new window directly.
-- **Back**: the "‹ Back to <previous page>" button in the top bar, or "‹ Sessions" in the session header. Coming from the workbench takes you back to the workbench, coming from a project takes you back to that project, and the scroll position is remembered.
+- **Back**: the "‹ Back to &lt;previous page&gt;" button in the top bar, or "‹ Sessions" in the session header. Coming from the workbench takes you back to the workbench, coming from a project takes you back to that project, and the scroll position is remembered.
 
 ## The right-click menu (sessions)
 
-Open and reply, open in new window, open the session in a terminal, mark as read / mark as unread (back into "Needs me" for later), star: track long-term / unstar, archive / unarchive (which turns it into tracked), mark as a scheduled session / restore as a normal session, rename… (changes only the name shown in Dispatch), link project… (shows that project's name afterward without moving the working folder), summarize this session with a model / summarize again, copy resume command, delegate, move to <machine> and carry on. When right-clicking is awkward, use "More" at the end of the row.
+Open and reply, open in new window, open the session in a terminal, mark as read / mark as unread (back into "Needs me" for later), star: track long-term / unstar, archive / unarchive (which turns it into tracked), mark as a scheduled session / restore as a normal session, rename… (changes only the name shown in Dispatch), link project… (shows that project's name afterward without moving the working folder), summarize this session with a model / summarize again, copy resume command, delegate, move to &lt;machine&gt; and carry on. When right-clicking is awkward, use "More" at the end of the row.
 
 ## New session (⌘N)
 

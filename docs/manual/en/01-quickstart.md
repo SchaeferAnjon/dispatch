@@ -61,7 +61,7 @@ Pick one of two:
 - **"Only this Mac, or this is the first one"**: click "Create the task board" to create a board at `~/tasks/.beads`. This Mac becomes the **hub** that other machines join.
 - **"Another Mac already runs Dispatch"**: enter that machine's `user@address` (you can pick a machine from the Tailscale list and add the user name), enter its login password once (used once, never stored, only to install the public key), and click "Connect and join". This requires that the other machine has already been through first-run setup and has Remote Login turned on. If you would rather not type the password, click "Let the local agent do it" and Dispatch starts an Agent that finishes the job for you in a terminal.
 
-After joining, the page shows "Joined <name>; syncs both ways every 2 minutes", and you can "Check now" whether the hub can reach back to this Mac (the hub needs that in order to merge this machine's sessions).
+After joining, the page shows "Joined &lt;name&gt;; syncs both ways every 2 minutes", and you can "Check now" whether the hub can reach back to this Mac (the hub needs that in order to merge this machine's sessions).
 
 ### Step 4: Agents
 

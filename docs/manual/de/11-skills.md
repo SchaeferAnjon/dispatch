@@ -6,7 +6,7 @@
 
 Ein Skill ist ein Verzeichnis mit einer `SKILL.md`; alle liegen gesammelt in `~/.cc-switch/skills` (dem Skill-Pool). Die Agenten arbeiten mit symbolischen Links: für Claude Code bereitgestellt, führt der Link nach `~/.claude/skills`, für Codex bereitgestellt nach `~/.agents/skills` oder `~/.codex/skills`. Eine Bereitstellung wirkt ab der nächsten Sitzung; das Entfernen löscht nur den Link, der Skill selbst bleibt unangetastet. Derzeit ist die Bereitstellung nur für diese beiden Agenten möglich.
 
-Oben auf der Seite steht eine Zeile „Geändert wird auf <Rechner>“: Haben Sie in der Seitenleiste einen anderen Rechner gewählt, wird dort geändert (ist er nicht erreichbar, wird der Grund genannt).
+Oben auf der Seite steht eine Zeile „Geändert wird auf &lt;Rechner&gt;“: Haben Sie in der Seitenleiste einen anderen Rechner gewählt, wird dort geändert (ist er nicht erreichbar, wird der Grund genannt).
 
 ## Liste links
 

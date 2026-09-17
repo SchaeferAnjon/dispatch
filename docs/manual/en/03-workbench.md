@@ -8,7 +8,7 @@
 
 From top to bottom:
 
-1. **Title row**: "Workbench" and "N open"; the small line below is the connection state: "Syncing session activity every 3 seconds", which becomes "Updates interrupted · reconnecting" when the stream drops, and "<machine> unreachable right now" when the other Mac cannot be reached. Two buttons on the right: "Discuss an idea" (see [Overview and discussions](15-overview.md)) and "New session".
+1. **Title row**: "Workbench" and "N open"; the small line below is the connection state: "Syncing session activity every 3 seconds", which becomes "Updates interrupted · reconnecting" when the stream drops, and "&lt;machine&gt; unreachable right now" when the other Mac cannot be reached. Two buttons on the right: "Discuss an idea" (see [Overview and discussions](15-overview.md)) and "New session".
 2. **Count bar**: four clickable counts; click one to see only the matching projects, click again to clear:
    - **Unread reply**: sessions where the Agent answered and is waiting for you to look.
    - **Needs confirmation**: sessions stopped at a confirmation box.
@@ -33,10 +33,10 @@ Expanded, it shows these groups in order (empty groups are hidden, each group sh
 | Running | Sessions that are working, with "Working on: …" showing the current action | Opens the session page |
 | Tracked | Starred sessions that are not already in the two groups above | Opens the session page |
 | Blocked | Tasks in the blocked state, with "N dependencies open"; they unblock themselves once the dependencies are done | Opens the task details |
-| Tasks in progress | Assignee avatar, priority and title, with "Latest: <progress>" or "Next: <criterion>" on the line below and the acceptance progress bar on the right | Opens the task details |
+| Tasks in progress | Assignee avatar, priority and title, with "Latest: &lt;progress&gt;" or "Next: &lt;criterion&gt;" on the line below and the acceptance progress bar on the right | Opens the task details |
 | Latest session | Shown when the project has no activity at all, so you see the last session | Opens the session page |
 
-At the bottom of the card: "Latest outcome · <title> ›" (or "No outcome filed yet").
+At the bottom of the card: "Latest outcome · &lt;title&gt; ›" (or "No outcome filed yet").
 
 Which cards are expanded by default: the ones within "Projects expanded by default" in Settings (2 by default), plus any with something under "Needs you". Once you collapse or expand a card by hand, your choice wins.
 

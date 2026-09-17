@@ -61,7 +61,7 @@ Eines von beiden:
 - **„Nur dieser eine Rechner, oder dies ist der erste“**: Klicken Sie auf „Aufgabenboard anlegen“, um unter `~/tasks/.beads` ein neues Board anzulegen. Dieser Rechner wird damit zum **Hub**, dem andere Rechner beitreten.
 - **„Auf einem Rechner ist Dispatch bereits installiert“**: Tragen Sie dessen `Benutzername@Adresse` ein (Sie können einen Rechner aus der Tailscale-Liste wählen und den Benutzernamen ergänzen), geben Sie einmalig das Anmeldekennwort jenes Rechners ein (es wird nur einmal verwendet, nicht gespeichert, und dient dem Hinterlegen des öffentlichen Schlüssels) und klicken Sie auf „Verbinden und beitreten“. Voraussetzung ist, dass dort die Ersteinrichtung schon gelaufen ist und die „Entfernte Anmeldung“ aktiviert wurde. Wenn Sie kein Kennwort eingeben möchten, klicken Sie auf „Den lokalen Agenten machen lassen“: Dispatch startet einen Agenten, der das im Terminal für Sie erledigt.
 
-Nach dem Beitritt zeigt die Seite „Verbunden mit <Name>, Abgleich in beide Richtungen alle 2 Minuten“ an, und Sie können einmal prüfen lassen, ob der Hub den Weg zurück zu diesem Rechner findet (das braucht der Hub, um die Sitzungen dieses Rechners zusammenzuführen).
+Nach dem Beitritt zeigt die Seite „Verbunden mit &lt;Name&gt;, Abgleich in beide Richtungen alle 2 Minuten“ an, und Sie können einmal prüfen lassen, ob der Hub den Weg zurück zu diesem Rechner findet (das braucht der Hub, um die Sitzungen dieses Rechners zusammenzuführen).
 
 ### Schritt 4: Agenten
 

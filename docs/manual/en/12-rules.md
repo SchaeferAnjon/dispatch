@@ -2,7 +2,7 @@
 
 > What this page is for: how to write, sync and check the rules shared by every Agent; Reference, keys, each Agent's memories and "About me" are all managed on this page.
 
-Four modes at the top of the page: **Agent rules**, **Reference**, **Agent memories** and **About me**. Every mode carries the "editing <machine>" hint, so if the sidebar has the other machine selected, you are editing that one.
+Four modes at the top of the page: **Agent rules**, **Reference**, **Agent memories** and **About me**. Every mode carries the "editing &lt;machine&gt;" hint, so if the sidebar has the other machine selected, you are editing that one.
 
 ## Agent rules
 

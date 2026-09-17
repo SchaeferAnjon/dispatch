@@ -8,7 +8,7 @@
 
 Von oben nach unten:
 
-1. **Titelzeile**: „Arbeitsplatz“ und „N offen“; die kleine Zeile darunter zeigt den Verbindungszustand: „Sitzungsaktivität wird alle 3 Sekunden synchronisiert“, bei einer Unterbrechung „Aktualisierung unterbrochen · Verbindung wird wiederhergestellt“, und wenn der andere Rechner nicht erreichbar ist „<Rechner> vorübergehend nicht erreichbar“. Rechts zwei Schaltflächen: „Eine Idee besprechen“ (siehe [Übersicht und Diskussionen](15-overview.md)) und „Neue Sitzung“.
+1. **Titelzeile**: „Arbeitsplatz“ und „N offen“; die kleine Zeile darunter zeigt den Verbindungszustand: „Sitzungsaktivität wird alle 3 Sekunden synchronisiert“, bei einer Unterbrechung „Aktualisierung unterbrochen · Verbindung wird wiederhergestellt“, und wenn der andere Rechner nicht erreichbar ist „&lt;Rechner&gt; vorübergehend nicht erreichbar“. Rechts zwei Schaltflächen: „Eine Idee besprechen“ (siehe [Übersicht und Diskussionen](15-overview.md)) und „Neue Sitzung“.
 2. **Zählerleiste**: vier anklickbare Zähler; ein Klick zeigt nur die betreffenden Projekte, ein weiterer hebt die Auswahl auf:
    - **Ungelesene Antwort**: Sitzungen, in denen der Agent fertig ist und darauf wartet, dass Sie es sehen.
    - **Wartet auf Bestätigung**: Sitzungen, die an einem Bestätigungsdialog stehen.
@@ -33,10 +33,10 @@ Ausgeklappt erscheinen die folgenden Gruppen in dieser Reihenfolge (leere Gruppe
 | Läuft | Sitzungen, die gerade arbeiten; „Arbeitet gerade: …“ nennt die aktuelle Tätigkeit | öffnet die Sitzungsseite |
 | Verfolgt | als Favorit markierte Sitzungen (soweit nicht schon in den beiden Gruppen darüber) | öffnet die Sitzungsseite |
 | Blockiert | Aufgaben im Status Blockiert, „N Abhängigkeiten offen“; sobald die Abhängigkeiten erledigt sind, lösen sie sich von selbst | öffnet die Aufgabendetails |
-| Aufgaben in Arbeit | Bild der zuständigen Person, Priorität, Titel; darunter „Zuletzt: <Fortschritt>“ oder „Als Nächstes: <Abnahmekriterium>“, rechts der Fortschrittsbalken der Abnahme | öffnet die Aufgabendetails |
+| Aufgaben in Arbeit | Bild der zuständigen Person, Priorität, Titel; darunter „Zuletzt: &lt;Fortschritt&gt;“ oder „Als Nächstes: &lt;Abnahmekriterium&gt;“, rechts der Fortschrittsbalken der Abnahme | öffnet die Aufgabendetails |
 | Letzte Sitzung | erscheint, wenn im Projekt gerade nichts los ist, und zeigt die letzte Sitzung | öffnet die Sitzungsseite |
 
-Am unteren Rand der Karte: „Neuestes Ergebnis · <Titel> ›“ (sonst „Noch kein Ergebnis erfasst“).
+Am unteren Rand der Karte: „Neuestes Ergebnis · &lt;Titel&gt; ›“ (sonst „Noch kein Ergebnis erfasst“).
 
 Welche Karten sind vorab ausgeklappt: die ersten Projekte bis zu der in den Einstellungen festgelegten Zahl („Wie viele Projekte vorab ausklappen“, voreingestellt 2) sowie alle mit Inhalt unter „Wartet auf Sie“. Sobald Sie selbst ein- oder ausklappen, gilt Ihre Entscheidung.
 

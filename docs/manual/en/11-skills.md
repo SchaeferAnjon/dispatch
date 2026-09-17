@@ -6,7 +6,7 @@
 
 A skill is a folder with a `SKILL.md` in it, and they all live together in `~/.cc-switch/skills` (the skill pool). Agents use symlinks: mounting on Claude Code links it into `~/.claude/skills`, and mounting on Codex links it into `~/.agents/skills` or `~/.codex/skills`. Mounting takes effect in new sessions; unmounting removes only the symlink and leaves the skill itself alone. Only these two Agents are supported for mounting right now.
 
-A line at the top of the page says "editing <machine>": when the sidebar has another machine selected, you are editing that one (and it explains why if that machine is offline).
+A line at the top of the page says "editing &lt;machine&gt;": when the sidebar has another machine selected, you are editing that one (and it explains why if that machine is offline).
 
 ## The list on the left
 

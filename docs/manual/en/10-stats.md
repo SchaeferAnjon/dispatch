@@ -8,9 +8,9 @@ Reached from "Stats & quota" in the sidebar, with two tabs at the top of the pag
 
 ## Quota
 
-One card per Agent: avatar, name, machine (one account on two machines says "+ <machine> · same account"), plan (Pro, Max, Plus, Team and so on), and below that a usage bar per time window: the label (such as 5 hours, 7 days, or a specific model), the percentage used, and "resets in Nh". Above 70% it turns yellow, above 90% red. At the bottom of the card are the update time (anything over 10 minutes old is flagged as stale) and the collapsed "Where this comes from".
+One card per Agent: avatar, name, machine (one account on two machines says "+ &lt;machine&gt; · same account"), plan (Pro, Max, Plus, Team and so on), and below that a usage bar per time window: the label (such as 5 hours, 7 days, or a specific model), the percentage used, and "resets in Nh". Above 70% it turns yellow, above 90% red. At the bottom of the card are the update time (anything over 10 minutes old is flagged as stale) and the collapsed "Where this comes from".
 
-- The percentage is how much is **used**. One account shares a single quota across machines; they do not add up. When the two sides disagree, it points out "not the same account as on <machine>", though it can also be that one of the two readings is stale.
+- The percentage is how much is **used**. One account shares a single quota across machines; they do not add up. When the two sides disagree, it points out "not the same account as on &lt;machine&gt;", though it can also be that one of the two readings is stale.
 - Where it comes from: Claude Code uses the official usage endpoint (reading the login state on this machine, read-only and never sent anywhere), while Codex and ZCode read their own local state. Anything missing or stale is marked as such, never inferred to be zero.
 - "Refresh quota" reads again; "No quota data · N" expands the Agents that returned nothing.
 - The top bar and the menu bar icon show these same bars for this machine.

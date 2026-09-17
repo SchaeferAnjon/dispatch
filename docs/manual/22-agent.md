@@ -21,7 +21,7 @@ dispatch done TASK_ID --reason "交付与验证" --verified --retro "【技术�
 
 - **标题**要让几周后冷读的人一眼知道改了什么、为了什么（例：「会话页 diff 改成可横向滚动：手机上右半截被截掉」）。8 到 80 字；太短或只有动词会被 `begin` 拒绝；超过 40 字在标点处截断，完整标题自动记进描述第一行。描述至少 20 字，写触发原因和期望结果。`--force` 跳过检查。
 - `begin` 在会话身份可用时自动打 `session-origin:<会话id>` 和 `session:<会话id>` 标签，这就是任务和会话的正式关系；`--session` 可显式指定。
-- `--verified` 只表示亲手验证过，不是独立复核；它会把还没勾的验收项全部打勾并署名（界面显示「自审 · <Agent>」）。分项核过就 `dispatch log ID --tick 关键词`。
+- `--verified` 只表示亲手验证过，不是独立复核；它会把还没勾的验收项全部打勾并署名（界面显示「自审 · &lt;Agent&gt;」）。分项核过就 `dispatch log ID --tick 关键词`。
 - `--retro` 一两句即可，进知识库；`--next "后续标题"` 建后续任务；`--review-by <agent>` 请求另一个 Agent 复核（`dispatch review ID --verdict pass|changes --reason`，复核者不能是执行者）。
 - 未完成的任务不关闭。`bd show ID --json` 看任务，`bd update ID` 改字段；不用会打开编辑器的 `bd edit`。
 

@@ -2,7 +2,7 @@
 
 > Worum es auf dieser Seite geht: wie Sie die gemeinsamen Regeln aller Agenten schreiben, abgleichen und prüfen. Auf dieser Seite verwalten Sie außerdem die Unterlagen, die Schlüssel, die Notizen der einzelnen Agenten und „Über mich“.
 
-Oben auf der Seite stehen vier Modi: **Agent-Regeln**, **Unterlagen**, **Agent-Notizen** und **Über mich**. Jeder Modus zeigt den Hinweis „Geändert wird auf <Rechner>“; haben Sie in der Seitenleiste einen anderen Rechner gewählt, wird dort geändert.
+Oben auf der Seite stehen vier Modi: **Agent-Regeln**, **Unterlagen**, **Agent-Notizen** und **Über mich**. Jeder Modus zeigt den Hinweis „Geändert wird auf &lt;Rechner&gt;“; haben Sie in der Seitenleiste einen anderen Rechner gewählt, wird dort geändert.
 
 ## Agent-Regeln
 

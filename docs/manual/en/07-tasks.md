@@ -7,14 +7,14 @@
 Reached from "All tasks" in the sidebar. The toolbar at the top has:
 
 - View switches: **Board**, **Table**, **Trash N**, **Archived N**.
-- Filter chips: "Agent review N" and "Blocked N"; the search box; after you click a project or an Agent in the sidebar, "Only <name>" appears here, and ✕ clears it.
+- Filter chips: "Agent review N" and "Blocked N"; the search box; after you click a project or an Agent in the sidebar, "Only &lt;name&gt;" appears here, and ✕ clears it.
 - Right-click empty space: switch to Table / Board, clear filters, Trash, archived tasks, "Archive finished over 30 days ago (N)", plus the global actions.
 
 ### Board
 
 Four columns: To do, In progress, Blocked, Done. Each column is grouped by project, starred projects first; groups can be collapsed, and the collapsed state is remembered per device; the Done column shows only the last 7 days by default, with "N more finished earlier ›" to expand. The column header has "Collapse all / Expand all", and the To do header has a ＋ for a new task. Sorting: by priority, by last update, by creation time.
 
-On a card: the title, the ⋯ menu, "↑ from <root task>" (the root of this line), the priority, the project, the number, the type, "A handed to B", "⊘ blocked by N dependencies", "⏸ Deferred", the acceptance progress bar, "Latest progress / progress note / completion note" or "Next criterion", the assignee and the time, and "✓ Reviewed".
+On a card: the title, the ⋯ menu, "↑ from &lt;root task&gt;" (the root of this line), the priority, the project, the number, the type, "A handed to B", "⊘ blocked by N dependencies", "⏸ Deferred", the acceptance progress bar, "Latest progress / progress note / completion note" or "Next criterion", the assignee and the time, and "✓ Reviewed".
 
 Dragging a card into another column changes its state: dropping it on To do reopens it or moves it back to To do, dropping it on In progress changes only the state (it does not make you the assignee), and dropping it on Done closes it with "Dragged to Done in Dispatch" as the completion note.
 
@@ -47,7 +47,7 @@ Clicking any task opens the details panel on the right (a full page on a phone).
 - **Delivery and verification** (finished tasks): "N/N ticked · N still to check", the criteria still to check, and the evidence (the last three progress notes and the linked sessions). The state is written to the right of the title: "Done · no approval needed from you", "Awaiting agent review" or "Review recorded as passed". A missing completion note is flagged.
 - **Completion note**: what `done --reason` wrote, expandable.
 - **Description**: Markdown, double-click to edit; when empty it says "No description yet, so the next Agent that picks this up will not know why it is being done".
-- **Acceptance criteria**: a `- [ ]` checklist; click a box to tick or untick it, signed "You checked"; boxes an Agent ticked show "Self-checked · <Agent>" or "Review · <Agent>"; older records may be "Unsigned". "Edit" changes the text directly.
+- **Acceptance criteria**: a `- [ ]` checklist; click a box to tick or untick it, signed "You checked"; boxes an Agent ticked show "Self-checked · &lt;Agent&gt;" or "Review · &lt;Agent&gt;"; older records may be "Unsigned". "Edit" changes the text directly.
 - **Activity**: state changes, claims and comments, each with an author and a time.
 - **Comment box**: "Leave a note for the next agent…", sent with <kbd>⌘⏎</kbd>. The next time an Agent opens a session, `dispatch prime` injects the unanswered comments on the tasks under its name.
 

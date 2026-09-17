@@ -6,7 +6,7 @@
 
 ## The project list
 
-Reached from "Projects" in the sidebar. At the top are the search box and the sorting options (latest activity, name, session count, open tasks, Mac). Projects with activity appear as cards: display name, ☆, the Mac they are on ("The project folder is on this Mac right now" or "The project was handed to this Mac"), the unread count, a one-line summary ("In progress · <task>", "Latest outcome · <title>" or "Recent session · <title>"), and "N sessions · N open tasks · N outcomes". Projects with no activity for a week fold into "Quiet lately · N".
+Reached from "Projects" in the sidebar. At the top are the search box and the sorting options (latest activity, name, session count, open tasks, Mac). Projects with activity appear as cards: display name, ☆, the Mac they are on ("The project folder is on this Mac right now" or "The project was handed to this Mac"), the unread count, a one-line summary ("In progress · &lt;task&gt;", "Latest outcome · &lt;title&gt;" or "Recent session · &lt;title&gt;"), and "N sessions · N open tasks · N outcomes". Projects with no activity for a week fold into "Quiet lately · N".
 
 Two buttons at the bottom: "Other folders and ungrouped · N" (folders with sessions but no tasks and no outcomes) and "Archived · N". Right-clicking a project card gives you star, archive, new session and more.
 
@@ -15,9 +15,9 @@ Two buttons at the bottom: "Other folders and ungrouped · N" (folders with sess
 - **Title**: double-click to change the display name (the label and the folder do not change, only what is shown; leave it empty to restore). Next to it are the ☆ star, the Mac badge and the "Archived" marker.
 - The line below shows the project folder and "N sessions · N tasks · N outcomes". During a move, a progress bar appears here.
 - Buttons:
-  - **Terminal · <machine> ▾**: open a terminal tab in the project folder; the menu lets you pick Claude Code, Codex or another Agent (which starts that Agent), or "Plain terminal" (no Agent).
+  - **Terminal · &lt;machine&gt; ▾**: open a terminal tab in the project folder; the menu lets you pick Claude Code, Codex or another Agent (which starts that Agent), or "Plain terminal" (no Agent).
   - **Discuss…**: take one idea about this project, let several Agents each say their piece, and reach a conclusion.
-  - **Move to <machine>** (when you have a second Mac): hand the project folder, its Git and the sessions running here to that machine, with a pre-check before anything happens, see [Two Macs](21-two-macs.md).
+  - **Move to &lt;machine&gt;** (when you have a second Mac): hand the project folder, its Git and the sessions running here to that machine, with a pre-check before anything happens, see [Two Macs](21-two-macs.md).
   - **New session in this project**.
   - **Archive / Unarchive**.
 

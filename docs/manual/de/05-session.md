@@ -19,7 +19,7 @@
 
 ### Kopfbereich
 
-„‹ Sitzungen“ oder „‹ Zurück zu <vorherige Seite>“, Bild, dieser Mac bzw. Rechnername, Titel, `Ordner · Branch · Sitzungs-ID`; rechts: „Projekt · <Name> ›“ zurück zur Projektseite, „⊞ Geteilte Ansicht“, „In Herdr“ (wenn die Sitzung in einem anderen Terminal läuft), „<Agent>-Sitzung öffnen ↗“ (öffnet oder setzt sie im ursprünglichen Agenten auf jenem Rechner fort), „Fortsetzungsbefehl kopieren“ (im Terminal einfügen, Eingabetaste, weiter geht es) und das Menü ⋯.
+„‹ Sitzungen“ oder „‹ Zurück zu &lt;vorherige Seite&gt;“, Bild, dieser Mac bzw. Rechnername, Titel, `Ordner · Branch · Sitzungs-ID`; rechts: „Projekt · &lt;Name&gt; ›“ zurück zur Projektseite, „⊞ Geteilte Ansicht“, „In Herdr“ (wenn die Sitzung in einem anderen Terminal läuft), „&lt;Agent&gt;-Sitzung öffnen ↗“ (öffnet oder setzt sie im ursprünglichen Agenten auf jenem Rechner fort), „Fortsetzungsbefehl kopieren“ (im Terminal einfügen, Eingabetaste, weiter geht es) und das Menü ⋯.
 
 Unter dem Kopfbereich:
 
@@ -54,7 +54,7 @@ Eingabe:
 
 Nach dem Senden:
 
-- Angenommene Nachrichten erscheinen über dem Feld als „Sie · <Vermerk>“ samt Text; bei mehreren steht dort „N in der Warteschlange, werden nach dieser Runde der Reihe nach bearbeitet“. Sobald die Nachricht im Gespräch auftaucht, verschwindet diese Zeile.
+- Angenommene Nachrichten erscheinen über dem Feld als „Sie · &lt;Vermerk&gt;“ samt Text; bei mehreren steht dort „N in der Warteschlange, werden nach dieser Runde der Reihe nach bearbeitet“. Sobald die Nachricht im Gespräch auftaucht, verschwindet diese Zeile.
 - Bei Claude Code lässt sich die letzte noch in der Warteschlange stehende Nachricht **Zurücknehmen** (zurückholen und nicht senden) oder **Zurücknehmen und bearbeiten** (zurück ins Eingabefeld, ändern und erneut senden).
 - Ist die Zustellung unsicher, erscheinen „Zustellung prüfen“ und „Geprüft, weiter bearbeiten“; wiederholtes Klicken auf Senden erzeugt keine zweite Nachricht, dieselbe Nachricht geht genau einmal hinaus.
 
@@ -78,11 +78,11 @@ Die Grenzen des Antwortens: Zugestellt wird nur an die Ursprungssitzung auf dem 
 - **⊞ Geteilte Ansicht**: Die aktuelle Sitzung kommt nach links, danach wählen Sie aus der Liste eine weitere Sitzung für das hervorgehobene Feld; „2 Felder“ und „4 Felder“ schalten um; jedes Feld ist eine eigenständige Sitzungsseite (mit eigener Aufzeichnung, eigenem Antwortfeld und eigenem Abruf), ✕ schließt ein Feld und „Geteilte Ansicht verlassen“ führt zur Einzelseite zurück.
 - **⧉ Ablösen** (in der Kopfleiste): verschiebt die aktuelle Seite in ein eigenes Fenster; das ursprüngliche Fenster kehrt zur vorherigen Seite oder zum zugehörigen Projekt zurück.
 - **Rechtsklick → In neuem Fenster öffnen**, oder <kbd>⌘</kbd> plus Klick auf ein Projekt, eine Sitzung oder eine Aufgabe: öffnet direkt ein neues Fenster.
-- **Zurück**: die Schaltfläche „‹ Zurück zu <vorherige Seite>“ in der Kopfleiste oder „‹ Sitzungen“ im Kopfbereich der Sitzung. Wer vom Arbeitsplatz kam, kehrt zum Arbeitsplatz zurück, wer vom Projekt kam, zum Projekt; die Scrollposition wird gemerkt.
+- **Zurück**: die Schaltfläche „‹ Zurück zu &lt;vorherige Seite&gt;“ in der Kopfleiste oder „‹ Sitzungen“ im Kopfbereich der Sitzung. Wer vom Arbeitsplatz kam, kehrt zum Arbeitsplatz zurück, wer vom Projekt kam, zum Projekt; die Scrollposition wird gemerkt.
 
 ## Kontextmenü (Sitzung)
 
-Öffnen und antworten, in neuem Fenster öffnen, Sitzung im Terminal öffnen, als gelesen bzw. als ungelesen markieren (kehrt in „Wartet auf mich“ zurück, um sie später anzusehen), zu Favoriten hinzufügen: langfristig verfolgen bzw. Markierung entfernen, archivieren bzw. aus dem Archiv holen (wird zu Verfolgt), als geplante Sitzung markieren bzw. zur normalen Sitzung zurücksetzen, umbenennen … (ändert nur den in Dispatch angezeigten Namen), Projekt zuordnen … (danach wird dieser Projektname angezeigt, der Arbeitsordner wird nicht verschoben), diese Sitzung mit einem Modell zusammenfassen bzw. neu zusammenfassen, Fortsetzungsbefehl kopieren, Vergeben, nach <Rechner> verschieben und dort weiterarbeiten. Wenn der Rechtsklick ungelegen kommt, klicken Sie am Zeilenende auf „Mehr“.
+Öffnen und antworten, in neuem Fenster öffnen, Sitzung im Terminal öffnen, als gelesen bzw. als ungelesen markieren (kehrt in „Wartet auf mich“ zurück, um sie später anzusehen), zu Favoriten hinzufügen: langfristig verfolgen bzw. Markierung entfernen, archivieren bzw. aus dem Archiv holen (wird zu Verfolgt), als geplante Sitzung markieren bzw. zur normalen Sitzung zurücksetzen, umbenennen … (ändert nur den in Dispatch angezeigten Namen), Projekt zuordnen … (danach wird dieser Projektname angezeigt, der Arbeitsordner wird nicht verschoben), diese Sitzung mit einem Modell zusammenfassen bzw. neu zusammenfassen, Fortsetzungsbefehl kopieren, Vergeben, nach &lt;Rechner&gt; verschieben und dort weiterarbeiten. Wenn der Rechtsklick ungelegen kommt, klicken Sie am Zeilenende auf „Mehr“.
 
 ## Neue Sitzung (⌘N)
 

@@ -8,7 +8,7 @@
 
 ## Header
 
-The project name and "N tasks · N live sessions · N sessions without a task", with a one-line summary below: "<who> is working on "…" in session "…"" or "Nothing in progress right now". You can switch between "Graph / List", and there are three filters: only in progress, only with live sessions, only what I am waiting on.
+The project name and "N tasks · N live sessions · N sessions without a task", with a one-line summary below: "&lt;who&gt; is working on "…" in session "…"" or "Nothing in progress right now". You can switch between "Graph / List", and there are three filters: only in progress, only with live sessions, only what I am waiting on.
 
 ## The graph
 

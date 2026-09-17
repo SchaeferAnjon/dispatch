@@ -7,14 +7,14 @@
 Erreichbar über „Alle Aufgaben“ in der Seitenleiste. Die Werkzeugleiste oben:
 
 - Ansicht umschalten: **Board**, **Tabelle**, **Papierkorb N**, **Archiviert N**.
-- Kleine Filtermarken: „Agent-Prüfung N“ und „Blockiert N“; ein Suchfeld; wenn Sie in der Seitenleiste ein Projekt oder einen Agenten angeklickt haben, steht hier „Nur <Name>“, und ✕ hebt es auf.
+- Kleine Filtermarken: „Agent-Prüfung N“ und „Blockiert N“; ein Suchfeld; wenn Sie in der Seitenleiste ein Projekt oder einen Agenten angeklickt haben, steht hier „Nur &lt;Name&gt;“, und ✕ hebt es auf.
 - Rechtsklick auf eine leere Stelle: zur Tabelle bzw. zum Board wechseln, Filter aufheben, Papierkorb, archivierte Aufgaben, „Vor 30 Tagen erledigte archivieren (N)“ sowie die globalen Aktionen.
 
 ### Board
 
 Vier Spalten: Offen, In Arbeit, Blockiert, Erledigt. Jede Spalte ist nach Projekt gruppiert, Favoriten zuerst; die Gruppen lassen sich einklappen, und der Zustand wird je Gerät gemerkt. Die Spalte Erledigt zeigt vorab nur die letzten 7 Tage, „Noch N früher erledigte ›“ klappt den Rest auf. Der Spaltenkopf bietet „Alle einklappen / Alle ausklappen“, der Kopf der Spalte Offen zusätzlich ＋ für eine neue Aufgabe. Sortierung: nach Priorität, nach letzter Aktualisierung, nach Erstellungszeit.
 
-Auf der Karte: Titel, Menü ⋯, „↑ Ursprung <Wurzelaufgabe>“ (die Wurzel dieses Strangs), Priorität, Projekt, Nummer, Typ, „A vergeben an B“, „⊘ Von N Abhängigkeiten blockiert“, „⏸ Zurückgestellt“, der Fortschrittsbalken der Abnahme, „Letzter Fortschritt / Fortschrittsnotiz / Abschlussnotiz“ oder „Nächstes Abnahmekriterium“, die zuständige Person und die Zeit sowie „✓ Geprüft“.
+Auf der Karte: Titel, Menü ⋯, „↑ Ursprung &lt;Wurzelaufgabe&gt;“ (die Wurzel dieses Strangs), Priorität, Projekt, Nummer, Typ, „A vergeben an B“, „⊘ Von N Abhängigkeiten blockiert“, „⏸ Zurückgestellt“, der Fortschrittsbalken der Abnahme, „Letzter Fortschritt / Fortschrittsnotiz / Abschlussnotiz“ oder „Nächstes Abnahmekriterium“, die zuständige Person und die Zeit sowie „✓ Geprüft“.
 
 Ziehen Sie eine Karte in eine andere Spalte, ändert sich ihr Status: nach Offen heißt wieder öffnen oder auf Offen zurücksetzen, nach In Arbeit ändert nur den Status (Sie werden nicht zur zuständigen Person), und nach Erledigt schließt die Aufgabe mit der Abschlussnotiz „In Dispatch nach Erledigt gezogen“.
 
@@ -47,7 +47,7 @@ Ein Klick auf eine beliebige Aufgabe öffnet rechts die Detailansicht (am Handy 
 - **Lieferung und Prüfung** (bei erledigten Aufgaben): „N/N abgehakt · N noch zu prüfen“, die noch zu prüfenden Abnahmekriterien und die Belege (die drei jüngsten Fortschrittseinträge, die verknüpften Sitzungen). Rechts vom Titel steht der Status: „Erledigt · keine Freigabe von Ihnen nötig“, „Wartet auf Agent-Prüfung“ oder „Prüfung als bestanden erfasst“. Fehlt die Abschlussnotiz, wird darauf hingewiesen.
 - **Abschlussnotiz**: der Inhalt von `done --reason`, aufklappbar.
 - **Beschreibung**: Markdown, Doppelklick zum Bearbeiten; ist sie leer, erscheint der Hinweis „Noch keine Beschreibung. Der nächste Agent, der übernimmt, wird nicht wissen, warum das gemacht wird“.
-- **Abnahmekriterien**: die Liste aus `- [ ]`; ein Klick auf das Kästchen hakt ab oder nimmt das Häkchen zurück und zeichnet mit „von Ihnen geprüft“. Von einem Agenten Abgehaktes erscheint als „Selbstprüfung · <Agent>“ oder „Gegenprüfung · <Agent>“; bei alten Aufzeichnungen kann „ohne Signatur“ stehen. „Bearbeiten“ ändert den Text unmittelbar.
+- **Abnahmekriterien**: die Liste aus `- [ ]`; ein Klick auf das Kästchen hakt ab oder nimmt das Häkchen zurück und zeichnet mit „von Ihnen geprüft“. Von einem Agenten Abgehaktes erscheint als „Selbstprüfung · &lt;Agent&gt;“ oder „Gegenprüfung · &lt;Agent&gt;“; bei alten Aufzeichnungen kann „ohne Signatur“ stehen. „Bearbeiten“ ändert den Text unmittelbar.
 - **Aktivität**: Statusänderungen, Übernahmen, Kommentare, jeweils mit Verfasser und Zeit.
 - **Kommentarfeld**: „Kommentar für den nächsten Agenten, der übernimmt …“, <kbd>⌘⏎</kbd> sendet. Beim nächsten Sitzungsstart des Agenten spielt `dispatch prime` ihm die unbeantworteten Kommentare zu den auf ihn laufenden Aufgaben ein.
 

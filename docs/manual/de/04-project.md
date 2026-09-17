@@ -6,7 +6,7 @@
 
 ## Projektliste
 
-Erreichbar über „Projekte“ in der Seitenleiste. Oben stehen das Suchfeld und die Sortierung (letzte Aktivität, Name, Anzahl Sitzungen, offene Aufgaben, zugehöriger Rechner). Projekte mit Regung erscheinen als Karte mit Anzeigename, ☆, zugehörigem Rechner („Der Projektordner liegt derzeit auf diesem Mac“ oder „Das Projekt wurde an diesen Mac übergeben“), Anzahl ungelesener Antworten, einer Zusammenfassungszeile („In Arbeit · <Aufgabe>“, „Neuestes Ergebnis · <Titel>“ oder „Letzte Sitzung · <Titel>“) und „N Sitzungen · N offene Aufgaben · N Ergebnisse“. Projekte ohne Regung seit einer Woche wandern unter „Zuletzt nichts los · N“.
+Erreichbar über „Projekte“ in der Seitenleiste. Oben stehen das Suchfeld und die Sortierung (letzte Aktivität, Name, Anzahl Sitzungen, offene Aufgaben, zugehöriger Rechner). Projekte mit Regung erscheinen als Karte mit Anzeigename, ☆, zugehörigem Rechner („Der Projektordner liegt derzeit auf diesem Mac“ oder „Das Projekt wurde an diesen Mac übergeben“), Anzahl ungelesener Antworten, einer Zusammenfassungszeile („In Arbeit · &lt;Aufgabe&gt;“, „Neuestes Ergebnis · &lt;Titel&gt;“ oder „Letzte Sitzung · &lt;Titel&gt;“) und „N Sitzungen · N offene Aufgaben · N Ergebnisse“. Projekte ohne Regung seit einer Woche wandern unter „Zuletzt nichts los · N“.
 
 Unten zwei Schaltflächen: „Andere Ordner und nicht zugeordnet · N“ (Ordner, in denen es nur Sitzungen, aber keine Aufgaben und Ergebnisse gibt) und „Archiviert · N“. Der Rechtsklick auf eine Projektkarte bietet unter anderem Favorit, archivieren und neue Sitzung.
 
@@ -15,9 +15,9 @@ Unten zwei Schaltflächen: „Andere Ordner und nicht zugeordnet · N“ (Ordner
 - **Titel**: Doppelklick ändert den Anzeigenamen (Marke und Ordner bleiben unverändert, geändert wird nur die Anzeige; leer lassen stellt den Ausgangszustand wieder her). Daneben ☆ für Favorit, die Plakette des zugehörigen Rechners und die Markierung „Archiviert“.
 - Die Zeile darunter nennt den Projektordner und „N Sitzungen · N Aufgaben · N Ergebnisse“. Während einer Verschiebung steht hier ein Fortschrittsbalken.
 - Schaltflächen:
-  - **Terminal · <Rechner> ▾**: öffnet einen Terminal-Tab im Projektordner; im Menü wählen Sie einen Agenten wie Claude Code oder Codex (der entsprechende Agent wird gestartet) oder „Einfaches Terminal“ (ohne Agent).
+  - **Terminal · &lt;Rechner&gt; ▾**: öffnet einen Terminal-Tab im Projektordner; im Menü wählen Sie einen Agenten wie Claude Code oder Codex (der entsprechende Agent wird gestartet) oder „Einfaches Terminal“ (ohne Agent).
   - **Diskutieren …**: lässt zu einem Gedanken über dieses Projekt mehrere Agenten je einmal Stellung nehmen und zieht daraus ein Ergebnis.
-  - **Nach <Rechner> verschieben** (sobald es einen zweiten Rechner gibt): übergibt Projektordner, Git und die hier laufenden Sitzungen an jenen Rechner, erst mit einer Vorprüfung, dann mit der eigentlichen Übergabe, siehe [Zwei Macs](21-two-macs.md).
+  - **Nach &lt;Rechner&gt; verschieben** (sobald es einen zweiten Rechner gibt): übergibt Projektordner, Git und die hier laufenden Sitzungen an jenen Rechner, erst mit einer Vorprüfung, dann mit der eigentlichen Übergabe, siehe [Zwei Macs](21-two-macs.md).
   - **Neue Sitzung in diesem Projekt**.
   - **Archivieren / Aus dem Archiv holen**.
 

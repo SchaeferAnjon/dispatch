@@ -8,7 +8,7 @@
 
 ## Kopfbereich
 
-Projektname, „N Aufgaben · N aktive Sitzungen · N Sitzungen ohne Aufgabe“, darunter ein Satz zur Zusammenfassung: „<Wer> arbeitet in der Sitzung ‚…‘ an ‚…‘“ oder „Zurzeit keine Aufgabe in Arbeit“. Umschalten zwischen „Diagramm / Liste“, dazu drei Filter: nur in Arbeit, nur mit aktiver Sitzung, nur worauf ich warte.
+Projektname, „N Aufgaben · N aktive Sitzungen · N Sitzungen ohne Aufgabe“, darunter ein Satz zur Zusammenfassung: „&lt;Wer&gt; arbeitet in der Sitzung ‚…‘ an ‚…‘“ oder „Zurzeit keine Aufgabe in Arbeit“. Umschalten zwischen „Diagramm / Liste“, dazu drei Filter: nur in Arbeit, nur mit aktiver Sitzung, nur worauf ich warte.
 
 ## Diagramm
 
