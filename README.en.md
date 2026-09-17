@@ -202,7 +202,7 @@ dispatch prime                          # session-start injection: identity, pro
 
 ## Data and boundaries
 
-Dispatch reads the local Agent records you already have and by default sends no documents or chat content to any model. It currently does not connect to ChatGPT web sessions and cannot obtain "read" receipts from the original Agent app; only a later user message clears the unread state of earlier replies. The workspace Git diff may include changes from other sessions.
+Dispatch reads the local Agent records you already have and by default sends no documents or chat content to any model. The quota page reads the login that Claude Code keeps in the keychain, only to ask Anthropic for your official usage: read-only, never stored, never sent anywhere else; macOS asks for keychain access once, the first time. It currently does not connect to ChatGPT web sessions and cannot obtain "read" receipts from the original Agent app; only a later user message clears the unread state of earlier replies. The workspace Git diff may include changes from other sessions.
 
 When you click send, the reply is delivered only to the original session on the selected Mac. Codex desktop replies depend on the client's current versioned local IPC interface; if it is incompatible or the session is not open, you are asked to reconnect. A Herdr terminal must match both the session ID and the foreground process; no input is written while it is executing or waiting for a permission confirmation. Send receipts are stored locally in `~/tasks/.dispatch/reply-receipts.sqlite` and are not copied across machines.
 

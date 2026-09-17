@@ -371,7 +371,9 @@ def profile_inventory_generate(actor="dispatch", timeout=30):
 
 def profile_inventory_spawn():
     os.makedirs(D.DISPATCH_DIR, exist_ok=True)
-    args = [sys.executable, os.path.abspath(__file__), "profile", "inventory", "--refresh"]
+    # Through dispatch.py: this module has no command-line entry of its own, so running it directly
+    # imported it and exited, and the inventory never happened.
+    args = [sys.executable, os.path.abspath(D.__file__), "profile", "inventory", "--refresh"]
     try:
         subprocess.Popen(args, cwd=D.HOME, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     except Exception:

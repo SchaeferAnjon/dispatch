@@ -10,6 +10,7 @@ import { Markdown } from './Markdown';
 import { MediaContext, MediaProvider, type AttachmentData } from './Media';
 import { useOpenSession } from './SessionActions';
 import { NewProject } from './NewProject';
+import { hostOfProject } from '../projectHosts';
 import { KINDS } from './Delegate';
 import { MenuItem, MenuPanel } from './ContextMenu';
 import { intlLocale, t as tr, useT } from '../i18n';
@@ -60,13 +61,13 @@ export function ProjectFacts({ api, name, onDone }: { api: Api; name: string; on
   const parse = <T,>(t: string, fallback: T): T => { try { const i = Math.min(...[t.indexOf('{'), t.indexOf('[')].filter((x) => x >= 0)); return JSON.parse(t.slice(i)); } catch { return fallback; } };
   const load = useCallback(async () => {
     setErr('');
-    const [d, k] = await Promise.allSettled([api.on('local', ['facts', 'show', '-P', name, '--json']), api.on('local', ['env', 'list', '-P', name, '--json'])]);
+    const [d, k] = await Promise.allSettled([api.on(hostOfProject(name), ['facts', 'show', '-P', name, '--json']), api.on('local', ['env', 'list', '-P', name, '--json'])]);
     setDoc(d.status === 'fulfilled' ? parse<ProjectFactsDoc>(d.value, { path: '', content: '', exists: false }) : { path: '', content: '', exists: false });
     setKeys(k.status === 'fulfilled' ? parse<ProjectKey[]>(k.value, []) : []);
     if (d.status === 'rejected') setErr(String(d.reason));
   }, [api, name]);
   useEffect(() => { setDoc(null); setKeys(null); setDraft(null); void load(); }, [load]);
-  const save = async () => { if (draft === null) return; setBusy(true); setErr(''); try { await api.on('local', ['facts', 'write', '-P', name], draft); setDraft(null); onDone?.(tr('已保存 FACTS.md（在项目目录，记得 commit）')); await load(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
+  const save = async () => { if (draft === null) return; setBusy(true); setErr(''); try { await api.on(hostOfProject(name), ['facts', 'write', '-P', name], draft); setDraft(null); onDone?.(tr('已保存 FACTS.md（在项目目录，记得 commit）')); await load(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
   return <ProjectFactsView name={name} doc={doc} keys={keys} draft={draft} busy={busy} err={err} onEdit={() => setDraft(doc?.content || FACTS_TEMPLATE(name))} onChange={setDraft} onCancel={() => setDraft(null)} onSave={() => void save()} onOpenPath={(p) => void api.openPath(p).catch(() => {})} onCopy={(text) => void api.copy(text).then(() => onDone?.(tr('已复制'))).catch(() => {})} />;
 }
 

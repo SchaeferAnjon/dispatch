@@ -182,5 +182,7 @@ const app: Dict = {
   "{n} 项": (p) => `${p.n} ${Number(p.n) === 1 ? "Aufgabe" : "Aufgaben"}`,
   "任务板还没建好，任务相关的页面是空的；会话、技能、规则照常可用。": "Das Aufgabenboard ist noch nicht eingerichtet, daher sind die Aufgabenseiten leer; Sitzungen, Skills und Regeln funktionieren wie gewohnt.",
   "电脑太久没有回应，已放弃这次请求；稍后会自动重试。": "Der Mac hat zu lange nicht geantwortet, die Anfrage wurde abgebrochen; gleich wird es erneut versucht.",
+  "复制手机访问链接：在手机浏览器里打开（用 Tailscale 的话手机先连上；没用就要和电脑在同一个 Wi‑Fi）": "Handy-Link kopieren: im Browser des Handys öffnen (mit Tailscale zuerst das Handy verbinden; ohne muss es im selben WLAN wie dieser Mac sein)",
+  "复制 Dispatch 网页版链接；在手机浏览器里打开（用 Tailscale 的话手机先连上；没用就要和电脑在同一个 Wi‑Fi），可添加到主屏幕": "Link zur Web-Version von Dispatch kopieren; im Browser des Handys öffnen (mit Tailscale zuerst das Handy verbinden; ohne muss es im selben WLAN wie dieser Mac sein); lässt sich zum Home-Bildschirm hinzufügen",
 };
 export default app;

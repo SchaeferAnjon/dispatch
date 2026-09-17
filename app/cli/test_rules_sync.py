@@ -330,9 +330,13 @@ class CmdRulesPeerCLI(unittest.TestCase):
             RS.cmd_rules_peer(a)
         return json.loads(buf.getvalue()) if buf.getvalue().strip() else None
 
-    def test_peers_with_no_hosts_configured_exits_nonzero(self):
+    def test_a_single_mac_has_nothing_to_sync_and_that_is_not_a_failure(self):
+        res = self._call(op="peers")   # no SystemExit: scripts and the app read this as success
+        self.assertTrue(res["skipped"]); self.assertEqual(res["peers"], [])
+
+    def test_asking_for_an_unknown_mac_is_still_an_error(self):
         with self.assertRaises(SystemExit) as cm:
-            self._call(op="peers")
+            self._call(op="peers", host="no-such-mac")
         self.assertEqual(cm.exception.code, 1)
 
     def test_push_reports_per_peer(self):

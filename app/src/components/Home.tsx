@@ -333,7 +333,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
         {focus && <button className="link" onClick={() => setFocus("")}>{t("显示全部")} ✕</button>}
         {!focus && featured.length > 1 && <button className="link" onClick={toggleAll}>{everyOpen ? t("全部收起") : t("全部展开")}</button>}
         <select className="sess-agent home-sort" value={sort} onChange={(e) => changeSort(e.target.value as Sort)} aria-label={t("项目排序")} title={t("项目卡片怎么排；收藏的总在最前")}><option value="active">{t("按最近活动")}</option><option value="sessions">{t("按会话数")}</option><option value="open">{t("按未完成任务")}</option><option value="name">{t("按名称")}</option></select>
-        {onPhone && <button className="link" onClick={onPhone} title={t("复制手机访问链接：手机连上 Tailscale 后用浏览器打开")}>{t("手机访问")} ⧉</button>}
+        {onPhone && <button className="link" onClick={onPhone} title={t("复制手机访问链接：在手机浏览器里打开（用 Tailscale 的话手机先连上；没用就要和电脑在同一个 Wi‑Fi）")}>{t("手机访问")} ⧉</button>}
         {onScreen && <button className="link" disabled={!screenReady} onClick={onScreen} title={screenReady ? t("复制屏幕链接：手机上看并操作这台电脑，登录用这台 Mac 的用户名和密码") : t("还没配置屏幕访问：设置页有说明")}>{t("看屏幕")} ⧉</button>}
       </div>
 

@@ -182,5 +182,7 @@ const app: Dict = {
   "{n} 项": (p) => `${p.n} ${Number(p.n) === 1 ? "task" : "tasks"}`,
   "任务板还没建好，任务相关的页面是空的；会话、技能、规则照常可用。": "The task board is not set up yet, so task pages are empty; sessions, skills and rules work as usual.",
   "电脑太久没有回应，已放弃这次请求；稍后会自动重试。": "The Mac took too long to answer, so this request was dropped; it will retry shortly.",
+  "复制手机访问链接：在手机浏览器里打开（用 Tailscale 的话手机先连上；没用就要和电脑在同一个 Wi‑Fi）": "Copy the phone link: open it in the phone's browser (with Tailscale, connect the phone first; without it, the phone must be on the same Wi‑Fi as this Mac)",
+  "复制 Dispatch 网页版链接；在手机浏览器里打开（用 Tailscale 的话手机先连上；没用就要和电脑在同一个 Wi‑Fi），可添加到主屏幕": "Copy the link to Dispatch's web version; open it in the phone's browser (with Tailscale, connect the phone first; without it, the phone must be on the same Wi‑Fi as this Mac); it can be added to the home screen",
 };
 export default app;

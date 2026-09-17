@@ -295,10 +295,12 @@ def connect(directory):
     db = sqlite3.connect(path, timeout=15)
     os.chmod(path, 0o600)
     db.execute('CREATE TABLE IF NOT EXISTS streams (path TEXT PRIMARY KEY, inode INTEGER, off INTEGER, mtime REAL, data TEXT)')
-    # `sid` lets one session be looked up by index instead of scanning every path with LIKE.
-    if 'sid' not in {r[1] for r in db.execute('PRAGMA table_info(streams)')}:
-        db.execute('ALTER TABLE streams ADD COLUMN sid TEXT')
-    db.execute('CREATE INDEX IF NOT EXISTS streams_sid ON streams(sid)')
+    # Which session each cached stream belongs to, so one session is found by index instead of a
+    # LIKE over every path. A table of its own, on purpose: the desktop app, the phone service and a
+    # source checkout can be different versions sharing this file, and an older one writes `streams`
+    # with positional values — adding a column there broke every activity read (task-lhk2).
+    db.execute('CREATE TABLE IF NOT EXISTS stream_sids (path TEXT PRIMARY KEY, sid TEXT)')
+    db.execute('CREATE INDEX IF NOT EXISTS stream_sids_sid ON stream_sids(sid)')
     db.execute('CREATE TABLE IF NOT EXISTS read_replies (key TEXT, reply_id TEXT, PRIMARY KEY(key, reply_id))')
     db.execute('CREATE TABLE IF NOT EXISTS session_preferences (key TEXT PRIMARY KEY, data TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL)')
@@ -327,7 +329,8 @@ def read_stream(db, path, agent):
             try: observe(state, json.loads(line))
             except (ValueError, TypeError, AttributeError): continue
     state['version'] = f'{st.st_ino}:{off}'
-    db.execute('INSERT OR REPLACE INTO streams (path, inode, off, mtime, data, sid) VALUES (?,?,?,?,?,?)', (path, st.st_ino, off, st.st_mtime, json.dumps(state, ensure_ascii=False), state.get('session_id') or None))
+    db.execute('INSERT OR REPLACE INTO streams VALUES (?,?,?,?,?)', (path, st.st_ino, off, st.st_mtime, json.dumps(state, ensure_ascii=False)))
+    if state.get('session_id'): db.execute('INSERT OR REPLACE INTO stream_sids VALUES (?,?)', (path, state['session_id']))
     return state
 
 
@@ -474,7 +477,8 @@ def zcode_sessions(home, db, limit=60, agent='zcode'):
                     rows.append(state); continue
             try: state = zcode_state(z, s, agent, seq)
             except sqlite3.Error: continue
-            db.execute('INSERT OR REPLACE INTO streams (path, inode, off, mtime, data, sid) VALUES (?,?,?,?,?,?)', (key, 0, s['time_updated'], s['time_updated'] / 1000, json.dumps(state, ensure_ascii=False), state.get('session_id') or None))
+            db.execute('INSERT OR REPLACE INTO streams VALUES (?,?,?,?,?)', (key, 0, s['time_updated'], s['time_updated'] / 1000, json.dumps(state, ensure_ascii=False)))
+            if state.get('session_id'): db.execute('INSERT OR REPLACE INTO stream_sids VALUES (?,?)', (key, state['session_id']))
             rows.append(state)
     return rows
 
@@ -599,7 +603,8 @@ def hermes_sessions(home, db, limit=60):
                     rows.append(state); continue
             try: state = hermes_state(z, s, home)
             except sqlite3.Error: continue
-            db.execute('INSERT OR REPLACE INTO streams (path, inode, off, mtime, data, sid) VALUES (?,?,?,?,?,?)', (key, 0, version, state['last_at'], json.dumps(state, ensure_ascii=False), state.get('session_id') or None))
+            db.execute('INSERT OR REPLACE INTO streams VALUES (?,?,?,?,?)', (key, 0, version, state['last_at'], json.dumps(state, ensure_ascii=False)))
+            if state.get('session_id'): db.execute('INSERT OR REPLACE INTO stream_sids VALUES (?,?)', (key, state['session_id']))
             rows.append(state)
     return rows
 
@@ -611,8 +616,9 @@ def transcript_states(directory, session_ids):
     if not session_ids: return out
     with closing(connect(directory)) as db:
         for sid in session_ids:
-            # Rows written before the column existed have no sid yet: those still match by path.
-            for (data,) in db.execute('SELECT data FROM streams WHERE sid=? OR (sid IS NULL AND path LIKE ?)', (sid, '%' + sid + '%')):
+            hits = db.execute('SELECT s.data FROM stream_sids i JOIN streams s ON s.path=i.path WHERE i.sid=?', (sid,)).fetchall()
+            # Streams cached before the side table existed (or by an older version) are still found by path.
+            for (data,) in hits or db.execute('SELECT data FROM streams WHERE path LIKE ?', ('%' + sid + '%',)):
                 try: s = json.loads(data)
                 except ValueError: continue
                 if s.get('session_id') != sid or not s.get('last_at'): continue

@@ -270,7 +270,6 @@ const project: Dict = {
   "按会话数": "By session count",
   "按未完成任务": "By open tasks",
   "按名称": "By name",
-  "复制手机访问链接：手机连上 Tailscale 后用浏览器打开": "Copy the phone link: connect the phone to Tailscale, then open it in a browser",
   "手机访问": "Phone access",
   "复制屏幕链接：手机上看并操作这台电脑，登录用这台 Mac 的用户名和密码": "Copy the screen link: watch and control this Mac from your phone, signing in with this Mac's user name and password",
   "还没配置屏幕访问：设置页有说明": "Screen access is not set up yet; see Settings",

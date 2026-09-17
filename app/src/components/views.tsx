@@ -188,7 +188,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
             // to open here (opening your own screen inside itself just mirrors forever).
             if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: t("看它的屏幕并操作"), act: () => onOpenUrl(h.vnc), hint: t("用系统「屏幕共享」打开，能直接操作那台 Mac") });
             if (h.novnc_up && h.novnc.startsWith("https://") && !h.local) ways.push({ key: "novnc", label: t("复制手机看屏幕链接 ⧉"), act: () => onCopyText(h.novnc, t("手机看屏幕的链接")), hint: t("发到手机上打开（手机需连着 Tailscale），用这台 Mac 的用户名和登录密码") });
-            if (h.local && onPhoneLink) ways.push({ key: "phone", label: t("手机访问 ⧉"), act: onPhoneLink, hint: t("复制 Dispatch 网页版链接；手机连上 Tailscale 后用浏览器打开，可添加到主屏幕") });
+            if (h.local && onPhoneLink) ways.push({ key: "phone", label: t("手机访问 ⧉"), act: onPhoneLink, hint: t("复制 Dispatch 网页版链接；在手机浏览器里打开（用 Tailscale 的话手机先连上；没用就要和电脑在同一个 Wi‑Fi），可添加到主屏幕") });
             if (h.local && h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: t("看屏幕 ⧉"), act: () => onCopyText(h.novnc, t("屏幕链接已复制。在手机或另一台电脑上打开（在这台上打开自己会套娃）；对方先连上 Tailscale。")), hint: t("复制这台电脑的屏幕链接，给手机或另一台电脑用；在本机打开会套娃") });
             if (h.rustdesk) ways.push({ key: "rustdesk", label: h.rustdesk_id ? `RustDesk ${h.rustdesk_id} ⧉` : "RustDesk", act: () => (h.rustdesk_id ? onCopyText(h.rustdesk_id, "RustDesk ID") : onOpenUrl("rustdesk://")), hint: t("不用虚拟网：手机 RustDesk 输这个 ID") });
             if (h.sunshine) ways.push({ key: "moonlight", label: t("Moonlight 配对"), act: () => onOpenUrl(h.sunshine_ui), hint: t("打开 Sunshine 配对页；手机装 Moonlight，画质最高") });

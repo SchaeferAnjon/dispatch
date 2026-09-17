@@ -370,3 +370,19 @@ class ActivityTests(unittest.TestCase):
         result=workspace_changes(self.home)
         self.assertIn('+staged',result['patch']);self.assertIn('+unstaged',result['patch'])
         self.assertTrue(any(f['untracked'] for f in result['files']))
+
+
+class SharedCacheStaysCompatible(unittest.TestCase):
+    """The activity cache file is shared by versions that differ (installed app, phone service,
+    source checkout): an older one writes `streams` with five positional values (task-lhk2)."""
+
+    def test_an_older_writer_still_works_after_a_newer_one_opened_the_file(self):
+        import activity as A
+        from contextlib import closing
+        with tempfile.TemporaryDirectory() as d:
+            with closing(A.connect(d)) as db, db:
+                cols = [r[1] for r in db.execute('PRAGMA table_info(streams)')]
+                self.assertEqual(cols, ['path', 'inode', 'off', 'mtime', 'data'])
+                db.execute('INSERT OR REPLACE INTO streams VALUES (?,?,?,?,?)', ('/p.jsonl', 1, 2, 3.0, '{}'))   # what v0.7.33 does
+                self.assertEqual(db.execute('SELECT count(*) FROM streams').fetchone()[0], 1)
+                self.assertIn('stream_sids', {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")})

@@ -34,6 +34,9 @@ def claude_project_dirs():
     return known
 
 
+TCC_FOLDERS = {"Documents", "Desktop", "Downloads", "Pictures", "Movies", "Music", "Library"}
+
+
 def claude_decode_dir(enc, base="/", depth=0):
     """Walk the filesystem to undo Claude's lossy encoding: at each level pick the entry whose
     encoded name is a prefix of what is left. Returns None when no existing directory fits."""
@@ -50,6 +53,11 @@ def claude_decode_dir(enc, base="/", depth=0):
         e = re.sub(r"[^A-Za-z0-9]", "-", name)
         if e and rest.startswith(e) and (len(rest) == len(e) or rest[len(e)] == "-"):
             full = os.path.join(base, name)
+            # Listing these makes macOS ask 「Dispatch 想访问“文稿”文件夹」 out of nowhere, just to
+            # print a nicer folder name on the memory page. Not worth a permission prompt: a project
+            # that lives there is found through the session index instead (see known_dirs above).
+            if os.path.dirname(full) == os.path.expanduser("~") and name in TCC_FOLDERS:
+                continue
             if os.path.isdir(full):
                 hit = claude_decode_dir(rest[len(e):], full, depth + 1)
                 if hit:

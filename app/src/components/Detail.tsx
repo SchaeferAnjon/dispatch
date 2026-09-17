@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { hostOfProject } from "../projectHosts";
 import type { Api } from "../api";
 import { ago, actorOf, delegatedBy, delegatedTo, eventsFrom, fmtTime, isReviewed, needsReview, parseAcceptance, parsePitfall, projectOf, relTime, serializeAcceptance, statusLabel, type Interaction, type Pitfall, discussionConclusion } from "../derive";
 import type { Activity, Comment, FileChange, HistoryEntry, Issue, Session, SessionRef } from "../types";
@@ -45,7 +46,7 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
   }, [issue?.id, issue?.labels?.join(","), refs.map((r) => r.session_id).join(",")]);
   useEffect(() => {
     let alive = true;
-    api.on("local", ["commits", id, "--json"]).then((t) => { if (alive) setCommits(JSON.parse(t.slice(Math.max(0, t.indexOf("{"))))); }).catch(() => { if (alive) setCommits({ root: "", remote: "", commits: [] }); });
+    api.on(hostOfProject(issue ? projectOf(issue) : ""), ["commits", id, "--json"]).then((t) => { if (alive) setCommits(JSON.parse(t.slice(Math.max(0, t.indexOf("{"))))); }).catch(() => { if (alive) setCommits({ root: "", remote: "", commits: [] }); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, stamp]);

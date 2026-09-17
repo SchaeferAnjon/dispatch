@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } fr
 import { getApi, isTauri, isServed, type Api, type AgentStartInput, type EnvReport } from "./api";
 import { EnvCheck } from "./components/EnvCheck";
 import { firstInstalled, setInstalledAgents } from "./installedAgents";
+import { setProjectHosts } from "./projectHosts";
 import { Detail } from "./components/Detail";
 import { NewSession, SessionActions } from "./components/SessionActions";
 import { NewTask } from "./components/NewTask";
@@ -611,6 +612,8 @@ export default function App() {
   const projectRows = useMemo(()=>projectConversations(activityF,[...refsF.values()]),[activityF,refsF]);
   // 收藏 / 归档 per project: one shared bd memory, re-read whenever the board changes.
   const [projectOwners, setProjectOwners] = useState<Record<string, ProjectOwner>>({});
+  // Per-project commands that read the project's own folder go to the Mac that holds it.
+  useEffect(() => { const map: Record<string, string> = {}; for (const [name, o] of Object.entries(projectOwners)) { const id = ownerHostId(o, hosts); const h = hosts.find((x) => x.id === id); if (id && h && !h.local) map[name] = id; } setProjectHosts(map); }, [projectOwners, hosts]);
   useEffect(() => {
     if (!api) return;
     let alive = true;

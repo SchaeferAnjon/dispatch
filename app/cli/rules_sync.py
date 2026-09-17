@@ -341,8 +341,12 @@ def cmd_rules_peer(a):
     host_filter = getattr(a, "host", "") or ""
     targets = select_peers(host_filter)
     if not targets:
-        print((f"hosts.json 里没有叫 {host_filter} 的机器" if host_filter else "hosts.json 里没有配置其他 Mac，不用同步"), file=sys.stderr)
-        sys.exit(1)
+        if host_filter:
+            print(f"hosts.json 里没有叫 {host_filter} 的机器", file=sys.stderr)
+            sys.exit(1)
+        # One Mac: nothing to sync is a fine outcome, not a failure.
+        D.out({"skipped": True, "reason": "只有这一台电脑，不用同步", "peers": []}, getattr(a, "json", False), lambda x: print(x["reason"]))
+        return
     files = [a.file] if getattr(a, "file", "") else None
     prefer = "auto" if a.op == "peers" else a.op  # "push" | "pull" | "peers"(status, dry-run)
     rows = []
