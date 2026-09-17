@@ -77,6 +77,11 @@ export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?
   r.moved_to_name ? <span className="host-chip moved" title="dispatch move 迁出的原会话；对方接手后可以关掉">已迁往 {r.moved_to_name}</span>
   : r.moved_from_name ? <span className="host-chip moved" title="dispatch move 迁过来接手的会话">从 {r.moved_from_name} 迁来</span> : null;
 
+// Conversations already read this run: reopening one shows it at once (then refreshes in the
+// background), instead of a blank 「读取对话记录…」 and a full re-parse — over ssh from the other Mac
+// that was two or three seconds every time.
+const detailCache = new Map<string, SessionDetail>();
+
 export function SessionsView({ onBack, onProject, solo = false, localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
   const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
@@ -136,21 +141,38 @@ export function SessionsView({ onBack, onProject, solo = false, localHostName, a
   const runningRef = useRef(running); runningRef.current = running;
   useEffect(() => {
     if (!sel) { setDetail(null); return; }
-    let alive = true; let timer = 0;
-    setBusy(true); setDetail(null); setLoadError(false); follow.current = true; setAtLatest(true);
+    let alive = true; let timer = 0; let lastFull = 0;
+    setLoadError(false); follow.current = true; setAtLatest(true);
+    const cached = detailCache.get(sel);
+    if (cached) { setDetail(cached); setBusy(false); } else { setBusy(true); setDetail(null); }
+    // The whole transcript, parsed on its Mac: on open (unless cached) and as a resync every 90 s.
+    const fetchFull = async () => {
+      let d: SessionDetail;
+      if (selHost) {
+        const raw = await api.on(selHost, ["session", selSid!, "--json"]);
+        d = JSON.parse(raw.slice(raw.indexOf("{"))) as SessionDetail;
+        const r = refsRef.current.find((x) => x.session_id === selSid && x.host === selHost);
+        d = { ...d, meta: { ...d.meta, host: selHost, remote: true, host_name: r?.host_name ?? selHost, moved_to: r?.moved_to, moved_to_name: r?.moved_to_name, moved_from: r?.moved_from, moved_from_name: r?.moved_from_name } };
+      } else d = await api.sessionDetail(sel);
+      lastFull = Date.now();
+      if (alive) { detailCache.set(sel, d); setDetail(d); setLoadError(false); }
+    };
+    // Between resyncs only what was appended since the last read travels (`--since <offset>`),
+    // for an idle conversation as well as a running one.
+    const fetchTail = async () => {
+      const d = detailRef.current;
+      if (!d || d.offset === undefined) return fetchFull();
+      const raw = await api.on(selHost ?? d.meta.host ?? "local", ["session", `${d.meta.agent}:${d.meta.session_id}`, "--since", String(d.offset), "--json"]);
+      const t = JSON.parse(raw.slice(Math.max(0, raw.indexOf("{")))) as SessionTail;
+      if (alive && t.partial) setDetail((prev) => { if (!prev) return prev; const next = mergeTail(prev, t); detailCache.set(sel, next); return next; });
+    };
     const refresh = async () => {
       if (document.visibilityState === 'visible') {
         try {
-          let d: SessionDetail;
-          if (selHost) {
-            const raw = await api.on(selHost, ["session", selSid!, "--json"]);
-            d = JSON.parse(raw.slice(raw.indexOf("{"))) as SessionDetail;
-            const r = refsRef.current.find((x) => x.session_id === selSid && x.host === selHost);
-            d = { ...d, meta: { ...d.meta, host: selHost, remote: true, host_name: r?.host_name ?? selHost, moved_to: r?.moved_to, moved_to_name: r?.moved_to_name, moved_from: r?.moved_from, moved_from_name: r?.moved_from_name } };
-          } else d = await api.sessionDetail(sel);
-          if (alive) { setDetail(d); setLoadError(false); }
+          if (!detailRef.current || Date.now() - lastFull > 90000) await fetchFull();
+          else if (!runningRef.current) await fetchTail();   // running: the live tail below already polls every 1.5 s
         }
-        catch { if (alive) setLoadError(true); }
+        catch { if (alive && !detailRef.current) setLoadError(true); }
         finally { if (alive) setBusy(false); }
       }
       if (alive) timer = window.setTimeout(refresh, runningRef.current ? 12000 : 3000);
@@ -172,7 +194,7 @@ export function SessionsView({ onBack, onProject, solo = false, localHostName, a
         try {
           const raw = await api.on(host, ['session', key, '--since', String(d.offset), '--json']);
           const t = JSON.parse(raw.slice(Math.max(0, raw.indexOf('{')))) as SessionTail;
-          if (alive && t.partial) setDetail((prev) => (prev ? mergeTail(prev, t) : prev));
+          if (alive && t.partial) setDetail((prev) => { if (!prev) return prev; const next = mergeTail(prev, t); detailCache.set(sel, next); return next; });
         } catch { /* the next full read catches up */ }
         inflight = false;
       }
