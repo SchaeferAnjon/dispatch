@@ -1728,3 +1728,12 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
   html.tauri .titlebar{min-height:40px}
   html.tauri .titlebar .lead{padding-left:82px}
 }
+
+.project-wiki .hub-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.project-wiki .search{flex:1;min-width:200px;margin:0}
+.wiki-list{display:flex;flex-direction:column;gap:8px}
+.wiki-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--win)}
+.wiki-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+.wiki-text{margin:0;line-height:1.5;white-space:pre-wrap}
+.wiki-field{margin:4px 0 0;font-size:12.5px;color:var(--ink-2);white-space:pre-wrap}
+.wiki-field b{color:var(--ink);margin-right:4px;font-weight:600}
