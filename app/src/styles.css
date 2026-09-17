@@ -1368,8 +1368,15 @@ th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--ink)}t
    and keep tabs on one scrolling line, so the header takes a quarter of the screen instead of a third. */
 @media(max-width:640px){
   .main:has(.sess-wrap.has-selection) .toolbar.bare{display:none}
-  .sess-wrap.has-selection .sess-head{padding:8px 12px 4px;gap:8px}
+  .sess-wrap.has-selection .sess-head{padding:8px 12px 4px;gap:6px 8px;flex-wrap:wrap}
   .sess-wrap.has-selection .sess-head .sub{display:none}
+  /* Phone: the title block owns the first row next to the back button (the inline flex:1 would let the
+     action buttons squeeze it to nothing); the buttons wrap onto their own row. The list toggle and
+     split are desktop ideas. */
+  .sess-wrap.has-selection .sess-head .list-toggle{display:none}
+  .sess-wrap.has-selection .sess-head>div{flex:1 1 60% !important;min-width:0}
+  .sess-wrap.has-selection .sess-head .split-btn,.sess-wrap.has-selection .sess-head>button[title^="分屏"]{display:none}
+  .sess-wrap.has-selection .sess-head .session-back{max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sess-wrap.has-selection .session-context>summary{padding:2px 12px;font-size:11px}
   .sess-wrap.has-selection .session-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
   .sess-wrap.has-selection .session-tabs button{white-space:nowrap}
