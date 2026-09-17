@@ -277,8 +277,8 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   const pending = (connection?.receipts ?? []).filter(r => r.state === 'accepted' && r.id !== dismissed && !r.delivered && !shownInTranscript(r) && Date.now() / 1000 - r.created < 6 * 3600).sort((a, b) => a.created - b.created);
   const unknown = last && (last.state === 'unknown' || last.state === 'sending');
   return <section className={`session-reply${big ? " big" : ""}`} aria-label="回复当前会话">
-    {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map((r, i) => <div key={r.id} className="reply-queued"><span>你 · {r.note}</span><p>{r.text}</p>
-      {session.agent === 'claude-code' && i === pending.length - 1 && connection?.working && <div className="reply-request-actions">
+    {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map((r, i) => <div key={r.id} className="reply-queued"><div className="reply-queued-body"><span>你 · {r.note}</span><p>{r.text}</p></div>
+      {session.agent === 'claude-code' && i === pending.length - 1 && connection?.working && <div className="reply-request-actions reply-queued-actions">
         <button className="btn sm" type="button" disabled={!!withdrawing || busy} onClick={() => void withdraw(r, false)} title="从 Claude Code 的队列里拿回来，不发了">{withdrawing === r.id ? '正在撤回…' : '撤回'}</button>
         <button className="btn sm" type="button" disabled={!!withdrawing || busy} onClick={() => void withdraw(r, true)} title="拿回来放进输入框，改好再发">撤回并编辑</button>
       </div>}</div>)}</div>}
