@@ -215,6 +215,29 @@ export default function App() {
     if (p.view === "discuss") { setDiscussFocus(p.discussion ?? null); setDiscussShown(p.discussion ?? null); }
   };
   const backTarget = trail[trail.length - 1];
+  // ?solo=1: this window shows one conversation and nothing else — the panes of 分屏 and detached
+  // conversation windows load the app this way.
+  const solo = useMemo(() => new URLSearchParams(window.location.search).has("solo"), []);
+  // ⌘+click on anything that stands for a project, a conversation or a task opens it in a new window.
+  useEffect(() => {
+    if (!api) return;
+    const handler = (e: MouseEvent) => {
+      if (!e.metaKey || e.button !== 0) return;
+      const t = e.target as HTMLElement | null;
+      if (!t || typeof t.closest !== "function" || t.closest("input,textarea,select,a[href]")) return;
+      const el = t.closest<HTMLElement>("[data-project],[data-session],[data-task]");
+      if (!el) return;
+      let hash = "";
+      if (el.dataset.project !== undefined && el.dataset.project) hash = `#/projects/${encodeURIComponent(el.dataset.project)}`;
+      else if (el.dataset.session) { const parts = el.dataset.session.split(":"); hash = `#/sessions/${encodeURIComponent(parts[parts.length - 1])}`; }
+      else if (el.dataset.task) hash = `#/board/task/${encodeURIComponent(el.dataset.task)}`;
+      if (!hash) return;
+      e.preventDefault(); e.stopPropagation();
+      void api.openWindow(hash);
+    };
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+  }, [api]);
   // 「分离」: the page moves out into its own window and this one steps back — to where you came
   // from, else (a conversation) to its project, else the workbench. Uses the app's own place, not
   // the address bar: the desktop window keeps no hash.
@@ -861,7 +884,7 @@ export default function App() {
             others.length ? `这边还有 ${others.length} 个会话在改这个项目` : "", r.owner?.error ? `项目归属更新失败：${r.owner.error}` : ""].filter(Boolean).join("；"), !!r.owner?.error || !!(v?.checked && !(v.head_match && v.dirty_match)));
           api!.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
         } catch (e) { say(String(e), true); }
-      } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectHome(projectRows.filter((a) => conversationProject(a) === n))); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className="app">
+      } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectHome(projectRows.filter((a) => conversationProject(a) === n))); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className={`app${solo ? " solo" : ""}`}>
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b className="lead-mobile">Dispatch</b></div>
         <div className="crumb" data-tauri-drag-region>
@@ -955,7 +978,7 @@ export default function App() {
             {view === "table" && <TableView starred={starredProjects} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(what.endsWith("。") ? what : `${what}已复制`)).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
             {view === "discuss" && api && <DiscussView api={api} me={me} issues={issuesF} initialTask={discussFocus} onShown={setDiscussShown} onNew={() => setDiscuss({})} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, kind: leader?.kind, model: leader?.model })} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} onBack={previousView ? { label: VIEW_LABEL[previousView], go: goBack } : undefined} localHostName={hosts.find(h => h.local)?.name} onProject={openProject} />}
+            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} onBack={previousView ? { label: VIEW_LABEL[previousView], go: goBack } : undefined} localHostName={hosts.find(h => h.local)?.name} onProject={openProject} solo={solo} />}
             {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView quota={{ rows: quota, busy: quotaBusy, error: quotaError, refresh: refreshQuota }} key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}

@@ -16,7 +16,7 @@ import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 import { SessionQuestion, pendingQuestion } from "./SessionQuestion";
 
-interface Props { onBack?: { label: string; go: () => void }; localHostName?: string; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string; onProject?: (name: string) => void }
+interface Props { onBack?: { label: string; go: () => void }; localHostName?: string; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string; onProject?: (name: string) => void; solo?: boolean }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code", cron: "定时任务", telegram: "Telegram", weixin: "微信", whatsapp: "WhatsApp", discord: "Discord", slack: "Slack" };
 
@@ -77,13 +77,23 @@ export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?
   r.moved_to_name ? <span className="host-chip moved" title="dispatch move 迁出的原会话；对方接手后可以关掉">已迁往 {r.moved_to_name}</span>
   : r.moved_from_name ? <span className="host-chip moved" title="dispatch move 迁过来接手的会话">从 {r.moved_from_name} 迁来</span> : null;
 
-export function SessionsView({ onBack, onProject, localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ onBack, onProject, solo = false, localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
   const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
   const [mode, setMode] = useState<"active" | "starred" | "archived" | "scheduled">("active");
   const host = hostId ?? "";
   const [sel, setSel] = useState<string | null>(initialId ?? null);
+  // 收起列表: the conversation takes the whole width; remembered per device.
+  const [listHidden, setListHidden] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-sess-list-hidden") === "1"; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem("dispatch-sess-list-hidden", listHidden ? "1" : "0"); } catch { /* private mode */ } }, [listHidden]);
+  // 分屏: two or four conversations side by side, each a solo copy of this page (same origin, ?solo=1),
+  // so every pane has its own transcript, reply box and polling. Clicking the list fills the focused pane.
+  const [split, setSplit] = useState<{ layout: 2 | 4; panes: (string | null)[]; focus: number } | null>(null);
+  const soloUrl = (id: string) => { const q = new URLSearchParams(location.search); q.set("solo", "1"); return `${location.pathname}?${q.toString()}#/sessions/${encodeURIComponent(id)}`; };
+  const titleOf = (id: string) => refs.find((r) => r.session_id === id)?.title || id.slice(0, 8);
+  const startSplit = (layout: 2 | 4) => setSplit((cur) => { const panes: (string | null)[] = Array.from({ length: layout }, (_, i) => cur?.panes[i] ?? (i === 0 ? (sel ? sel.split("@")[0] : null) : null)); return { layout, panes, focus: panes.findIndex((p) => !p) === -1 ? 0 : panes.findIndex((p) => !p) }; });
+  const placeInPane = (id: string) => setSplit((cur) => { if (!cur) return cur; const panes = [...cur.panes]; const empty = panes.findIndex((p) => !p); const at = empty === -1 ? cur.focus : empty; panes[at] = id; const nextEmpty = panes.findIndex((p) => !p); return { ...cur, panes, focus: nextEmpty === -1 ? at : nextEmpty }; });
   useEffect(() => { onSelected?.(sel); }, [sel]);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<"timeline" | "files" | "tasks" | "attachments" | "subagents">("timeline");
@@ -230,7 +240,7 @@ export function SessionsView({ onBack, onProject, localHostName, archivedProject
   ] : [], [detail?.meta.session_id]);
 
   return (
-    <MediaProvider api={api} session={detail?.meta}><div className={`sess-wrap${sel ? " has-selection" : ""}`}>
+    <MediaProvider api={api} session={detail?.meta}><div className={`sess-wrap${sel ? " has-selection" : ""}${listHidden || solo ? " list-hidden" : ""}${split ? " is-split" : ""}`}>
       <div className="sess-side">
         <div className="sess-tools">
           <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
@@ -253,7 +263,7 @@ export function SessionsView({ onBack, onProject, localHostName, archivedProject
             const l = liveOf(r.session_id, r.host ?? "local");
             const active = activities.find(a => a.session_id === r.session_id && (a.host ?? "local") === (r.host ?? "local"));
             return (
-              <div key={rowKey(r)} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${isSel(r) ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(rowKey(r)); setTab("timeline"); }}>
+              <div key={rowKey(r)} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${isSel(r) ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { if (split) { placeInPane(r.session_id); return; } setSel(rowKey(r)); setTab("timeline"); }}>
                 <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title="追踪中">★</span>}<span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}<span className={`host-chip${r.remote ? "" : " local"}`} title={r.remote ? `在 ${r.host_name} 上` : "在这台电脑上"}>{r.remote ? r.host_name : (localHostName || "本机")}</span><MovedChip r={r} /><span className="muted">{(ENTRY[r.entrypoint] ?? r.entrypoint) ? `· ${ENTRY[r.entrypoint] ?? r.entrypoint} ` : ""}· {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && activityLine(active) && <div className="l3 activity-text">{activityLine(active)}</div>}
@@ -265,9 +275,24 @@ export function SessionsView({ onBack, onProject, localHostName, archivedProject
       </div>
 
       <div className="sess-main">
-        {!sel && <div className="empty">选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
-        {sel && !detail && <div className="empty">{busy ? "读取对话记录…" : loadError ? "暂时读不到会话，正在重试。" : ""}<button className="link" onClick={() => setSel(null)}>返回会话列表</button></div>}
-        {detail && (() => {
+        {split && <div className={`sess-split cols-${split.layout === 2 ? 2 : 2}`}>
+          <div className="sess-split-bar">
+            <button className="btn sm" onClick={() => setListHidden((v) => !v)} title={listHidden ? "展开会话列表" : "收起会话列表"}>{listHidden ? "⇥ 列表" : "⇤ 收起列表"}</button>
+            <span className="muted small">分屏：点左边列表把会话放进高亮的格子</span><span className="spacer" />
+            <button className={`btn sm${split.layout === 2 ? " on" : ""}`} onClick={() => startSplit(2)}>2 格</button>
+            <button className={`btn sm${split.layout === 4 ? " on" : ""}`} onClick={() => startSplit(4)}>4 格</button>
+            <button className="btn sm" onClick={() => setSplit(null)}>退出分屏</button>
+          </div>
+          <div className={`sess-panes n${split.layout}`}>
+            {split.panes.map((id, i) => <div key={i} className={`sess-pane${split.focus === i ? " focus" : ""}`} onMouseDown={() => setSplit((c) => c ? { ...c, focus: i } : c)}>
+              <div className="sess-pane-head"><span className="t">{id ? titleOf(id) : `第 ${i + 1} 格 · 点左边列表选一段会话`}</span>{id && <button className="btn sm" onClick={() => setSplit((c) => { if (!c) return c; const panes = [...c.panes]; panes[i] = null; return { ...c, panes, focus: i }; })} aria-label="关闭这一格">✕</button>}</div>
+              {id ? <iframe title={titleOf(id)} src={soloUrl(id)} /> : <div className="empty">空</div>}
+            </div>)}
+          </div>
+        </div>}
+        {!split && !sel && <div className="empty">选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
+        {!split && sel && !detail && <div className="empty">{busy ? "读取对话记录…" : loadError ? "暂时读不到会话，正在重试。" : ""}<button className="link" onClick={() => setSel(null)}>返回会话列表</button></div>}
+        {!split && detail && (() => {
           const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id, m.host ?? "local");
           const linked = issues.filter(i => linkedSessions(i).includes(m.session_id));
           const related = linked;
@@ -276,7 +301,8 @@ export function SessionsView({ onBack, onProject, localHostName, archivedProject
           return (
             <>
               <div className="sess-head">
-                <button className="btn sm session-back" onClick={() => { if (onBack) onBack.go(); else setSel(null); }} title={onBack ? `回到${onBack.label}` : "回到会话列表"}>‹ {onBack ? onBack.label : "会话"}</button>
+                {!solo && <button className="btn sm list-toggle" onClick={() => setListHidden((v) => !v)} title={listHidden ? "展开会话列表" : "收起会话列表，对话占满整页"} aria-label={listHidden ? "展开会话列表" : "收起会话列表"}>{listHidden ? "⇥" : "⇤"}</button>}
+                {!solo && <button className="btn sm session-back" onClick={() => { if (onBack) onBack.go(); else setSel(null); }} title={onBack ? `回到${onBack.label}` : "回到会话列表"}>‹ {onBack ? onBack.label : "会话"}</button>}
                 <Avatar actor={a} size={28} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   {/* Which Mac this copy lives on: after `dispatch move` the same id exists on both. */}
@@ -286,6 +312,7 @@ export function SessionsView({ onBack, onProject, localHostName, archivedProject
                 </div>
                 {(() => { const proj = m.project_override || m.project; return onProject && proj && proj !== UNGROUPED_PROJECT
                   ? <button className="btn sm" onClick={() => onProject(proj)} title={`回到项目 ${proj}：回顾、任务、文档都在那里`}>项目 · {proj} ›</button> : null; })()}
+                {!solo && <button className="btn sm" onClick={() => startSplit(2)} title="分屏：这段会话放左边，再从列表选一段放右边，一起看">⊞ 分屏</button>}
                 {l && <AdoptButton session={l} compact />}
                 <OpenSessionButton session={m} />
                 {!NO_RESUME.has(m.agent) && <button className="btn sm desktop-session-action" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}

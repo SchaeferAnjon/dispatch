@@ -1680,3 +1680,22 @@ button.review-verdict:hover{filter:brightness(.96)}
 .move-progress .move-text{font-size:12px;color:var(--accent-ink);white-space:nowrap}
 .move-progress.compact{margin:4px 0 0;max-width:none}
 .move-progress.compact .move-text{font-size:11.5px}
+
+.sess-wrap.list-hidden{grid-template-columns:0 minmax(0,1fr)}
+.sess-wrap.list-hidden .sess-side{display:none}
+.sess-split{display:flex;flex-direction:column;height:100%;min-height:0}
+.sess-split-bar{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line)}
+.sess-split-bar .spacer{flex:1}
+.sess-panes{flex:1;min-height:0;display:grid;gap:1px;background:var(--line)}
+.sess-panes.n2{grid-template-columns:1fr 1fr}
+.sess-panes.n4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.sess-pane{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--win)}
+.sess-pane.focus{box-shadow:inset 0 0 0 2px var(--accent)}
+.sess-pane-head{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12px;border-bottom:1px solid var(--line);background:var(--panel)}
+.sess-pane-head .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sess-pane iframe{flex:1;width:100%;border:0;min-height:0}
+.app.solo .sidebar,.app.solo .tb,.app.solo .topbar,.app.solo .toolbar{display:none!important}
+.app.solo .body{grid-template-columns:1fr}
+.app.solo{grid-template-rows:1fr}
+.app.solo .titlebar{display:none}
+.app.solo .sess-head .session-back{display:none}
