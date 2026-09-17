@@ -1707,4 +1707,4 @@ button.review-verdict:hover{filter:brightness(.96)}
 .new-session-file .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* A conversation still working: its status line reads green, with the same pulse as the online dot. */
-.sess-item .l3.activity-text.working{color:var(--s-done);font-weight:500;background:var(--s-done-bg,color-mix(in srgb,var(--s-done) 12%,transparent));border-radius:6px;padding:1px 6px;margin-left:-6px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess-item .l3.activity-text.working{color:var(--s-done)!important;font-weight:500;background:var(--s-done-bg,color-mix(in srgb,var(--s-done) 12%,transparent));border-radius:6px;padding:1px 6px;margin-left:-6px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
