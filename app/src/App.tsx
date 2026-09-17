@@ -215,6 +215,16 @@ export default function App() {
     if (p.view === "discuss") { setDiscussFocus(p.discussion ?? null); setDiscussShown(p.discussion ?? null); }
   };
   const backTarget = trail[trail.length - 1];
+  // 「分离」: the page moves out into its own window and this one steps back — to where you came
+  // from, else (a conversation) to its project, else the workbench. Uses the app's own place, not
+  // the address bar: the desktop window keeps no hash.
+  const detach = () => {
+    void api?.openWindow(placeToHash(placeNow));
+    if (trail.length) { goBackPlace(); return; }
+    const ref = view === "sessions" && sessionShown ? [...refsF.values()].find((r) => r.session_id === sessionShown) : undefined;
+    const proj = ref?.project_override || ref?.project;
+    if (proj && proj !== UNGROUPED_PROJECT) openProject(proj); else if (view === "projects" && projectSelection) setProjectSelection(null); else changeView("home");
+  };
   const backLabel = (p: Place) => p.view === "sessions" && p.session ? "会话" : p.view === "projects" && p.project ? `项目 ${p.project}` : VIEW_LABEL[p.view];
   // The tour never opens on its own; the design should carry itself. `?` still has it.
   const [tour, setTour] = useState(false);
@@ -832,7 +842,7 @@ export default function App() {
         <div className="tb-right">
           <button className="btn ghost" onClick={() => setSearch(true)} title="搜项目、会话、任务">搜索 <kbd>⌘K</kbd></button>
           <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
-          <button className="btn ghost" onClick={() => void api?.openWindow(window.location.hash || "#/home")} title="把当前页面再开一个窗口：几个会话并排看，或一边看项目文档一边看会话（右键会话/任务/项目也有「在新窗口打开」）" aria-label="在新窗口打开当前页面">⧉</button>
+          <button className="btn ghost" onClick={detach} title="分离：把当前页面挪到一个独立窗口，这里回到上一页或所属项目（右键会话/任务/项目也有「在新窗口打开」）" aria-label="把当前页面分离到新窗口">⧉</button>
           <button className="btn ghost" onClick={nextTheme} title={theme === "dark" ? "主题：深色 · 点一下切浅色" : theme === "light" ? "主题：浅色 · 点一下跟随系统" : "主题：跟随系统 · 点一下切深色"} aria-label="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
           {quotaByAgent.map(({ agent: a, q }) => (
             <button key={`${a.actor.id}:${q.host_name}`} className="home-quota" onClick={() => setView("quota")} title={`${a.actor.name} 的额度 · ${[q.host_name, ...(q.also ?? [])].join(" + ")} · ${q.updated_at ? new Date(q.updated_at * 1000).toLocaleTimeString() + "更新" : "尚未更新"} · 点开看详情`}>
