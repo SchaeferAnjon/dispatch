@@ -132,6 +132,7 @@ export default function App() {
     })).then((un) => { off = un; });
     return () => off?.();
   }, []);
+  const progressCache = useRef(new Map<string, { stamp: string; text: string }>());
   const presenceOnce = useRef(false);  // a hidden window keeps the first presence read and then stops polling
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
   // Agents installed on this Mac: dialogs default to one of them (see installedAgents.ts).
@@ -397,12 +398,15 @@ export default function App() {
 
   // Lineage roots (which thread each task belongs to), refreshed with the issue list.
   const [roots, setRoots] = useState<Map<string, string>>(new Map());
+  // Only a task's detail panel (and the board/table it opens from) reads them: the workbench,
+  // sessions and settings do not pay for two whole-board `bd list` calls on every change.
+  const needRoots = !!selected || BOARD_VIEWS.includes(view);
   useEffect(() => {
-    if (!api) return;
+    if (!api || !needRoots) return;
     let alive = true;
     api.graph().then((g) => { if (alive) setRoots(rootsOf(g.edges)); }).catch(() => {});
     return () => { alive = false; };
-  }, [api, version]);
+  }, [api, version, needRoots]);
   const rootIssue = useCallback((id: string): Issue | undefined => { const r = roots.get(id); return r ? issues.find((i) => i.id === r) : undefined; }, [roots, issues]);
 
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -663,12 +667,21 @@ export default function App() {
   useEffect(() => {
     if (!api || (view !== "board" && view !== "home")) return;
     let alive = true;
-    // Only the visible active tasks need recent progress; avoid fetching the whole archive.
+    // Only the visible active tasks need recent progress; avoid fetching the whole archive. The list
+    // is a new array on every 10-second reload, so each task's latest note is remembered under
+    // `id + updated_at`: a task is asked for its comments again only when it actually changed.
     const active = (view === "home" ? issuesF : visible).filter((i) => i.status === "in_progress");
     Promise.all(active.map(async (i) => {
-      try { const notes = await api.comments(i.id); const latest = notes.sort((a, b) => b.created_at.localeCompare(a.created_at))[0]; return [i.id, latest?.text ?? ""] as const; }
-      catch { return [i.id, ""] as const; }
-    })).then((entries) => { if (alive) setProgress(Object.fromEntries(entries)); });
+      const stamp = `${i.id}@${i.updated_at}@${i.comment_count ?? ""}`;
+      const hit = progressCache.current.get(i.id);
+      if (hit && hit.stamp === stamp) return [i.id, hit.text] as const;
+      try { const notes = await api.comments(i.id); const latest = notes.sort((a, b) => b.created_at.localeCompare(a.created_at))[0]; const text = latest?.text ?? ""; progressCache.current.set(i.id, { stamp, text }); return [i.id, text] as const; }
+      catch { return [i.id, hit?.text ?? ""] as const; }
+    })).then((entries) => {
+      if (!alive) return;
+      const next = Object.fromEntries(entries);
+      setProgress((old) => (Object.keys(old).length === Object.keys(next).length && Object.entries(next).every(([k, v]) => old[k] === v) ? old : next));
+    });
     return () => { alive = false; };
   }, [api, view, visible, issuesF]);
 

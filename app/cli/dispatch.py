@@ -107,7 +107,26 @@ def whoami():
     return os.environ.get("BEADS_ACTOR") or os.environ.get("DISPATCH_ACTOR") or os.path.basename(HOME.rstrip("/")) or "user"
 
 
+# Two whole-board reads are asked for again and again inside one command (`prime` needed the
+# memories four times and the task list twice, 0.15 s each). They are remembered for the life of
+# the process, and forgotten the moment anything else talks to bd, so a write is never hidden.
+_BD_READS = {("bd", "memories", "--json"), ("bd", "list", "--all", "--json")}
+_bd_read_cache = {}
+
+
 def sh(args, timeout=20, env=None):
+    key = tuple(args) if env is None else None
+    if key in _BD_READS and key in _bd_read_cache:
+        return _bd_read_cache[key]
+    if args and os.path.basename(str(args[0])) == "bd" and key not in _BD_READS:
+        _bd_read_cache.clear()
+    res = _sh(args, timeout, env)
+    if key in _BD_READS and res[0] == 0:
+        _bd_read_cache[key] = res
+    return res
+
+
+def _sh(args, timeout=20, env=None):
     e = dict(os.environ)
     e["PATH"] = PATH_EXTRA + ":" + e.get("PATH", "")
     e.setdefault("BEADS_DIR", BEADS_DIR)
@@ -6150,18 +6169,39 @@ def insights_scan(days):
     idx = load_index() or refresh_index()
     cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT") if days else ""
     per_agent, sessions, samples = {}, [], {"asktail": [], "correction": [], "overflow": []}
+    # Per-session results are remembered under the transcript's (mtime, size): a new message in one
+    # conversation re-reads that conversation, not all hundred of them.
+    cache = insights_session_cache_load()
+    fresh = {}
+    rec = [None]
     def bump(ag, k, n=1):
         per_agent.setdefault(ag, {"sessions": 0, "user_turns": 0, "approve": 0, "continue": 0, "correction": 0, "asktail": 0, "ends_on_question": 0, "long": 0, "overflow": 0, "tool_errors": 0, "no_board": 0})[k] += n
+        if rec[0] is not None:
+            rec[0][k] = rec[0].get(k, 0) + n
     for key, e in idx.items():
         if e.get("subagent") or not e.get("user_msgs"):
             continue
         if cutoff and (e.get("last_ts") or "") < cutoff:
+            continue
+        sig = [e.get("mtime") or 0, e.get("size") or 0]
+        hit = cache.get(key)
+        if hit and hit.get("sig") == sig and hit.get("v") == INSIGHTS_SESSION_V:
+            fresh[key] = hit
+            if hit.get("row"):
+                for k, n in (hit.get("bumps") or {}).items():
+                    bump(hit["row"]["agent"], k, n)
+                for kind, items in (hit.get("samples") or {}).items():
+                    samples.setdefault(kind, []).extend(items)
+                sessions.append(hit["row"])
             continue
         ref = dict(e); ref["path"] = key; ref.setdefault("subagents", [])
         try:
             d = read_session_detail(ref, limit=100000)
         except Exception:
             continue
+        rec[0] = {}
+        before = {k: len(v) for k, v in samples.items()}
+        fresh[key] = {"sig": sig, "v": INSIGHTS_SESSION_V, "row": None}  # replaced below when the session counts
         msgs = [m for m in d["messages"] if m["role"] in ("user", "assistant") and not m["text"].startswith(("The TodoWrite", "<ide_", "<system", "<task-notification", "# In app browser", "# Files mentioned", "# Applications mentioned"))]
         U = [m for m in msgs if m["role"] == "user"]
         if not U:
@@ -6199,11 +6239,35 @@ def insights_scan(days):
         if len(U) >= _I_BOARD_MIN and not used_board:
             row["no_board"] = True; bump(ag, "no_board")
         sessions.append(row)
+        fresh[key] = {"sig": sig, "v": INSIGHTS_SESSION_V, "row": row, "bumps": rec[0], "samples": {k: v[before.get(k, 0):] for k, v in samples.items()}}
+        rec[0] = None
+    rec[0] = None
+    insights_session_cache_save(fresh)
     sessions.sort(key=lambda r: -(r["correction"] * 3 + r["asktail"] + r["overflow"] * 3 + r["continue"] + min(r["tool_errors"], 10) // 2 + (3 if r["no_board"] else 0)))
     return {"days": days, "per_agent": per_agent, "sessions": sessions[:12], "all_sessions": sessions, "samples": {k: v[-8:] for k, v in samples.items()}, "total_sessions": len(sessions)}
 
 
 INSIGHTS_CACHE = os.path.join(DISPATCH_DIR, "insights-cache.json")
+INSIGHTS_SESSIONS_CACHE = os.path.join(DISPATCH_DIR, "insights-sessions.json")
+INSIGHTS_SESSION_V = 1  # bump when the per-session signals change shape
+
+
+def insights_session_cache_load():
+    try:
+        d = json.load(open(INSIGHTS_SESSIONS_CACHE))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def insights_session_cache_save(rows):
+    try:
+        os.makedirs(DISPATCH_DIR, exist_ok=True)
+        tmp = INSIGHTS_SESSIONS_CACHE + ".tmp"
+        json.dump(rows, open(tmp, "w"), ensure_ascii=False)
+        os.replace(tmp, INSIGHTS_SESSIONS_CACHE)
+    except OSError:
+        pass
 
 
 def insights_scan_cached(days):
@@ -6693,12 +6757,14 @@ def project_of_cwd(cwd, names, roots=None):
     return git_root_name(cwd)
 
 
-def neighbours(cwd, self_id=""):
-    """Other live sessions working in this directory (or a parent/child of it)."""
+def neighbours(cwd, self_id="", local_only=False):
+    """Other live sessions working in this directory (or a parent/child of it). `local_only`
+    skips the other Macs: asking them is an ssh per peer (12 s each when one is asleep), which the
+    SessionStart hook cannot afford — and a session on another Mac does not edit this folder."""
     cwd = os.path.normpath(cwd)
     rows = []
     try:
-        live = live_sessions()
+        live = live_sessions(local_only=local_only)
     except Exception:
         return rows
     for s in live:
@@ -7990,7 +8056,14 @@ def cmd_prime(a):
             cwd = a.cwd or hook.get("cwd") or cwd
         except Exception:
             pass
-    names = project_names()
+    # One `bd list` serves both the project names and the task digest below.
+    code, o, err = sh(["bd", "list", "--all", "--json"])
+    tasks = []
+    try:
+        tasks = json.loads(o[o.find("["):]) if code == 0 else []
+    except Exception:
+        tasks = []
+    names = project_names(tasks)
     proj = project_of_cwd(cwd, names)
     ptag = proj or "<项目名>"
     lines = [f"# Dispatch 中央任务板" + (f" · 当前项目 {proj}" if proj else "") + (f" · 你是 {actor}" if actor else "")]
@@ -7998,12 +8071,6 @@ def cmd_prime(a):
     lines.append(f"只有用户能做的事（发邮件、付款、登录、当面演示、做决定）：别只在回复里列出来，`dispatch need-you \"要用户做什么\" -P {ptag} -d \"为什么、怎么做\" [--task <id>]` 记成「只能你做」，用户在任务板上打勾。")
     lines.append(f"知识库：动手前 `dispatch wiki search <词>`；踩坑 `dispatch wiki add --kind pit \"现象\" --fix \"解法\" -P {ptag}`，做对 `--kind win`。")
     # board
-    code, o, err = sh(["bd", "list", "--all", "--json"])
-    tasks = []
-    try:
-        tasks = json.loads(o[o.find("["):]) if code == 0 else []
-    except Exception:
-        tasks = []
     if code != 0 and no_board(code, err):
         lines.append("（" + (missing_tool_hint("bd") if code == 127 else NO_BOARD_HINT) + "。在那之前 begin / log / done 记不了任务，其余照常。）")
     def lab(t):
@@ -8083,7 +8150,7 @@ def cmd_prime(a):
     if cat:
         lines.append(cat)
     # who else is in this directory right now — the thing that prevents two agents from fighting
-    nb = neighbours(cwd, self_id)
+    nb = neighbours(cwd, self_id, local_only=True)
     if nb:
         lines.append(f"## 同目录在跑（{len(nb)}）")
         for s_ in nb[:6]:

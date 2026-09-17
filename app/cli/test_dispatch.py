@@ -481,10 +481,15 @@ class Guards(unittest.TestCase):
         self.assertGreaterEqual(dispatch.similar("Dispatch 技能视图：使用频次", "Dispatch 技能视图 使用频次 + 按钮"), 0.5)
         self.assertLess(dispatch.similar("Mac mini 安装 Dolt", "雅思刷题网站"), 0.5)
     def test_neighbours_matches_same_or_nested_dir(self):
-        dispatch.live_sessions = lambda: [
+        rows = [
             {"session_id": "me", "cwd": "/a/b", "alive": True}, {"session_id": "x", "cwd": "/a/b", "alive": True},
             {"session_id": "y", "cwd": "/a/b/sub", "alive": True}, {"session_id": "z", "cwd": "/other", "alive": True}, {"session_id": "d", "cwd": "/a/b", "alive": False}]
-        self.assertEqual([s["session_id"] for s in dispatch.neighbours("/a/b", "me")], ["x", "y"])
+        seen = {}
+        with patch.object(dispatch, "live_sessions", side_effect=lambda local_only=False: seen.update(local_only=local_only) or rows):
+            self.assertEqual([s["session_id"] for s in dispatch.neighbours("/a/b", "me")], ["x", "y"])
+            self.assertFalse(seen["local_only"])
+            dispatch.neighbours("/a/b", "me", local_only=True)   # what the SessionStart hook asks for
+            self.assertTrue(seen["local_only"])
 
 
 class EditGuard(unittest.TestCase):
@@ -1862,3 +1867,20 @@ class RemoteBoardLocation(unittest.TestCase):
             self.assertEqual(dispatch.beads_dir_portable(), "~/tasks/.beads")
         with patch.object(dispatch, "HOME", "/Users/me"), patch.object(dispatch, "BEADS_DIR", "/Volumes/Data/.beads"):
             self.assertEqual(dispatch.beads_dir_portable(), "/Volumes/Data/.beads")
+
+
+class BoardReadsAreRememberedUntilAWrite(unittest.TestCase):
+    def test_second_read_is_free_and_a_write_forgets(self):
+        calls = []
+        def fake(args, timeout=20, env=None):
+            calls.append(tuple(args)); return 0, "{}", ""
+        dispatch._bd_read_cache.clear()
+        with patch.object(dispatch, "_sh", side_effect=fake):
+            dispatch.sh(["bd", "memories", "--json"]); dispatch.sh(["bd", "memories", "--json"])
+            self.assertEqual(len(calls), 1)
+            dispatch.sh(["bd", "remember", "x", "--key", "k"])      # a write
+            dispatch.sh(["bd", "memories", "--json"])
+            self.assertEqual(len(calls), 3)
+            dispatch.sh(["git", "status"]); dispatch.sh(["bd", "memories", "--json"])  # other tools do not matter
+            self.assertEqual(len(calls), 4)
+        dispatch._bd_read_cache.clear()
