@@ -6,7 +6,7 @@ the phone should show. The steps are the same; the app drives them now:
   tailscale  Tailscale installed and logged in — Serve publishes the HTTPS URL
   novnc      a shallow noVNC checkout under ~/tasks/.dispatch/novnc
   websockify a venv with websockify under ~/tasks/.dispatch/venv
-  launchd    dev.schaefer.novnc keeps websockify on 127.0.0.1:6080 alive
+  launchd    a LaunchAgent (dev.dispatch.novnc) keeps websockify on 127.0.0.1:6080 alive
   serve      `tailscale serve --https=<port>` fronts it over HTTPS on the tailnet
   screen     macOS Screen Sharing (VNC :5900) — the one switch only the user can flip
 
@@ -28,7 +28,8 @@ import time
 import dispatch as D
 from remote_screen import endpoint_from_config, tailscale_cli
 
-LABEL = "dev.schaefer.novnc"
+import launchd_labels
+LABEL = launchd_labels.label("novnc")
 NOVNC_REPO = "https://github.com/novnc/noVNC"
 LAUNCH_DIR = os.path.join(D.HOME, "Library", "LaunchAgents")
 PLIST = os.path.join(LAUNCH_DIR, f"{LABEL}.plist")

@@ -161,7 +161,7 @@ dispatch facts show -P harbor-api      # 常用信息：服务器/域名/数据�
 dispatch facts sections --json
 dispatch task trash TASK_ID --json
 dispatch task restore TASK_ID --json
-dispatch project ReadOut --star         # 收藏；--archive 归档；dispatch projects 列出
+dispatch project my-app --star          # 收藏；--archive 归档；dispatch projects 列出
 dispatch terminal --cwd ~/Projects/x     # 在 Herdr 开一个不带 Agent 的终端标签（项目页「终端」按钮）
 dispatch here                           # 当前目录/项目此刻：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话「可关/别关」
 dispatch lineage [项目]                  # 脉络：项目→任务→会话（发起/在做/提到）→进展与提交，脉络页画的就是它

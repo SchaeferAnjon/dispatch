@@ -48,8 +48,8 @@ def task_of_commit(subject, tids):
 
 def project_base(proj, cwd, names=None, roots=None):
     """Where a project's git log and sessions live: the current directory when it is that
-    project, else the project's home — so `dispatch here -P atrium` run from anywhere still
-    reads atrium's repo, not the caller's."""
+    project, else the project's home — so `dispatch here -P <project>` run from anywhere still
+    reads that project's repo, not the caller's."""
     names = D.project_names() if names is None else names
     roots = (D.settings_load().get("workspace_roots") or []) if roots is None else roots
     if (D.project_of_cwd(cwd, names, roots) or "").lower() == proj.lower():

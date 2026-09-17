@@ -13,7 +13,7 @@ import dispatch as D
 
 PROVIDERS = [
     # env key, provider id, base url, default model — first available wins unless SUMMARY_MODEL says otherwise.
-    # 智谱 first: the user's GLM key is the one meant for this kind of housekeeping (see dispatch facts).
+    # 智谱 first: a cheap, fast model is what this kind of housekeeping needs.
     # The key is on the GLM Coding Plan: its quota lives behind /api/coding/paas/v4. The pay-as-you-go
     # endpoint (/api/paas/v4) answers 429 code 1113 「余额不足」 for the same key — not a money problem.
     ("ZHIPU_API_KEY", "zhipu", "https://open.bigmodel.cn/api/coding/paas/v4", "glm-5.3-flash"),

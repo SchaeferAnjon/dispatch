@@ -558,7 +558,9 @@ def _ghostty_probe_available():
         return False
 
 
-@unittest.skipUnless(_ghostty_probe_available(), '需要本机装了 Ghostty 且已授权自动化，跳过（CI 里没有）')
+# Opens real Ghostty windows and races with whatever else the terminal is doing (it fails when the
+# person is typing in Ghostty): run it on purpose with DISPATCH_LIVE_TESTS=1, not on every test run.
+@unittest.skipUnless(os.environ.get('DISPATCH_LIVE_TESTS') == '1' and _ghostty_probe_available(), '实机 Ghostty 集成测试：DISPATCH_LIVE_TESTS=1 时才跑（需要装了 Ghostty 并授权自动化）')
 class GhosttyLiveIntegration(unittest.TestCase):
     """Drives the real osascript path — never faked — against a scratch Ghostty window this test
     opens and closes itself, never the user's own terminals. This exists specifically to catch

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { dropMovedOriginals, migrationCheckPrompt } from './moves';
 
 describe('dropMovedOriginals — a moved conversation shows once, where it lives now', () => {
-  const original = { session_id: 's1', host: 'local', moved_to: 'apple-mac-mini' };
-  const copy = { session_id: 's1', host: 'apple-mac-mini', remote: true, moved_from: 'hub' };
+  const original = { session_id: 's1', host: 'local', moved_to: 'living-room-mini' };
+  const copy = { session_id: 's1', host: 'living-room-mini', remote: true, moved_from: 'hub' };
   const other = { session_id: 's2', host: 'local' };
 
   it('drops the original once the copy on the other Mac is listed', () => {
@@ -11,7 +11,7 @@ describe('dropMovedOriginals — a moved conversation shows once, where it lives
   });
 
   it('works from the other Mac too (the original is the remote row there)', () => {
-    const remoteOriginal = { session_id: 's1', host: 'hub', remote: true, moved_to: 'apple-mac-mini' };
+    const remoteOriginal = { session_id: 's1', host: 'hub', remote: true, moved_to: 'living-room-mini' };
     const localCopy = { session_id: 's1', host: 'local', moved_from: 'hub' };
     expect(dropMovedOriginals([localCopy, remoteOriginal])).toEqual([localCopy]);
   });

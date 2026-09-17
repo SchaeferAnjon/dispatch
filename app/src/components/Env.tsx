@@ -115,7 +115,7 @@ function EnvDialog({ initial, busy, onCancel, onSave }: { initial: { name: strin
         <h3>{initial.isNew ? t("添加变量") : t("改 {name} 的值", { name: initial.name })}</h3>
         <div className="row">
           <label>{t("变量名")}<input autoFocus={initial.isNew} value={name} disabled={!initial.isNew} onChange={(e) => setName(e.target.value.toUpperCase())} placeholder="ZHIPU_API_KEY" /></label>
-          <label>{t("用途")}<input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("智谱 GLM（GetNewWord / bookmark 用）")} /></label>
+          <label>{t("用途")}<input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("例如：会话总结用的模型 Key")} /></label>
         </div>
         <label>{t("项目（可空）")}<input value={project} onChange={(e) => setProject(e.target.value)} placeholder={t("留空＝所有项目都能用；填项目名＝只在该项目里出现")} /></label>
         <label>{t("值")}<textarea autoFocus={!initial.isNew} value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("粘贴 Key")} spellCheck={false} /></label>

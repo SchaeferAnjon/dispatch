@@ -99,9 +99,9 @@ class WriteLocalBackup(unittest.TestCase):
     def test_backup_preserves_old_content_before_overwrite(self):
         p = RS.local_path("PROFILE.md")
         open(p, "w", encoding="utf-8").write("old mine")
-        RS._write_local("PROFILE.md", "new theirs", backup_suffix="apple-mac-mini")
+        RS._write_local("PROFILE.md", "new theirs", backup_suffix="living-room-mini")
         self.assertEqual(open(p, encoding="utf-8").read(), "new theirs")
-        self.assertEqual(open(p + ".apple-mac-mini.bak", encoding="utf-8").read(), "old mine")
+        self.assertEqual(open(p + ".living-room-mini.bak", encoding="utf-8").read(), "old mine")
 
     def test_no_backup_file_without_a_conflict(self):
         p = RS.local_path("FACTS.md")
@@ -131,7 +131,7 @@ class Reconcile(unittest.TestCase):
         RS.RULES_DIR = os.path.join(self.tmp, "rules")
         RS.STATE_FILE = os.path.join(self.tmp, "state.json")
         os.makedirs(RS.RULES_DIR, exist_ok=True)
-        self.host = {"id": "apple-mac-mini", "name": "Apple", "ssh": "apple@1.2.3.4"}
+        self.host = {"id": "living-room-mini", "name": "Apple", "ssh": "me@1.2.3.4"}
         self.pushed = []
         self.refreshed = []
         patch.object(dispatch, "local_host_name", lambda: "hub-mac").start()
@@ -175,9 +175,9 @@ class Reconcile(unittest.TestCase):
         # Never synced before + both differ -> conflict; explicit push means local (hub) wins.
         report = self._run(remote, prefer="push", files=["PROFILE.md"])
         self.assertEqual(report[0]["action"], "conflict_to_remote")
-        self.assertEqual(self.pushed, [{"PROFILE.md": {"content": "hub version", "backup_suffix": "apple-mac-mini"}}])
+        self.assertEqual(self.pushed, [{"PROFILE.md": {"content": "hub version", "backup_suffix": "living-room-mini"}}])
         st = RS.load_state()
-        self.assertEqual(st["apple-mac-mini"]["PROFILE.md"]["hash"], RS._hash("hub version"))
+        self.assertEqual(st["living-room-mini"]["PROFILE.md"]["hash"], RS._hash("hub version"))
 
     def test_pull_conflict_backs_up_local_before_overwrite(self):
         open(RS.local_path("PROFILE.md"), "w", encoding="utf-8").write("hub version")
@@ -222,7 +222,7 @@ class RemotePush(unittest.TestCase):
         sent = []
         fake_move = types.SimpleNamespace(run_remote=lambda h, script, timeout=20: sent.append(script) or types.SimpleNamespace(returncode=0, stdout="", stderr=""))
         with patch.object(dispatch, "_mod", lambda name: fake_move):
-            RS.remote_push({"id": "apple-mac-mini", "name": "Apple", "ssh": "apple@1.2.3.4", "dispatch": "$HOME/.local/bin/dispatch"}, updates)
+            RS.remote_push({"id": "living-room-mini", "name": "Apple", "ssh": "me@1.2.3.4", "dispatch": "$HOME/.local/bin/dispatch"}, updates)
         return sent[0]
 
     def test_pushing_global_rules_refreshes_the_other_macs_agent_copies_in_the_same_trip(self):
@@ -241,7 +241,7 @@ class LocalIsHub(unittest.TestCase):
             self.assertTrue(RS.local_is_hub())
 
     def test_not_hub_when_init_state_names_one(self):
-        fake = types.SimpleNamespace(load_state=lambda: {"board_mode": "join", "hub": {"name": "大哥"}})
+        fake = types.SimpleNamespace(load_state=lambda: {"board_mode": "join", "hub": {"name": "书房的 Mac"}})
         with patch.object(dispatch, "_mod", lambda name: fake):
             self.assertFalse(RS.local_is_hub())
 
@@ -269,7 +269,7 @@ class PushAfterEdit(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_known_file_with_a_peer_spawns_a_scoped_push(self):
-        with patch.object(dispatch, "hosts", lambda: [{"id": "apple-mac-mini"}]):
+        with patch.object(dispatch, "hosts", lambda: [{"id": "living-room-mini"}]):
             RS.push_after_edit("PROFILE.md")
         self.assertEqual(self.calls, [["rules", "push", "--file", "PROFILE.md"]])
 
@@ -294,20 +294,20 @@ class AutoDue(unittest.TestCase):
         self.assertEqual(self.spawned, [])
 
     def test_due_when_never_run_before(self):
-        with patch.object(dispatch, "hosts", lambda: [{"id": "apple-mac-mini"}]):
+        with patch.object(dispatch, "hosts", lambda: [{"id": "living-room-mini"}]):
             r = RS.auto_sync_due(now=1_000_000)
         self.assertTrue(r["due"])
         self.assertEqual(self.spawned, [["rules", "auto", "--refresh"]])
 
     def test_not_due_again_within_the_interval(self):
-        with patch.object(dispatch, "hosts", lambda: [{"id": "apple-mac-mini"}]):
+        with patch.object(dispatch, "hosts", lambda: [{"id": "living-room-mini"}]):
             RS.auto_sync_due(now=1_000_000)
             r = RS.auto_sync_due(now=1_000_000 + RS.AUTO_INTERVAL - 1)
         self.assertFalse(r["due"])
         self.assertEqual(len(self.spawned), 1)
 
     def test_due_again_once_the_interval_passes(self):
-        with patch.object(dispatch, "hosts", lambda: [{"id": "apple-mac-mini"}]):
+        with patch.object(dispatch, "hosts", lambda: [{"id": "living-room-mini"}]):
             RS.auto_sync_due(now=1_000_000)
             r = RS.auto_sync_due(now=1_000_000 + RS.AUTO_INTERVAL + 1)
         self.assertTrue(r["due"])
@@ -336,10 +336,10 @@ class CmdRulesPeerCLI(unittest.TestCase):
         self.assertEqual(cm.exception.code, 1)
 
     def test_push_reports_per_peer(self):
-        json.dump([{"id": "apple-mac-mini", "name": "Apple", "ssh": "apple@1.2.3.4"}], open(dispatch.HOSTS_FILE, "w"))
+        json.dump([{"id": "living-room-mini", "name": "Apple", "ssh": "me@1.2.3.4"}], open(dispatch.HOSTS_FILE, "w"))
         with patch.object(RS, "reconcile", lambda h, prefer, files, dry_run: [{"file": "PROFILE.md", "action": "noop", "detail": "已一致"}]):
             rows = self._call(op="push")
-        self.assertEqual(rows[0]["host"], "apple-mac-mini")
+        self.assertEqual(rows[0]["host"], "living-room-mini")
         self.assertEqual(rows[0]["report"][0]["action"], "noop")
 
     def test_auto_without_flags_prints_usage_and_exits(self):

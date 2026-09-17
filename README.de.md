@@ -161,7 +161,7 @@ dispatch facts show -P harbor-api      # Infos: Server / Domains / Datenbanken /
 dispatch facts sections --json
 dispatch task trash TASK_ID --json
 dispatch task restore TASK_ID --json
-dispatch project ReadOut --star         # favorisieren; --archive archiviert; dispatch projects listet auf
+dispatch project my-app --star          # favorisieren; --archive archiviert; dispatch projects listet auf
 dispatch terminal --cwd ~/Projects/x     # in Herdr einen Terminal-Tab ohne Agent öffnen (Schaltfläche „Terminal“ auf der Projektseite)
 dispatch here                           # aktueller Ordner/aktuelles Projekt jetzt: Stand in einem Absatz, Chronik der letzten 14 Tage, offene Aufgaben, aktive Sitzungen hier mit „kann zu / offen lassen“
 dispatch lineage [Projekt]              # Verlauf: Projekt → Aufgabe → Sitzung (gestartet / in Arbeit / erwähnt) → Fortschritte und Commits; genau das zeichnet die Verlaufsseite

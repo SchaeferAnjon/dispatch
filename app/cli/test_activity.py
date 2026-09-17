@@ -79,12 +79,12 @@ class ActivityTests(unittest.TestCase):
     def test_opencode_sessions_join_the_activity_list_from_their_own_store(self):
         """OpenCode proper (~/.local/share/opencode/opencode.db, no `sequence` column) is read like ZCode, as agent opencode."""
         ms = lambda t: int(t * 1000)
-        sess = {'id': 'ses_oc1', 'dir': '/tmp/atrium', 'title': 'Greeting', 'at': ms(self.t - 60), 'updated': ms(self.t)}
+        sess = {'id': 'ses_oc1', 'dir': '/tmp/notesapp', 'title': 'Greeting', 'at': ms(self.t - 60), 'updated': ms(self.t)}
         done = {'id': 'm2', 'at': ms(self.t - 5), 'data': {'role': 'assistant', 'time': {'created': ms(self.t - 5), 'completed': ms(self.t)}, 'finish': 'stop'}}
         self.zcode((sess, {'id': 'm1', 'at': ms(self.t - 60), 'data': {'role': 'user', 'time': {'created': ms(self.t - 60)}}}, [{'type': 'text', 'text': 'hi'}]),
                    (sess, done, [{'type': 'text', 'text': '你好！有什么可以帮你的？'}]), agent='opencode')
         rows = activity_list(self.home, self.store, {})
-        self.assertEqual([(r['agent'], r['key'], r['project'], r['title']) for r in rows], [('opencode', 'opencode:ses_oc1', 'atrium', 'Greeting')])
+        self.assertEqual([(r['agent'], r['key'], r['project'], r['title']) for r in rows], [('opencode', 'opencode:ses_oc1', 'notesapp', 'Greeting')])
         self.assertEqual((rows[0]['state'], rows[0]['unread'], rows[0]['reply_preview']), ('idle', True, '你好！有什么可以帮你的？'))
 
     def hermes(self, sessions, messages):
@@ -105,8 +105,8 @@ class ActivityTests(unittest.TestCase):
         """Hermes (~/.hermes/state.db) rows read like ZCode's: tool calls pair with their result rows, a
         reply without tool calls ends the turn, cron sessions carry entrypoint cron."""
         t = self.t
-        call = [{'id': 'c1', 'type': 'function', 'function': {'name': 'terminal', 'arguments': json.dumps({'command': 'ls ~/Schaefer_Master'})}}]
-        self.hermes([{'id': 'h1', 'source': 'cli', 'title': '找一篇笔记', 'cwd': '/tmp/atrium', 'at': t - 60, 'last': t},
+        call = [{'id': 'c1', 'type': 'function', 'function': {'name': 'terminal', 'arguments': json.dumps({'command': 'ls ~/Alice_Master'})}}]
+        self.hermes([{'id': 'h1', 'source': 'cli', 'title': '找一篇笔记', 'cwd': '/tmp/notesapp', 'at': t - 60, 'last': t},
                      {'id': 'cron_1', 'source': 'cron', 'title': 'flomo 存档 · 02:00', 'at': t - 300, 'ended': t - 240, 'last': t - 240}],
                     [{'sid': 'h1', 'role': 'user', 'content': '我库里那篇海德堡的秋天在哪', 'at': t - 60},
                      {'sid': 'h1', 'role': 'assistant', 'content': '我来找。', 'calls': call, 'at': t - 50},
@@ -116,7 +116,7 @@ class ActivityTests(unittest.TestCase):
                      {'sid': 'cron_1', 'role': 'assistant', 'content': '已存档 3 条。', 'at': t - 240}])
         rows = sorted(activity_list(self.home, self.store, {}), key=lambda r: r['key'])
         self.assertEqual([(r['agent'], r['key'], r['project'], r['title'], r['entrypoint']) for r in rows],
-                         [('hermes', 'hermes:cron_1', os.path.basename(self.home), 'flomo 存档 · 02:00', 'cron'), ('hermes', 'hermes:h1', 'atrium', '找一篇笔记', 'cli')])
+                         [('hermes', 'hermes:cron_1', os.path.basename(self.home), 'flomo 存档 · 02:00', 'cron'), ('hermes', 'hermes:h1', 'notesapp', '找一篇笔记', 'cli')])
         h1 = rows[1]
         self.assertEqual((h1['state'], h1['activity'], h1['unread'], h1['reply_preview']), ('idle', '已回复', True, '在 60-Creative/秋天.canvas。'))
         self.assertEqual([e['kind'] for e in h1['events']], ['user', 'tool', 'message', 'result', 'reply'])

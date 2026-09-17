@@ -162,7 +162,9 @@ def apply(relaunch=True):
     return {"updated_to": info["latest"], "from": info["current"], "relaunching": relaunch}
 
 
-SERVE_LABEL = "dev.schaefer.dispatch-serve"
+sys.path.insert(0, HERE)
+import launchd_labels  # noqa: E402
+SERVE_LABEL = launchd_labels.label("dispatch-serve")
 
 
 def restart_serve():

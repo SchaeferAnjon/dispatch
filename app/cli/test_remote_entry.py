@@ -38,7 +38,7 @@ class RemoteEntry(unittest.TestCase):
         self.assertEqual(D.remote_cli({'dispatch': '/opt/custom/dispatch --dev'}), '/opt/custom/dispatch --dev')
 
     def test_proxy_does_not_cut_off_migration_after_sixty_seconds(self):
-        host = {'id': 'hub', 'name': '大哥', 'ssh': 'user@host'}
+        host = {'id': 'hub', 'name': '书房的 Mac', 'ssh': 'user@host'}
         result = subprocess.CompletedProcess([], 0, stderr='')
         with patch.object(D, 'local_host_name', return_value='Apple'), patch.object(D, 'hosts', return_value=[host]), patch.object(D.subprocess, 'run', return_value=result) as run:
             with self.assertRaises(SystemExit) as ex:

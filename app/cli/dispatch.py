@@ -1889,7 +1889,7 @@ def refresh_index():
                 if e["subagent"]:
                     e["parent"] = path.split("/subagents/")[0].rsplit("/", 1)[-1]
             elif agent == "pi":
-                # <timestamp>_<id>.jsonl; scripted runs (poker bots etc.) use custom ids, not UUIDs — hide them like subagents
+                # <timestamp>_<id>.jsonl; scripted runs (bots, batch jobs) use custom ids, not UUIDs — hide them like subagents
                 b = os.path.splitext(os.path.basename(path))[0]
                 e["session_id"] = b.split("_", 1)[1] if "_" in b else b
                 e["subagent"] = not re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-", e["session_id"])
@@ -4667,7 +4667,7 @@ def facts_sections(text):
 
 
 def facts_key(heading):
-    """`relecture（ReLecture · 重讲）` → `relecture`: the first word, lowercased."""
+    """`myapp（MyApp · 说明）` → `myapp`: the first word, lowercased."""
     return re.split(r"[\s（(·:：,，/]", heading.strip(), maxsplit=1)[0].lower()
 
 

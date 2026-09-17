@@ -11,9 +11,9 @@ const session = (over: Partial<Session>): Session => ({ agent: "claude-code", se
 const host: Host = { id: "local", name: "本机", ip: "127.0.0.1", ssh: "", online: true, local: true, overlay: { kind: "", ip: "" }, screen_sharing: false, novnc: "", novnc_up: false, vnc: "", rustdesk: false, rustdesk_id: "", sunshine: false, sunshine_ui: "", uu: false, recommend: "", why: "" };
 
 function render(issues: Issue[], sessions: Session[] = []) {
-  const agents = agentsFrom(issues, "schaefer", sessions);
+  const agents = agentsFrom(issues, "alice", sessions);
   return renderToStaticMarkup(
-    <AgentsView agents={agents} scheduled={[]} apps={[]} issues={issues} me="schaefer" onSelect={() => {}} onFocus={() => {}} refs={new Map()} hosts={[host]} onOpenUrl={() => {}} onCopyText={() => {}} onDelegate={() => {}} />
+    <AgentsView agents={agents} scheduled={[]} apps={[]} issues={issues} me="alice" onSelect={() => {}} onFocus={() => {}} refs={new Map()} hosts={[host]} onOpenUrl={() => {}} onCopyText={() => {}} onDelegate={() => {}} />
   );
 }
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");

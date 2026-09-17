@@ -72,7 +72,8 @@
       "../cli/board-sync.sh": "cli/board-sync.sh",
       "../cli/statusline-tee.sh": "cli/statusline-tee.sh",
       "../../agent/skills/task-board/": "agent/skills/task-board/",
-      "../dist/": "dist/"
+      "../dist/": "dist/",
+      "../cli/launchd_labels.py": "cli/launchd_labels.py"
     },
     "macOS": {
       "minimumSystemVersion": "14.0"

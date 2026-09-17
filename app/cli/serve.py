@@ -485,7 +485,9 @@ def service_uninstall():
     return {"installed": False}
 
 
-LAUNCHD_LABEL = "dev.schaefer.dispatch-serve"
+sys.path.insert(0, HERE)
+import launchd_labels  # noqa: E402
+LAUNCHD_LABEL = launchd_labels.label("dispatch-serve")
 
 
 def reachable(ip, port, timeout=1.0):

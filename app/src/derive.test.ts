@@ -24,9 +24,9 @@ describe("project label convention", () => {
 
 describe("actors", () => {
   it("known agents", () => {
-    expect(actorOf("claude-code", "schaefer")?.name).toBe("Claude Code");
-    expect(actorOf("codex", "schaefer")?.kind).toBe("codex");
-    expect(actorOf("zcode", "schaefer")?.glyph).toBe("Z");
+    expect(actorOf("claude-code", "alice")?.name).toBe("Claude Code");
+    expect(actorOf("codex", "alice")?.kind).toBe("codex");
+    expect(actorOf("zcode", "alice")?.glyph).toBe("Z");
   });
   it("the aliases the person listed collapse into me; none are built in", () => {
     setHumanAliases([]);
@@ -79,7 +79,7 @@ describe("activity from history + audit", () => {
   const h = (ts: string, patch: Partial<Issue>): HistoryEntry => ({ CommitHash: ts, Committer: "root", CommitDate: ts, Issue: { ...base, ...patch } });
   it("infers created, claimed, closed, reviewed in order", () => {
     const ev = eventsFrom([
-      h("2026-09-02T10:00:00Z", { created_by: "schaefer" }),
+      h("2026-09-02T10:00:00Z", { created_by: "alice" }),
       h("2026-09-02T10:05:00Z", { status: "in_progress", assignee: "claude-code" }),
       h("2026-09-02T10:10:00Z", { status: "closed", assignee: "claude-code", close_reason: "done" }),
       h("2026-09-02T10:15:00Z", { status: "closed", assignee: "claude-code", labels: ["reviewed"] }),
@@ -99,19 +99,19 @@ describe("activity from history + audit", () => {
 describe("agent presence", () => {
   const s = (over: Partial<Session>): Session => ({ agent: "claude-code", session_id: "s", cwd: "/x", project: "x", agent_pid: 1, source_kind: "terminal", source_app: "Herdr", entrypoint: "cli", started_at: 0, last_at: 0, state: "idle", prompts: 0, alive: true, registered: true, ...over });
   it("old presence records cannot restore retired integrations", () => {
-    const a = agentsFrom([], "schaefer", [s({agent: "qoder"}), s({agent: "qoder-ide"}), s({agent: "codex"})]);
+    const a = agentsFrom([], "alice", [s({agent: "qoder"}), s({agent: "qoder-ide"}), s({agent: "codex"})]);
     expect(a.map(x => x.actor.id).sort()).toEqual(["claude-code", "codex", "hermes", "opencode", "pi", "zcode"]);
     expect(a.find(x => x.actor.id === "codex")?.online).toBe(true);
   });
   it("groups live sessions by source and marks the agent online", () => {
-    const a = agentsFrom([], "schaefer", [s({ session_id: "1", state: "working" }), s({ session_id: "2", source_kind: "desktop", source_app: "Claude 桌面端" })]);
+    const a = agentsFrom([], "alice", [s({ session_id: "1", state: "working" }), s({ session_id: "2", source_kind: "desktop", source_app: "Claude 桌面端" })]);
     const cc = a.find((x) => x.actor.id === "claude-code")!;
     expect(cc.online).toBe(true);
     expect(cc.sessions).toHaveLength(2);
     expect(cc.bySource.map((b) => b.label).sort()).toEqual(["Claude 桌面端", "Herdr"]);
   });
   it("dead sessions are ignored and default agents still appear offline", () => {
-    const a = agentsFrom([], "schaefer", [s({ alive: false })]);
+    const a = agentsFrom([], "alice", [s({ alive: false })]);
     expect(a.find((x) => x.actor.id === "claude-code")?.online).toBe(false);
     expect(a.some((x) => x.actor.id === "zcode")).toBe(true);
   });

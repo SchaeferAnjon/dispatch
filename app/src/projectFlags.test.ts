@@ -10,10 +10,10 @@ describe("project flags", () => {
   });
 
   it("merges changes and drops empty entries, serialising in a stable order", () => {
-    let flags = withProjectFlag({}, "ReadOut", { starred: true });
+    let flags = withProjectFlag({}, "ReadAloud", { starred: true });
     flags = withProjectFlag(flags, "kanban", { archived: true });
-    expect(serializeProjectFlags(flags)).toBe('{"ReadOut":{"starred":true},"kanban":{"archived":true}}');
-    flags = withProjectFlag(flags, "ReadOut", { starred: false });
+    expect(serializeProjectFlags(flags)).toBe('{"ReadAloud":{"starred":true},"kanban":{"archived":true}}');
+    flags = withProjectFlag(flags, "ReadAloud", { starred: false });
     expect(flags).toEqual({ kanban: { archived: true } });
   });
 

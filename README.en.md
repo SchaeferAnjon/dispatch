@@ -161,7 +161,7 @@ dispatch facts show -P harbor-api      # facts: server / domain / database / API
 dispatch facts sections --json
 dispatch task trash TASK_ID --json
 dispatch task restore TASK_ID --json
-dispatch project ReadOut --star         # star; --archive archives; dispatch projects lists them
+dispatch project my-app --star          # star; --archive archives; dispatch projects lists them
 dispatch terminal --cwd ~/Projects/x     # open a plain terminal tab in Herdr without an Agent (the "Terminal" button on the project page)
 dispatch here                           # this folder/project right now: one-paragraph status, 14-day timeline, unfinished tasks, live sessions here marked "can close / keep open"
 dispatch lineage [project]              # threads: project → task → session (started / working / mentioned) → progress and commits; this is what the Threads page draws

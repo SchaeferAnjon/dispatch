@@ -45,15 +45,15 @@ describe("SettingsView phone access", () => {
   });
 
   it("lets the user pick which Mac the phone version runs on", () => {
-    const phoneHost = { phone_host: "apple-mac-mini", hosts: [{ id: "local", name: "大哥", local: true }, { id: "apple-mac-mini", name: "Apple的Mac mini", local: false }] };
+    const phoneHost = { phone_host: "living-room-mini", hosts: [{ id: "local", name: "书房的 Mac", local: true }, { id: "living-room-mini", name: "客厅的 Mac mini", local: false }] };
     const html = renderToStaticMarkup(<SettingsView {...base} api={fakeApi} onPhone={() => {}} phoneQr={QR} phoneHost={phoneHost} onPhoneHost={() => {}} />);
     expect(html).toContain("手机版跑在");
-    expect(html).toContain("本机（大哥）");
-    expect(html).toContain('<option value="apple-mac-mini" selected="">Apple的Mac mini</option>');
+    expect(html).toContain("本机（书房的 Mac）");
+    expect(html).toContain('<option value="living-room-mini" selected="">客厅的 Mac mini</option>');
   });
 
   it("hides the machine picker when this Mac is the only one", () => {
-    const phoneHost = { phone_host: "local", hosts: [{ id: "local", name: "大哥", local: true }] };
+    const phoneHost = { phone_host: "local", hosts: [{ id: "local", name: "书房的 Mac", local: true }] };
     const html = renderToStaticMarkup(<SettingsView {...base} onPhone={() => {}} phoneQr={QR} phoneHost={phoneHost} onPhoneHost={() => {}} />);
     expect(html).not.toContain("手机版跑在");
   });
@@ -83,14 +83,14 @@ describe("SettingsView screen access", () => {
 
 describe("SettingsView 机器", () => {
   const hosts = [
-    { id: "local", name: "大哥", ip: "100.1.1.1", ssh: "", online: true, local: true, overlay: { kind: "tailscale", ip: "100.1.1.1" }, screen_sharing: false, novnc: "", novnc_up: false, vnc: "", rustdesk: false, rustdesk_id: "", sunshine: false, sunshine_ui: "", uu: false, recommend: "" as const, why: "" },
+    { id: "local", name: "书房的 Mac", ip: "100.1.1.1", ssh: "", online: true, local: true, overlay: { kind: "tailscale", ip: "100.1.1.1" }, screen_sharing: false, novnc: "", novnc_up: false, vnc: "", rustdesk: false, rustdesk_id: "", sunshine: false, sunshine_ui: "", uu: false, recommend: "" as const, why: "" },
     { id: "mini", name: "Mac mini", ip: "100.1.1.2", ssh: "user@100.1.1.2", online: true, local: false, overlay: { kind: "tailscale", ip: "100.1.1.2" }, screen_sharing: false, novnc: "", novnc_up: false, vnc: "", rustdesk: false, rustdesk_id: "", sunshine: false, sunshine_ui: "", uu: false, recommend: "" as const, why: "" },
   ];
 
   it("offers rename for every machine, but delete/redetect only for peers", () => {
     const html = renderToStaticMarkup(<SettingsView {...base} hosts={hosts} onRenameHost={async () => {}} onDeleteHost={async () => {}} onRedetectHost={async () => {}} />);
     expect(html.match(/>改名</g)?.length).toBe(2);
-    expect(html).toContain("大哥（本机）");
+    expect(html).toContain("书房的 Mac（本机）");
     expect(html).toContain("Mac mini");
     expect(html.match(/>重新检测</g)?.length).toBe(1);
     expect(html.match(/>删除</g)?.length).toBe(1);

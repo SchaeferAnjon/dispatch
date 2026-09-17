@@ -21,7 +21,7 @@ import base64, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 import dispatch as D
 
 # Never copied, at any depth: caches and dependency trees the other Mac rebuilds or reinstalls, and
-# the git worktrees Claude Code's sub-agents leave under .claude/ (relecture had 107k files in there —
+# the git worktrees Claude Code's sub-agents leave under .claude/ (one real project had 107k files in there —
 # a 72 s dry run for a project of a few hundred files).
 EXCLUDES = [".DS_Store", "*.pyc", "__pycache__/", "node_modules/", ".venv/", "venv/", ".claude/worktrees/", "DerivedData/",
             ".turbo/", ".cache/", ".parcel-cache/", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/"]
@@ -356,7 +356,7 @@ def protected_paths(remote):
 
 
 # Ignored directories that are build output or caches: rebuilt or reinstalled on the other Mac, never
-# copied (atrium's build/ is 37 GB). Other ignored paths — .env files, Sources/Private — do travel.
+# copied (one real project's build/ was 37 GB). Other ignored paths — .env files, Sources/Private — do travel.
 BUILD_DIRS = re.compile(r"^(build(-.+)?|DerivedData|\.build|dist|target|\.next|\.nuxt|\.turbo|\.cache|\.parcel-cache|coverage|node_modules|Pods|\.gradle|\.?venv([-_.].+)?|\.tox|\.mypy_cache|\.pytest_cache)$")
 
 

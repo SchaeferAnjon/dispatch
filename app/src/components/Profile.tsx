@@ -14,7 +14,7 @@ const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(
 const EMPTY: ProfileDoc = { path: "", exists: false, content: "", sections: [], inventory_at: "" };
 
 // The personal profile: one shared markdown file that prime injects, plus a fleet
-// inventory that rewrites its 现状 section with what the four machines look like now.
+// inventory that rewrites its 现状 section with what each machine looks like now.
 export function ProfileView({ api, hosts, onDone, onError, hostId = "" }: Props) {
   const t = useT();
   const [host, setHost] = useState("local");

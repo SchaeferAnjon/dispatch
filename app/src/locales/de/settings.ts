@@ -381,7 +381,6 @@ const settings: Dict = {
   "改 {name} 的值": "Wert von {name} ändern",
   "变量名": "Name",
   "用途": "Zweck",
-  "智谱 GLM（GetNewWord / bookmark 用）": "Zhipu GLM (für GetNewWord / bookmark)",
   "项目（可空）": "Projekt (optional)",
   "留空＝所有项目都能用；填项目名＝只在该项目里出现": "Leer = in allen Projekten verfügbar; ein Projektname = nur dort",
   "值": "Wert",
@@ -590,5 +589,6 @@ const settings: Dict = {
   "编辑互斥": "Bearbeitungsschutz",
   "同一个文件半小时内被另一段会话改过时，先拦一下让 Agent 确认。同一个仓库里经常同时跑几个 Agent 才需要；只开一个窗口的话不用勾，否则 /clear 或新开窗口后会被拦一次。": "Wurde dieselbe Datei in der letzten halben Stunde von einer anderen Sitzung geändert, wird die Bearbeitung einmal angehalten, damit der Agent bestätigt. Nur sinnvoll, wenn oft mehrere Agents im selben Repository laufen; bei einem einzelnen Fenster aus lassen, sonst wird nach /clear oder einem neuen Fenster einmal angehalten.",
   "已有的 Claude Code 状态行会保留：Dispatch 只在它前面记一下额度；settings.json 改动前会备份成 settings.json.dispatch-bak。": "Ihre vorhandene Claude-Code-Statuszeile bleibt erhalten: Dispatch notiert davor nur das Kontingent; settings.json wird vor der Änderung als settings.json.dispatch-bak gesichert.",
+  "例如：会话总结用的模型 Key": "z. B. der Modell-Schlüssel für Sitzungszusammenfassungen",
 };
 export default settings;

@@ -141,7 +141,7 @@ class ProfileDoc(unittest.TestCase):
         self.assertFalse(rows[0]["overdue"])
 
     def test_ssh_aliases_intersect_named_aliases_with_config_hosts(self):
-        facts = "`~/.ssh/config` 别名 `hetzner`（root@1.2.3.4）；`ssh nas` 走 ProxyJump；`ssh apple@5.6.7.8` 本机。"
+        facts = "`~/.ssh/config` 别名 `hetzner`（root@1.2.3.4）；`ssh nas` 走 ProxyJump；`ssh me@5.6.7.8` 本机。"
         with patch.object(profile, "profile_ssh_config_hosts", return_value=["hetzner", "nas", "mini"]):
             self.assertEqual(profile.profile_ssh_aliases(facts), ["hetzner", "nas"])
 

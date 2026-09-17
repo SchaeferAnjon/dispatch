@@ -55,7 +55,7 @@ class AgentLaunch(unittest.TestCase):
     def test_focus_on_remote_host_runs_launch_and_window_focus_on_that_host(self):
         args = SimpleNamespace(op='start', kind='codex', host='peer', focus=True,
             cwd='~/Projects/test folder', wait=False, auto=False, json=True)
-        with patch.object(D, 'herdr_target_host', return_value={'id': 'peer', 'name': '大哥'}), \
+        with patch.object(D, 'herdr_target_host', return_value={'id': 'peer', 'name': '书房的 Mac'}), \
              patch.object(D, 'proxy_to_host') as proxy, patch.object(D, 'herdr') as herdr:
             D.cmd_agent(args)
         argv = proxy.call_args.args[0]

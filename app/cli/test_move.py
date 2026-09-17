@@ -8,32 +8,32 @@ import move as M
 
 class Ownership(unittest.TestCase):
     def test_records_owner_on_both_machines_without_waiting_for_board_sync(self):
-        h = {"name": "Apple", "ssh": "apple@100.118.80.86"}
+        h = {"name": "Apple", "ssh": "me@100.64.0.2"}
         with patch.object(M.D, "project_owner_set", return_value={"host": "Apple"}) as local, patch.object(M, "ssh") as remote:
             self.assertEqual(M.set_owner("my project", h), {"host": "Apple"})
-            local.assert_called_once_with("my project", "Apple", "100.118.80.86")
+            local.assert_called_once_with("my project", "Apple", "100.64.0.2")
             self.assertIn("project 'my project' --owner local --json", remote.call_args.args[1])
 
     def test_remote_failure_is_reported_after_local_success(self):
         with patch.object(M.D, "project_owner_set", return_value={"host": "Apple"}), patch.object(M, "ssh", side_effect=RuntimeError("offline")):
-            result = M.set_owner("demo", {"name": "Apple", "ssh": "apple@host"})
+            result = M.set_owner("demo", {"name": "Apple", "ssh": "me@host"})
             self.assertEqual(result["host"], "Apple")
             self.assertIn("目标机器归属记录失败", result["error"])
 
     def test_local_store_exit_does_not_skip_target_write(self):
         with patch.object(M.D, "project_owner_set", side_effect=SystemExit(1)), patch.object(M, "ssh") as remote:
-            self.assertIn("来源机器归属记录失败", M.set_owner("demo", {"name": "Apple", "ssh": "apple@host"})["error"])
+            self.assertIn("来源机器归属记录失败", M.set_owner("demo", {"name": "Apple", "ssh": "me@host"})["error"])
             remote.assert_called_once()
 
 
 class GitConflicts(unittest.TestCase):
-    local = {"exists": True, "git": True, "head": "b" * 40, "remote": "git@github.com:me/atrium.git", "dirty": {"a.swift": "1"}}
+    local = {"exists": True, "git": True, "head": "b" * 40, "remote": "git@github.com:me/notesapp.git", "dirty": {"a.swift": "1"}}
 
     def remote(self, **kw):
-        return {"exists": True, "git": True, "head": "a" * 40, "remote": "https://github.com/me/atrium", "dirty": {}, **kw}
+        return {"exists": True, "git": True, "head": "a" * 40, "remote": "https://github.com/me/notesapp", "dirty": {}, **kw}
 
     def test_target_behind_with_identical_uncommitted_edits_is_safe(self):
-        # The atrium case: Mini two commits behind, its uncommitted files identical to the MacBook's.
+        # The notesapp case: Mini two commits behind, its uncommitted files identical to the MacBook's.
         r = self.remote(dirty={"a.swift": "1", "new.swift": "9"})
         self.assertEqual(M.git_conflicts(self.local, r, lambda c: True, {"a.swift": "1", "new.swift": "9"}.get), [])
 
@@ -54,8 +54,8 @@ class GitConflicts(unittest.TestCase):
         self.assertIn("--exclude=/.git/", args); self.assertIn("--modify-window=2", args); self.assertNotIn("-c", args)
 
     def test_same_remote_spellings(self):
-        for u in ("git@github.com:Me/Atrium.git", "https://github.com/me/atrium/", "ssh://git@github.com/me/atrium.git", "https://token@github.com/me/atrium"):
-            self.assertTrue(M.same_remote(u, "git@github.com:me/atrium.git"), u)
+        for u in ("git@github.com:Me/Notesapp.git", "https://github.com/me/notesapp/", "ssh://git@github.com/me/notesapp.git", "https://token@github.com/me/notesapp"):
+            self.assertTrue(M.same_remote(u, "git@github.com:me/notesapp.git"), u)
 
 
 class Rsync(unittest.TestCase):
@@ -128,18 +128,18 @@ class MoveJobs(unittest.TestCase):
     def test_job_file_lifecycle_and_listing(self):
         import json, os, tempfile, time
         with tempfile.TemporaryDirectory() as tmp, patch.object(M, "JOBS_DIR", tmp):
-            job = M.Job.create("relecture", "大哥", "/x/relecture")
+            job = M.Job.create("readerapp", "书房的 Mac", "/x/readerapp")
             job.update(pid=os.getpid())
             job.progress("files", "同步文件 3/10", 30)
             rows = M.list_jobs()
-            self.assertEqual([(r["project"], r["state"], r["percent"], r["label"]) for r in rows], [("relecture", "running", 30, "同步文件 3/10")])
-            job.finish({"to": "大哥", "remote_cwd": "/y", "git": {"verify": {"checked": True, "head_match": True, "dirty_match": True}}, "moved": [{"session_id": "a"}, {"session_id": "b", "error": "x"}], "history": {"copied": 5, "failed": []}, "owner": {}})
+            self.assertEqual([(r["project"], r["state"], r["percent"], r["label"]) for r in rows], [("readerapp", "running", 30, "同步文件 3/10")])
+            job.finish({"to": "书房的 Mac", "remote_cwd": "/y", "git": {"verify": {"checked": True, "head_match": True, "dirty_match": True}}, "moved": [{"session_id": "a"}, {"session_id": "b", "error": "x"}], "history": {"copied": 5, "failed": []}, "owner": {}})
             done = M.list_jobs()[0]
             self.assertEqual((done["state"], done["percent"], done["result"]["sessions"], done["result"]["sessions_failed"], done["result"]["history"], done["result"]["git_ok"]), ("done", 100, 2, 1, 5, True))
             # A worker that vanished is reported, not shown as running for ever.
-            dead = M.Job.create("atrium", "大哥", "/x/atrium"); dead.update(pid=999999)
+            dead = M.Job.create("notesapp", "书房的 Mac", "/x/notesapp"); dead.update(pid=999999)
             self.assertEqual(next(r for r in M.list_jobs() if r["id"] == dead.id)["state"], "failed")
-            other = M.Job.create("k", "大哥", "/x/k"); other.fail(RuntimeError("boom"))
+            other = M.Job.create("k", "书房的 Mac", "/x/k"); other.fail(RuntimeError("boom"))
             self.assertEqual(next(r for r in M.list_jobs() if r["id"] == other.id)["error"], "boom")
 
     def test_nested_caches_and_worktrees_are_never_copied(self):
@@ -150,16 +150,16 @@ class MoveJobs(unittest.TestCase):
 
     def test_progress_reports_every_stage_in_order(self):
         steps = []
-        h = {"name": "大哥", "ssh": "u@h", "id": "hub"}
+        h = {"name": "书房的 Mac", "ssh": "u@h", "id": "hub"}
         with patch.object(M, "host_by", return_value=h), patch.object(M, "project_dir", return_value="/x/p"), patch.object(M, "ssh", return_value="/Users/u\n"), \
              patch.object(M, "git_preflight", return_value={"local": {"git": True}, "remote": {}, "conflicts": [], "protect": [], "skip": [], "history": False}), \
              patch.object(M, "plan_files", return_value={"send": 2, "delete": 0}), patch.object(M.D, "live_sessions", return_value=[]), patch.object(M, "project_history", return_value=[]), \
              patch.object(M, "sync_files", side_effect=lambda h, c, r, g, on_file=None, planned=None, on_push=None: on_file and on_file(2)), patch.object(M, "verify_git", return_value={"checked": False}), \
-             patch.object(M, "mark_moved"), patch.object(M, "set_owner", return_value={"host": "大哥"}), patch.object(M, "project_name", return_value="p"):
-            res = M.move_project("p", "大哥", progress=lambda step, label, pct, detail="": steps.append((step, pct)))
+             patch.object(M, "mark_moved"), patch.object(M, "set_owner", return_value={"host": "书房的 Mac"}), patch.object(M, "project_name", return_value="p"):
+            res = M.move_project("p", "书房的 Mac", progress=lambda step, label, pct, detail="": steps.append((step, pct)))
         self.assertEqual([s for s, _ in steps], ["preflight", "plan", "files", "files", "verify", "history", "history", "owner", "done"])
         self.assertEqual([p for _, p in steps], sorted(p for _, p in steps))
-        self.assertEqual(res["owner"], {"host": "大哥"})
+        self.assertEqual(res["owner"], {"host": "书房的 Mac"})
 
 
 class RemoteCount(unittest.TestCase):

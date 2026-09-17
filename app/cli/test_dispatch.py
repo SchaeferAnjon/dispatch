@@ -448,9 +448,9 @@ class EnvStore(unittest.TestCase):
             dispatch.ENV_DIR = d; dispatch.ENV_FILE = os.path.join(d, "env"); dispatch.ENV_FISH = os.path.join(d, "env.fish")
             dispatch.env_write([{"name": "ZHIPU_API_KEY", "value": "abc123def456", "note": "智谱 GLM"},
                                 {"name": "THBW_NETWAYS_API_KEY", "value": "nw-secret-1", "note": "Netways Managed AI", "project": "HIWI"},
-                                {"name": "OTHER_KEY", "value": "o-1", "note": "", "project": "atrium"}])
+                                {"name": "OTHER_KEY", "value": "o-1", "note": "", "project": "notesapp"}])
             items = dispatch.env_read()
-            self.assertEqual([(i["name"], i["project"]) for i in items], [("ZHIPU_API_KEY", ""), ("THBW_NETWAYS_API_KEY", "HIWI"), ("OTHER_KEY", "atrium")])
+            self.assertEqual([(i["name"], i["project"]) for i in items], [("ZHIPU_API_KEY", ""), ("THBW_NETWAYS_API_KEY", "HIWI"), ("OTHER_KEY", "notesapp")])
             self.assertEqual(items[1]["note"], "Netways Managed AI")
             self.assertIn("# project: HIWI\n# Netways Managed AI\nTHBW_NETWAYS_API_KEY=", open(dispatch.ENV_FILE).read())
             # prime: machine-wide keys everywhere, a project's keys only in that project
@@ -690,8 +690,8 @@ class ServeSymlink(unittest.TestCase):
         from types import SimpleNamespace
         from unittest.mock import patch
         with patch.object(sys,'argv',['dispatch']), patch('runpy.run_path'):
-            dispatch.cmd_serve(SimpleNamespace(what='host', target='apple-mac-mini', json=True))
-            self.assertEqual(sys.argv, ['serve','host','apple-mac-mini','--json'])
+            dispatch.cmd_serve(SimpleNamespace(what='host', target='living-room-mini', json=True))
+            self.assertEqual(sys.argv, ['serve','host','living-room-mini','--json'])
             dispatch.cmd_serve(SimpleNamespace(what='host', target=None, json=False))
             self.assertEqual(sys.argv, ['serve','host'])
 
@@ -704,17 +704,17 @@ class ServeSymlink(unittest.TestCase):
 
 
 class FactsSections(unittest.TestCase):
-    DOC = "# 常用信息\n\n> 说明\n\n## 通用\n\n- 机器 A\n\n## relecture（ReLecture · 重讲）\n\n- 域名 relecture.app\n\n## ReadOut\n\n- 手机阅读\n\n## 空节\n"
+    DOC = "# 常用信息\n\n> 说明\n\n## 通用\n\n- 机器 A\n\n## readerapp（ReLecture · 重讲）\n\n- 域名 readerapp.app\n\n## ReadAloud\n\n- 手机阅读\n\n## 空节\n"
 
     def test_key_is_first_word_lowercased(self):
-        self.assertEqual(dispatch.facts_key("relecture（ReLecture · 重讲）"), "relecture")
-        self.assertEqual(dispatch.facts_key("ReadOut"), "readout")
+        self.assertEqual(dispatch.facts_key("readerapp（ReLecture · 重讲）"), "readerapp")
+        self.assertEqual(dispatch.facts_key("ReadAloud"), "readaloud")
         self.assertEqual(dispatch.facts_key("通用"), "通用")
 
     def test_project_gets_general_plus_its_own_section_only(self):
-        picked = dispatch.facts_for("Relecture", self.DOC)
-        self.assertEqual([h for h, _ in picked], ["通用", "relecture（ReLecture · 重讲）"])
-        self.assertIn("relecture.app", picked[1][1])
+        picked = dispatch.facts_for("Readerapp", self.DOC)
+        self.assertEqual([h for h, _ in picked], ["通用", "readerapp（ReLecture · 重讲）"])
+        self.assertIn("readerapp.app", picked[1][1])
 
     def test_no_project_gets_general_only_and_empty_sections_are_dropped(self):
         self.assertEqual([h for h, _ in dispatch.facts_for("", self.DOC)], ["通用"])
@@ -729,7 +729,7 @@ class FactsSections(unittest.TestCase):
         self.assertEqual([(h, t) for h, t, _ in hits], [("服务器", "Netways Managed AI")])
         self.assertIn("Passwort vergessen", hits[0][2])
         # another project never sees it; giving only the global text reads no project file
-        self.assertEqual([h for h, _ in dispatch.facts_for("relecture", self.DOC, self.PROJECT_DOC)], ["通用", "relecture（ReLecture · 重讲）", "服务器", "联系人"][:2] + ["服务器", "联系人"])
+        self.assertEqual([h for h, _ in dispatch.facts_for("readerapp", self.DOC, self.PROJECT_DOC)], ["通用", "readerapp（ReLecture · 重讲）", "服务器", "联系人"][:2] + ["服务器", "联系人"])
         self.assertEqual([h for h, _ in dispatch.facts_for("hiwi", self.DOC)], ["通用"])
 
     def test_project_facts_path_follows_project_home(self):
@@ -748,10 +748,10 @@ class ProjectFlags(unittest.TestCase):
         self.assertEqual(dispatch.project_flags_parse("not json"), {})
 
     def test_apply_merges_and_drops_empty(self):
-        flags = dispatch.project_flags_apply({}, "ReadOut", {"starred": True})
-        flags = dispatch.project_flags_apply(flags, "ReadOut", {"archived": True})
-        self.assertEqual(flags, {"ReadOut": {"starred": True, "archived": True}})
-        flags = dispatch.project_flags_apply(flags, "ReadOut", {"starred": False, "archived": False})
+        flags = dispatch.project_flags_apply({}, "ReadAloud", {"starred": True})
+        flags = dispatch.project_flags_apply(flags, "ReadAloud", {"archived": True})
+        self.assertEqual(flags, {"ReadAloud": {"starred": True, "archived": True}})
+        flags = dispatch.project_flags_apply(flags, "ReadAloud", {"starred": False, "archived": False})
         self.assertEqual(flags, {})
 
     def test_apply_rejects_bad_input(self):
@@ -815,7 +815,7 @@ class PaneChrome(unittest.TestCase):
 
 class HumanNote(unittest.TestCase):
     def test_only_the_users_latest_unanswered_note_is_injected(self):
-        user = {"author": "schaefer", "text": "请补一下  手机截图", "created_at": "2"}
+        user = {"author": "alice", "text": "请补一下  手机截图", "created_at": "2"}
         agent = {"author": "claude-code", "text": "好的", "created_at": "3"}
         self.assertEqual(dispatch.human_note([agent, user], "claude-code"), "请补一下 手机截图")
         self.assertEqual(dispatch.human_note([user, agent], "claude-code"), "")
@@ -910,23 +910,23 @@ class TaskArchive(unittest.TestCase):
 
 
 class Facts(unittest.TestCase):
-    TEXT = "# x\n\n## 通用\n\n**机器**\n- 本机 MacBook，Tailscale 100.85.245.72\n- mini 100.118.80.86\n\n**我常说的话**\n- 密钥只进 dispatch env\n\n## kanban\n- 板在 ~/tasks/.beads\n"
+    TEXT = "# x\n\n## 通用\n\n**机器**\n- 本机 MacBook，Tailscale 100.64.0.1\n- mini 100.64.0.2\n\n**我常说的话**\n- 密钥只进 dispatch env\n\n## kanban\n- 板在 ~/tasks/.beads\n"
 
     def test_topics_and_get(self):
         secs = dict(dispatch.facts_sections(self.TEXT))
         self.assertEqual([t for t, _ in dispatch.facts_topics(secs["通用"])], ["机器", "我常说的话"])
         hits = dispatch.facts_get("机器", "", self.TEXT)
         self.assertEqual([(h, t) for h, t, _ in hits], [("通用", "机器")])
-        self.assertIn("100.85.245.72", hits[0][2])
+        self.assertIn("100.64.0.1", hits[0][2])
         self.assertEqual(dispatch.facts_get("常说", "kanban", self.TEXT)[0][1], "我常说的话")
         self.assertEqual(dispatch.facts_get("nothing", "", self.TEXT), [])
 
     def test_search_carries_topic(self):
         rows = dispatch.facts_search("mini 100", [("通用", self.TEXT)])
-        self.assertEqual(rows, [("通用", "机器", "- mini 100.118.80.86")])
+        self.assertEqual(rows, [("通用", "机器", "- mini 100.64.0.2")])
 
     def test_import_candidates_skip_known_and_irrelevant(self):
-        src = [("/m/a.md", "---\nname: x\n---\n\n本机 MacBook，Tailscale 100.85.245.72 就是这台\n\n今天天气不错，写了很多代码，非常开心的一天。\n\nHetzner 别名 hetzner，root@178.104.140.55，裸 IP 会 Permission denied\n"), ("/m/b.md", "Hetzner 别名 hetzner，root@178.104.140.55，裸 IP 会 Permission denied")]
+        src = [("/m/a.md", "---\nname: x\n---\n\n本机 MacBook，Tailscale 100.64.0.1 就是这台\n\n今天天气不错，写了很多代码，非常开心的一天。\n\nHetzner 别名 hetzner，root@203.0.113.7，裸 IP 会 Permission denied\n"), ("/m/b.md", "Hetzner 别名 hetzner，root@203.0.113.7，裸 IP 会 Permission denied")]
         cands = dispatch.facts_candidates(src, self.TEXT)
         self.assertEqual([p for p, _ in cands], ["/m/a.md", "/m/a.md"])
         self.assertTrue(any("Hetzner" in c for _, c in cands))
@@ -953,7 +953,7 @@ class DynamicWorkflow(unittest.TestCase):
         T = dispatch.DISCUSS_TAG
         parts = [("claude", "opus"), ("codex", ""), ("pi", "")]
         judge = lambda *cs: dispatch.discussion_judge(list(cs), parts)
-        me = lambda t: {"author": "schaefer", "text": T + "schaefer：" + t}
+        me = lambda t: {"author": "alice", "text": T + "alice：" + t}
         # @kind / @kind（model） / @model / @actor
         self.assertEqual(judge(me("@codex 你说的冷启动怎么量化？"))["picked"], [1])
         self.assertEqual(judge(me("@claude（opus） 先说"))["picked"], [0])
@@ -962,7 +962,7 @@ class DynamicWorkflow(unittest.TestCase):
         self.assertEqual(judge(me("@claude-code 呢"))["picked"], [0])
         self.assertEqual(judge(me("@pi @codex 你们俩"))["picked"], [2, 1])
         r = judge(me("@codex 你说"))
-        self.assertFalse(r["everyone"]); self.assertIn("被 schaefer @", r["why"]); self.assertIn("codex", r["why"])
+        self.assertFalse(r["everyone"]); self.assertIn("被 alice @", r["why"]); self.assertIn("codex", r["why"])
         # a person talking to the group, or @大家 → everyone
         for t in ("大家觉得呢", "@大家 觉得呢", "@all 看看", "@codex 你说，@各位 也看看"):
             self.assertTrue(judge(me(t))["everyone"], t)
@@ -976,8 +976,8 @@ class DynamicWorkflow(unittest.TestCase):
         r = judge({"author": "codex", "text": T + "codex：pi 的方案把冷启动成本低估了"}, me("@claude 你怎么看"))
         self.assertEqual(sorted(r["picked"]), [0, 2])
         # the opener line: only the question after 邀请 … ： counts
-        self.assertEqual(judge({"author": "schaefer", "text": T + "发起：schaefer 邀请 claude, codex, pi 讨论：@pi 先说"})["picked"], [2])
-        self.assertTrue(judge({"author": "schaefer", "text": T + "发起：schaefer 邀请 claude, codex, pi 讨论"})["everyone"])
+        self.assertEqual(judge({"author": "alice", "text": T + "发起：alice 邀请 claude, codex, pi 讨论：@pi 先说"})["picked"], [2])
+        self.assertTrue(judge({"author": "alice", "text": T + "发起：alice 邀请 claude, codex, pi 讨论"})["everyone"])
         self.assertTrue(judge()["everyone"])
         self.assertEqual(dispatch.member_names("claude", "opus"), {"claude", "claude-code", "opus", "claude（opus）", "claude(opus)", "claude:opus"})
 
@@ -1400,7 +1400,7 @@ class SummaryUses(unittest.TestCase):
         bad_local = {"summary": "Codex 是一个桌面端和手机端的会话与项目管理应用……", "at": int(time.time()) - 3600, "by": "claude:haiku", "sessions": 0, "open": 3, "closed": 1}
         good_remote = {"summary": "kanban 是任务管理与项目追踪系统……", "at": int(time.time()) - 90000, "by": "claude:haiku", "sessions": 68, "open": 32, "closed": 138, "trusted": True, "material_sessions": 68, "cached": True}
         key = dispatch.INTERNAL_MEMORY_PREFIX + "project-summary-kanban"
-        host = {"id": "hub", "name": "大哥", "ssh": "hub"}
+        host = {"id": "hub", "name": "书房的 Mac", "ssh": "hub"}
         stored = {}
         with patch.object(self.sd, "sh", return_value=(0, json.dumps({key: json.dumps(bad_local)}), "")), \
              patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
@@ -1422,7 +1422,7 @@ class SummaryUses(unittest.TestCase):
         self.assertIn("--local", rargs)   # the peer answers only for itself — no recursive hop
 
     def test_project_summary_ignores_an_untrusted_remote_answer(self):
-        host = {"id": "hub", "name": "大哥", "ssh": "hub"}
+        host = {"id": "hub", "name": "书房的 Mac", "ssh": "hub"}
         blind_remote = {"summary": "瞎猜的", "at": int(time.time()), "by": "claude:haiku", "sessions": 0, "open": 3, "closed": 1}   # no "trusted"
         with patch.object(self.sd, "sh", return_value=(0, "{}", "")), \
              patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
@@ -1483,7 +1483,7 @@ class SummaryUses(unittest.TestCase):
         older = {"summary": "旧一点", "at": 1000, "trusted": True, "by": "claude:haiku"}
         newer = {"summary": "新一点", "at": 2000, "trusted": True, "by": "claude:haiku"}
         blind = {"summary": "瞎猜的", "at": 5000, "by": "claude:haiku"}   # no "trusted": newest by time, must still lose
-        hub = {"id": "hub", "name": "大哥", "ssh": "hub"}
+        hub = {"id": "hub", "name": "书房的 Mac", "ssh": "hub"}
         third = {"id": "third", "name": "third", "ssh": "third"}
         answers = {"hub": older, "third": newer}
         with patch.object(self.sd, "hosts", return_value=[hub, third]), \
@@ -1497,7 +1497,7 @@ class SummaryUses(unittest.TestCase):
             self.assertIsNone(self.summarize.fetch_remote_summary("kanban"))
 
     def test_fetch_remote_summary_none_when_no_host_answers(self):
-        with patch.object(self.sd, "hosts", return_value=[{"id": "hub", "name": "大哥", "ssh": "hub"}]), \
+        with patch.object(self.sd, "hosts", return_value=[{"id": "hub", "name": "书房的 Mac", "ssh": "hub"}]), \
              patch.object(self.sd, "remote_dispatch", return_value=None):
             self.assertIsNone(self.summarize.fetch_remote_summary("kanban"))
 
@@ -1525,7 +1525,7 @@ class SummaryUses(unittest.TestCase):
         key = dispatch.INTERNAL_MEMORY_PREFIX + "project-summary-kanban"
         with patch.object(self.sd, "sh", return_value=(0, json.dumps({key: json.dumps(good_local)}), "")), \
              patch.object(self.summarize, "provider", return_value={"id": "claude", "base": "", "model": "haiku", "key": ""}), \
-             patch.object(self.sd, "project_home", return_value="/Users/macbook14/Projects/kanban"), \
+             patch.object(self.sd, "project_home", return_value="/Users/alice/Projects/kanban"), \
              patch.object(self.sd, "hosts") as hosts_mock, \
              patch.object(self.summarize, "chat") as chat_mock:
             r = self.summarize.project_summary("kanban", if_stale=True)
@@ -1697,9 +1697,9 @@ class RemoteBackground(unittest.TestCase):
 
 class ProjectNamesFromRows(unittest.TestCase):
     def test_rows_in_hand_skip_the_board_round_trip(self):
-        rows = [{"labels": ["project:Atrium", "dispatch:outcome"]}, {"labels": []}, {}]
+        rows = [{"labels": ["project:Notesapp", "dispatch:outcome"]}, {"labels": []}, {}]
         with patch.object(dispatch, "sh", side_effect=AssertionError("已经有全板数据就别再查一次")):
-            self.assertEqual(dispatch.project_names(rows), {"atrium": "Atrium"})
+            self.assertEqual(dispatch.project_names(rows), {"notesapp": "Notesapp"})
 
 
 class CatalogWindow(unittest.TestCase):
@@ -1707,7 +1707,7 @@ class CatalogWindow(unittest.TestCase):
         import dispatch as D
         refs = [dict(session_id=f"cron{i}", last_at=1000 - i, entrypoint="cron", project="hermes") for i in range(30)]
         refs += [dict(session_id=f"p{i}", last_at=500 - i, project="kanban") for i in range(10)]
-        refs += [dict(session_id="old1", last_at=5, project="relecture"), dict(session_id="old2", last_at=4, project="relecture"), dict(session_id="old3", last_at=3, project="relecture"), dict(session_id="old4", last_at=2, project="relecture")]
+        refs += [dict(session_id="old1", last_at=5, project="readerapp"), dict(session_id="old2", last_at=4, project="readerapp"), dict(session_id="old3", last_at=3, project="readerapp"), dict(session_id="old4", last_at=2, project="readerapp")]
         out = D.catalog_window(refs, 12, routine_cap=2, per_project=3)
         ids = [r["session_id"] for r in out]
         self.assertEqual(sum(1 for i in ids if i.startswith("cron")), 2)

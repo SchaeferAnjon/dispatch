@@ -15,3 +15,11 @@ __pycache__/
 
 # UX review reports: screenshots of a personal board, keep them local
 design/review-*
+
+# Working records with real machine names, paths and screenshots stay on this Mac (Dispatch still lists them under the project's 文档).
+design/remote-migration/
+design/migration-check/
+design/agent-launch/
+design/migration-confirm/
+design/screenshots/
+design/ui-mockup.html

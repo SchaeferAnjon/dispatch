@@ -21,6 +21,7 @@ calls `dispatch init run <step> ...` for each button. The terminal wizard
 import glob, json, os, plistlib, re, secrets, shlex, shutil, socket, subprocess, sys, time
 
 import dispatch as D
+import launchd_labels as L
 
 INIT_FILE = os.path.join(D.DISPATCH_DIR, "init.json")
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -237,8 +238,8 @@ def board_status():
         remote = m.group(1).strip() if m else ""
     st = load_state()
     return {"dir": D.BEADS_DIR, "exists": exists, "remote": remote, "mode": st.get("board_mode", ""), "hub": st.get("hub"), "reverse_ssh": st.get("reverse_ssh"),
-            "server_up": dolt_server_up() if exists else False, "launchd": os.path.exists(os.path.join(LAUNCH_DIR, "dev.schaefer.beads-dolt.plist")),
-            "sync_launchd": os.path.exists(os.path.join(LAUNCH_DIR, "dev.schaefer.beads-sync.plist")), "remotesapi": remotesapi_enabled()}
+            "server_up": dolt_server_up() if exists else False, "launchd": os.path.exists(os.path.join(LAUNCH_DIR, L.label("beads-dolt") + ".plist")),
+            "sync_launchd": os.path.exists(os.path.join(LAUNCH_DIR, L.label("beads-sync") + ".plist")), "remotesapi": remotesapi_enabled()}
 
 
 def kill_board_dolt():
@@ -286,7 +287,7 @@ def write_plist(label, args, env=None, interval=None, keep_alive=False, log=None
 
 def install_dolt_launchd(env=None):
     os.makedirs(SHARED, exist_ok=True)
-    return write_plist("dev.schaefer.beads-dolt", [which("bd") or "bd", "dolt", "start"], env=env, interval=120, log=os.path.join(SHARED, "launchd.log"))
+    return write_plist(L.label("beads-dolt"), [which("bd") or "bd", "dolt", "start"], env=env, interval=120, log=os.path.join(SHARED, "launchd.log"))
 
 
 def wait_server(seconds=40):
@@ -329,9 +330,9 @@ def enable_remotesapi(force=False):
         os.makedirs(os.path.dirname(DOLT_CONFIG), exist_ok=True)
         open(DOLT_CONFIG, "w").write(cfg)
     uid = os.getuid()
-    subprocess.run(["launchctl", "bootout", f"gui/{uid}/dev.schaefer.beads-dolt"], capture_output=True)
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/" + L.label("beads-dolt")], capture_output=True)
     try:
-        os.remove(os.path.join(LAUNCH_DIR, "dev.schaefer.beads-dolt.plist"))
+        os.remove(os.path.join(LAUNCH_DIR, L.label("beads-dolt") + ".plist"))
     except FileNotFoundError:
         pass
     run([which("bd") or "bd", "dolt", "stop"], timeout=60)
@@ -341,7 +342,7 @@ def enable_remotesapi(force=False):
         time.sleep(0.5)
     kill_board_dolt()
     time.sleep(1)
-    write_plist("dev.schaefer.dolt-server", [which("dolt") or "dolt", "sql-server", "--config", DOLT_CONFIG], keep_alive=True, log=os.path.join(SHARED, "dolt-server.log"), cwd=os.path.dirname(DOLT_CONFIG))
+    write_plist(L.label("dolt-server"), [which("dolt") or "dolt", "sql-server", "--config", DOLT_CONFIG], keep_alive=True, log=os.path.join(SHARED, "dolt-server.log"), cwd=os.path.dirname(DOLT_CONFIG))
     if not wait_server():
         raise RuntimeError("Dolt 服务没起来，看 ~/.beads/shared-server/dolt-server.log")
     for _ in range(20):
@@ -585,7 +586,7 @@ def board_retire():
     import shutil
     stamp = time.strftime("%Y%m%d-%H%M")
     uid = os.getuid()
-    for label in ("dev.schaefer.dolt-server", "dev.schaefer.beads-dolt", "dev.schaefer.beads-sync"):
+    for label in (L.label("dolt-server"), L.label("beads-dolt"), L.label("beads-sync")):
         subprocess.run(["launchctl", "bootout", f"gui/{uid}/{label}"], capture_output=True)
         try:
             os.remove(os.path.join(LAUNCH_DIR, f"{label}.plist"))
@@ -648,7 +649,7 @@ def board_join(target, replace=False):
     D.env_write(items)
     # Two-way sync every 2 minutes.
     sync_sh = os.path.join(D.DISPATCH_DIR, "board-sync.sh")
-    write_plist("dev.schaefer.beads-sync", ["/bin/bash", sync_sh], env={"BOARD_HUB": hub["ip"]}, interval=120, log=os.path.join(SHARED, "sync.log"))
+    write_plist(L.label("beads-sync"), ["/bin/bash", sync_sh], env={"BOARD_HUB": hub["ip"]}, interval=120, log=os.path.join(SHARED, "sync.log"))
     # Both Macs know each other.
     hub_entry = {"id": re.sub(r"[^a-z0-9]+", "-", hub["name"].lower()).strip("-") or "hub", "name": hub["name"], "ssh": f"{hub['user']}@{hub['ip']}", "dispatch": hub["dispatch"], "herdr_session": "main"}
     hs = [h for h in D.hosts() if h.get("ssh") != hub_entry["ssh"]] + [hub_entry]
@@ -877,7 +878,7 @@ def ensure_herdr():
     if not (herdr and tmux):
         raise RuntimeError("先装 Herdr 和 tmux（第一步）")
     cmd = f"{tmux} has-session -t herdr 2>/dev/null || {tmux} new -d -s herdr -x 220 -y 60 \"{herdr} --session main\""
-    write_plist("dev.schaefer.herdr", ["/bin/sh", "-c", cmd], interval=120, log="/tmp/herdr-launchd.log")
+    write_plist(L.label("herdr"), ["/bin/sh", "-c", cmd], interval=120, log="/tmp/herdr-launchd.log")
     for _ in range(20):
         if os.path.exists(HERDR_MAIN_SOCK):
             break
