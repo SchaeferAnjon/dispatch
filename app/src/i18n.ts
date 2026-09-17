@@ -36,8 +36,19 @@ function readPref(): LocalePref {
   try { const v = typeof localStorage !== "undefined" ? localStorage.getItem(LOCALE_KEY) : null; return v === "zh" || v === "en" || v === "de" ? v : "system"; } catch { return "system"; }
 }
 
-let pref: LocalePref = readPref();
+// `?lang=en` on the page URL wins once and is remembered: the public site opens the demo in the
+// language the visitor is reading it in.
+function urlLang(): LocalePref | null {
+  try {
+    if (typeof location === "undefined") return null;
+    const q = new URLSearchParams(location.search).get("lang");
+    return q === "zh" || q === "en" || q === "de" ? q : null;
+  } catch { return null; }
+}
+const fromUrl = urlLang();
+let pref: LocalePref = fromUrl ?? readPref();
 let locale: Locale = pref === "system" ? detectLocale() : pref;
+if (fromUrl) { try { localStorage.setItem(LOCALE_KEY, fromUrl); } catch { /* private mode */ } }
 const listeners = new Set<() => void>();
 
 export const getLocale = (): Locale => locale;
@@ -77,7 +88,7 @@ export function t(key: string, params?: Params): string {
 export function useT(): typeof t { useLocale(); return t; }
 export function useLocale(): Locale { return useSyncExternalStore(subscribe, getLocale, getLocale); }
 export function useLocalePref(): LocalePref { return useSyncExternalStore(subscribe, getLocalePref, getLocalePref); }
-function subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l); }; }
+export function subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l); }; }
 
 /** How each locale writes a relative or short time: en/de use Intl, zh keeps the compact hand-written form. */
 export const intlLocale = (): string => HTML_LANG[locale];

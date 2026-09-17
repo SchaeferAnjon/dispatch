@@ -36,7 +36,7 @@ import { GraphView } from "./components/Graph";
 import { OverviewView, Tour } from "./components/Guide";
 import { MobileNav } from "./components/MobileNav";
 import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
-import { intlLocale, useLocale, useT } from "./i18n";
+import { intlLocale, useLocale, useT , subscribe as subscribeLocale } from "./i18n";
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View, MoveJob } from "./types";
 
 type Theme = "light" | "dark" | "";
@@ -66,6 +66,10 @@ function parseHash(h: string): Place | null {
   return { view, selected, project: view === "projects" ? arg : null, session: view === "sessions" ? arg : null, discussion: view === "discuss" ? arg : null };
 }
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
+
+// The browser demo builds its sample data once per page load in the current language
+// (fixtures.ts): after a language switch it needs a reload to speak that language.
+if (!isTauri && !isServed) subscribeLocale(() => { window.location.reload(); });
 
 export default function App() {
   const t = useT();
