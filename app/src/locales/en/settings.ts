@@ -30,7 +30,7 @@ const settings: Dict = {
   "发一条测试通知": "Send a test notification",
   "工作区根目录": "Workspace roots",
   "这些文件夹的直接子文件夹各算一个项目（例如 ~/Projects/kanban 下的会话都归 kanban）。其它位置按 git 仓库根目录归项目，没有仓库就按所在文件夹。一行一个。": "Every direct subfolder of these counts as one project (sessions under ~/Projects/kanban all belong to kanban). Elsewhere the git repository root decides, or the containing folder when there is no repository. One per line.",
-  "有任务、有成果、或手动关联过的才算正式项目；其余只是「目录」，在项目页底部的「其他目录与未归类」里。": "Only folders with tasks, outcomes or a manual link count as real projects; the rest are just folders, listed under “Other folders” at the bottom of the Projects page.",
+  "有任务、有成果、手动关联过、在软件里新建过、收藏过，或在这些根目录下开过会话的，都算正式项目；其余只是「目录」，在项目页底部的「其他目录与未归类」里。": "Folders with tasks, outcomes or a manual link, projects created in the app, starred ones, and any folder under these roots where a session was started all count as real projects; the rest are plain folders, listed under \"Other folders and ungrouped\" at the bottom of the projects page.",
   "「讨论一个念头」里每个成员的人设和群里的规矩，进它们的系统提示；每轮只再给新消息。空着就用默认。": "The persona of each member of “Discuss an idea” and the rules of the room go into their system prompts; each round only adds the new messages. Leave empty for the defaults.",
   "群里的规矩": "House rules",
   "发言多长、什么时候闲聊、什么时候只回 SKIP（不显示）。": "How long a turn may be, when small talk is fine, and when to answer only SKIP (not shown).",

@@ -5,7 +5,9 @@ import type { Memory } from "./types";
 // Same key and shape as `dispatch project` in the CLI.
 export const PROJECT_FLAGS_KEY = "dispatch-projects";
 export const INTERNAL_MEMORY_PREFIX = "dispatch-";
-export type ProjectFlag = { starred?: true; archived?: true; alias?: string };
+// `dir`: the home folder chosen when the project was created in the app; the project exists before
+// any session or task does, and conversations inside that folder belong to it.
+export type ProjectFlag = { starred?: true; archived?: true; alias?: string; dir?: string };
 export type ProjectFlags = Record<string, ProjectFlag>;
 
 export function parseProjectFlags(memories: Memory[]): ProjectFlags {
@@ -22,12 +24,14 @@ export function parseProjectFlags(memories: Memory[]): ProjectFlags {
     if ((v as ProjectFlag).archived === true) f.archived = true;
     const alias = (v as ProjectFlag).alias;
     if (typeof alias === "string" && alias.trim() && alias.trim() !== name) f.alias = alias.trim().slice(0, 80);
-    if (f.starred || f.archived || f.alias) out[name] = f;
+    const dir = (v as ProjectFlag).dir;
+    if (typeof dir === "string" && dir.trim().startsWith("/")) f.dir = dir.trim().replace(/\/+$/, "").slice(0, 400);
+    if (f.starred || f.archived || f.alias || f.dir) out[name] = f;
   }
   return out;
 }
 
-export function withProjectFlag(flags: ProjectFlags, name: string, change: { starred?: boolean; archived?: boolean; alias?: string }): ProjectFlags {
+export function withProjectFlag(flags: ProjectFlags, name: string, change: { starred?: boolean; archived?: boolean; alias?: string; dir?: string }): ProjectFlags {
   const cur = { ...(flags[name] ?? {}), ...change };
   const next: ProjectFlag = {};
   if (cur.starred) next.starred = true;
@@ -35,10 +39,15 @@ export function withProjectFlag(flags: ProjectFlags, name: string, change: { sta
   // 显示名: what the person calls the project; the raw name stays on labels and directories.
   const alias = (cur.alias ?? "").trim();
   if (alias && alias !== name) next.alias = alias.slice(0, 80);
+  const dir = (cur.dir ?? "").trim().replace(/\/+$/, "");
+  if (dir.startsWith("/")) next.dir = dir.slice(0, 400);
   const out: ProjectFlags = { ...flags };
-  if (next.starred || next.archived || next.alias) out[name] = next; else delete out[name];
+  if (next.starred || next.archived || next.alias || next.dir) out[name] = next; else delete out[name];
   return out;
 }
+
+/** lowercase name -> home folder, for projects created with a folder. */
+export const projectDirs = (flags: ProjectFlags): Record<string, string> => Object.fromEntries(Object.entries(flags).filter(([, f]) => f.dir).map(([n, f]) => [n.toLowerCase(), f.dir!]));
 
 /** What to print for a project: its 显示名 when one was set, else the name itself. */
 export const projectLabel = (flags: ProjectFlags, name: string) => flags[name]?.alias || name;

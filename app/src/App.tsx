@@ -21,7 +21,7 @@ import { ProjectHub } from "./components/ProjectHub";
 import { HomeView } from "./components/Home";
 import { SearchPalette } from "./components/Search";
 import { dropMovedOriginals, migrationCheckPrompt, type MigrationCheck } from "./moves";
-import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, newSessionTarget, ownerHostId, parseProjectFlags, parseProjectOwners, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags, type ProjectOwner, projectLabel } from "./projectFlags";
+import { DEFAULT_SETTINGS, PROJECT_FLAGS_KEY, SETTINGS_KEY, newSessionTarget, ownerHostId, parseProjectFlags, parseProjectOwners, parseSettings, serializeProjectFlags, serializeSettings, withProjectFlag, type DispatchSettings, type ProjectFlags, type ProjectOwner, projectLabel, projectDirs } from "./projectFlags";
 import { SettingsView } from "./components/Settings";
 import { SetupView, type InitStatus } from "./components/Setup";
 import type { PhoneHost, ScreenSetupResult, UpdateInfo } from "./components/Settings";
@@ -563,8 +563,10 @@ export default function App() {
   const saveSettings = async (next: DispatchSettings) => { if (!api) return; try { await api.remember(SETTINGS_KEY, serializeSettings(next)); setSettings(next); say(t("设置已保存")); } catch (e) { say(String(e), true); } };
   // A real push through the CLI, so the button tests the same path the events use.
   const testNotify = async () => { if (!api) return; try { const r = JSON.parse((await api.on("local", ["notify", t("Dispatch 测试通知"), t("看到这条就说明推送通了"), "--json"])).replace(/^[^{]*/, "")) as { ok?: boolean; channel?: string; error?: string; fallback?: string }; if (r.channel === "macos") say(t("已发本机通知。在「环境」页配 NTFY_URL 或 BARK_KEY 就能推到手机")); else if (r.ok) say(t("已推到手机（{channel}）", { channel: r.channel ?? "" })); else { const m = r.error ?? t("没发出去"); say(r.fallback ? t("{msg}，已退回本机通知", { msg: m }) : m, true); } } catch (e) { say(String(e), true); } };
+  const [projectFlags, setProjectFlags] = useState<ProjectFlags>({});
+  const flagDirs = useMemo(() => projectDirs(projectFlags), [projectFlags]);
   const known = useMemo(() => knownProjects(issues, activity.sessions), [issues, activity]);
-  const normalise = useCallback(<T extends { cwd: string; project: string; project_override?: string; scheduled?: boolean; path?: string; entrypoint?: string; title?: string }>(x: T): T => ({ ...x, project: resolveProject(x, known, settings.workspace_roots), scheduled: x.scheduled ?? (settings.sdk_sessions_scheduled && isScriptSession(x) ? true : undefined) }), [known, settings.sdk_sessions_scheduled, settings.workspace_roots]);
+  const normalise = useCallback(<T extends { cwd: string; project: string; project_override?: string; scheduled?: boolean; path?: string; entrypoint?: string; title?: string }>(x: T): T => ({ ...x, project: resolveProject(x, known, settings.workspace_roots, flagDirs), scheduled: x.scheduled ?? (settings.sdk_sessions_scheduled && isScriptSession(x) ? true : undefined) }), [known, settings.sdk_sessions_scheduled, settings.workspace_roots, flagDirs]);
   // This Mac's rows arrive without a machine name (only peers' are tagged); name them too, so every
   // conversation says which Mac it is on — after `dispatch move` the same id exists on both.
   const activityRows = useMemo(() => dropMovedOriginals(activity.sessions).filter((a) => !isSubagentSession(a)).map(normalise).map((a) => a.host_name || !localName ? a : { ...a, host_name: localName }), [activity, normalise, localName]);
@@ -576,7 +578,6 @@ export default function App() {
   const scriptCount = useMemo(() => [...refsF.values()].filter(isScriptSession).length, [refsF]);
   const projectRows = useMemo(()=>projectConversations(activityF,[...refsF.values()]),[activityF,refsF]);
   // 收藏 / 归档 per project: one shared bd memory, re-read whenever the board changes.
-  const [projectFlags, setProjectFlags] = useState<ProjectFlags>({});
   const [projectOwners, setProjectOwners] = useState<Record<string, ProjectOwner>>({});
   useEffect(() => {
     if (!api) return;
@@ -605,7 +606,7 @@ export default function App() {
   const runningSessions = liveSessions.filter((s) => s.alive && s.state === "working").length;
   // The same project list the workbench and project hub show: resolved from conversations,
   // task labels and outcomes together, archived ones set aside.
-  const projectList = useMemo(() => rankProjects(projectGroups(projectRows, issuesF, outcomesF).filter((p) => p.name !== UNGROUPED_PROJECT), projectFlags), [projectRows, issuesF, outcomesF, projectFlags]);
+  const projectList = useMemo(() => rankProjects(projectGroups(projectRows, issuesF, outcomesF, projectFlags).filter((p) => p.name !== UNGROUPED_PROJECT), projectFlags), [projectRows, issuesF, outcomesF, projectFlags]);
   const projects = useMemo(() => projectList.active.map((p) => ({ name: p.name, count: p.items.length })), [projectList]);
   // The same rule the projects page uses: a directory becomes a project once it has tasks, outcomes, or a manual link.
   const projectOptions = useMemo(() => {
@@ -643,7 +644,7 @@ export default function App() {
     return () => { alive = false; };
   }, [api, view, visible, issuesF]);
 
-  const inArchivedProject = useCallback((x: { cwd: string; project: string; project_override?: string }) => isArchived(projectFlags, resolveProject(x, known, settings.workspace_roots)), [projectFlags, known, settings.workspace_roots]);
+  const inArchivedProject = useCallback((x: { cwd: string; project: string; project_override?: string }) => isArchived(projectFlags, resolveProject(x, known, settings.workspace_roots, flagDirs)), [projectFlags, known, settings.workspace_roots]);
   const inbox = useMemo<InboxItems>(() => { const unread = activityF.filter(a => a.unread && !a.scheduled && !a.archived && !inArchivedProject(a) && !(a.state === "working" && !a.stale)); return {
     unread,
     // Conversations working right now (transcript still moving), most recent first.
@@ -744,7 +745,7 @@ export default function App() {
   };
 
   // The most recent conversation folder of a project: where a delegated agent should start.
-  const dirOfProject = useCallback((name: string) => { const p = projectGroups(projectRows, issuesF, outcomesF).find((g) => g.name === name); const a = p?.sessions.find((x) => x.cwd && !/^\/(?:Users|home)\/[^/]+\/?$/.test(x.cwd)); return a?.cwd ?? ""; }, [projectRows, issuesF, outcomesF]);
+  const dirOfProject = useCallback((name: string) => { if (projectFlags[name]?.dir) return projectFlags[name].dir!; const p = projectGroups(projectRows, issuesF, outcomesF).find((g) => g.name === name); const a = p?.sessions.find((x) => x.cwd && !/^\/(?:Users|home)\/[^/]+\/?$/.test(x.cwd)); return a?.cwd ?? ""; }, [projectRows, issuesF, outcomesF, projectFlags]);
   const startAgent = async (i: AgentStartInput) => { const r = await api!.agentStart(i); say(r ? t("已在 {host} 起了 {kind}", { host: r.host, kind: r.kind }) : t("起 Agent 失败")); return r; };
 
   const phoneLink = isTauri && api ? async () => { try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say(/100\.\d+\.\d+\.\d+/.test(url) ? t("手机访问链接已复制。手机先连上 Tailscale 再用浏览器打开；链接自带登录令牌，不用输密码，可添加到主屏幕") : t("手机访问链接已复制。手机和电脑要在同一个网络里；链接自带登录令牌，不用输密码")); } catch (e) { say(String(e), true); } } : undefined;
@@ -960,7 +961,7 @@ export default function App() {
           {err && <div className="err">{err}</div>}
           <section className="view" ref={viewEl} onScroll={(e) => { scrollMemo.current[scrollKeyRef.current] = e.currentTarget.scrollTop; }}>
             {view === "home" && api && <HomeView onDiscuss={() => setDiscuss({})} insight={insight} alertCount={alertCount} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onLocate={locateProject} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
-            {view === "projects" && api && <ProjectHub moveJobs={moveJobs} onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} hosts={hosts} owners={projectOwners}
+            {view === "projects" && api && <ProjectHub moveJobs={moveJobs} onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} workspaceRoots={settings.workspace_roots} onCreated={(name, dir, start) => { void reload(); openProject(name); if (start) { setNewSessionProject(name); setNewSessionContext({ cwd: dir, host: "local", project: name } as unknown as Activity); setNewSession(true); } }} loaded={activity.updated_at>0} hosts={hosts} owners={projectOwners}
               onMoveProject={async (name, cwd, fromHost, to) => {
                 const run = async (extra: string[]) => { const out = await api.on(fromHost, ["project", cwd, "--move-to", to.name, "--json", ...extra]); return JSON.parse(out.slice(Math.max(0, out.indexOf("{")))); };
                 setMigrationCheck(null);

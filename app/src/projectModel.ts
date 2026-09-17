@@ -17,8 +17,10 @@ export function projectHome(sessions:Activity[]):Activity|undefined {
   for(const a of sessions){const d=(a.cwd||'').replace(/\/+$/,'');if(!d)continue;const cur=dirs.get(d)||{count:0,last:-1,latest:a};cur.count++;if(a.last_at>cur.last){cur.last=a.last_at;cur.latest=a;}dirs.set(d,cur);}
   return [...dirs.values()].sort((x,y)=>y.count-x.count||y.last-x.last)[0]?.latest ?? sessions[0];
 }
-export function projectGroups(rows:Activity[], tasks:Issue[], outcomes:Issue[]) {
-  const names=[...new Set([...rows.map(conversationProject),...tasks.map(i=>projectOf(i)||UNGROUPED_PROJECT),...outcomes.map(i=>projectOf(i)||UNGROUPED_PROJECT)])];
+export function projectGroups(rows:Activity[], tasks:Issue[], outcomes:Issue[], flags:Record<string,{dir?:string}>={}) {
+  // Projects created with a folder in the app count even before their first session or task.
+  const created=Object.entries(flags).filter(([,f])=>f.dir).map(([n])=>n);
+  const names=[...new Set([...rows.map(conversationProject),...tasks.map(i=>projectOf(i)||UNGROUPED_PROJECT),...outcomes.map(i=>projectOf(i)||UNGROUPED_PROJECT),...created])];
   return names.map(name=>{
     const sessions=rows.filter(a=>conversationProject(a)===name);
     const items=tasks.filter(i=>(projectOf(i)||UNGROUPED_PROJECT)===name);

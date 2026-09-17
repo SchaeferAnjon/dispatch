@@ -67,16 +67,29 @@ export const UNGROUPED_PROJECT = '零散会话';
 // segment that names a project already on the board (case-insensitive) wins over
 // the leaf folder; otherwise the index's guess (the git repo root) or the leaf folder.
 export const DEFAULT_ROOTS = ['~/Projects'];
-export function resolveProject(a: { cwd: string; project: string; project_override?: string }, known: Iterable<string> = [], roots: string[] = DEFAULT_ROOTS): string {
-  if (a.project_override) return a.project_override;
-  const cwd = (a.cwd || '').replace(/\/+$/, '');
-  if (!cwd || /^\/(?:Users|home)\/[^/]+$/.test(cwd)) return UNGROUPED_PROJECT;
+/** The project a folder belongs to by workspace root alone (`~/Projects/<name>/…` → `<name>`), '' otherwise.
+ *  Opening a conversation in such a folder is enough to make it a project: the person put it there on purpose. */
+export function workspaceProjectOf(cwdRaw: string, roots: string[] = DEFAULT_ROOTS): string {
+  const cwd = (cwdRaw || '').replace(/\/+$/, '');
+  if (!cwd) return '';
   const home = cwd.match(/^\/(?:Users|home)\/[^/]+/)?.[0] ?? '';
   for (const r of roots) {
     const root = (r.startsWith('~') ? home + r.slice(1) : r).replace(/\/+$/, '');
     // `<project>-wt/<branch>` is the convention for git worktrees of <project>: same project, not a new one.
     if (root && cwd.startsWith(root + '/')) { const name = cwd.slice(root.length + 1).split('/')[0]; if (name) return name.replace(/-wt$/, ''); }
   }
+  return '';
+}
+export function resolveProject(a: { cwd: string; project: string; project_override?: string }, known: Iterable<string> = [], roots: string[] = DEFAULT_ROOTS, dirs: Record<string, string> = {}): string {
+  if (a.project_override) return a.project_override;
+  const cwd = (a.cwd || '').replace(/\/+$/, '');
+  if (!cwd || /^\/(?:Users|home)\/[^/]+$/.test(cwd)) return UNGROUPED_PROJECT;
+  // A project created in the app with a folder claims every conversation inside that folder.
+  for (const [lower, dir] of Object.entries(dirs)) {
+    if (cwd === dir || cwd.startsWith(dir + '/')) { for (const n of known) if (n.toLowerCase() === lower) return n; return lower; }
+  }
+  const ws = workspaceProjectOf(cwd, roots);
+  if (ws) return ws;
   const names = new Map<string, string>();
   for (const n of known) if (n) names.set(n.toLowerCase(), n);
   const parts = cwd.split('/').filter(Boolean);

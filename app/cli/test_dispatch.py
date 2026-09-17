@@ -1767,3 +1767,23 @@ class SessionOrigin(unittest.TestCase):
         self.assertEqual(dispatch.host_of(22, ghostty), ("terminal", "Ghostty"))
         bare = {1: (0, "/sbin/launchd"), 30: (1, "/usr/bin/login"), 31: (30, "-zsh"), 32: (31, "claude")}
         self.assertEqual(dispatch.host_of(32, bare), ("unknown", "未登记"))
+
+
+class ProjectDirFlag(unittest.TestCase):
+    """A project created in the app carries its folder in the flags (task-459r)."""
+
+    def test_parse_keeps_dir_and_apply_preserves_it(self):
+        raw = json.dumps({"lumen": {"starred": True, "dir": "/Users/x/Projects/lumen/"}, "bad": {"dir": "relative"}, "old": {"starred": True}})
+        flags = dispatch.project_flags_parse(raw)
+        self.assertEqual(flags["lumen"], {"starred": True, "dir": "/Users/x/Projects/lumen"})
+        self.assertNotIn("dir", flags.get("bad", {}))
+        after = dispatch.project_flags_apply(flags, "lumen", {"starred": False})
+        self.assertEqual(after["lumen"], {"dir": "/Users/x/Projects/lumen"})  # the folder survives an unstar
+
+    def test_sessions_under_the_folder_belong_to_the_project(self):
+        with patch.object(dispatch, "_PROJECT_DIRS", {"lumen": "/Users/x/Code/notes-plugin"}), \
+             patch.object(dispatch, "project_dir_names", lambda: {"lumen": "Lumen"}), \
+             patch.object(dispatch, "workspace_project", lambda cwd, roots=None: ""):
+            self.assertEqual(dispatch.project_of_cwd("/Users/x/Code/notes-plugin/src", {}), "Lumen")
+            self.assertEqual(dispatch.project_of_cwd("/Users/x/Code/notes-plugin", {}), "Lumen")
+            self.assertNotEqual(dispatch.project_of_cwd("/Users/x/Code/notes-plugin-2", {}), "Lumen")

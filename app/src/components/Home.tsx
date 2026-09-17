@@ -102,7 +102,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
 
   const cards = useMemo<Card[]>(() => {
     const unreadKeys = new Set(inbox.unread.map(activityKey));
-    return projectGroups(rows, issues, outcomes).map((p) => {
+    return projectGroups(rows, issues, outcomes, flags).map((p) => {
       const ordinary = p.sessions.filter((a) => !a.scheduled && sessionLifecycle(a, archiveDays) !== "archived");
       const waiting = inbox.waiting.filter((s) => sessionProject(s) === p.name);
       const waitingIds = new Set(waiting.map((s) => s.session_id));
@@ -118,7 +118,7 @@ export function HomeView({ onDiscuss, insight, alertCount, me, loaded, connectio
       const lastActive = Math.max(running.length ? Date.now() / 1000 : 0, ...ordinary.map((a) => a.last_at), ...waiting.map((s) => s.last_at), 0);
       return { name: p.name, last: p.last, lastActive, live: waiting.length + unread.length + running.length + tasks.length + blockedTasks.length + tracked.length > 0, waiting, unread, running, tracked, tasks, blockedTasks, blocked: blockedTasks.length, open, sessions: ordinary.length, results: p.results, latest: ordinary[0], home: projectHome(ordinary) };
     }).sort((a, b) => b.lastActive - a.lastActive || b.last - a.last);
-  }, [rows, issues, outcomes, inbox.unread, inbox.waiting, archiveDays]);
+  }, [rows, issues, outcomes, flags, inbox.unread, inbox.waiting, archiveDays]);
 
   // Every tracked conversation, across projects, newest first.
   const trackedAll = useMemo(() => rows.filter((a) => !a.scheduled && sessionLifecycle(a, archiveDays) === "starred").sort((x, y) => y.last_at - x.last_at), [rows, archiveDays]);

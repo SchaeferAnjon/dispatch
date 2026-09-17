@@ -1748,3 +1748,7 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 .wiki-text{margin:0;line-height:1.5;white-space:pre-wrap}
 .wiki-field{margin:4px 0 0;font-size:12.5px;color:var(--ink-2);white-space:pre-wrap}
 .wiki-field b{color:var(--ink);margin-right:4px;font-weight:600}
+
+/* New-project dialog: the two switches read as one line each. */
+.new-session-dialog label.check{display:flex;flex-direction:row;align-items:center;gap:8px;font-size:13px}
+.new-session-dialog label.check input{width:auto;margin:0}

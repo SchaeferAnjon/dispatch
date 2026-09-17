@@ -5153,6 +5153,11 @@ def project_flags_parse(raw):
             alias = v.get("alias")
             if isinstance(alias, str) and alias.strip() and alias.strip() != name:
                 flags["alias"] = alias.strip()[:80]
+            # Home folder chosen when the project was created in the app (`project --dir`): the
+            # project exists before any session or task does, and sessions there belong to it.
+            d = v.get("dir")
+            if isinstance(d, str) and d.strip().startswith("/") and "\0" not in d:
+                flags["dir"] = os.path.normpath(d.strip())[:400]
             if flags:
                 out[name] = flags
     return out
@@ -5165,14 +5170,39 @@ def project_flags_apply(flags, name, changes):
     if set(changes) - set(PROJECT_FLAG_FIELDS) or any(type(v) is not bool for v in changes.values()):
         raise ValueError("只能设置 starred / archived，值为布尔")
     cur = {**flags.get(name, {}), **changes}
-    alias = cur.get("alias")
+    alias, home = cur.get("alias"), cur.get("dir")
     cur = {f: True for f in PROJECT_FLAG_FIELDS if cur.get(f)}
     if isinstance(alias, str) and alias:
         cur["alias"] = alias
+    if isinstance(home, str) and home:
+        cur["dir"] = home
     out = {k: v for k, v in flags.items() if k != name}
     if cur:
         out[name] = cur
     return out
+
+
+_PROJECT_DIRS = None
+
+
+def project_dirs(reload=False):
+    """lowercase project name -> home folder, for projects created in the app with a folder.
+    Cached per process: callers loop over every session."""
+    global _PROJECT_DIRS
+    if _PROJECT_DIRS is None or reload:
+        try:
+            _PROJECT_DIRS = {k.lower(): v["dir"] for k, v in project_flags_load().items() if isinstance(v, dict) and v.get("dir")}
+        except Exception:
+            _PROJECT_DIRS = {}
+    return _PROJECT_DIRS
+
+
+def project_dir_names():
+    """lowercase -> name as written, for the projects in project_dirs()."""
+    try:
+        return {k.lower(): k for k, v in project_flags_load().items() if isinstance(v, dict) and v.get("dir")}
+    except Exception:
+        return {}
 
 
 def project_flags_load():
@@ -5341,6 +5371,36 @@ def cmd_project(a):
             r = project_owner_set(a.name, h["name"], h.get("ssh", "").split("@")[-1])
         return out(r, a.json, lambda r: print(f"{a.name}：" + (f"归 {r['host']}" if r.get("host") else "不指定电脑")))
     flags = project_flags_load()
+    if getattr(a, "forget_dir", False):
+        cur = {k: v for k, v in dict(flags.get(a.name.strip(), {})).items() if k != "dir"}
+        flags = {k: v for k, v in flags.items() if k != a.name.strip()}
+        if cur:
+            flags[a.name.strip()] = cur
+        wiki_store(PROJECT_FLAGS_KEY, json.dumps(flags, ensure_ascii=False, sort_keys=True))
+        project_dirs(reload=True)
+        return out({"name": a.name.strip(), "dir": ""}, a.json, lambda r: print(f"{r['name']}：已忘记主目录（目录本身没动）"))
+    if getattr(a, "dir", None):
+        # Create (or adopt) a folder as this project's home: the project shows up before any session.
+        home = os.path.normpath(os.path.expanduser(a.dir))
+        if not os.path.isabs(home):
+            raise SystemExit("--dir 要完整路径")
+        if not os.path.isdir(home):
+            if not getattr(a, "create", False):
+                raise SystemExit(f"文件夹不存在：{home}（加 --create 新建）")
+            os.makedirs(home, exist_ok=True)
+        if getattr(a, "git", False) and not os.path.isdir(os.path.join(home, ".git")):
+            sh(["git", "-C", home, "init", "-q"], timeout=20)
+        name = a.name.strip()
+        cur = dict(flags.get(name, {}))
+        cur["dir"] = home
+        if not cur.get("archived"):
+            cur["starred"] = True
+        flags = {k: v for k, v in flags.items() if k != name}
+        flags[name] = cur
+        wiki_store(PROJECT_FLAGS_KEY, json.dumps(flags, ensure_ascii=False, sort_keys=True))
+        project_dirs(reload=True)
+        return out({"name": name, "dir": home, "git": os.path.isdir(os.path.join(home, ".git")), "flags": cur}, a.json,
+                   lambda r: print(f"项目 {r['name']} → {r['dir']}" + ("（git 仓库）" if r["git"] else "")))
     changes = {}
     if a.star: changes["starred"] = True
     if a.unstar: changes["starred"] = False
@@ -6456,7 +6516,11 @@ def project_of_cwd(cwd, names, roots=None):
     ws = workspace_project(cwd, roots)
     if ws:
         return ws
-    parts = [x.lower() for x in os.path.normpath(cwd).split(os.sep) if x]
+    norm = os.path.normpath(cwd)
+    for key, home in project_dirs().items():
+        if norm == home or norm.startswith(home.rstrip("/") + "/"):
+            return project_dir_names().get(key, key)
+    parts = [x.lower() for x in norm.split(os.sep) if x]
     for part in reversed(parts):
         if part in names:
             return names[part]
@@ -6676,6 +6740,12 @@ def project_home(proj, names=None, index=None, roots=None):
     loop — each lookup otherwise re-reads the session index and the settings."""
     if not proj:
         return ""
+    try:
+        home = project_dirs().get(proj.lower())
+        if home and os.path.isdir(home):
+            return home
+    except Exception:
+        pass
     names = names if names is not None else project_names()
     # Same rule as the app's projectHome(): the folder with the most sessions, latest activity
     # breaking ties — so a sub-repo opened once does not become the project's home.
@@ -7934,6 +8004,7 @@ def main():
     s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days / task_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
     s = sub.add_parser("task-archive", help="archive closed tasks older than task_archive_days (default: the setting)"); s.add_argument("--days", type=int); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_task_archive)
     s = sub.add_parser("project", help="star / archive a project, or hand it to another Mac (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--background", action="store_true", help="--move-to：后台跑，立刻返回任务 id，用 project-moves 看进度"); s.add_argument("--job", help=argparse.SUPPRESS)
+    s.add_argument("--dir", help="项目主目录（新建项目：先于任何会话存在；目录下的会话都归它）"); s.add_argument("--create", action="store_true", help="--dir 不存在就新建"); s.add_argument("--git", action="store_true", help="--dir 里没有仓库就 git init"); s.add_argument("--forget-dir", action="store_true", help="忘记 --dir 记的主目录（不删文件）");
     s.add_argument("--move-to", help="把整个项目（目录、Git、在跑的会话）交给这台 Mac"); s.add_argument("--owner", help="只记录项目归哪台 Mac（名字；local = 本机；none = 清除）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--force", action="store_true"); s.add_argument("--keep-original", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
     s = sub.add_parser("project-moves", help="后台项目迁移的进度（正在跑的和 24 小时内结束的）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_moves)
     s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)

@@ -30,7 +30,7 @@ const settings: Dict = {
   "发一条测试通知": "Testmitteilung senden",
   "工作区根目录": "Arbeitsbereich-Ordner",
   "这些文件夹的直接子文件夹各算一个项目（例如 ~/Projects/kanban 下的会话都归 kanban）。其它位置按 git 仓库根目录归项目，没有仓库就按所在文件夹。一行一个。": "Jeder direkte Unterordner zählt als ein Projekt (Sitzungen unter ~/Projects/kanban gehören alle zu kanban). Andernorts entscheidet die Wurzel des Git-Repositorys, sonst der enthaltende Ordner. Einer pro Zeile.",
-  "有任务、有成果、或手动关联过的才算正式项目；其余只是「目录」，在项目页底部的「其他目录与未归类」里。": "Nur Ordner mit Aufgaben, Ergebnissen oder manueller Zuordnung gelten als echte Projekte; der Rest sind bloße Ordner und steht unten auf der Projektseite unter „Weitere Ordner“.",
+  "有任务、有成果、手动关联过、在软件里新建过、收藏过，或在这些根目录下开过会话的，都算正式项目；其余只是「目录」，在项目页底部的「其他目录与未归类」里。": "Ordner mit Aufgaben, Ergebnissen oder manueller Zuordnung, in der App angelegte Projekte, markierte Projekte und jeder Ordner unter diesen Wurzeln, in dem eine Sitzung gestartet wurde, gelten als echte Projekte; der Rest sind bloße Ordner und steht unten auf der Projektseite unter „Andere Ordner und nicht zugeordnet“.",
   "「讨论一个念头」里每个成员的人设和群里的规矩，进它们的系统提示；每轮只再给新消息。空着就用默认。": "Die Rolle jedes Mitglieds von „Eine Idee diskutieren“ und die Regeln der Runde gehen in deren System-Prompts ein; jede Runde liefert nur die neuen Nachrichten nach. Leer lassen für die Vorgaben.",
   "群里的规矩": "Regeln der Runde",
   "发言多长、什么时候闲聊、什么时候只回 SKIP（不显示）。": "Wie lang ein Beitrag sein darf, wann Small Talk erlaubt ist und wann nur SKIP geantwortet wird (wird nicht angezeigt).",

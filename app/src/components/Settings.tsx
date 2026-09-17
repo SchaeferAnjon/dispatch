@@ -193,7 +193,7 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
           <div><b>{t("工作区根目录")}</b><p>{t("这些文件夹的直接子文件夹各算一个项目（例如 ~/Projects/kanban 下的会话都归 kanban）。其它位置按 git 仓库根目录归项目，没有仓库就按所在文件夹。一行一个。")}</p></div>
           <textarea className="settings-text" rows={3} value={draft.workspace_roots.join("\n")} onChange={(e) => setDraft({ ...draft, workspace_roots: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} placeholder="~/Projects" />
         </label>
-        <p className="muted small" style={{ margin: "0 0 8px" }}>{t("有任务、有成果、或手动关联过的才算正式项目；其余只是「目录」，在项目页底部的「其他目录与未归类」里。")}</p>
+        <p className="muted small" style={{ margin: "0 0 8px" }}>{t("有任务、有成果、手动关联过、在软件里新建过、收藏过，或在这些根目录下开过会话的，都算正式项目；其余只是「目录」，在项目页底部的「其他目录与未归类」里。")}</p>
       </section>
       <section className="settings-card">
         <h3>{t("讨论")}</h3>
