@@ -7,7 +7,7 @@ import { t, useT } from '../i18n';
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number; delivered?: boolean }
 interface DesktopRequest { id: string; kind: 'command' | 'file' | 'permission' | 'question' | 'option' | 'elicitation' | 'other'; summary: string; reason?: string; cwd?: string; files?: string[]; questions?: { id: string; text: string; options: string[] }[] }
 interface Desktop { running: boolean; status: string; requests: DesktopRequest[]; model?: string; approval_policy?: string }
-interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop; adoptable?: boolean; adopt_state?: 'idle' | 'working'; source_app?: string; source_kind?: string; resumable?: boolean; blocked?: boolean; screen?: string }
+interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop; adoptable?: boolean; adopt_state?: 'idle' | 'working'; source_app?: string; source_kind?: string; no_interrupt?: boolean; resumable?: boolean; blocked?: boolean; screen?: string }
 const REQUEST_LABEL: Record<DesktopRequest['kind'], string> = { command: '要跑命令', file: '要改文件', permission: '申请权限', question: '在提问', option: '要你选', elicitation: 'MCP 请求', other: '等确认' };
 const MODES: [string, string][] = [['default', '手动确认'], ['acceptEdits', '自动接受编辑'], ['plan', '计划模式'], ['bypassPermissions', '跳过权限']];
 const MODELS: [string, string][] = [['fable', 'Fable 5.1'], ['opus', 'Opus 5'], ['sonnet', 'Sonnet 5'], ['haiku', 'Haiku 4.5']];
@@ -332,7 +332,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
           else if (e.key === 'Escape') { e.preventDefault(); setMenuClosed(draft); }
         }} />
       <button className="btn reply-expand" type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setBig(b => !b); textarea.current?.focus(); }} title={big ? t('收起输入框') : t('放大输入框')} aria-label={big ? t('收起输入框') : t('放大输入框')}>{big ? '⤡' : '⤢'}</button></div>
-      {connection?.working && <button className="btn" type="button" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title={t('先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导')}>{t('打断并发送')}</button>}
+      {connection?.working && !connection?.no_interrupt && <button className="btn" type="button" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title={t('先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导')}>{t('打断并发送')}</button>}
       <button className="btn primary" type="submit" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} title={connection?.working ? t('排进队列，本轮结束 Agent 就会看到') : undefined}>{busy ? t('发送中…') : attempt.current ? t('确认发送结果') : connection?.working ? t('排队发送') : t('发送')}</button>
     </form>
     {(error || unknown || last?.state==='failed') && <div className="reply-error" role="alert">{error || last?.note}{unknown && <><button className="link" onClick={() => { setReceipt(null); void load(); }}>{t('检查送达状态')}</button><button className="link" onClick={()=>{setDismissed(last.id);forgetAttempt();setError('');}}>{t('已核对，继续编辑')}</button></>}</div>}

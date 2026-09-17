@@ -565,7 +565,7 @@ def check_reverse_ssh(target="", addr=""):
 
 
 def remote_dispatch_json(target, args, timeout=90):
-    cmd = "env BEADS_DIR=$HOME/tasks/.beads $HOME/.local/bin/dispatch " + " ".join(args) + " --json"
+    cmd = "env " + D.remote_beads(None) + " $HOME/.local/bin/dispatch " + " ".join(args) + " --json"
     r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", target, cmd], capture_output=True, text=True, timeout=timeout)
     if r.returncode != 0:
         raise RuntimeError(f"对方执行失败：{(r.stderr or r.stdout).strip()[-400:]}")
@@ -592,7 +592,7 @@ def hub_info():
             pub = open(p).read().strip(); break
     return {"name": m["name"], "user": m["user"], "ip": ip, "tailscale_ip": m["tailscale_ip"], "lan_ip": m["lan_ip"],
             "remote": f"http://{ip}:{REMOTESAPI_PORT}/task", "sync_user": user, "sync_password": pw, "pubkey": pub,
-            "rules_dir": os.path.dirname(D.RULES_FILE), "pool": D.POOL, "dispatch": "$HOME/.local/bin/dispatch"}
+            "rules_dir": os.path.dirname(D.RULES_FILE), "pool": D.POOL, "dispatch": "$HOME/.local/bin/dispatch", "beads_dir": D.beads_dir_portable()}
 
 
 def board_retire():
@@ -666,11 +666,11 @@ def board_join(target, replace=False):
     sync_sh = os.path.join(D.DISPATCH_DIR, "board-sync.sh")
     write_plist(L.label("beads-sync"), ["/bin/bash", sync_sh], env={"BOARD_HUB": hub["ip"]}, interval=120, log=os.path.join(SHARED, "sync.log"))
     # Both Macs know each other.
-    hub_entry = {"id": re.sub(r"[^a-z0-9]+", "-", hub["name"].lower()).strip("-") or "hub", "name": hub["name"], "ssh": f"{hub['user']}@{hub['ip']}", "dispatch": hub["dispatch"], "herdr_session": "main"}
+    hub_entry = {"id": re.sub(r"[^a-z0-9]+", "-", hub["name"].lower()).strip("-") or "hub", "name": hub["name"], "ssh": f"{hub['user']}@{hub['ip']}", "dispatch": hub["dispatch"], "herdr_session": "main", **({"beads_dir": hub["beads_dir"]} if hub.get("beads_dir") and hub["beads_dir"] != "~/tasks/.beads" else {})}
     hs = [h for h in D.hosts() if h.get("ssh") != hub_entry["ssh"]] + [hub_entry]
     json.dump(hs, open(D.HOSTS_FILE, "w"), ensure_ascii=False, indent=2)
     me = machine()
-    my_entry = {"id": re.sub(r"[^a-z0-9]+", "-", me["name"].lower()).strip("-") or "mac", "name": me["name"], "ssh": f"{me['user']}@{me['tailscale_ip'] or me['lan_ip']}", "dispatch": "$HOME/.local/bin/dispatch", "herdr_session": "main"}
+    my_entry = {"id": re.sub(r"[^a-z0-9]+", "-", me["name"].lower()).strip("-") or "mac", "name": me["name"], "ssh": f"{me['user']}@{me['tailscale_ip'] or me['lan_ip']}", "dispatch": "$HOME/.local/bin/dispatch", "herdr_session": "main", **({"beads_dir": D.beads_dir_portable()} if D.beads_dir_portable() != "~/tasks/.beads" else {})}
     try:
         remote_dispatch_json(target, ["init", "add-host", "'" + json.dumps(my_entry, ensure_ascii=False) + "'"])
     except Exception as e:

@@ -124,7 +124,7 @@ def remote_push(h, updates, timeout=20):
         b64 = base64.b64encode(u["content"].encode("utf-8")).decode()
         lines.append(f'printf %s {b64} | base64 -d > "{path}"')
     if "GLOBAL.md" in updates:
-        lines.append(f'BEADS_DIR=$HOME/tasks/.beads {h.get("dispatch", "$HOME/.local/bin/dispatch")} rules sync >/dev/null 2>&1 || true')
+        lines.append(f'{D.remote_beads(h)} {h.get("dispatch", "$HOME/.local/bin/dispatch")} rules sync >/dev/null 2>&1 || true')
     r = move.run_remote(h, "\n".join(lines) + "\n", timeout=timeout)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or r.stdout or "ssh 失败").strip()[:300])

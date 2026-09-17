@@ -425,7 +425,8 @@ def _osascript_file(body, timeout=8):
     if r.returncode != 0:
         err = (r.stderr or '').strip()
         if '-1743' in err or 'not authorized' in err.lower():
-            raise Rejected('这台电脑还没给 Ghostty 自动化权限：系统设置 → 隐私与安全性 → 自动化，找到运行 dispatch 的程序（通常显示为 osascript）并勾选允许它控制 Ghostty，授权后重试。')
+            app = 'iTerm2' if 'iTerm' in body else 'Terminal' if 'application "Terminal"' in body else 'Ghostty'
+            raise Rejected(f'这台电脑还没给 {app} 自动化权限：系统设置 → 隐私与安全性 → 自动化，找到运行 dispatch 的程序（通常显示为 osascript）并勾选允许它控制 {app}，授权后重试。')
         raise Rejected('Ghostty 没有响应' + ('：' + err.splitlines()[-1][:200] if err else '') + '。')
     return r.stdout
 
@@ -618,6 +619,96 @@ def ghostty_submit(d, ref, t, text, wire, mode, images, attach):
     return '已送达 Ghostty 里的原会话'
 
 
+# ---------------------------------------------------------------- Terminal.app / iTerm2 (no Herdr pane)
+#
+# Both expose each tab's tty to AppleScript and accept text for a tab, so a session running in
+# one is addressed by the tty its process sits on — no window titles, no focus changes.
+
+TTY_TERMINALS = (('/Terminal.app/', 'Terminal'), ('/iTerm.app/', 'iTerm2'), ('/iTerm2.app/', 'iTerm2'))
+
+
+def _tty_terminal_of(pid, table):
+    """(app, '/dev/ttysNNN') when `pid` runs inside Terminal.app or iTerm2, else None. The tty is
+    the one of the process the terminal spawned for the tab (its `login`): that is what the tab
+    reports as its `tty`."""
+    current = pid
+    for _ in range(30):
+        ent = table.get(current)
+        if not ent:
+            return None
+        ppid, tty, _comm = ent
+        parent = table.get(ppid)
+        if parent:
+            app = next((name for key, name in TTY_TERMINALS if key in parent[2]), None)
+            if app:
+                return (app, '/dev/' + tty) if tty and tty != '??' else None
+        if ppid <= 1:
+            return None
+        current = ppid
+    return None
+
+
+def _session_record(d, ref):
+    """The hook record of `ref` when it is the latest session of its process, else None."""
+    records = []
+    for name in os.listdir(d.SESS_DIR) if os.path.isdir(d.SESS_DIR) else []:
+        try:
+            with open(os.path.join(d.SESS_DIR, name)) as f:
+                records.append(json.load(f))
+        except (OSError, ValueError):
+            pass
+    rec = next((r for r in records if r.get('session_id') == ref['session_id'] and r.get('agent') == ref['agent']), None)
+    if not rec or not rec.get('agent_pid'):
+        return None
+    pid = rec['agent_pid']
+    if any(r.get('agent_pid') == pid and r.get('session_id') != ref['session_id'] and r.get('last_at', 0) >= rec.get('last_at', 0) for r in records):
+        return None
+    return rec
+
+
+def tty_terminal_target(d, ref):
+    rec = _session_record(d, ref)
+    if rec is None:
+        return None
+    table = _ps_table_tty()
+    if rec['agent_pid'] not in table:
+        return None
+    hit = _tty_terminal_of(rec['agent_pid'], table)
+    if not hit:
+        return None
+    app, tty = hit
+    working = _hook_or_transcript_busy(d, ref, rec)
+    label = ('Agent 正在执行：消息会排队，本轮结束就看到' if working else f'回复到 {app} 里的原会话')
+    return {'kind': 'tty-terminal', 'app': app, 'tty': tty, 'working': working, 'label': label}
+
+
+def tty_terminal_script(app, tty, text):
+    """AppleScript that types `text` + Return into the tab whose tty is `tty`; prints ok / missing."""
+    if app == 'iTerm2':
+        return ('tell application "iTerm2"\n repeat with w in windows\n  repeat with tb in tabs of w\n   repeat with ss in sessions of tb\n'
+                '    if (tty of ss) is %s then\n     tell ss to write text %s\n     return "ok"\n    end if\n   end repeat\n  end repeat\n end repeat\n return "missing"\nend tell\n'
+                % (_as_lit(tty), _as_lit(text)))
+    return ('tell application "Terminal"\n repeat with w in windows\n  repeat with tb in tabs of w\n'
+            '   if (tty of tb) is %s then\n    do script %s in tb\n    return "ok"\n   end if\n  end repeat\n end repeat\n return "missing"\nend tell\n'
+            % (_as_lit(tty), _as_lit(text)))
+
+
+def tty_terminal_submit(d, ref, t, wire, mode):
+    """Type the message into the Terminal.app / iTerm2 tab. One line only: a newline would submit
+    early, so line breaks travel as spaces. There is no key-level access here, so 「打断」 is not
+    available: a busy agent gets the message queued in its input box, like typing it by hand."""
+    check = tty_terminal_target(d, ref)
+    if check is None or check['tty'] != t['tty']:
+        raise Rejected('会话位置发生变化，消息未发送，请重试。')
+    text = ' '.join(x.strip() for x in wire.splitlines() if x.strip())
+    out = _osascript_file(tty_terminal_script(check['app'], check['tty'], text), timeout=12).strip()
+    if out != 'ok':
+        raise Rejected(f"在 {check['app']} 里没找到这个会话所在的标签页（它可能刚被关掉），没有发送；可以点「接进 Herdr 再发」。")
+    if check['working']:
+        return '已排队，本轮结束后 Agent 就会看到' + ('（这个终端不支持打断，已按排队处理）' if mode == 'interrupt' else '')
+    return f"已送达 {check['app']} 里的原会话"
+
+
 def codex_desktop_target(d, ref):
     """The Codex desktop app (ChatGPT.app) owning this thread, or None. The app answers owner
     discovery only for threads one of its windows has open; for anything else it stays silent
@@ -654,6 +745,9 @@ def target(d, ref):
             g = ghostty_target(d, ref)
             if g is not None:
                 return g
+            tt = tty_terminal_target(d, ref)
+            if tt is not None:
+                return tt
             raise herdr_err
         if pane.get('agent_status') == 'blocked':
             raise Blocked('原会话在电脑上停在一个确认框，先回答它再发。', pane)
@@ -785,6 +879,8 @@ def status(d, ref):
         extra = tui_state(d, t['pane']['pane_id']) if t['kind'] == 'herdr' and ref['agent'] == 'claude-code' else {}
         if t['kind'] == 'ghostty':
             extra = dict(extra, terminal='ghostty')
+        if t['kind'] == 'tty-terminal':
+            extra = dict(extra, terminal=t['app'].lower(), no_interrupt=True)
         return dict(available=True, label=t['label'], working=bool(t.get('working')), receipts=receipts, **({'desktop': t['desktop']} if t.get('desktop') else {}), **extra)
     except Blocked as e:
         # Show the prompt itself so the person can answer it with the keys below the box.
@@ -901,6 +997,8 @@ def submit(d, ref, text, request_id, mode='queue', images=()):
                 note = ipc.send(ref, wire, request_id)
         elif t['kind'] == 'ghostty':
             note = ghostty_submit(d, ref, t, text, wire, mode, images, attach)
+        elif t['kind'] == 'tty-terminal':
+            note = tty_terminal_submit(d, ref, t, wire, mode)
         else:
             pane = herdr_target(d, ref, require_idle=False)
             focus = d.herdr(None, ['tab', 'focus', pane['tab_id']])

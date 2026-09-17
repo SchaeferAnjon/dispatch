@@ -59,6 +59,10 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
   // A relative link inside the markdown stays inside the skill folder.
   const follow = (href: string) => { const clean = href.split("#")[0]; if (!clean) return; const base = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : ""; const parts = (base + clean).split("/").filter((p) => p && p !== "."); const out: string[] = []; for (const p of parts) { if (p === "..") out.pop(); else out.push(p); } setFile(out.join("/") || "SKILL.md"); };
 
+  // Where the shared pool is on that Mac: the CLI decides (cc-switch's folder when there is one, else ~/.agents/skill-pool).
+
+  const poolDir = (() => { const one = skills.find((x) => x.in_pool)?.path ?? ""; const dir = one ? one.replace(/\/[^/]+\/?$/, "") : "~/.agents/skill-pool"; return dir.replace(/^\/(Users|home)\/[^/]+/, "~"); })();
+
   const items = useMemo(() => {
     const qq = q.trim().toLowerCase();
     const rows = skills.filter((s) => (!only || s.agents[only]) && (!qq || s.name.toLowerCase().includes(qq) || s.description.toLowerCase().includes(qq)));
@@ -165,7 +169,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
           {!loaded && <div className="empty">{t("读取技能池…")}</div>}
           {items.map((s) => (
             <button key={s.name} data-menu="skill" data-id={s.name} className={`sk-item${sel === s.name ? " sel" : ""}`} onClick={() => setSel(s.name)}>
-              <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={t("不在共享技能池 ~/.cc-switch/skills 里，只装在这一处：{path}", { path: s.path })}>{t("只装在一处")}</span>}<span className="spacer" />{total(s) > 0 && <span className="use mono" title={t("调用次数（C=Claude Code，X=Codex）：") + Object.entries(s.usage ?? {}).map(([a, n]) => t("{agent} {n} 次", { agent: a, n })).join(t("，")) + (s.last_used ? t("，最近 {when}", { when: s.last_used }) : "")}>{Object.entries(s.usage ?? {}).map(([a, n]) => t("{agent} {n} 次", { agent: a === "claude-code" ? "C" : a === "codex" ? "X" : a[0].toUpperCase(), n })).join(" · ")}</span>}</div>
+              <div className="l1"><span className="t mono">{s.name}</span>{!s.in_pool && <span className="muted small" title={t("不在共享技能池 {pool} 里，只装在这一处：{path}", { pool: poolDir, path: s.path })}>{t("只装在一处")}</span>}<span className="spacer" />{total(s) > 0 && <span className="use mono" title={t("调用次数（C=Claude Code，X=Codex）：") + Object.entries(s.usage ?? {}).map(([a, n]) => t("{agent} {n} 次", { agent: a, n })).join(t("，")) + (s.last_used ? t("，最近 {when}", { when: s.last_used }) : "")}>{Object.entries(s.usage ?? {}).map(([a, n]) => t("{agent} {n} 次", { agent: a === "claude-code" ? "C" : a === "codex" ? "X" : a[0].toUpperCase(), n })).join(" · ")}</span>}</div>
               <div className="l2">{s.description || <span className="muted">{t("（没有描述）")}</span>}</div>
               <div className="l3">{AGENTS.map((a) => <span key={a.id} className={`mount ${a.cls}${s.agents[a.id] ? " on" : ""}`}>{a.label}</span>)}</div>
             </button>
@@ -173,7 +177,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
         </div>
       </div>
       <div className="sess-main">
-        {!cur && <div className="empty">{t("技能池在 ~/.cc-switch/skills（{n} 个）。左边选一个：看它给哪些 Agent 挂着、读/改 SKILL.md。Agent 自己也能用 dispatch skills 做同样的事。", { n: skills.filter((s) => s.in_pool).length })}</div>}
+        {!cur && <div className="empty">{t("技能池在 {pool}（{n} 个）。左边选一个：看它给哪些 Agent 挂着、读/改 SKILL.md。Agent 自己也能用 dispatch skills 做同样的事。", { pool: poolDir, n: skills.filter((s) => s.in_pool).length })}</div>}
         {cur && (
           <>
             <div className="sess-head">
@@ -220,7 +224,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
           </>
         )}
       </div>
-      {newOpen && <NewSkillDialog busy={busy} onCancel={() => setNewOpen(false)} onSave={createSkill} />}
+      {newOpen && <NewSkillDialog poolDir={poolDir} busy={busy} onCancel={() => setNewOpen(false)} onSave={createSkill} />}
       {importOpen && <ImportSkillDialog busy={busy} onCancel={() => setImportOpen(false)} onSave={importSkill} />}
     </div>
   );
@@ -244,7 +248,7 @@ function AgentPicker({ agents, onToggle, busy }: { agents: string[]; onToggle: (
 
 const NAME_RE = /^[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff._-]*$/;
 
-export function NewSkillDialog({ busy, onCancel, onSave }: { busy: boolean; onCancel: () => void; onSave: (v: { name: string; description: string; trigger: string; constraint: string; agents: string[] }) => Promise<void> }) {
+export function NewSkillDialog({ busy, onCancel, onSave, poolDir = "~/.agents/skill-pool" }: { busy: boolean; onCancel: () => void; poolDir?: string; onSave: (v: { name: string; description: string; trigger: string; constraint: string; agents: string[] }) => Promise<void> }) {
   const t = useT();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -258,7 +262,7 @@ export function NewSkillDialog({ busy, onCancel, onSave }: { busy: boolean; onCa
     <div className="overlay" onMouseDown={(e) => !busy && e.target === e.currentTarget && onCancel()}>
       <div className="dialog skill-dialog" role="dialog" aria-modal="true" aria-label={t("新建技能")} onKeyDown={(e) => { if (e.key === "Escape" && !busy) onCancel(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); }}>
         <h3>{t("新建技能")}</h3>
-        <p className="skill-hint">{t("按 SKILL.md 模板建到技能池 ~/.cc-switch/skills，再挂给选中的 Agent。")}</p>
+        <p className="skill-hint">{t("按 SKILL.md 模板建到技能池 {pool}，再挂给选中的 Agent。", { pool: poolDir })}</p>
         <div className="row two">
           <label>{t("技能名（目录名）")}<input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="code-review" spellCheck={false} /></label>
           <label>{t("一句话触发描述")}<input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("用户要…时用。")} /></label>

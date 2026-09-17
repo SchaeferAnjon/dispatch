@@ -640,4 +640,25 @@ class GhosttyLiveIntegration(unittest.TestCase):
         self.assertEqual(after, before)
 
 
+
+class TtyTerminals(unittest.TestCase):
+    """Sessions in Terminal.app / iTerm2 are addressed by their tab's tty (review P2-2)."""
+
+    def test_finds_the_tab_tty_under_terminal_and_iterm(self):
+        import session_reply as R
+        table = {1: (0, '??', '/sbin/launchd'), 10: (1, '??', '/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal'),
+                 11: (10, 'ttys003', 'login'), 12: (11, 'ttys003', '-zsh'), 13: (12, 'ttys003', 'claude'),
+                 20: (1, '??', '/Applications/iTerm.app/Contents/MacOS/iTerm2'), 21: (20, 'ttys007', '/usr/bin/login'), 22: (21, 'ttys007', 'codex'),
+                 30: (1, '??', '/Applications/Ghostty.app/Contents/MacOS/ghostty'), 31: (30, 'ttys001', 'login'), 32: (31, 'ttys001', 'claude')}
+        self.assertEqual(R._tty_terminal_of(13, table), ('Terminal', '/dev/ttys003'))
+        self.assertEqual(R._tty_terminal_of(22, table), ('iTerm2', '/dev/ttys007'))
+        self.assertIsNone(R._tty_terminal_of(32, table))  # Ghostty has its own path
+
+    def test_script_quotes_the_text_and_names_the_tty(self):
+        import session_reply as R
+        term = R.tty_terminal_script('Terminal', '/dev/ttys003', 'say "hi" \\ there')
+        self.assertIn('tell application "Terminal"', term); self.assertIn('"/dev/ttys003"', term); self.assertIn('say \\"hi\\"', term)
+        it = R.tty_terminal_script('iTerm2', '/dev/ttys007', 'x')
+        self.assertIn('tell application "iTerm2"', it); self.assertIn('write text "x"', it)
+
 if __name__ == '__main__': unittest.main()

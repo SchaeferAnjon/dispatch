@@ -540,7 +540,7 @@ def unblock_start(h, remote_cwd, label):
 def running_remote(h, agent, sid):
     """Is this id already running over there (moved before, or resumed by hand)?"""
     dcmd = D.remote_cli(h)
-    r = run_remote(h, f"BEADS_DIR=$HOME/tasks/.beads {dcmd} sessions --local --json", timeout=40)
+    r = run_remote(h, f"{D.remote_beads(h)} {dcmd} sessions --local --json", timeout=40)
     try:
         rows = json.loads(r.stdout[r.stdout.find("["):])
     except ValueError:
@@ -665,10 +665,13 @@ def mark_moved(h, keys):
     here — lists then show each conversation once, where it lives now."""
     for agent, sid in keys:
         D.record_move(agent, sid, moved_to=h["id"])
-    me_ip = D.tailscale_ip()
+    # How the other Mac knows this one: its Tailscale address, else its LAN address (Macs paired on
+    # the same Wi-Fi have no Tailscale), else its name. Without any of these the far side could not
+    # mark its copies and every moved conversation showed up twice.
+    me_ip = D.tailscale_ip() or D.lan_ip() or D.local_host_name()
     if me_ip and keys:
         dcmd = D.remote_cli(h)
-        run_remote(h, "; ".join(f"BEADS_DIR=$HOME/tasks/.beads {dcmd} moves mark {shlex.quote(a + ':' + s)} --from {shlex.quote(me_ip)} >/dev/null" for a, s in keys), timeout=30 + 5 * len(keys))
+        run_remote(h, "; ".join(f"{D.remote_beads(h)} {dcmd} moves mark {shlex.quote(a + ':' + s)} --from {shlex.quote(me_ip)} >/dev/null" for a, s in keys), timeout=30 + 5 * len(keys))
 
 
 def project_history(top, exclude):
@@ -767,7 +770,7 @@ def move(session_id, to, prompt_extra="", sync=True, dry=False, force=False, kee
         kind = {"claude-code": "claude", "codex": "codex"}[agent]
         resume_flag = "--resume" if agent == "claude-code" else "resume"
         handoff = handoff_prompt(h, cwd, remote_cwd, plan["env"], plan["git"], prompt_extra)
-        cmd = f"BEADS_DIR=$HOME/tasks/.beads {dcmd} agent start {kind} --cwd {shlex.quote(remote_cwd)} --label {shlex.quote(ref.get('title') or '迁移的会话')} --extra {shlex.quote(resume_flag + ' ' + sid)} --prompt {shlex.quote(handoff)} --no-wait --json"
+        cmd = f"{D.remote_beads(h)} {dcmd} agent start {kind} --cwd {shlex.quote(remote_cwd)} --label {shlex.quote(ref.get('title') or '迁移的会话')} --extra {shlex.quote(resume_flag + ' ' + sid)} --prompt {shlex.quote(handoff)} --no-wait --json"
         r = run_remote(h, cmd, timeout=240)
         out = r.stdout
         try:
@@ -803,7 +806,7 @@ def set_owner(project, h):
         errors.append(f"来源机器归属记录失败：{e}")
     try:
         dcmd = D.remote_cli(h)
-        ssh(h, f"BEADS_DIR=$HOME/tasks/.beads {dcmd} project {shlex.quote(project)} --owner local --json", timeout=40)
+        ssh(h, f"{D.remote_beads(h)} {dcmd} project {shlex.quote(project)} --owner local --json", timeout=40)
     except Exception as e:
         errors.append(f"目标机器归属记录失败：{e}")
     if errors:

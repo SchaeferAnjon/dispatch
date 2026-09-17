@@ -36,7 +36,18 @@ DISPATCH_DIR = os.path.join(HOME, "tasks", ".dispatch")
 SESS_DIR = os.path.join(DISPATCH_DIR, "sessions")
 INDEX_FILE = os.path.join(DISPATCH_DIR, "transcript-index.json")
 BEADS_DIR = os.environ.get("BEADS_DIR", os.path.join(HOME, "tasks", ".beads"))
-POOL = os.path.join(HOME, ".cc-switch", "skills")
+def skill_pool():
+    """Where shared skills live. cc-switch users keep theirs in ~/.cc-switch/skills and Dispatch
+    shares that folder; everyone else gets ~/.agents/skill-pool (next to the shared rules).
+    DISPATCH_SKILL_POOL overrides both."""
+    env = os.environ.get("DISPATCH_SKILL_POOL", "").strip()
+    if env:
+        return os.path.abspath(os.path.expanduser(env))
+    cc = os.path.join(HOME, ".cc-switch", "skills")
+    return cc if os.path.isdir(cc) else os.path.join(HOME, ".agents", "skill-pool")
+
+
+POOL = skill_pool()
 # Where each agent looks for skills. The first dir is where `enable` creates the
 # symlink; the rest are also scanned (Codex reads both its own dir and the
 # cross-agent ~/.agents/skills).
@@ -64,6 +75,30 @@ HERMES_DB = os.path.join(HERMES_HOME, "state.db")
 HERMES_SOURCES = {"cli": ("terminal", "Hermes"), "desktop": ("desktop", "Hermes"), "cron": ("cron", "Hermes 定时"), "telegram": ("chat", "Telegram"), "weixin": ("chat", "微信"), "whatsapp": ("chat", "WhatsApp"), "discord": ("chat", "Discord"), "slack": ("chat", "Slack")}
 RETIRED_AGENTS = frozenset({"qoder", "qoder-ide", "qodercli"})
 PATH_EXTRA = "/opt/homebrew/bin:/usr/local/bin:" + os.path.join(HOME, ".local", "bin")
+
+
+def remote_beads(h=None):
+    """`BEADS_DIR=…` for a command run on another Mac over ssh (a non-interactive shell has none of
+    the person's environment). Each peer's board folder is recorded in hosts.json when it is added
+    (`beads_dir`, written relative to its home); the default is where first-run setup puts it."""
+    d = ((h or {}).get("beads_dir") or "").strip()
+    if not d or "\n" in d:
+        return "BEADS_DIR=$HOME/tasks/.beads"
+    if d.startswith("~/"):
+        return "BEADS_DIR=$HOME/" + shlex_quote_path(d[2:])
+    return "BEADS_DIR=" + shlex_quote_path(d)
+
+
+def shlex_quote_path(p):
+    import shlex as _sh
+    return _sh.quote(p)
+
+
+def beads_dir_portable():
+    """This Mac's board folder the way a peer should write it: relative to home when it is inside it."""
+    real = os.path.abspath(BEADS_DIR)
+    home = HOME.rstrip("/") + "/"
+    return "~/" + real[len(home):] if real.startswith(home) else real
 
 
 def whoami():
@@ -232,6 +267,44 @@ def ghostty_attach_herdr(session):
         return False
 
 
+TERMINAL_APPS = (("Ghostty", "/Applications/Ghostty.app"), ("iTerm2", "/Applications/iTerm.app"), ("Terminal", "/System/Applications/Utilities/Terminal.app"))
+
+
+def preferred_terminal():
+    """The terminal app to open windows in: DISPATCH_TERMINAL when set, else the first installed of
+    Ghostty, iTerm2, Terminal (every Mac has the last one)."""
+    want = os.environ.get("DISPATCH_TERMINAL", "").strip().lower()
+    have = [name for name, path in TERMINAL_APPS if os.path.isdir(path) or os.path.isdir(os.path.join(HOME, "Applications", os.path.basename(path)))]
+    for name in have:
+        if want and name.lower().startswith(want):
+            return name
+    return have[0] if have else "Terminal"
+
+
+def terminal_attach_herdr(session):
+    """Open a window of the person's terminal running the Herdr client for `session`.
+    Returns the app's name, or "" when no terminal took it."""
+    app = preferred_terminal()
+    if app == "Ghostty" and ghostty_attach_herdr(session):
+        return "Ghostty"
+    cmd = HERDR + (f" --session {session}" if session else "")
+    esc = cmd.replace("\\", "\\\\").replace('"', '\\"')
+    if app == "iTerm2":
+        script = f'tell application "iTerm2"\nactivate\ncreate window with default profile command "{esc}"\nend tell\n'
+        try:
+            if sh(["osascript", "-e", script], timeout=10)[0] == 0:
+                return "iTerm2"
+        except Exception:
+            pass
+    script = f'tell application "Terminal"\nactivate\ndo script "{esc}"\nend tell\n'
+    try:
+        if sh(["osascript", "-e", script], timeout=10)[0] == 0:
+            return "Terminal"
+    except Exception:
+        pass
+    return ""
+
+
 def show_herdr_pane(pane_id):
     """Put a Herdr pane in front of the person at this Mac. Focusing inside Herdr is not enough
     when no window draws that server — the Mac mini's "main" runs headless under tmux, so a plain
@@ -242,10 +315,11 @@ def show_herdr_pane(pane_id):
     if visible:
         activate(visible[0]["app"])
         return visible[0]["app"], "focused"
-    if ghostty_attach_herdr(session):
+    app = terminal_attach_herdr(session)
+    if app:
         time.sleep(1.5)
         sh(herdr_local_command(["agent", "focus", pane_id]), timeout=5)  # the new client opens on the focused tab
-        return "Ghostty", "attached"
+        return app, "attached"
     return None, "none"
 
 
@@ -578,7 +652,7 @@ def remote_dispatch(h, args, ttl, timeout=12, background=False):
             time.sleep(0.2)
         return stale()
     # The remote login shell is fish, so use `env` rather than FOO=bar prefixes.
-    cmd = f"env BEADS_DIR=$HOME/tasks/.beads {remote_cli(h)} " + " ".join(shlex.quote(x) for x in args) + " --json"
+    cmd = f"env {remote_beads(h)} {remote_cli(h)} " + " ".join(shlex.quote(x) for x in args) + " --json"
     try:
         r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd], capture_output=True, text=True, timeout=timeout)
         if r.returncode == 255:
@@ -1279,7 +1353,7 @@ def cmd_hosts(a):
                 raise SystemExit(f"hosts.json 里没有 {target}")
             h = next(x for x in hosts() if x["id"] == hid)
             import shlex
-            r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", h["ssh"], f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} init rename-self {shlex.quote(name)} --json"], capture_output=True, text=True, timeout=60)
+            r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", h["ssh"], f"env {remote_beads(h)} {h.get('dispatch', 'dispatch')} init rename-self {shlex.quote(name)} --json"], capture_output=True, text=True, timeout=60)
             remember_peer_name(hid, name.strip()[:60])  # the push back may not reach us; keep our copy right anyway
             res = {"name": name.strip()[:60], "host": hid, "remote_ok": r.returncode == 0}
         if res.get("error"):
@@ -3565,7 +3639,7 @@ def cmd_focus(a):
         h = next((x for x in hosts() if x["id"] == hits[0]["host"]), None)
         if h:
             import shlex
-            r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", h["ssh"], f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} focus {shlex.quote(hits[0]['session_id'])} --on local"], capture_output=True, text=True, timeout=40)
+            r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", h["ssh"], f"env {remote_beads(h)} {h.get('dispatch', 'dispatch')} focus {shlex.quote(hits[0]['session_id'])} --on local"], capture_output=True, text=True, timeout=40)
             print(f"{h['name']}：" + (r.stdout.strip() or r.stderr.strip()))
             sys.exit(r.returncode)
     for s in hits:
@@ -3947,6 +4021,10 @@ def cmd_skills_import(a):
 
 
 def cc_switch_flag(name, agent, on):
+    """Keep cc-switch's own switches in step, for people who use it. Without its database there
+    is nothing to update (and sqlite3.connect would create an empty one)."""
+    if not os.path.isfile(CC_SWITCH_DB):
+        return
     try:
         import sqlite3
         col = {"claude": "enabled_claude", "codex": "enabled_codex"}[agent]
@@ -3959,6 +4037,16 @@ def cc_switch_flag(name, agent, on):
 
 
 def cmd_skills(a):
+    if a.op == "roots":
+        # Folders a skill file may be edited in: the pool, each agent's skills folder, and the workspace
+        # roots (project-local skills). The desktop shell and the phone server both ask here.
+        roots = [POOL] + [d for dirs in AGENT_SKILL_DIRS.values() for d in dirs]
+        try:
+            roots += [os.path.expanduser(r) for r in (settings_load().get("workspace_roots") or [])]
+        except Exception:
+            pass
+        print("\n".join(dict.fromkeys(os.path.realpath(r) for r in roots)))
+        return
     if a.op == "improve":
         return cmd_skills_improve(a)
     if a.op == "new":
@@ -8070,7 +8158,7 @@ def proxy_to_host(argv):
     if not h:
         print(f"hosts.json 里没有叫 {hid} 的机器（本机用 local）", file=sys.stderr)
         sys.exit(2)
-    cmd = f"env BEADS_DIR=$HOME/tasks/.beads {remote_cli(h)} " + " ".join(shlex.quote(x) for x in rest)
+    cmd = f"env {remote_beads(h)} {remote_cli(h)} " + " ".join(shlex.quote(x) for x in rest)
     timeout = command_timeout(rest)
     try:
         r = subprocess.run(["ssh", "-o", "ConnectTimeout=4", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "StrictHostKeyChecking=accept-new", h["ssh"], cmd],
@@ -8125,7 +8213,7 @@ def main():
     s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--since", type=int, help="只读上次返回的 offset 之后新增的记录（实时 tail）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.add_argument("--on", default="", help="same id on several Macs (after dispatch move): which one — host id, name or local"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.add_argument("--on", default="", help="host id, name or local when the session runs on several Macs"); s.set_defaults(fn=cmd_focus)
-    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash", "new", "import"]); s.add_argument("name", nargs="?", help="技能名；import 时是仓库地址（owner/repo 或 GitHub URL）"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", action="append", choices=["claude", "codex", "all"], help="可重复；不传 = enable/disable 两个都动、new/import 不挂载"); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--description", help="new/import: 一句话触发描述（写进 frontmatter）"); s.add_argument("--trigger", help="new: 触发条件"); s.add_argument("--constraint", help="new: 关键约束"); s.add_argument("--path", help="import: 仓库里的子目录"); s.add_argument("--as", dest="as_name", help="import: 落进技能池的名字"); s.add_argument("--force", action="store_true", help="import: 覆盖同名技能（旧的改名 .bak-时间戳）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
+    s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash", "new", "import", "roots"]); s.add_argument("name", nargs="?", help="技能名；import 时是仓库地址（owner/repo 或 GitHub URL）"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", action="append", choices=["claude", "codex", "all"], help="可重复；不传 = enable/disable 两个都动、new/import 不挂载"); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--description", help="new/import: 一句话触发描述（写进 frontmatter）"); s.add_argument("--trigger", help="new: 触发条件"); s.add_argument("--constraint", help="new: 关键约束"); s.add_argument("--path", help="import: 仓库里的子目录"); s.add_argument("--as", dest="as_name", help="import: 落进技能池的名字"); s.add_argument("--force", action="store_true", help="import: 覆盖同名技能（旧的改名 .bak-时间戳）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)
     s = sub.add_parser("need-you", help="只有用户能做的事（发邮件、付款、登录、当面演示…）：记成一条「只能你做」的任务，用户在项目任务板上做完打勾"); s.add_argument("title", help="一句话说清要用户做什么"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d", help="为什么要做、怎么做、材料在哪"); s.add_argument("--task", help="它源自哪个任务（会在那条任务上留记录）"); s.add_argument("--priority", "-p", type=int, default=1); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_need_you)
     s = sub.add_parser("begin", help="create + claim a task (do this once you know what you're doing); the title must say what + why, the description the trigger"); s.add_argument("title", help="「<对象> <怎么改>：<为什么>」，8–80 字"); s.add_argument("--project", "-P"); s.add_argument("--desc", "-d", help="触发原因 + 期望结果，≥20 字"); s.add_argument("--force", action="store_true", help="create even when the title/description checks fail"); s.add_argument("--acceptance", "-a", help="one '- [ ] …' per line"); s.add_argument("--type", "-t", default="task"); s.add_argument("--priority", "-p", type=int, default=2); s.add_argument("--deps"); s.add_argument("--json", action="store_true"); s.add_argument("--session", help="explicit conversation id; otherwise use Agent session environment"); s.set_defaults(fn=cmd_begin)
     s = sub.add_parser("claim", help="claim a task; refuses one another agent is working on unless --force"); s.add_argument("task"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_claim)
@@ -8197,7 +8285,7 @@ def main():
             p.error("start 要给 kind（claude|codex…），其它要给目标（pane id / 名字 / 标题 / 任务 ID）")
         if a.op == "ask" and not a.text:
             p.error("ask 要给提示词")
-    if a.cmd == "skills" and a.op not in ("list", "improve") and not a.name:
+    if a.cmd == "skills" and a.op not in ("list", "improve", "roots") and not a.name:
         p.error("需要技能名")
     if a.cmd in ("pit", "wiki") and a.op == "add" and not a.text:
         p.error("需要写内容")

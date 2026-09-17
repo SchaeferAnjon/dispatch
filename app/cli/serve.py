@@ -84,7 +84,7 @@ def run_dispatch(args, timeout=300):
 
 def _skill_file(name):
     p = os.path.realpath(run_dispatch(["skills", "path", name]).strip())
-    allowed = [os.path.join(HOME, d) for d in (".cc-switch/skills", ".claude/skills", ".agents/skills", "Projects")]
+    allowed = [d for d in run_dispatch(["skills", "roots"]).splitlines() if d.strip()]
     if not any(p.startswith(os.path.realpath(d) + os.sep) for d in allowed if os.path.exists(d)):
         raise RuntimeError(f"不在技能目录里，拒绝：{p}")
     return p
@@ -528,7 +528,7 @@ def phone_url(conf, ip):
         if h is None:
             print(f"serve.json 的 phone_host={target} 不在 hosts.json 里，先用本机链接", file=sys.stderr, flush=True)
         else:
-            cmd = f"env BEADS_DIR=$HOME/tasks/.beads {h.get('dispatch', 'dispatch')} serve url"
+            cmd = f"env {d.remote_beads(h)} {h.get('dispatch', 'dispatch')} serve url"
             try:
                 r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", h["ssh"], cmd], capture_output=True, text=True, timeout=25)
                 u = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""

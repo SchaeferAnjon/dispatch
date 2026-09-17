@@ -1846,3 +1846,19 @@ class DiscussMembersCanSpeak(unittest.TestCase):
         argv = seen["argv"]
         self.assertLess(argv.index("PROMPT TEXT"), argv.index("-i"))
         self.assertEqual(argv[-4:], ["-i", "/a.png", "-i", "/b.png"])
+
+
+class RemoteBoardLocation(unittest.TestCase):
+    """Commands sent to a peer use that peer's own board folder (review P2-4)."""
+
+    def test_default_custom_and_home_relative(self):
+        self.assertEqual(dispatch.remote_beads(None), "BEADS_DIR=$HOME/tasks/.beads")
+        self.assertEqual(dispatch.remote_beads({"beads_dir": ""}), "BEADS_DIR=$HOME/tasks/.beads")
+        self.assertEqual(dispatch.remote_beads({"beads_dir": "~/work/board/.beads"}), "BEADS_DIR=$HOME/work/board/.beads")
+        self.assertEqual(dispatch.remote_beads({"beads_dir": "/Volumes/Data/my board/.beads"}), "BEADS_DIR='/Volumes/Data/my board/.beads'")
+
+    def test_this_macs_folder_is_written_relative_to_home(self):
+        with patch.object(dispatch, "HOME", "/Users/me"), patch.object(dispatch, "BEADS_DIR", "/Users/me/tasks/.beads"):
+            self.assertEqual(dispatch.beads_dir_portable(), "~/tasks/.beads")
+        with patch.object(dispatch, "HOME", "/Users/me"), patch.object(dispatch, "BEADS_DIR", "/Volumes/Data/.beads"):
+            self.assertEqual(dispatch.beads_dir_portable(), "/Volumes/Data/.beads")

@@ -697,7 +697,8 @@ fn skill_file(name: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(p.trim());
     let real = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
     // Only files inside the skill pool or an agent's skills dir may be edited.
-    let allowed = [home().join(".cc-switch/skills"), home().join(".claude/skills"), home().join(".agents/skills"), home().join("Projects")];
+    // The CLI knows where skills may live (the pool, each agent's folder, the workspace roots).
+    let allowed: Vec<PathBuf> = run_dispatch_blocking(&args(&["skills", "roots"]))?.lines().map(|l| PathBuf::from(l.trim())).filter(|p| !p.as_os_str().is_empty()).collect();
     if !allowed.iter().any(|d| std::fs::canonicalize(d).map(|d| real.starts_with(d)).unwrap_or(false)) {
         return Err(tr("not_skill_dir").replace("{path}", &real.display().to_string()));
     }
