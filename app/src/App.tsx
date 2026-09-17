@@ -192,6 +192,30 @@ export default function App() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+  // Where you have been: every change of place (view, project, conversation, task) leaves the previous
+  // one on a trail, so 「‹ 返回」 in the top bar always goes back one step — a conversation → 额度 → back
+  // lands on the same conversation. Independent of the browser history, so the desktop window has it too.
+  const placeNow = useMemo<Place>(() => ({ view, selected, project: projectSelection, session: view === "sessions" ? sessionShown : null, discussion: view === "discuss" ? discussShown : null }), [view, selected, projectSelection, sessionShown, discussShown]);
+  const [trail, setTrail] = useState<Place[]>([]);
+  const lastPlace = useRef<Place | null>(null);
+  const restoredAt = useRef(0);
+  useEffect(() => {
+    const prev = lastPlace.current; lastPlace.current = placeNow;
+    if (!prev || placeToHash(prev) === placeToHash(placeNow)) return;
+    // The states of a restored place settle over a couple of renders; none of those is a new step.
+    if (Date.now() - restoredAt.current < 400) return;
+    setTrail((t) => [...t.slice(-29), prev]);
+  }, [placeNow]);
+  const goBackPlace = () => {
+    const p = trail[trail.length - 1]; if (!p) return;
+    restoredAt.current = Date.now();
+    setTrail((t) => t.slice(0, -1)); setBackStack([]);
+    changeView(p.view); setSelected(p.selected); setProjectSelection(p.project);
+    if (p.view === "sessions") { setSessionFocus(p.session); setSessionShown(p.session); }
+    if (p.view === "discuss") { setDiscussFocus(p.discussion ?? null); setDiscussShown(p.discussion ?? null); }
+  };
+  const backTarget = trail[trail.length - 1];
+  const backLabel = (p: Place) => p.view === "sessions" && p.session ? "会话" : p.view === "projects" && p.project ? `项目 ${p.project}` : VIEW_LABEL[p.view];
   // The tour never opens on its own; the design should carry itself. `?` still has it.
   const [tour, setTour] = useState(false);
   const closeTour = () => setTour(false);
@@ -799,7 +823,8 @@ export default function App() {
       <div className="titlebar" data-tauri-drag-region>
         <div className="lead" data-tauri-drag-region><b className="lead-mobile">Dispatch</b></div>
         <div className="crumb" data-tauri-drag-region>
-          {backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}{hostFilter && <><span>{hostFilter}</span><span className="sep">›</span></>}<b>{VIEW_LABEL[view]}</b>
+          {backTarget ? <button className="btn ghost sm" onClick={goBackPlace} title="返回上一页（按你刚才的路径倒退一步）">‹ 返回{backLabel(backTarget)}</button>
+            : backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}{hostFilter && <><span>{hostFilter}</span><span className="sep">›</span></>}<b>{VIEW_LABEL[view]}</b>
           {view === "projects" && projectSelection && <><span className="sep">›</span><span>{projectSelection}</span></>}
           {BOARD_VIEWS.includes(view) && filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
           <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && (isServed ? " · 网页连接" : " · 示例数据")}</span>
