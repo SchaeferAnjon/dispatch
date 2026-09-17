@@ -1818,3 +1818,31 @@ class MissingToolsAndBoard(unittest.TestCase):
             r = dispatch.herdr(None, ["agent", "list"])
             self.assertEqual(r["error"]["code"], "herdr_missing")
             self.assertEqual(dispatch.herdr(None, ["agent", "read", "x"], raw=True), "")
+
+
+class DiscussMembersCanSpeak(unittest.TestCase):
+    """Two ways a member ended up silent (task-xawo)."""
+
+    def test_timeout_in_seconds_is_not_read_as_milliseconds(self):
+        self.assertEqual(dispatch.timeout_to_ms(1200), 1200000)   # an agent wrote twenty minutes in seconds
+        self.assertEqual(dispatch.timeout_to_ms(600000), 600000)
+        self.assertEqual(dispatch.timeout_to_ms(5), 60000)        # never under a minute
+        self.assertEqual(dispatch.timeout_to_ms(None), 600000)
+        self.assertEqual(dispatch.timeout_to_ms(0), 600000)
+
+    def test_codex_prompt_comes_before_the_images(self):
+        seen = {}
+
+        class P:
+            stdout = iter(()); returncode = 0
+            class stderr:
+                @staticmethod
+                def read(): return b""
+            def wait(self, timeout=None): return 0
+            def kill(self): pass
+        with tempfile.TemporaryDirectory() as tmp, patch.object(dispatch, "DISPATCH_DIR", tmp), \
+             patch.object(dispatch.subprocess, "Popen", side_effect=lambda argv, **k: seen.update(argv=argv) or P()):
+            dispatch.headless_call("codex", "gpt-x", "PROMPT TEXT", tmp, 60000, images=("/a.png", "/b.png"))
+        argv = seen["argv"]
+        self.assertLess(argv.index("PROMPT TEXT"), argv.index("-i"))
+        self.assertEqual(argv[-4:], ["-i", "/a.png", "-i", "/b.png"])

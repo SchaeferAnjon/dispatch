@@ -5,6 +5,7 @@
 ```bash
 dispatch discuss <id> --with codex,claude:haiku,pi [--leader pi] [-q "想让他们决定什么"] [--rounds 2] [--conclude]   # 无头直调：claude -p / codex exec / pi -p 并行，CLI 把线程喂进提示、把回复写成【讨论】评论；回 SKIP 的不上板
 dispatch discuss --topic "一个念头" [-P 项目] --with …                                          # 没有任务：建一个【讨论】任务承载
+# --timeout 是每个成员每轮的上限，单位毫秒（默认 600000）；写成秒也行（小于 10000 的数按秒算），一般不用传。带图讨论用 --image <路径>，可重复。
 dispatch discuss-judge <id> --with …    # 裁判试算：下一轮会叫谁、为什么（不调模型）
 dispatch discuss-conclude <id>          # 写（覆盖）结论：任务描述里的 `## 讨论结论` 只有一条
 dispatch discuss-doc <id>               # 收尾：先写结论，再整理成文档（背景/结论/方案/步骤/风险/验收）写进描述，可重复

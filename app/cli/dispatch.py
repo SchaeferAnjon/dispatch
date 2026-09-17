@@ -1058,6 +1058,8 @@ def cmd_terminal(a):
 
 
 def cmd_agent(a):
+    if getattr(a, "timeout", None) is not None:
+        a.timeout = timeout_to_ms(a.timeout, default_ms=120000, floor_ms=15000)  # milliseconds; a small number is seconds
     host = herdr_target_host(a.host)
     where = host["name"] if host else local_host_name()
     # Opening a terminal window must happen on the machine that owns the pane, including
@@ -6942,6 +6944,22 @@ def headless_prompt(tid, title, round_no, thread, who, question="", topic=False,
     return head + "\n\n=== 线程 ===\n" + thread
 
 
+def timeout_to_ms(value, default_ms=600000, floor_ms=60000):
+    """`--timeout` on discuss / agent is in milliseconds, but people and agents write seconds
+    (`--timeout 1200` meaning twenty minutes ended a member's turn with 「1 秒没说完」). Nobody
+    wants a turn shorter than ten seconds, so a value under 10 000 is read as seconds; and no
+    member gets less than a minute."""
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return default_ms
+    if v <= 0:
+        return default_ms
+    if v < 10000:
+        v *= 1000
+    return max(floor_ms, v)
+
+
 def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", session="", resume=False, on_event=None, thinking=""):
     """One statement from one member. Returns {text, session, error, secs}. The session id is
     what the next round resumes with (claude --resume, codex exec resume, pi --session-id).
@@ -6961,10 +6979,12 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
         os.makedirs(os.path.dirname(lastfile), exist_ok=True)
         common = ["--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "-o", lastfile] + (["-m", model] if model else []) + (["-c", "developer_instructions=" + json.dumps(system, ensure_ascii=False)] if system else [])
         imgs = [x for p in images for x in ("-i", p)]
+        # The prompt goes BEFORE the images: `-i <FILE>...` takes every following word, so a prompt
+        # after it is read as one more image and codex waits on stdin ("No prompt provided via stdin").
         if resume and session:
-            argv = ["codex", "exec", "resume", session] + common + imgs + [prompt]
+            argv = ["codex", "exec", "resume", session] + common + [prompt] + imgs
         else:
-            argv = ["codex", "exec", "-C", cwd] + common + imgs + [prompt]
+            argv = ["codex", "exec", "-C", cwd] + common + [prompt] + imgs
     elif kind == "pi":
         sdir = os.path.join(DISCUSSIONS_DIR, "pi-sessions")
         os.makedirs(sdir, exist_ok=True)
@@ -7075,8 +7095,9 @@ def headless_call(kind, model, prompt, cwd, timeout_ms, images=(), system="", se
         proc.kill()
     reader.join(timeout=5)
     if timed_out:
-        emit("error", f"{timeout_ms // 1000} 秒没说完")
-        return {"text": "", "session": session, "error": f"{timeout_ms // 1000} 秒没说完", "secs": round(time.time() - t0, 1)}
+        waited = int(time.time() - t0)
+        emit("error", f"{waited} 秒没说完")
+        return {"text": "", "session": session, "error": f"{waited} 秒没说完（超时上限 {max(30, timeout_ms // 1000)} 秒，`--timeout` 可调）", "secs": round(time.time() - t0, 1)}
     o, err = "".join(lines), (err_buf[0] if err_buf else b"").decode("utf-8", "replace")
     returncode = proc.returncode
     text, sid, error, usage = "", session, "", {}
@@ -7543,6 +7564,7 @@ def cmd_discuss_judge(a):
 
 
 def cmd_discuss(a):
+    a.timeout = timeout_to_ms(getattr(a, "timeout", None))  # seconds or milliseconds, never under a minute
     # Participants: `kind` or `kind:model`, repeated as often as wanted (claude:opus,claude:haiku,codex).
     parts = discuss_parts(a.with_)
     if not parts:
@@ -8101,7 +8123,7 @@ def main():
     s = sub.add_parser("discuss-live", help="what each discussion member is doing right now (the typing bubbles): discussions/<task>.live.json"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_live)
     s = sub.add_parser("discuss-conclude", help="write (replace) the discussion's conclusion — one block in the task's description"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_conclude)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)
-    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--leader", default="", help="the leader, kind[:model] (added to the members if missing): speaks last each round, writes the conclusion and the document, gets the hand-off by default"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--everyone", action="store_true", help="skip the referee: every member speaks this round (by default, once the members have spoken, a round only wakes who was @'d or named-and-questioned since the last round)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
+    s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--leader", default="", help="the leader, kind[:model] (added to the members if missing): speaks last each round, writes the conclusion and the document, gets the hand-off by default"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000, help="每个成员每轮最多等多久：毫秒；小于 10000 的数按秒算（1200 = 20 分钟）；不会少于 60 秒"); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--everyone", action="store_true", help="skip the referee: every member speaks this round (by default, once the members have spoken, a round only wakes who was @'d or named-and-questioned since the last round)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
     s = sub.add_parser("discuss-judge", help="dry run of the discussion referee: who the next round would wake, and why"); s.add_argument("task"); s.add_argument("--with", dest="with_", required=True, help="the members, as for discuss"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_judge)
     s = sub.add_parser("split", help="dynamic workflow step 2: create sub-tasks from the discussion and hand each to an agent"); s.add_argument("task"); s.add_argument("--to", action="append", help='kind:"标题|说明"，可多次'); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--no-start", action="store_true", help="only create the sub-tasks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_split)
     s = sub.add_parser("terminal", help="在 Herdr 开一个不带 Agent 的终端标签（项目页「终端」按钮）"); s.add_argument("--cwd", default="", help="目录（默认当前目录）"); s.add_argument("--host", default=None, help="hosts.json 里的机器 id 或名字（默认本机）"); s.add_argument("--label", default="", help="标签名"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_terminal)
