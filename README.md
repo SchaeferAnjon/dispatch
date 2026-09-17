@@ -2,6 +2,8 @@
   <img src="docs/assets/icon.png" width="88" alt="Dispatch">
 </p>
 
+<p align="center"><b>中文</b> · <a href="README.en.md">English</a> · <a href="README.de.md">Deutsch</a></p>
+
 <h1 align="center">Dispatch 调度台</h1>
 
 <p align="center">
@@ -65,8 +67,7 @@ Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent
 ### 从 Release 安装
 
 1. 到 [Releases](https://github.com/SchaeferAnjon/dispatch/releases) 下载对应你机器的包：
-   - Apple 芯片（M 系列）：`Dispatch-<版本>-macos-apple-silicon.zip`
-   - Intel：`Dispatch-<版本>-macos-intel.zip`
+   - 目前只发布 Apple 芯片（M 系列）的包：`Dispatch-<版本>-macos-apple-silicon.zip`。Intel 机器请按下面「从源码构建」自己打包。
 2. 双击解压，把 **Dispatch.app** 拖进「应用程序」。
 3. 这个包没有 Apple 开发者签名，第一次打开会被 Gatekeeper 拦下。任选一种放行：
    - 打开「终端」，粘贴：`xattr -dr com.apple.quarantine /Applications/Dispatch.app`，再打开应用；
