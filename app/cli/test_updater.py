@@ -34,14 +34,14 @@ class PhoneServiceUpdate(unittest.TestCase):
         result, saved, calls = self.run_restart(config)
         self.assertTrue(result)
         self.assertEqual(saved['ProgramArguments'], ['/opt/homebrew/bin/python3', str(self.serve)])
-        self.assertEqual(saved['EnvironmentVariables'], {'BEADS_DIR': '/my/tasks/.beads'})
+        self.assertEqual(saved['EnvironmentVariables'], {'BEADS_DIR': '/my/tasks/.beads', 'PYTHONDONTWRITEBYTECODE': '1'})
         self.assertTrue(saved['KeepAlive'])
         self.assertEqual(saved['StandardErrorPath'], '/my/log')
         label = f'gui/{os.getuid()}/{updater.SERVE_LABEL}'
         self.assertEqual(calls[1:], [['launchctl', 'bootout', label], ['launchctl', 'bootstrap', f'gui/{os.getuid()}', str(self.plist.resolve())]])
 
     def test_service_already_using_bundle_only_needs_restart(self):
-        config = dict(ProgramArguments=['python3', str(self.serve)])
+        config = dict(ProgramArguments=['python3', str(self.serve)], EnvironmentVariables={'PYTHONDONTWRITEBYTECODE': '1'})
         result, saved, calls = self.run_restart(config)
         self.assertTrue(result)
         self.assertEqual(saved, config)
@@ -54,6 +54,20 @@ class PhoneServiceUpdate(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(saved, config)
         self.assertEqual(len(calls), 1)
+
+
+class ServeLogMigration(PhoneServiceUpdate):
+    def test_a_tmp_log_moves_next_to_dispatch_data(self):
+        config = dict(ProgramArguments=['python3', str(self.serve)], EnvironmentVariables={'PYTHONDONTWRITEBYTECODE': '1'},
+                      StandardOutPath='/tmp/dispatch-serve.log', StandardErrorPath='/tmp/dispatch-serve.log')
+        with patch.object(updater.os.path, 'expanduser', side_effect=lambda p: str(self.plist) if 'LaunchAgents' in p else self.temp.name if p == '~' else p):
+            self.plist.write_bytes(plistlib.dumps(config))
+            with patch.object(updater, 'APP', str(self.app)), patch.object(updater.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
+                self.assertTrue(updater.restart_serve())
+        saved = plistlib.loads(self.plist.read_bytes())
+        self.assertEqual(saved['StandardOutPath'], os.path.join(self.temp.name, 'tasks', '.dispatch', 'serve.log'))
+        self.assertEqual(os.stat(saved['StandardOutPath']).st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(self.plist).st_mode & 0o777, 0o600)
 
 
 class AssetForThisMachine(unittest.TestCase):

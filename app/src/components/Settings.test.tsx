@@ -34,17 +34,19 @@ describe("SettingsView 总结", () => {
 });
 
 describe("SettingsView phone access", () => {
-  it("shows the CLI QR next to the copy link", () => {
-    const html = renderToStaticMarkup(<SettingsView {...base} onPhone={() => {}} phoneQr={QR} />);
+  // The QR and the copy-link button now come from PhoneAccess, after it has asked `serve status`
+  // (a QR for an address nothing answers on only gives the phone 「无法连接」).
+  const fakeApi = { on: async () => "{}", copy: async () => {} } as unknown as import("../api").Api;
+  it("asks the service for its state before offering a QR", () => {
+    const html = renderToStaticMarkup(<SettingsView {...base} api={fakeApi} onPhone={() => {}} phoneQr={QR} />);
     expect(html).toContain("手机访问");
-    expect(html).toContain('class="settings-qr"');
-    expect(html).toContain("<svg");
-    expect(html).toContain("复制链接");
+    expect(html).toContain("正在检查手机访问");
+    expect(html).not.toContain('class="settings-qr"');
   });
 
   it("lets the user pick which Mac the phone version runs on", () => {
     const phoneHost = { phone_host: "apple-mac-mini", hosts: [{ id: "local", name: "大哥", local: true }, { id: "apple-mac-mini", name: "Apple的Mac mini", local: false }] };
-    const html = renderToStaticMarkup(<SettingsView {...base} onPhone={() => {}} phoneQr={QR} phoneHost={phoneHost} onPhoneHost={() => {}} />);
+    const html = renderToStaticMarkup(<SettingsView {...base} api={fakeApi} onPhone={() => {}} phoneQr={QR} phoneHost={phoneHost} onPhoneHost={() => {}} />);
     expect(html).toContain("手机版跑在");
     expect(html).toContain("本机（大哥）");
     expect(html).toContain('<option value="apple-mac-mini" selected="">Apple的Mac mini</option>');

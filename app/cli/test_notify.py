@@ -104,12 +104,15 @@ class Dedup(unittest.TestCase):
 
 
 class ServeLink(unittest.TestCase):
-    def test_reads_conf_and_adds_token(self):
+    def test_reads_conf_and_links_with_a_login_code_not_the_token(self):
+        import serve
         with tempfile.TemporaryDirectory() as d:
             json.dump({"token": "tok", "port": 7799, "bind": "100.1.2.3"}, open(os.path.join(d, "serve.json"), "w"))
-            with patch.object(notify.D, "DISPATCH_DIR", d):
-                self.assertEqual(notify.serve_link("/insights/2026-09-09_1200.html"),
-                                 "http://100.1.2.3:7799/insights/2026-09-09_1200.html?token=tok")
+            with patch.object(notify.D, "DISPATCH_DIR", d), patch.multiple(serve, DISPATCH_DIR=d, LOGINS=os.path.join(d, "serve-logins.json")):
+                link = notify.serve_link("/insights/2026-09-09_1200.html")
+            self.assertTrue(link.startswith("http://100.1.2.3:7799/?login="))
+            self.assertIn("to=%2Finsights%2F2026-09-09_1200.html", link)
+            self.assertNotIn("token=", link)
 
     def test_no_conf_is_empty(self):
         with tempfile.TemporaryDirectory() as d, patch.object(notify.D, "DISPATCH_DIR", d):

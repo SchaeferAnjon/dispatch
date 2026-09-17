@@ -241,6 +241,23 @@ def board_status():
             "sync_launchd": os.path.exists(os.path.join(LAUNCH_DIR, "dev.schaefer.beads-sync.plist")), "remotesapi": remotesapi_enabled()}
 
 
+def kill_board_dolt():
+    """Stop leftover Dolt servers of *this board* only (its config file, or started inside its
+    data folder). A blanket `pkill -f "dolt sql-server"` would take down any Dolt the person
+    runs for their own work."""
+    r = subprocess.run(["pgrep", "-f", "dolt sql-server"], capture_output=True, text=True)
+    for pid in [x for x in r.stdout.split() if x.isdigit()]:
+        cmd = subprocess.run(["ps", "-o", "command=", "-p", pid], capture_output=True, text=True).stdout
+        cwd = subprocess.run(["lsof", "-a", "-p", pid, "-d", "cwd", "-Fn"], capture_output=True, text=True).stdout
+        cwd = next((l[1:] for l in cwd.splitlines() if l.startswith("n")), "")
+        ours = DOLT_CONFIG in cmd or SHARED in cmd or os.path.realpath(cwd or "/").startswith(os.path.realpath(SHARED))
+        if ours:
+            try:
+                os.kill(int(pid), 15)
+            except OSError:
+                pass
+
+
 def write_plist(label, args, env=None, interval=None, keep_alive=False, log=None, cwd=None):
     os.makedirs(LAUNCH_DIR, exist_ok=True)
     p = os.path.join(LAUNCH_DIR, f"{label}.plist")
@@ -256,8 +273,11 @@ def write_plist(label, args, env=None, interval=None, keep_alive=False, log=None
         d["WorkingDirectory"] = cwd
     uid = os.getuid()
     subprocess.run(["launchctl", "bootout", f"gui/{uid}/{label}"], capture_output=True)
-    with open(p, "wb") as f:
+    # Some of these carry the board's sync password in EnvironmentVariables: owner-only, from creation.
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
         plistlib.dump(d, f)
+    os.chmod(p, 0o600)
     r = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", p], capture_output=True, text=True)
     if r.returncode != 0:  # not in a GUI session (ssh): fall back to load
         subprocess.run(["launchctl", "load", p], capture_output=True)
@@ -319,7 +339,7 @@ def enable_remotesapi(force=False):
         if not dolt_server_up():
             break
         time.sleep(0.5)
-    subprocess.run(["pkill", "-f", "dolt sql-server"], capture_output=True)
+    kill_board_dolt()
     time.sleep(1)
     write_plist("dev.schaefer.dolt-server", [which("dolt") or "dolt", "sql-server", "--config", DOLT_CONFIG], keep_alive=True, log=os.path.join(SHARED, "dolt-server.log"), cwd=os.path.dirname(DOLT_CONFIG))
     if not wait_server():
@@ -572,7 +592,7 @@ def board_retire():
         except FileNotFoundError:
             pass
     run([which("bd") or "bd", "dolt", "stop"], timeout=60)
-    subprocess.run(["pkill", "-f", "dolt sql-server"], capture_output=True)
+    kill_board_dolt()
     time.sleep(1)
     moved = []
     if os.path.exists(D.BEADS_DIR):

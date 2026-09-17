@@ -1249,6 +1249,8 @@ def cmd_serve(a):
     import runpy
     what = getattr(a, "what", "run")
     args = ["url"] if what == "url" else (["qr"] + (["--svg"] if getattr(a, "svg", False) else [])) if what == "qr" else []
+    if what in ("install", "uninstall", "status"):
+        args = [what] + (["--lan"] if getattr(a, "lan", False) else []) + (["--no-lan"] if getattr(a, "no_lan", False) else []) + (["--json"] if getattr(a, "json", False) else [])
     if what == "host":
         args = ["host"] + ([a.target] if getattr(a, "target", None) else []) + (["--json"] if getattr(a, "json", False) else [])
     sys.argv = ["serve"] + args
@@ -8119,7 +8121,7 @@ def main():
     s.add_argument("--auto", action="store_true", help="start: unattended mode (Codex bypasses sandbox approvals, Claude skips permissions); implied by --task")
     s.add_argument("--focus", action="store_true", help="start: show the Agent's terminal window on the target Mac")
     s.set_defaults(fn=cmd_agent)
-    s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link, `serve qr` prints a scannable QR, `serve host [<id>|local]` shows/sets which Mac the phone link points at"); s.add_argument("what", nargs="?", choices=["run", "url", "qr", "host"], default="run"); s.add_argument("target", nargs="?", default=None, help="host: a hosts.json id/name, or `local` for this Mac"); s.add_argument("--svg", action="store_true", help="qr: print SVG instead of terminal blocks"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_serve)
+    s = sub.add_parser("serve", help="serve the web/phone version of Dispatch over HTTP (Tailscale); `serve url` prints the link, `serve qr` prints a scannable QR, `serve host [<id>|local]` shows/sets which Mac the phone link points at"); s.add_argument("what", nargs="?", choices=["run", "url", "qr", "host", "install", "uninstall", "status"], default="run"); s.add_argument("target", nargs="?", default=None, help="host: a hosts.json id/name, or `local` for this Mac"); s.add_argument("--svg", action="store_true", help="qr: print SVG instead of terminal blocks"); s.add_argument("--json", action="store_true"); s.add_argument("--lan", action="store_true", help="install: 没有 Tailscale 时也允许同一局域网的设备访问"); s.add_argument("--no-lan", action="store_true", help="install: 收回局域网访问"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("hosts", help="this Mac and the others: overlay network, remote-desktop backends detected, recommendation"); s.add_argument("--local", action="store_true", help="only this Mac (used over ssh by other hosts)"); s.add_argument("--refresh", help="clear the cached probe for this host id first, forcing a fresh ssh check"); s.add_argument("op", nargs="?", choices=["rename"], help="rename <id|local|名字> <新名字>: one name for that Mac everywhere, pushed to the other Macs"); s.add_argument("args", nargs="*"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_hosts)
     s = sub.add_parser("screen", help="手机看屏幕的一键配置（noVNC + websockify 常驻 + Tailscale Serve HTTPS）"); s.add_argument("op", nargs="?", choices=["status", "setup"], default="status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_screen)
     s = sub.add_parser("quota", help="usage limits per agent (5h / weekly), every Mac"); s.add_argument("--local", action="store_true", help="this Mac only"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_quota)

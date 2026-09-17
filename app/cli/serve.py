@@ -262,21 +262,31 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _authed(self):
+        import hmac
         tok = self.conf["token"]
         auth = self.headers.get("Authorization", "")
-        if auth == f"Bearer {tok}":
+        if auth.startswith("Bearer ") and hmac.compare_digest(auth[7:].strip().encode(), tok.encode()):
             return True
-        cookie = self.headers.get("Cookie", "")
-        return f"dispatch_token={tok}" in cookie
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "dispatch_token" and hmac.compare_digest(v.encode(), tok.encode()):
+                return True
+        return False
 
     def do_GET(self):
         u = urllib.parse.urlsplit(self.path)
         q = urllib.parse.parse_qs(u.query)
-        if "token" in q:
-            ok = q["token"][0] == self.conf["token"]
+        if "token" in q or "login" in q:
+            import hmac
+            # The pairing link carries the permanent token (shown only on this Mac: QR / copy link).
+            # Links in phone notifications carry a single-use login code instead, so a notification
+            # history that leaks (a public ntfy topic) cannot be replayed.
+            ok = hmac.compare_digest(q["token"][0].encode(), self.conf["token"].encode()) if "token" in q else login_redeem(q["login"][0])
             self.send_response(302)
-            destination = "/?" + urllib.parse.urlencode({"page": q["page"][0]}) if q.get("page") else "/"
-            self.send_header("Location", destination if ok else "/?bad=1")
+            to = (q.get("to") or [""])[0]
+            destination = "/?" + urllib.parse.urlencode({"page": q["page"][0]}) if q.get("page") else ("/" + to if to.startswith("#/") else to if to.startswith("/insights/") else "/")
+            # An expired login code still lands on the page: an already-paired phone has its cookie.
+            self.send_header("Location", destination if ok or "login" in q else "/?bad=1")
             if ok:
                 self.send_header("Set-Cookie", f"dispatch_token={self.conf['token']}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly")
             self.send_header("Content-Length", "0")
@@ -332,10 +342,13 @@ class H(BaseHTTPRequestHandler):
             return self._send(500, json.dumps({"error": str(e)[:800]}, ensure_ascii=False))
 
 
-def detect_address():
+def detect_address(conf=None):
+    """Tailscale's address when there is one. The LAN address only when the person allowed it
+    (`serve install --lan`, or the switch in settings): the token grants running commands on this
+    Mac, so listening to everything on a café Wi-Fi is not something to do silently."""
     sys.path.insert(0, HERE)
     import dispatch as d
-    return d.tailscale_ip() or d.lan_ip()
+    return d.tailscale_ip() or (d.lan_ip() if (conf or {}).get("allow_lan") else "")
 
 
 def bind_address(conf, wait=0):
@@ -347,17 +360,129 @@ def bind_address(conf, wait=0):
         return conf["bind"]
     deadline = time.time() + wait
     while True:
-        ip = detect_address()
+        ip = detect_address(conf)
         if ip or time.time() >= deadline:
             break
         time.sleep(3)
     if not ip:
-        print("没探测到 Tailscale / 局域网地址，只监听 127.0.0.1（手机连不上）", file=sys.stderr, flush=True)
+        print("没有 Tailscale 地址，也没允许局域网访问：只监听 127.0.0.1（手机连不上）。设置 → 手机访问 里可以允许同一 Wi-Fi 的设备访问。", file=sys.stderr, flush=True)
     return ip or "127.0.0.1"
 
 
 def url(conf, ip):
     return f"http://{ip}:{conf.get('port', 7799)}/?token={conf['token']}"
+
+
+def plain_url(conf, ip):
+    """The address without the token: what goes into logs."""
+    return f"http://{ip}:{conf.get('port', 7799)}/"
+
+
+LOGINS = os.path.join(DISPATCH_DIR, "serve-logins.json")
+LOGIN_TTL = 24 * 3600
+
+
+def _logins_load():
+    try:
+        d = json.load(open(LOGINS))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _logins_save(d):
+    os.makedirs(DISPATCH_DIR, exist_ok=True)
+    tmp = LOGINS + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(d, f)
+    os.replace(tmp, LOGINS)
+
+
+def login_issue(now=None):
+    """A single-use code, good for a day, that `?login=` trades for the session cookie."""
+    now = now or time.time()
+    d = {k: v for k, v in _logins_load().items() if v > now}
+    code = secrets.token_urlsafe(18)
+    d[code] = now + LOGIN_TTL
+    if len(d) > 400:  # a phone that never opens its notifications must not grow this forever
+        d = dict(sorted(d.items(), key=lambda kv: kv[1])[-400:])
+    _logins_save(d)
+    return code
+
+
+def login_redeem(code, now=None):
+    now = now or time.time()
+    d = _logins_load()
+    exp = d.pop(code, None)
+    if exp is None:
+        return False
+    _logins_save({k: v for k, v in d.items() if v > now})
+    return exp > now
+
+
+def serve_log():
+    return os.path.join(DISPATCH_DIR, "serve.log")
+
+
+def service_status(conf):
+    """Whether the phone service is installed (LaunchAgent), running, and where it listens."""
+    sys.path.insert(0, HERE)
+    import dispatch as d
+    plist = os.path.expanduser(f"~/Library/LaunchAgents/{LAUNCHD_LABEL}.plist")
+    loaded = subprocess.run(["launchctl", "print", f"gui/{os.getuid()}/{LAUNCHD_LABEL}"], capture_output=True).returncode == 0
+    ts, lan = d.tailscale_ip(), d.lan_ip()
+    ip = conf.get("bind") or ts or (lan if conf.get("allow_lan") else "") or "127.0.0.1"
+    return {"installed": os.path.exists(plist), "loaded": loaded, "running": reachable(ip, conf.get("port", 7799), 0.6), "address": ip, "port": conf.get("port", 7799),
+            "tailscale": bool(ts), "tailscale_ip": ts or "", "lan_ip": lan or "", "allow_lan": bool(conf.get("allow_lan")),
+            "phone_reachable": ip != "127.0.0.1", "log": serve_log(), "built": os.path.isfile(os.path.join(DIST, "index.html"))}
+
+
+def service_install(conf, allow_lan=None):
+    """Register this file as a LaunchAgent (what scripts/serve-setup.sh did, but shipped in the
+    app): runs at login, restarts if it dies, logs to ~/tasks/.dispatch/serve.log (0600)."""
+    import plistlib
+    if allow_lan is not None:
+        conf["allow_lan"] = bool(allow_lan)
+        json.dump(conf, open(CONF, "w"), indent=2)
+        os.chmod(CONF, 0o600)
+    if not os.path.isfile(os.path.join(DIST, "index.html")):
+        raise SystemExit(f"没有网页资源 {DIST}/index.html：从源码跑的话先在 app/ 里 npm run build")
+    agents = os.path.expanduser("~/Library/LaunchAgents")
+    os.makedirs(agents, exist_ok=True)
+    plist = os.path.join(agents, f"{LAUNCHD_LABEL}.plist")
+    log = serve_log()
+    os.makedirs(DISPATCH_DIR, exist_ok=True)
+    os.close(os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600))
+    os.chmod(log, 0o600)
+    body = {"Label": LAUNCHD_LABEL, "ProgramArguments": [sys.executable, os.path.join(HERE, "serve.py")],
+            "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + os.path.join(HOME, ".local", "bin"), "BEADS_DIR": BEADS_DIR, "PYTHONDONTWRITEBYTECODE": "1"},
+            "RunAtLoad": True, "KeepAlive": True, "ThrottleInterval": 10, "StandardOutPath": log, "StandardErrorPath": log}
+    uid = os.getuid()
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{LAUNCHD_LABEL}"], capture_output=True)
+    fd = os.open(plist, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        plistlib.dump(body, f)
+    r = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", plist], capture_output=True, text=True)
+    if r.returncode != 0:  # not in a GUI session (ssh)
+        subprocess.run(["launchctl", "load", plist], capture_output=True)
+    st = {}
+    for _ in range(24):
+        time.sleep(0.5)
+        st = service_status(conf)
+        if st["running"]:
+            break
+    return st
+
+
+def service_uninstall():
+    plist = os.path.expanduser(f"~/Library/LaunchAgents/{LAUNCHD_LABEL}.plist")
+    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHD_LABEL}"], capture_output=True)
+    try:
+        os.remove(plist)
+    except FileNotFoundError:
+        pass
+    return {"installed": False}
 
 
 LAUNCHD_LABEL = "dev.schaefer.dispatch-serve"
@@ -381,13 +506,13 @@ def ensure_reachable(conf, ip):
         return
     job = f"gui/{os.getuid()}/{LAUNCHD_LABEL}"
     if subprocess.run(["launchctl", "print", job], capture_output=True).returncode != 0:
-        raise SystemExit(f"网页版服务没在 {ip}:{port} 上跑：先 `dispatch serve` 或装 launchd 任务 {LAUNCHD_LABEL}")
+        raise SystemExit(f"手机访问还没开启：Dispatch → 设置 → 手机访问 → 开启，或在终端里 `dispatch serve install`")
     subprocess.run(["launchctl", "kickstart", "-k", job], capture_output=True)
     for _ in range(20):
         time.sleep(0.5)
         if reachable(ip, port):
             return
-    raise SystemExit(f"网页版服务重启后仍连不上 {ip}:{port}，看 /tmp/dispatch-serve.log")
+    raise SystemExit(f"网页版服务重启后仍连不上 {ip}:{port}，看 {serve_log()}")
 
 
 def phone_url(conf, ip):
@@ -451,6 +576,17 @@ def main():
     conf = load_conf()
     if len(sys.argv) > 1 and sys.argv[1] == "host":
         return cmd_host(conf, sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] in ("install", "uninstall", "status"):
+        op, rest = sys.argv[1], sys.argv[2:]
+        r = service_install(conf, allow_lan=True if "--lan" in rest else False if "--no-lan" in rest else None) if op == "install" else service_uninstall() if op == "uninstall" else service_status(conf)
+        if "--json" in rest:
+            print(json.dumps(r, ensure_ascii=False))
+        elif op == "uninstall":
+            print("已关闭手机访问（常驻服务已卸载）")
+        else:
+            print(("手机访问已开启：" if r.get("running") else "常驻服务已装，但还没应答：" if r.get("installed") else "手机访问没开启：") + f"{r.get('address')}:{r.get('port')}"
+                  + ("" if r.get("phone_reachable") else "（只监听本机：没有 Tailscale，也没允许局域网；`dispatch serve install --lan` 允许同一 Wi-Fi 的设备访问）"))
+        return
     ip = bind_address(conf, wait=0 if len(sys.argv) > 1 else 60)
     if len(sys.argv) > 1 and sys.argv[1] == "url":
         print(phone_url(conf, ip))
@@ -460,8 +596,9 @@ def main():
         try:
             u = phone_url(conf, ip)
         except SystemExit as e:
-            print(e, file=sys.stderr, flush=True)  # the QR is still worth showing
-            u = url(conf, ip)
+            # A QR for an address nothing answers on only produces 「无法连接」 on the phone.
+            print(e, file=sys.stderr, flush=True)
+            sys.exit(1)
         sys.path.insert(0, HERE)
         import qr as qrlib
         code = qrlib.matrix(u)
@@ -482,7 +619,7 @@ def main():
         subprocess.Popen(["caffeinate", "-is", "-w", str(os.getpid())], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass
-    print(f"Dispatch 网页版：{url(conf, ip)}", flush=True)
+    print(f"Dispatch 网页版：{plain_url(conf, ip)}（带令牌的配对链接用 `dispatch serve url` 取，不写进日志）", flush=True)
     # Phone pushes (ntfy / Bark) for finished replies and confirmations, so the phone hears
     # about them without the desktop app being open. No-op until a channel is configured.
     try:

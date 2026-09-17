@@ -76,15 +76,27 @@ def dedup_hit(key, window=DEDUP_WINDOW, path=None):
 
 
 def serve_link(path):
-    """A page on `dispatch serve`, with the auth token, for the phone to open. '' if unset."""
+    """A page on `dispatch serve` for the phone to open from a notification; '' if the phone
+    service is not set up. The link never carries the permanent token (notification text passes
+    through Bark / ntfy servers, and ntfy topics are public by default): it carries a single-use
+    login code good for a day. An already-paired phone does not even need that, it has its cookie."""
     try:
         conf = json.load(open(os.path.join(D.DISPATCH_DIR, "serve.json")))
     except Exception:
         return ""
     if not conf.get("token"):
         return ""
-    ip = conf.get("bind") or D.tailscale_ip() or D.lan_ip() or "127.0.0.1"
-    return f"http://{ip}:{conf.get('port', 7799)}{path}?token={conf['token']}"
+    ip = conf.get("bind") or D.tailscale_ip() or (D.lan_ip() if conf.get("allow_lan") else "")
+    if not ip:
+        return ""
+    try:
+        import serve
+        code = serve.login_issue()
+    except Exception:
+        code = ""
+    dest = path[1:] if path.startswith("/#/") else path  # "/#/sessions/x" → "#/sessions/x"
+    q = {"login": code, "to": dest} if code else {"to": dest}
+    return f"http://{ip}:{conf.get('port', 7799)}/?" + urllib.parse.urlencode(q)
 
 
 def _post(url, payload, timeout=10):

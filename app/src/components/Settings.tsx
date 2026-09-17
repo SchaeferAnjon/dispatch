@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PhoneAccess } from "./PhoneAccess";
 import type { DispatchSettings } from "../projectFlags";
 import { isTauri, type Api } from "../api";
 import type { Host } from "../types";
@@ -31,7 +32,7 @@ function formatSummaryTime(at: number): string { const d = new Date(at < 1e12 ? 
 
 // The few knobs that change how the workbench reads. Shared through the board
 // (`dispatch settings`), so both Macs agree.
-export function SettingsView({ settings, onSave, theme, onTheme, api, summaryProviders = [], onPhone, phoneQr, phoneHost, onPhoneHost, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onRenameHost, onDeleteHost, onRedetectHost, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
+export function SettingsView({ settings, onSave, theme, onTheme, api, summaryProviders = [], onPhone, phoneHost, onPhoneHost, onScreen, screenReady, screen, onScreenSetup, hosts = [], onSetup, onRenameHost, onDeleteHost, onRedetectHost, onTestNotify, update, onCheckUpdate, onApplyUpdate }: Props) {
   const t = useT();
   const localePref = useLocalePref();
   const [checking, setChecking] = useState(false);
@@ -39,6 +40,7 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   const [applying, setApplying] = useState(false);
   const [notifying, setNotifying] = useState(false);
+  const [phoneNote, setPhoneNote] = useState("");
   // Phone channel: the keys live in `dispatch env` (NTFY_URL / BARK_KEY); only whether they are set is shown.
   const [barkKey, setBarkKey] = useState(""); const [ntfyUrl, setNtfyUrl] = useState("");
   const [barkSet, setBarkSet] = useState(false); const [ntfySet, setNtfySet] = useState(false); const [channelBusy, setChannelBusy] = useState(false);
@@ -226,11 +228,12 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
           <div><b>{t("外观")}</b><p>{t("只影响这台电脑上的 Dispatch 窗口。")}</p></div>
           <select value={theme} onChange={(e) => onTheme(e.target.value as Theme)} aria-label={t("外观")}><option value="">{t("跟随系统")}</option><option value="light">{t("浅色")}</option><option value="dark">{t("深色")}</option></select>
         </label>
-        {(onPhone || phoneQr) && <div className="settings-row">
-          <div><b>{t("手机访问")}</b><p>{t("手机连上 Tailscale 后，用相机扫下面的二维码就能打开网页版（二维码里带着登录令牌，扫一次就记住）；也可以复制链接发到手机，能添加到主屏幕。")}</p>
+        {api && onPhone && <div className="settings-row phone-row">
+          <div><b>{t("手机访问")}</b>
+            <PhoneAccess api={api} onDone={(m) => setPhoneNote(m)} onError={(m) => setPhoneNote(m)} />
+            {phoneNote && <p className="muted small" role="status">{phoneNote}</p>}
             {phoneHost && phoneHost.hosts.length > 1 && <p className="settings-inline"><span>{t("手机版跑在")}</span><select value={phoneHost.phone_host} onChange={(e) => onPhoneHost?.(e.target.value)} aria-label={t("手机版跑在哪台 Mac")}>{phoneHost.hosts.map((h) => <option key={h.id} value={h.id}>{h.local ? t("本机（{name}）", { name: h.name }) : h.name}</option>)}</select><span className="muted small">{t("选常驻的那台，这台电脑带走了手机也能用；换了机器要在手机上重新打开一次链接")}</span></p>}
-            {phoneQr ? <div className="settings-qr" dangerouslySetInnerHTML={{ __html: phoneQr }} /> : null}</div>
-          {onPhone && <button className="btn sm" onClick={onPhone}>{t("复制链接")}</button>}
+          </div>
         </div>}
         {onScreen && <div className="settings-row">
           <div><b>{t("屏幕访问")}</b><p>{screenReady ? t("手机连上 Tailscale 后，用浏览器打开这个链接就能看到并操作这台电脑的屏幕（noVNC），登录用这台 Mac 的用户名和密码。") : t("点「配置」自动装好 noVNC 与常驻服务、开通 Tailscale HTTPS；屏幕共享这个开关只能你自己在系统设置里打开。")}</p>
