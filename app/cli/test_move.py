@@ -154,9 +154,24 @@ class MoveJobs(unittest.TestCase):
         with patch.object(M, "host_by", return_value=h), patch.object(M, "project_dir", return_value="/x/p"), patch.object(M, "ssh", return_value="/Users/u\n"), \
              patch.object(M, "git_preflight", return_value={"local": {"git": True}, "remote": {}, "conflicts": [], "protect": [], "skip": [], "history": False}), \
              patch.object(M, "plan_files", return_value={"send": 2, "delete": 0}), patch.object(M.D, "live_sessions", return_value=[]), patch.object(M, "project_history", return_value=[]), \
-             patch.object(M, "sync_files", side_effect=lambda h, c, r, g, on_file=None: on_file and on_file(2)), patch.object(M, "verify_git", return_value={"checked": False}), \
+             patch.object(M, "sync_files", side_effect=lambda h, c, r, g, on_file=None, planned=None, on_push=None: on_file and on_file(2)), patch.object(M, "verify_git", return_value={"checked": False}), \
              patch.object(M, "mark_moved"), patch.object(M, "set_owner", return_value={"host": "大哥"}), patch.object(M, "project_name", return_value="p"):
             res = M.move_project("p", "大哥", progress=lambda step, label, pct, detail="": steps.append((step, pct)))
         self.assertEqual([s for s, _ in steps], ["preflight", "plan", "files", "files", "verify", "history", "history", "owner", "done"])
         self.assertEqual([p for _, p in steps], sorted(p for _, p in steps))
         self.assertEqual(res["owner"], {"host": "大哥"})
+
+
+class RemoteCount(unittest.TestCase):
+    def test_parses_wc_output_and_tolerates_garbage(self):
+        class R: pass
+        for out, want in (("   356\n", 356), ("0\n", 0), ("bash: x\n", 0), ("", 0)):
+            r = R(); r.stdout = out
+            with patch.object(M, "run_remote", return_value=r):
+                self.assertEqual(M.remote_file_count({"ssh": "u@h", "name": "x"}, "/p"), want)
+        with patch.object(M, "run_remote") as rr:
+            rr.return_value = R(); rr.return_value.stdout = "3\n"
+            M.remote_file_count({"ssh": "u@h", "name": "x"}, "/p", skip_git=False)
+            self.assertNotIn(".git", rr.call_args.args[1])
+            M.remote_file_count({"ssh": "u@h", "name": "x"}, "/p", skip_git=True)
+            self.assertIn(".git", rr.call_args.args[1])

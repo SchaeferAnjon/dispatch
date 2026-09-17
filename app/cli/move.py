@@ -305,7 +305,7 @@ def repo_top(cwd):
     return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else ""
 
 
-def push_history(h, top, remote_top, local):
+def push_history(h, top, remote_top, local, on_percent=None):
     """Both Macs have the repo: bring the target's history to the source's with Git itself instead of
     copying .git. The two object stores are laid out differently (loose here, packed there: rsync wanted
     to resend 9,133 objects for two commits), and the target's own stash, reflog and packed refs must
@@ -315,10 +315,29 @@ def push_history(h, top, remote_top, local):
     if not sha:
         return {"pushed": False}
     env = {**os.environ, "GIT_SSH_COMMAND": SSH_CMD}
-    r = subprocess.run(["git", "-C", top, "push", "-q", "--no-verify", "--receive-pack=git receive-pack", f"ssh://{h['ssh']}{remote_top}", f"+{sha}:refs/dispatch/moved"],
-                       capture_output=True, text=True, errors="replace", timeout=1800, env=env)
-    if r.returncode != 0:
-        raise RuntimeError(f"推送 Git 历史到 {h['name']} 失败：{r.stderr.strip()[-300:]}")
+    # --progress: git writes "Writing objects:  45% (…)" to stderr as it goes (a 30 MB repo over a
+    # relayed Tailscale link takes over a minute; the bar must not sit still meanwhile).
+    proc = subprocess.Popen(["git", "-C", top, "push", "--progress", "--no-verify", "--receive-pack=git receive-pack", f"ssh://{h['ssh']}{remote_top}", f"+{sha}:refs/dispatch/moved"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace", env=env)
+    tail, buf = [], ""
+    while True:
+        chunk = proc.stderr.read(256)
+        if not chunk:
+            break
+        buf += chunk
+        parts = re.split(r"[\r\n]", buf)
+        buf = parts.pop()
+        for line in parts:
+            if line.strip():
+                tail = (tail + [line])[-12:]
+            m = re.search(r"(Writing|Compressing|Counting) objects:\s+(\d+)%", line)
+            if m and on_percent:
+                try:
+                    on_percent({"Counting": 5, "Compressing": 25, "Writing": 100}[m.group(1)] * int(m.group(2)) / 100)
+                except Exception:
+                    pass
+    if proc.wait() != 0:
+        raise RuntimeError(f"推送 Git 历史到 {h['name']} 失败：{' '.join(tail).strip()[-300:]}")
     q = shlex.quote
     point = (f"git symbolic-ref HEAD {q('refs/heads/' + branch)} && git update-ref {q('refs/heads/' + branch)} {sha}" if branch != "HEAD"
              else f"git update-ref --no-deref HEAD {sha}")
@@ -384,30 +403,59 @@ def plan_files(h, cwd, remote_cwd, git):
     return {**parse_itemized(r.stdout), "delete_enabled": delete, "protected": git["protect"][:20], "skipped": (git.get("skip") or [])[:20]}
 
 
-def sync_files(h, cwd, remote_cwd, git, on_file=None):
-    """`on_file(n)` is called as rsync reports each file sent (its -v line), for a progress bar."""
+def remote_file_count(h, remote_cwd, skip_git=True):
+    """Files present over there right now. `.git` is left out when Git itself carries the history
+    (its objects arrive by push, not by the transfer being measured) and counted when the folder is
+    copied whole — the same rule the planned count follows."""
+    q = shlex.quote(remote_cwd)
+    r = run_remote(h, f"[ -d {q} ] && find {q} -type f {"-not -path '*/.git/*' " if skip_git else ''}| wc -l || echo 0", timeout=60)
+    try:
+        return int(r.stdout.split()[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
+def sync_files(h, cwd, remote_cwd, git, on_file=None, planned=None, on_push=None):
+    """`on_file(n)` hears how many files have arrived over there, for a progress bar. openrsync
+    (macOS's rsync) prints its -v lines only at the end, so while it runs the count comes from
+    asking the other Mac every few seconds how many files it has (over the shared ssh connection)."""
+    import threading
     ssh(h, f"mkdir -p {shlex.quote(remote_cwd)}")
     delete = bool(git["local"].get("git")) and not git["conflicts"]
     if git.get("history"):
-        git["pushed"] = push_history(h, git.get("_top") or cwd, remote_cwd, git["local"])
+        git["pushed"] = push_history(h, git.get("_top") or cwd, remote_cwd, git["local"], on_percent=on_push)
+    skip_git = bool(git.get("history"))
+    before = remote_file_count(h, remote_cwd, skip_git) if on_file else 0
     args = rsync_args(cwd, h, remote_cwd, git["protect"], delete, dry=False, skip=git.get("skip") or (), history=git.get("history"))
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
+    stop = threading.Event()
+
+    def watch():
+        while not stop.wait(3.0):
+            try:
+                n = remote_file_count(h, remote_cwd, skip_git) - before
+                if n > 0:
+                    on_file(min(n, planned) if planned else n)
+            except Exception:
+                pass
+    watcher = threading.Thread(target=watch, daemon=True) if on_file else None
+    if watcher:
+        watcher.start()
     n = 0
     for line in proc.stdout:
         line = line.rstrip("\n")
         if not line or line.startswith(("sending ", "sent ", "total ", "building ", "delta-transmission", "created directory", "./")) or line.endswith("/"):
             continue
         n += 1
-        if on_file and (n % 20 == 0 or n < 20):
-            try:
-                on_file(n)
-            except Exception:
-                pass
     err = proc.stderr.read()
-    if proc.wait() != 0:
+    code = proc.wait()
+    stop.set()
+    if watcher:
+        watcher.join(timeout=5)
+    if code != 0:
         raise RuntimeError(f"同步项目文件失败：{err.strip()[-300:]}")
     if on_file:
-        on_file(n)
+        on_file(planned or n)
 
 
 def verify_git(h, cwd, remote_cwd):
@@ -804,8 +852,12 @@ def move_project(name, to, dry=False, force=False, keep_original=False, prompt_e
     if git["conflicts"] and not force:
         raise RuntimeError("没有迁移，对方那边会丢东西：\n- " + "\n- ".join(git["conflicts"]) + "\n处理完再迁，确认可以覆盖就加 --force")
     total = max(1, plan["files"]["send"])
-    p("files", ("推送 Git 历史，" if git.get("history") else "") + f"同步 {plan['files']['send']} 个文件", 12)
-    sync_files(h, top, remote_top, git, on_file=lambda n: p("files", f"同步文件 {min(n, total)}/{total}", 12 + int(55 * min(n, total) / total)))
+    pushing = bool(git.get("history"))
+    base = 28 if pushing else 12   # the file sync starts after the push's share of the bar
+    p("files", (f"推送 Git 历史到 {h['name']}" if pushing else f"同步 {plan['files']['send']} 个文件"), 12)
+    sync_files(h, top, remote_top, git, planned=total,
+               on_push=lambda pct: p("push", f"推送 Git 历史 {int(pct)}%", 12 + int(16 * min(100, pct) / 100)),
+               on_file=lambda n: p("files", f"同步文件 {min(n, total)}/{total}", base + int((67 - base) * min(n, total) / total)))
     plan["git"]["pushed"] = git.get("pushed")
     p("verify", "核对对方的 Git 状态", 70)
     plan["git"]["verify"] = verify_git(h, top, remote_top)
