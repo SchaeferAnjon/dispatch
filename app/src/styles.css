@@ -1752,3 +1752,10 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 /* New-project dialog: the two switches read as one line each. */
 .new-session-dialog label.check{display:flex;flex-direction:row;align-items:center;gap:8px;font-size:13px}
 .new-session-dialog label.check input{width:auto;margin:0}
+
+/* Error bar: one line, dismissible; "no board yet" is a calm notice with a button. */
+.err[role="alert"]{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-right:34px}
+.err .err-text{flex:1 1 260px;min-width:0}
+.err[role="alert"].soft{background:var(--panel);color:var(--ink-2);border:1px solid var(--line)}
+.err details{flex-basis:100%}.err details pre{white-space:pre-wrap;font-size:11px;max-height:180px;overflow:auto;margin:6px 0 0}
+.err .err-close{position:absolute;top:6px;right:8px;background:transparent;border:0;color:inherit;cursor:pointer;font-size:14px;padding:2px 6px}

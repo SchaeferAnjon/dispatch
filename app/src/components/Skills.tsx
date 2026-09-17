@@ -45,7 +45,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
     } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
 
-  const load = async () => { if (blocked) { setSkills([]); setLoaded(true); return; } try { setSkills(parseJson<Skill[]>(await api.on(host, ["skills", "list", "--json"]), [])); setLoaded(true); } catch (e) { onError(String(e)); } };
+  const load = async () => { if (blocked) { setSkills([]); setLoaded(true); return; } try { setSkills(parseJson<Skill[]>(await api.on(host, ["skills", "list", "--json"]), [])); } catch (e) { onError(String(e)); } finally { setLoaded(true); } };
   useEffect(() => { setSel(null); load(); }, [api, host, blocked]);
   useEffect(() => { setFile("SKILL.md"); }, [sel]);
   useEffect(() => {

@@ -1787,3 +1787,31 @@ class ProjectDirFlag(unittest.TestCase):
             self.assertEqual(dispatch.project_of_cwd("/Users/x/Code/notes-plugin/src", {}), "Lumen")
             self.assertEqual(dispatch.project_of_cwd("/Users/x/Code/notes-plugin", {}), "Lumen")
             self.assertNotEqual(dispatch.project_of_cwd("/Users/x/Code/notes-plugin-2", {}), "Lumen")
+
+
+class MissingToolsAndBoard(unittest.TestCase):
+    """A Mac without bd / herdr / a board gets one readable line, never a traceback (review P0-3, P0-4)."""
+
+    def test_sh_turns_a_missing_command_into_a_hint(self):
+        with patch.object(dispatch.subprocess, "run", side_effect=FileNotFoundError(2, "No such file", "bd")):
+            code, out_, err = dispatch.sh(["bd", "list"])
+        self.assertEqual(code, 127); self.assertEqual(out_, "")
+        self.assertIn("没找到命令 bd", err); self.assertIn("brew install beads", err)
+
+    def test_no_board_is_recognised(self):
+        self.assertTrue(dispatch.no_board(1, "Error: no beads database found"))
+        self.assertTrue(dispatch.no_board(127, ""))
+        self.assertFalse(dispatch.no_board(1, "Error: connection refused"))
+
+    def test_readers_degrade_and_the_writer_refuses(self):
+        with patch.object(dispatch, "sh", return_value=(1, "", "Error: no beads database found")):
+            self.assertEqual(dispatch.wiki_all(), [])
+            self.assertEqual(dispatch.project_flags_load(), {})
+            with self.assertRaises(SystemExit):
+                dispatch.project_flags_load(strict=True)
+
+    def test_herdr_missing_returns_an_error_object(self):
+        with patch.object(dispatch, "HERDR", "/nonexistent/herdr"):
+            r = dispatch.herdr(None, ["agent", "list"])
+            self.assertEqual(r["error"]["code"], "herdr_missing")
+            self.assertEqual(dispatch.herdr(None, ["agent", "read", "x"], raw=True), "")

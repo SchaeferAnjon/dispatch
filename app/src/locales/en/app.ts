@@ -180,5 +180,6 @@ const app: Dict = {
   "快捷操作": "Quick actions",
   "操作": "Actions",
   "{n} 项": (p) => `${p.n} ${Number(p.n) === 1 ? "task" : "tasks"}`,
+  "任务板还没建好，任务相关的页面是空的；会话、技能、规则照常可用。": "The task board is not set up yet, so task pages are empty; sessions, skills and rules work as usual.",
 };
 export default app;

@@ -28,7 +28,7 @@ export function PitfallsView({ api, projects, version, onSelectTask, onDone, onE
   const [adding, setAdding] = useState<WikiKind | null>(null);
 
   const load = async () => {
-    try { setMemories(await api.memories()); setLoaded(true); } catch (e) { onError(String(e)); }
+    try { setMemories(await api.memories()); } catch (e) { onError(String(e)); } finally { setLoaded(true); }  // a failed read is an empty page with an error, not 「载入中…」 forever
   };
   useEffect(() => { load(); }, [version]);
 

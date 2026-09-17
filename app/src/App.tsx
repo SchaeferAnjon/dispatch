@@ -118,6 +118,8 @@ export default function App() {
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [api]);
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
+  // The first session-index read finished (even if it failed): the sessions page stops saying 「索引中…」.
+  const [refsTried, setRefsTried] = useState(false);
   // The CLI itself could not answer `init status` (no Python, one too old, a broken bundle): ask
   // Rust what this Mac has and show that, instead of an empty workbench with a stack trace.
   const [envProblem, setEnvProblem] = useState<{ report: EnvReport | null; error: string } | null>(null);
@@ -530,7 +532,7 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     let alive = true;
-    const tick = async () => { try { const l = await api.sessionList(); if (alive) { const m = new Map<string, SessionRef>(); for (const r of [...dropMovedOriginals(l)].sort((a, b) => Number(!!a.remote) - Number(!!b.remote))) m.set(m.has(r.session_id) ? `${r.session_id}@${r.host}` : r.session_id, r); setRefs(m); } } catch { /* index not ready */ } };
+    const tick = async () => { try { const l = await api.sessionList(); if (alive) { const m = new Map<string, SessionRef>(); for (const r of [...dropMovedOriginals(l)].sort((a, b) => Number(!!a.remote) - Number(!!b.remote))) m.set(m.has(r.session_id) ? `${r.session_id}@${r.host}` : r.session_id, r); setRefs(m); } } catch { /* index not ready */ } finally { if (alive) setRefsTried(true); } };
     tick();
     const tm = window.setInterval(tick, 60_000);
     return () => { alive = false; window.clearInterval(tm); };
@@ -979,7 +981,18 @@ export default function App() {
               <span className="muted mono" style={{ fontSize: 11 }}>{t("{n} 项", { n: visible.length })}</span>
             </>)}
           </div>
-          {err && <div className="err">{err}</div>}
+          {err && (() => {
+            // No board yet (or bd is not installed) is a setup state with a button, not a red stack trace.
+            const noBoard = /no beads database|没找到命令 bd|无法启动 bd|Cannot start bd|bd kann nicht|任务板还没建/i.test(err);
+            const first = err.split("\n").find((l) => l.trim()) ?? err;
+            return <div className={`err${noBoard ? " soft" : ""}`} role="alert">
+              <span className="err-text">{noBoard ? t("任务板还没建好，任务相关的页面是空的；会话、技能、规则照常可用。") : first.slice(0, 300)}</span>
+              {noBoard && isTauri && <button className="btn sm" onClick={async () => { try { const st = JSON.parse((await api!.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); setView("setup"); } catch (e) { say(String(e), true); } }}>{t("打开首次设置")}</button>}
+              {!noBoard && <button className="btn sm" onClick={() => void reload()}>{t("重试")}</button>}
+              {!noBoard && err.length > first.length + 1 && <details><summary>{t("原始错误")}</summary><pre>{err.slice(0, 4000)}</pre></details>}
+              <button className="err-close" onClick={() => setErr(null)} aria-label={t("关闭")} title={t("关闭")}>✕</button>
+            </div>;
+          })()}
           <section className="view" ref={viewEl} onScroll={(e) => { scrollMemo.current[scrollKeyRef.current] = e.currentTarget.scrollTop; }}>
             {view === "home" && api && <HomeView onDiscuss={() => setDiscuss({})} insight={insight} alertCount={alertCount} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onLocate={locateProject} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
             {view === "projects" && api && <ProjectHub moveJobs={moveJobs} onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} workspaceRoots={settings.workspace_roots} onCreated={(name, dir, start) => { void reload(); openProject(name); if (start) { setNewSessionProject(name); setNewSessionContext({ cwd: dir, host: "local", project: name } as unknown as Activity); setNewSession(true); } }} loaded={activity.updated_at>0} hosts={hosts} owners={projectOwners}
@@ -1016,7 +1029,7 @@ export default function App() {
             {view === "table" && <TableView starred={starredProjects} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
             {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(text, what) => api?.copy(text).then(() => say(what.endsWith("。") ? what : t("{what}已复制", { what }))).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
             {view === "discuss" && api && <DiscussView api={api} me={me} issues={issuesF} initialTask={discussFocus} onShown={setDiscussShown} onNew={() => setDiscuss({})} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, kind: leader?.kind, model: leader?.model })} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} onBack={previousView ? { label: t(VIEW_LABEL[previousView]), go: goBack } : undefined} localHostName={hosts.find(h => h.local)?.name} onProject={openProject} solo={solo} offlineHosts={hosts.filter(h => !h.local && !h.online).map(h => ({ id: h.id, name: h.name }))} />}
+            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0 || refsTried} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} onBack={previousView ? { label: t(VIEW_LABEL[previousView]), go: goBack } : undefined} localHostName={hosts.find(h => h.local)?.name} onProject={openProject} solo={solo} offlineHosts={hosts.filter(h => !h.local && !h.online).map(h => ({ id: h.id, name: h.name }))} />}
             {view === "archive" && <><p className="trash-note">{t("归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。")}</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
             {view === "trash" && <><p className="trash-note">{t("移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。")}</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView quota={{ rows: quota, busy: quotaBusy, error: quotaError, refresh: refreshQuota }} key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}

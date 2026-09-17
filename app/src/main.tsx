@@ -15,6 +15,12 @@ function showFatal(kind: string, detail: string) {
   let el = document.getElementById("fatal-strip");
   if (!el) { el = document.createElement("div"); el.id = "fatal-strip"; el.setAttribute("style", "position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#b42318;color:#fff;font:12px/1.4 -apple-system,system-ui,sans-serif;padding:8px 12px;white-space:pre-wrap;max-height:40vh;overflow:auto;cursor:pointer"); el.title = t("点击复制"); el.onclick = () => { void navigator.clipboard?.writeText(el!.textContent || ""); }; document.body.appendChild(el); }
   el.textContent = `${t("界面出错了（{kind}），刷新可恢复；请把这段发给开发者：", { kind })}\n${detail}`.slice(0, 4000);
+  // It must never trap the page under it (the phone's reply box sits at the bottom): ✕ dismisses it.
+  const close = document.createElement("button");
+  close.textContent = "✕"; close.setAttribute("aria-label", t("关闭"));
+  close.setAttribute("style", "position:absolute;top:4px;right:8px;background:transparent;border:0;color:#fff;font-size:16px;cursor:pointer;padding:4px 8px");
+  close.addEventListener("click", (e) => { e.stopPropagation(); el?.remove(); });
+  el.appendChild(close);
 }
 // console.error from the app (swallowed polling failures, React warnings) lands in the same strip.
 const origError = console.error.bind(console);

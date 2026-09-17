@@ -180,5 +180,6 @@ const app: Dict = {
   "快捷操作": "Schnellaktionen",
   "操作": "Aktionen",
   "{n} 项": (p) => `${p.n} ${Number(p.n) === 1 ? "Aufgabe" : "Aufgaben"}`,
+  "任务板还没建好，任务相关的页面是空的；会话、技能、规则照常可用。": "Das Aufgabenboard ist noch nicht eingerichtet, daher sind die Aufgabenseiten leer; Sitzungen, Skills und Regeln funktionieren wie gewohnt.",
 };
 export default app;

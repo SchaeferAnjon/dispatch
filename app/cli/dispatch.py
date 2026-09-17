@@ -74,8 +74,36 @@ def sh(args, timeout=20, env=None):
         e.update(env)
     # bd truncates long values mid-character; decode leniently or every write with a
     # long Chinese memory blows up with UnicodeDecodeError (task-8xp).
-    r = subprocess.run(args, capture_output=True, timeout=timeout, env=e)
+    try:
+        r = subprocess.run(args, capture_output=True, timeout=timeout, env=e)
+    except FileNotFoundError:
+        # A missing tool is a setup problem, not a crash: callers already handle code != 0.
+        return 127, "", missing_tool_hint(args[0] if args else "")
     return r.returncode, r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+
+
+TOOL_FORMULA = {"bd": "beads", "dolt": "dolt", "herdr": "herdr", "tmux": "tmux", "git": "git", "rsync": "rsync", "ssh": "openssh"}
+
+
+def missing_tool_hint(tool):
+    name = os.path.basename(str(tool))
+    formula = TOOL_FORMULA.get(name)
+    return f"没找到命令 {name}：打开 Dispatch → 设置 → 首次设置 → 装依赖" + (f"，或在终端里 brew install {formula}" if formula else "")
+
+
+def no_board(code, err):
+    """True when bd failed because there is no task board yet (or bd itself is missing) — a state
+    to say in one line, not an error to dump: sessions, skills and rules work without a board."""
+    text = (err or "").lower()
+    return code == 127 or "no beads database" in text or "no .beads" in text or "not initialized" in text or "bd init" in text
+
+
+NO_BOARD_HINT = "任务板还没建：打开 Dispatch → 设置 → 首次设置 → 任务板（会话、技能、规则不受影响）"
+
+
+def bd_problem(code, err):
+    """One line for stderr about a failed bd call."""
+    return NO_BOARD_HINT if no_board(code, err) and code != 127 else (err or "").strip().splitlines()[-1][:300] if (err or "").strip() else f"bd 退出码 {code}"
 
 
 def _mod(name):
@@ -815,6 +843,9 @@ def herdr(host, args, timeout=30, raw=False):
     parsed JSON — {"result": …} or {"error": …} — or the raw text when raw=True."""
     import shlex
     if host is None:
+        if not os.path.exists(HERDR):
+            hint = missing_tool_hint("herdr")
+            return "" if raw else {"error": {"code": "herdr_missing", "message": hint}}
         r = subprocess.run(herdr_local_command(args), capture_output=True, text=True, timeout=timeout)
     else:
         # Resolve before sending a mutating command. Never retry tab creation on a second server.
@@ -4356,9 +4387,14 @@ def cmd_graph(a):
     (a task points at the ones it spawned / unblocks)."""
     code, o, err = sh(["bd", "list", "--all", "-n", "0", "--json"])
     if code != 0:
-        print(err.strip(), file=sys.stderr)
+        print(bd_problem(code, err), file=sys.stderr)
+        if no_board(code, err):
+            return out({"nodes": [], "edges": [], "no_board": True}, True, None)
         sys.exit(code)
-    issues = json.loads(o[o.find("["):])
+    try:
+        issues = json.loads(o[o.find("["):])
+    except ValueError:
+        issues = []
     code, dot, err = sh(["bd", "list", "--all", "-n", "0", "--format", "dot"])
     edges = []
     for m in re.finditer(r'"([a-z]+-[a-z0-9]+)"\s*->\s*"([a-z]+-[a-z0-9]+)"\s*\[([^\]]*)\]', dot):
@@ -5121,11 +5157,16 @@ def wiki_store(key, content):
 
 
 def wiki_all():
+    """Every knowledge-base entry; an empty list (and one line on stderr) when there is no board
+    yet, so `prime` — a SessionStart hook for every Claude Code session — never hard-fails."""
     code, o, err = sh(["bd", "memories", "--json"])
     if code != 0:
-        print(err, file=sys.stderr)
-        sys.exit(code)
-    d = json.loads(o[o.find("{"):])
+        print(bd_problem(code, err), file=sys.stderr)
+        return []
+    try:
+        d = json.loads(o[o.find("{"):])
+    except ValueError:
+        return []
     return [wiki_parse(k, v) for k, v in d.items() if k != "schema_version" and isinstance(v, str) and not k.startswith(INTERNAL_MEMORY_PREFIX)]
 
 
@@ -5205,12 +5246,22 @@ def project_dir_names():
         return {}
 
 
-def project_flags_load():
+def project_flags_load(strict=False):
+    """The star / archive / folder switches. Readers get {} when the board cannot be read; a writer
+    passes strict=True so a failed read can never be saved back as "no projects flagged"."""
     code, o, err = sh(["bd", "memories", "--json"])
     if code != 0:
-        print(err.strip() or o.strip(), file=sys.stderr)
-        sys.exit(code)
-    d = json.loads(o[o.find("{"):])
+        print(bd_problem(code, err), file=sys.stderr)
+        if strict:
+            sys.exit(code)
+        return {}
+    try:
+        d = json.loads(o[o.find("{"):])
+    except ValueError:
+        if strict:
+            print("任务板返回的内容读不出来，没有保存", file=sys.stderr)
+            sys.exit(1)
+        return {}
     return project_flags_parse(d.get(PROJECT_FLAGS_KEY, ""))
 
 
@@ -5370,7 +5421,7 @@ def cmd_project(a):
                 raise SystemExit(f"hosts.json 里没有 {a.owner}")
             r = project_owner_set(a.name, h["name"], h.get("ssh", "").split("@")[-1])
         return out(r, a.json, lambda r: print(f"{a.name}：" + (f"归 {r['host']}" if r.get("host") else "不指定电脑")))
-    flags = project_flags_load()
+    flags = project_flags_load(strict=True)
     if getattr(a, "forget_dir", False):
         cur = {k: v for k, v in dict(flags.get(a.name.strip(), {})).items() if k != "dir"}
         flags = {k: v for k, v in flags.items() if k != a.name.strip()}
@@ -7823,6 +7874,8 @@ def cmd_prime(a):
         tasks = json.loads(o[o.find("["):]) if code == 0 else []
     except Exception:
         tasks = []
+    if code != 0 and no_board(code, err):
+        lines.append("（" + (missing_tool_hint("bd") if code == 127 else NO_BOARD_HINT) + "。在那之前 begin / log / done 记不了任务，其余照常。）")
     def lab(t):
         return next((l.split(":", 1)[1] for l in t.get("labels") or [] if l.startswith("project:")), "")
     mine = [t for t in tasks if t.get("status") in ("in_progress", "open") and (not proj or lab(t) == proj)]
@@ -8111,7 +8164,15 @@ def main():
         p.error("需要变量名" if a.op != "import" else "需要文件路径")
     if a.cmd == "wiki" and a.op == "search":
         a.op = "list"
-    a.fn(a)
+    try:
+        a.fn(a)
+    except FileNotFoundError as e:
+        # An external tool this command shells out to is not installed (or a file it needs is gone).
+        name = os.path.basename(str(e.filename or ""))
+        if name and (os.sep not in str(e.filename) or name in TOOL_FORMULA):
+            print(missing_tool_hint(name), file=sys.stderr)
+            sys.exit(127)
+        raise
 
 
 if __name__ == "__main__":
