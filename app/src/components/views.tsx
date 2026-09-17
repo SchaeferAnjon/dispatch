@@ -8,10 +8,12 @@ import { Avatar, Pri, ProjectTag, StatusPill, TYPE_LABEL } from "./ui";
 import { linkedSessions } from "../projectModel";
 import { conflictingFiles, recentEdits } from "../activity";
 import { useItemMenu, useViewMenuExtras } from "./ContextMenu";
+import { useLocale, useT } from "../i18n";
 
 interface Common { progress?: Record<string, string>; issues: Issue[]; selected: string | null; onSelect: (id: string) => void; me: string; rootOf?: (id: string) => Issue | undefined }
 
 export function Card({ issue, progress, selected, onSelect, me, root, draggable, onDragStart, onDragEnd }: { issue: Issue; progress?: string; selected: boolean; onSelect: (id: string) => void; me: string; root?: Issue } & Pick<React.HTMLAttributes<HTMLElement>, "draggable" | "onDragStart" | "onDragEnd">) {
+  const t = useT();
   const who = actorOf(issue.assignee, me);
   const ac = parseAcceptance(issue.acceptance_criteria);
   const done = ac.filter((a) => a.done).length;
@@ -19,27 +21,27 @@ export function Card({ issue, progress, selected, onSelect, me, root, draggable,
   return (
     <div data-task={issue.id} className={`card opens${selected ? " sel" : ""}${blocked ? " blocked" : ""}`} onClick={() => onSelect(issue.id)} draggable={draggable} onDragStart={onDragStart} onDragEnd={onDragEnd} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(issue.id)}>
       <div className="card-heading"><div className="t" title={issue.title}>{issue.title}</div><TaskMenuButton issue={issue}/></div>
-      {root && <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={`这条线的根任务：${root.title}`}><span className="rl-id">↑ 源自 <span className="mono">{root.id}</span></span><span className="rl-t">{root.title}</span></button>}
+      {root && <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={t("这条线的根任务：{title}", { title: root.title })}><span className="rl-id">{t("↑ 源自")} <span className="mono">{root.id}</span></span><span className="rl-t">{root.title}</span></button>}
       <div className="meta">
         <Pri p={issue.priority} />
         <ProjectTag name={projectOf(issue)} />
-        <span className="id" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{issue.id}</span>
-        {issue.issue_type !== "task" && <span className="muted">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>}
+        <span className="id" title={t("任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识")}>{issue.id}</span>
+        {issue.issue_type !== "task" && <span className="muted">{t(TYPE_LABEL[issue.issue_type] ?? issue.issue_type)}</span>}
       </div>
-      {delegatedBy(issue) && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>{delegatedBy(issue) === delegatedTo(issue) ? `↻ ${actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给另一个自己的会话` : `↪ ${actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 ${actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}`}</div>}
-      {blocked && <div className="blk">⊘ 被 {issue.dependency_count ?? ""} 项依赖卡住</div>}
-      {issue.status === "deferred" && <div className="blk deferred">⏸ 搁置 · 暂不安排</div>}
-      {!blocked && (issue.dependency_count ?? 0) > 0 && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>↳ 依赖 {issue.dependency_count} 项</div>}
+      {delegatedBy(issue) && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>{delegatedBy(issue) === delegatedTo(issue) ? `↻ ${t("{who} 派给另一个自己的会话", { who: actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue) })}` : `↪ ${t("{from} 派给 {to}", { from: actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue), to: actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue) })}`}</div>}
+      {blocked && <div className="blk">{t("⊘ 被 {n} 项依赖卡住", { n: issue.dependency_count ?? "" })}</div>}
+      {issue.status === "deferred" && <div className="blk deferred">{t("⏸ 搁置 · 暂不安排")}</div>}
+      {!blocked && (issue.dependency_count ?? 0) > 0 && issue.status !== "closed" && <div className="muted" style={{ fontSize: 11.5 }}>{t("↳ 依赖 {n} 项", { n: issue.dependency_count ?? 0 })}</div>}
       {ac.length > 0 && issue.status !== "closed" && (
-        <div className="chk"><span className="bar"><i style={{ width: `${(done / ac.length) * 100}%` }} /></span>{done}/{ac.length} 验收项</div>
+        <div className="chk"><span className="bar"><i style={{ width: `${(done / ac.length) * 100}%` }} /></span>{t("{done}/{total} 验收项", { done, total: ac.length })}</div>
       )}
-      {(() => { const note = issue.status === "closed" ? issue.close_reason : progress || issue.notes; const next = ac.find((a) => !a.done)?.text; return note ? <div className="card-progress" title={next ? `下一验收项：${next}` : undefined}><b>{issue.status === "closed" ? "完成说明" : progress ? "最近进展" : "进展备注"}</b> {note}</div> : next ? <div className="card-next"><b>{issue.status === "closed" ? "待核对" : "下一验收项"}</b> {next}</div> : null; })()}
+      {(() => { const note = issue.status === "closed" ? issue.close_reason : progress || issue.notes; const next = ac.find((a) => !a.done)?.text; return note ? <div className="card-progress" title={next ? t("下一验收项：{text}", { text: next }) : undefined}><b>{issue.status === "closed" ? t("完成说明") : progress ? t("最近进展") : t("进展备注")}</b> {note}</div> : next ? <div className="card-next"><b>{issue.status === "closed" ? t("待核对") : t("下一验收项")}</b> {next}</div> : null; })()}
       {isReviewed(issue) ? (
-        <div className="rev-by">✓ 已复核 · {relTime(issue.updated_at)}</div>
+        <div className="rev-by">{t("✓ 已复核 · {ago}", { ago: relTime(issue.updated_at) })}</div>
       ) : who ? (
-        <div className="who"><Avatar actor={who} />{who.name}{issue.status === "closed" ? " 完成" : ""}<span className="ago">{relTime(issue.status === "closed" ? issue.closed_at ?? issue.updated_at : issue.updated_at)}</span></div>
+        <div className="who"><Avatar actor={who} />{who.name}{issue.status === "closed" ? t(" 完成") : ""}<span className="ago">{relTime(issue.status === "closed" ? issue.closed_at ?? issue.updated_at : issue.updated_at)}</span></div>
       ) : (
-        <div className="who muted">未认领<span className="ago">{relTime(issue.updated_at)}</span></div>
+        <div className="who muted">{t("未认领")}<span className="ago">{relTime(issue.updated_at)}</span></div>
       )}
     </div>
   );
@@ -59,6 +61,7 @@ const cmpBy = (sort: BoardSort, col: Column) => (x: Issue, y: Issue) => {
 // workbench uses), then the project with the most recent change. Groups fold, and the
 // fold state is remembered per column+project.
 export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove, onAdd, sort = "priority", starred = new Set<string>() }: Common & { onMove: (id: string, to: Column) => void; onAdd: (col: Column) => void; sort?: BoardSort; starred?: Set<string> }) {
+  const t = useT();
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<Column | null>(null);
   // The done column only shows the last week by default; the rest is a click away.
@@ -75,7 +78,7 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
         const hidden = full.length - list.length;
         const sorted = [...list].sort(cmpBy(sort, c.key));
         const groups = new Map<string, Issue[]>();
-        for (const i of sorted) { const k = projectOf(i) || "未分项目"; groups.set(k, [...(groups.get(k) ?? []), i]); }
+        for (const i of sorted) { const k = projectOf(i) || t("未分项目"); groups.set(k, [...(groups.get(k) ?? []), i]); }
         const latest = (items: Issue[]) => Math.max(...items.map((i) => Date.parse(i.closed_at ?? i.updated_at)));
         const ordered = [...groups.entries()].sort(([a, ia], [b, ib]) => Number(starred.has(b)) - Number(starred.has(a)) || (sort === "priority" && c.key !== "done" ? Math.min(...ia.map((i) => i.priority)) - Math.min(...ib.map((i) => i.priority)) : 0) || latest(ib) - latest(ia));
         return (
@@ -84,10 +87,10 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
             onDragLeave={() => setOver(null)}
             onDrop={(e) => { e.preventDefault(); setOver(null); if (dragId) onMove(dragId, c.key); setDragId(null); }}>
             <div className="col-h">
-              <span className={`st ${c.cls}`}><i />{c.label}</span>
+              <span className={`st ${c.cls}`}><i />{t(c.label)}</span>
               <span className="cnt">{full.length}</span>
-              {ordered.length > 1 && (() => { const keys = ordered.map(([name]) => `${c.key}:${name}`); const allOpen = keys.every((k) => openGroups[k] ?? (c.key !== "done")); return <button className="link small col-fold" onClick={() => setGroups(Object.fromEntries(keys.map((k) => [k, !allOpen])))}>{allOpen ? "全部收起" : "全部展开"}</button>; })()}
-              {c.key === "todo" && <button className="add" onClick={() => onAdd(c.key)} title="新任务">＋</button>}
+              {ordered.length > 1 && (() => { const keys = ordered.map(([name]) => `${c.key}:${name}`); const allOpen = keys.every((k) => openGroups[k] ?? (c.key !== "done")); return <button className="link small col-fold" onClick={() => setGroups(Object.fromEntries(keys.map((k) => [k, !allOpen])))}>{allOpen ? t("全部收起") : t("全部展开")}</button>; })()}
+              {c.key === "todo" && <button className="add" onClick={() => onAdd(c.key)} title={t("新任务")}>＋</button>}
             </div>
             <div className="cards">
               {ordered.map(([name, items]) => {
@@ -95,7 +98,7 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
                 // Done groups start folded; the others start open. A group holding the selected task is always open.
                 const open = items.some((i) => i.id === selected) || (openGroups[key] ?? (c.key !== "done"));
                 return <details key={key} className="done-group" open={open} onClick={(e) => { if ((e.target as HTMLElement).closest("summary")) { e.preventDefault(); toggleGroup(key, !open); } }}>
-                  <summary className="done-group-h"><span className="proj" style={{ background: projectColor(name) }} />{starred.has(name) && <span className="star on small">★</span>}{name}<span className="muted mono small">{items.length}</span><span className="muted small fold-hint">{open ? "收起" : "展开"}</span></summary>
+                  <summary className="done-group-h"><span className="proj" style={{ background: projectColor(name) }} />{starred.has(name) && <span className="star on small">★</span>}{name}<span className="muted mono small">{items.length}</span><span className="muted small fold-hint">{open ? t("收起") : t("展开")}</span></summary>
                   {open && items.map((i) => (
                     <Card key={i.id} progress={progress?.[i.id]} issue={i} selected={selected === i.id} onSelect={onSelect} me={me} root={rootOf?.(i.id)} draggable={c.key !== "done"}
                       onDragStart={(e) => { setDragId(i.id); e.dataTransfer.effectAllowed = "move"; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
@@ -103,7 +106,7 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
                   ))}
                 </details>;
               })}
-              {c.key === "done" && (hidden > 0 || allDone) && full.length > 0 && <button className="link col-more" onClick={() => setAllDone(!allDone)}>{allDone ? "只看最近 7 天" : `还有 ${hidden} 项更早完成的 ›`}</button>}
+              {c.key === "done" && (hidden > 0 || allDone) && full.length > 0 && <button className="link col-more" onClick={() => setAllDone(!allDone)}>{allDone ? t("只看最近 7 天") : t("还有 {n} 项更早完成的 ›", { n: hidden })}</button>}
             </div>
           </div>
         );
@@ -115,31 +118,32 @@ export function Board({ issues, progress, selected, onSelect, me, rootOf, onMove
 type SortKey = "id" | "title" | "status" | "assignee" | "priority" | "project" | "updated";
 const STATUS_ORDER: Record<string, number> = { in_progress: 0, blocked: 1, open: 2, deferred: 3, closed: 4 };
 export function TableView({ issues, selected, onSelect, me, rootOf, starred = new Set<string>() }: Common & { starred?: Set<string> }) {
+  const t = useT();
   // Click a header to sort by it; click again to flip. Starred projects float up only in the default order.
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
-  if (issues.length === 0) return <div className="empty">没有符合条件的任务</div>;
+  if (issues.length === 0) return <div className="empty">{t("没有符合条件的任务")}</div>;
   const val = (i: Issue, k: SortKey): string | number => k === "id" ? i.id : k === "title" ? i.title : k === "status" ? (STATUS_ORDER[i.status] ?? 9) : k === "assignee" ? (actorOf(i.assignee, me)?.name ?? i.assignee ?? "") : k === "priority" ? i.priority : k === "project" ? projectOf(i) : i.updated_at;
   const rows = [...issues].sort((a, b) => {
     if (!sort) return Number(starred.has(projectOf(b))) - Number(starred.has(projectOf(a)));
     const x = val(a, sort.key), y = val(b, sort.key);
     return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "zh")) * sort.dir;
   });
-  const th = (k: SortKey, label: string) => <th className={`sortable${sort?.key === k ? " on" : ""}`} onClick={() => setSort(sort?.key === k ? (sort.dir === 1 ? { key: k, dir: -1 } : null) : { key: k, dir: 1 })} title="点击排序，再点反向，第三次恢复默认">{label}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}</th>;
+  const th = (k: SortKey, label: string) => <th className={`sortable${sort?.key === k ? " on" : ""}`} onClick={() => setSort(sort?.key === k ? (sort.dir === 1 ? { key: k, dir: -1 } : null) : { key: k, dir: 1 })} title={t("点击排序，再点反向，第三次恢复默认")}>{label}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}</th>;
   return (
     <div className="tw">
       <table>
-        <thead><tr>{th("id", "ID")}{th("title", "任务")}<th>源自</th>{th("status", "状态")}{th("assignee", "负责")}{th("priority", "优先")}{th("project", "项目")}<th>依赖</th>{th("updated", "更新")}<th>操作</th></tr></thead>
+        <thead><tr>{th("id", "ID")}{th("title", t("任务"))}<th>{t("源自")}</th>{th("status", t("状态"))}{th("assignee", t("负责"))}{th("priority", t("优先"))}{th("project", t("项目"))}<th>{t("依赖")}</th>{th("updated", t("更新"))}<th>{t("操作")}</th></tr></thead>
         <tbody>
           {rows.map((i) => {
             const who = actorOf(i.assignee, me);
             const root = rootOf?.(i.id);
             return (
               <tr data-task={i.id} key={i.id} className={selected === i.id ? "sel" : ""} onClick={() => onSelect(i.id)}>
-                <td className="mono" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{i.id}</td>
+                <td className="mono" title={t("任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识")}>{i.id}</td>
                 <td className="t">{i.title}</td>
                 <td>{root ? <button className="root-link" onClick={(e) => { e.stopPropagation(); onSelect(root.id); }} title={root.title}><span className="mono">{root.id}</span></button> : <span className="muted">—</span>}</td>
                 <td><StatusPill issue={i} sm /></td>
-                <td>{who ? <span className="who-i"><Avatar actor={who} />{who.name}</span> : <span className="muted">未认领</span>}</td>
+                <td>{who ? <span className="who-i"><Avatar actor={who} />{who.name}</span> : <span className="muted">{t("未认领")}</span>}</td>
                 <td className="mono">P{i.priority}</td>
                 <td><ProjectTag name={projectOf(i)} /></td>
                 <td className="mono muted">{(i.dependency_count ?? 0) > 0 ? `← ${i.dependency_count}` : ""}{(i.dependent_count ?? 0) > 0 ? ` → ${i.dependent_count}` : ""}</td>
@@ -156,18 +160,20 @@ export function TableView({ issues, selected, onSelect, me, rootOf, starred = ne
 const SOURCE_ICON: Record<string, string> = { terminal: "⌘", desktop: "▣", editor: "◧", chat: "✉", cron: "⏱", unknown: "?" };
 
 export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFocus, refs, hosts, onOpenUrl, onCopyText, onDelegate , onPhoneLink }: { agents: AgentPresence[]; scheduled: Session[]; apps: string[]; issues: Issue[]; me: string; onSelect: (id: string) => void; onFocus: (sessionId: string) => void; refs: Map<string, SessionRef>; hosts: Host[]; onOpenUrl: (url: string) => void; onCopyText: (text: string, what: string) => void; onDelegate: (host: Host) => void ; onPhoneLink?: () => void }) {
+  const t = useT();
+  const locale = useLocale();
   useItemMenu("host", (id) => {
     const h = hosts.find((x) => x.id === id);
     if (!h) return null;
     return { title: h.name, items: [
-      ...(h.online ? [{ label: "派活：在这台起一个 Agent", onClick: () => onDelegate(h) }] : []),
-      { label: "复制 ssh 地址", onClick: () => onCopyText(h.ssh, "ssh 地址") },
-      { label: "复制 IP", onClick: () => onCopyText(h.ip, "IP") },
-      ...(h.screen_sharing && !h.local ? [{ label: "看它的屏幕并操作", onClick: () => onOpenUrl(h.vnc) }] : []),
-      ...(h.novnc_up && h.novnc.startsWith("https://") ? [{ label: "复制手机看屏幕链接（手机用）", onClick: () => onCopyText(h.novnc, "手机看屏幕的链接") }] : []),
+      ...(h.online ? [{ label: t("派活：在这台起一个 Agent"), onClick: () => onDelegate(h) }] : []),
+      { label: t("复制 ssh 地址"), onClick: () => onCopyText(h.ssh, t("ssh 地址")) },
+      { label: t("复制 IP"), onClick: () => onCopyText(h.ip, "IP") },
+      ...(h.screen_sharing && !h.local ? [{ label: t("看它的屏幕并操作"), onClick: () => onOpenUrl(h.vnc) }] : []),
+      ...(h.novnc_up && h.novnc.startsWith("https://") ? [{ label: t("复制手机看屏幕链接（手机用）"), onClick: () => onCopyText(h.novnc, t("手机看屏幕的链接")) }] : []),
     ] };
-  }, [hosts, onDelegate, onCopyText, onOpenUrl]);
-  useViewMenuExtras(hosts.filter((h) => h.online).map((h) => ({ label: `在 ${h.name} 派活`, onClick: () => onDelegate(h) })), [hosts]);
+  }, [hosts, onDelegate, onCopyText, onOpenUrl, locale]);
+  useViewMenuExtras(hosts.filter((h) => h.online).map((h) => ({ label: t("在 {host} 派活", { host: h.name }), onClick: () => onDelegate(h) })), [hosts, locale]);
   // Files two live sessions both touched recently: rendered in red under each of them.
   const conflicts = conflictingFiles(agents.flatMap((a) => a.sessions));
   return (
@@ -180,19 +186,19 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
             // From this Mac the natural thing is to open the other Mac's screen and drive it
             // (system Screen Sharing). The noVNC page is for the phone: a link to copy, never
             // to open here (opening your own screen inside itself just mirrors forever).
-            if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: "看它的屏幕并操作", act: () => onOpenUrl(h.vnc), hint: "用系统「屏幕共享」打开，能直接操作那台 Mac" });
-            if (h.novnc_up && h.novnc.startsWith("https://") && !h.local) ways.push({ key: "novnc", label: "复制手机看屏幕链接 ⧉", act: () => onCopyText(h.novnc, "手机看屏幕的链接"), hint: "发到手机上打开（手机需连着 Tailscale），用这台 Mac 的用户名和登录密码" });
-            if (h.local && onPhoneLink) ways.push({ key: "phone", label: "手机访问 ⧉", act: onPhoneLink, hint: "复制 Dispatch 网页版链接；手机连上 Tailscale 后用浏览器打开，可添加到主屏幕" });
-            if (h.local && h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: "看屏幕 ⧉", act: () => onCopyText(h.novnc, "屏幕链接已复制。在手机或另一台电脑上打开（在这台上打开自己会套娃）；对方先连上 Tailscale。"), hint: "复制这台电脑的屏幕链接，给手机或另一台电脑用；在本机打开会套娃" });
-            if (h.rustdesk) ways.push({ key: "rustdesk", label: h.rustdesk_id ? `RustDesk ${h.rustdesk_id} ⧉` : "RustDesk", act: () => (h.rustdesk_id ? onCopyText(h.rustdesk_id, "RustDesk ID") : onOpenUrl("rustdesk://")), hint: "不用虚拟网：手机 RustDesk 输这个 ID" });
-            if (h.sunshine) ways.push({ key: "moonlight", label: "Moonlight 配对", act: () => onOpenUrl(h.sunshine_ui), hint: "打开 Sunshine 配对页；手机装 Moonlight，画质最高" });
-            if (h.uu) ways.push({ key: "uu", label: "UU远程", act: () => onOpenUrl("/Applications"), hint: "已装网易UU远程；它没有接口，去它里面连" });
+            if (h.screen_sharing && !h.local) ways.push({ key: "vnc", label: t("看它的屏幕并操作"), act: () => onOpenUrl(h.vnc), hint: t("用系统「屏幕共享」打开，能直接操作那台 Mac") });
+            if (h.novnc_up && h.novnc.startsWith("https://") && !h.local) ways.push({ key: "novnc", label: t("复制手机看屏幕链接 ⧉"), act: () => onCopyText(h.novnc, t("手机看屏幕的链接")), hint: t("发到手机上打开（手机需连着 Tailscale），用这台 Mac 的用户名和登录密码") });
+            if (h.local && onPhoneLink) ways.push({ key: "phone", label: t("手机访问 ⧉"), act: onPhoneLink, hint: t("复制 Dispatch 网页版链接；手机连上 Tailscale 后用浏览器打开，可添加到主屏幕") });
+            if (h.local && h.novnc_up && h.novnc.startsWith("https://")) ways.push({ key: "novnc", label: t("看屏幕 ⧉"), act: () => onCopyText(h.novnc, t("屏幕链接已复制。在手机或另一台电脑上打开（在这台上打开自己会套娃）；对方先连上 Tailscale。")), hint: t("复制这台电脑的屏幕链接，给手机或另一台电脑用；在本机打开会套娃") });
+            if (h.rustdesk) ways.push({ key: "rustdesk", label: h.rustdesk_id ? `RustDesk ${h.rustdesk_id} ⧉` : "RustDesk", act: () => (h.rustdesk_id ? onCopyText(h.rustdesk_id, "RustDesk ID") : onOpenUrl("rustdesk://")), hint: t("不用虚拟网：手机 RustDesk 输这个 ID") });
+            if (h.sunshine) ways.push({ key: "moonlight", label: t("Moonlight 配对"), act: () => onOpenUrl(h.sunshine_ui), hint: t("打开 Sunshine 配对页；手机装 Moonlight，画质最高") });
+            if (h.uu) ways.push({ key: "uu", label: t("UU远程"), act: () => onOpenUrl("/Applications"), hint: t("已装网易UU远程；它没有接口，去它里面连") });
             return (
               <div key={h.id} data-menu="host" data-id={h.id} className={`host${h.online ? "" : " off"}`} title={h.why}>
                 <span className={`dot ${h.online ? "on" : ""}`} />
                 <b>{h.name}</b><span className="mono muted small">{h.ip}</span>
                 {h.overlay?.kind && <span className="host-chip">{OVERLAY[h.overlay.kind] ?? h.overlay.kind}</span>}
-                {h.online && <button className="btn sm" onClick={() => onDelegate(h)} title="在这台机器的 Herdr 里起一个 Agent，可以把任务派给它">派活</button>}
+                {h.online && <button className="btn sm" onClick={() => onDelegate(h)} title={t("在这台机器的 Herdr 里起一个 Agent，可以把任务派给它")}>{t("派活")}</button>}
                 {ways.map((w) => <button key={w.key} className={`btn sm${w.key === h.recommend || (h.recommend === "vnc" && w.key === "novnc") ? "" : " ghost"}`} onClick={w.act} title={w.hint}>{w.label}</button>)}
                 {h.novnc_issue && <span className="host-connection-note">{h.novnc_issue}</span>}
                 {ways.length === 0 && <span className="muted small">{h.why}</span>}
@@ -201,7 +207,7 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
           })}
         </div>
       )}
-      {apps.length > 0 && <div className="apps-bar">正在运行的应用：{apps.join(" · ")}</div>}
+      {apps.length > 0 && <div className="apps-bar">{t("正在运行的应用：{apps}", { apps: apps.join(" · ") })}</div>}
       {agents.filter(a => a.online || a.current.length > 0).map((a) => {
         const working = a.sessions.filter((s) => s.state === "working").length;
         const isHuman = a.actor.kind === "human";
@@ -209,45 +215,45 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
         <div key={a.actor.id} className={`acard${a.online || isHuman ? "" : " off"}`}>
           <div className="hd">
             <Avatar actor={a.actor} online={a.online} size={30} />
-            <div><div className="nm">{a.actor.name}</div><div className="sub">{a.actor.id}{a.lastActive ? ` · 最近写入 ${relTime(a.lastActive)}` : ""}</div></div>
+            <div><div className="nm">{a.actor.name}</div><div className="sub">{a.actor.id}{a.lastActive ? t(" · 最近写入 {ago}", { ago: relTime(a.lastActive) }) : ""}</div></div>
             <span className={`st sm state ${a.sessions.length ? (working ? "prog" : "done") : a.online ? "done" : "open"}`}>
-              {a.sessions.length ? (working ? `${working} 个在跑` : (() => { const idle = a.sessions.filter((s) => s.state === "idle" && s.registered).length, unk = a.sessions.length - idle; return [idle ? `${idle} 空闲` : "", unk ? `${unk} 个只见进程、看不到会话` : ""].filter(Boolean).join(" · ") || "空闲"; })()) : isHuman ? "你" : a.online ? "在线" : "离线"}
+              {a.sessions.length ? (working ? t("{n} 个在跑", { n: working }) : (() => { const idle = a.sessions.filter((s) => s.state === "idle" && s.registered).length, unk = a.sessions.length - idle; return [idle ? t("{n} 空闲", { n: idle }) : "", unk ? t("{n} 个只见进程、看不到会话", { n: unk }) : ""].filter(Boolean).join(" · ") || t("空闲"); })()) : isHuman ? t("你") : a.online ? t("在线") : t("离线")}
             </span>
           </div>
           {!isHuman && (
             <div className="sessions">
               <div className="src-row">
-                {a.bySource.length === 0 && <span className="muted">没有检测到会话{a.actor.kind === "zcode" ? "（ZCode 没开，或 30 分钟内没有会话活动）" : a.actor.kind === "opencode" ? "（没有在跑的 opencode 进程，或 30 分钟内没有会话活动）" : a.actor.kind === "hermes" ? "（这台电脑上没有在跑的 Hermes，或 30 分钟内没有未结束的会话）" : ""}</span>}
+                {a.bySource.length === 0 && <span className="muted">{t("没有检测到会话")}{a.actor.kind === "zcode" ? t("（ZCode 没开，或 30 分钟内没有会话活动）") : a.actor.kind === "opencode" ? t("（没有在跑的 opencode 进程，或 30 分钟内没有会话活动）") : a.actor.kind === "hermes" ? t("（这台电脑上没有在跑的 Hermes，或 30 分钟内没有未结束的会话）") : ""}</span>}
                 {a.bySource.map((b) => (
-                  <span key={b.label} className={`chip src ${b.kind}`} title={SOURCE_LABEL[b.kind]}>
-                    <span className="ic">{SOURCE_ICON[b.kind]}</span>{SOURCE_LABEL[b.kind]}{b.label && b.label !== SOURCE_LABEL[b.kind] ? ` · ${b.label}` : ""} <b>{b.count}</b>{b.working ? <span className="pulse" title="在跑" /> : null}
+                  <span key={b.label} className={`chip src ${b.kind}`} title={t(SOURCE_LABEL[b.kind])}>
+                    <span className="ic">{SOURCE_ICON[b.kind]}</span>{t(SOURCE_LABEL[b.kind])}{b.label && b.label !== SOURCE_LABEL[b.kind] ? ` · ${b.label}` : ""} <b>{b.count}</b>{b.working ? <span className="pulse" title={t("在跑")} /> : null}
                   </span>
                 ))}
               </div>
               {(() => { const now = Date.now() / 1000; const isActive = (s: Session) => s.state === "working" || (s.alive && now - s.last_at < 3600); const activeList = a.sessions.filter(isActive); const older = a.sessions.filter((s) => !isActive(s)); const row = (s: Session) => {
                 const r = refs.get(s.session_id);
                 return (
-                <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className={`sess ${s.state}`} title={`${s.cwd || s.session_id} · ${sessionEvidence(s)} · 右键更多操作`}>
+                <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className={`sess ${s.state}`} title={t("{what} · {evidence} · 右键更多操作", { what: s.cwd || s.session_id, evidence: sessionEvidence(s) })}>
                   <span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span>
                   <div className="agent-session-main">
-                    <div className="agent-session-title"><span className="proj-name">{s.herdr?.title || r?.title || s.project || "未关联会话记录"}</span><span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{sessionStatus(s)}</span></div>
-                    <div className="agent-session-meta"><span>{s.state_source === "transcript" ? "实际会话记录" : s.source_kind === "unknown" ? "来源未识别" : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${ago(s.last_at)}活动` : "尚无活动上报"}</span></div>
+                    <div className="agent-session-title"><span className="proj-name">{s.herdr?.title || r?.title || s.project || t("未关联会话记录")}</span><span className={`st sm ${s.state === "working" ? "prog" : s.state === "idle" ? "done" : "open"}`}>{sessionStatus(s)}</span></div>
+                    <div className="agent-session-meta"><span>{s.state_source === "transcript" ? t("实际会话记录") : s.source_kind === "unknown" ? t("来源未识别") : s.source_app}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? t("{ago}活动", { ago: ago(s.last_at) }) : t("尚无活动上报")}</span></div>
                     {(() => {
                       const ed = recentEdits(s);
                       if (!ed.length) return null;
                       const ordered = [...ed].sort((x, y) => Number(conflicts.has(y.path)) - Number(conflicts.has(x.path)) || y.at - x.at);
                       const shown = ordered.slice(0, 5);
-                      return <div className="sess-edits" title={ordered.map((e) => e.path).join("\n")}>正在改：{shown.map((e, i) => <span key={e.path} className={conflicts.has(e.path) ? "conflict" : ""} title={`${e.path}${conflicts.has(e.path) ? " · 多个会话在改" : ""}`}>{i > 0 ? "、" : ""}{e.path.split("/").pop()}</span>)}{ordered.length > 5 ? ` 等 ${ordered.length} 个` : ""}</div>;
+                      return <div className="sess-edits" title={ordered.map((e) => e.path).join("\n")}>{t("正在改：")}{shown.map((e, i) => <span key={e.path} className={conflicts.has(e.path) ? "conflict" : ""} title={`${e.path}${conflicts.has(e.path) ? t(" · 多个会话在改") : ""}`}>{i > 0 ? t("、") : ""}{e.path.split("/").pop()}</span>)}{ordered.length > 5 ? t(" 等 {n} 个", { n: ordered.length }) : ""}</div>;
                     })()}
                     {(() => { const own = a.current.find(i => linkedSessions(i).includes(s.session_id)); return own ? <button className="link small linked-task" onClick={() => onSelect(own.id)}><span className="mono">{own.id}</span> {own.title}</button> : null; })()}
                   </div>
-                  <div className="agent-session-actions"><AdoptButton session={s} compact className="copy-btn" /><button className="copy-btn" onClick={() => onFocus(s.session_id)} title="切到会话所在的软件">打开</button></div>
+                  <div className="agent-session-actions"><AdoptButton session={s} compact className="copy-btn" /><button className="copy-btn" onClick={() => onFocus(s.session_id)} title={t("切到会话所在的软件")}>{t("打开")}</button></div>
                 </div>
                 );
-              }; return <>{activeList.map(row)}{activeList.length === 0 && older.length > 0 && <div className="muted small" style={{ padding: "4px 2px" }}>现在没有活跃会话</div>}{older.length > 0 && <details className="older-sessions"><summary>更早的会话 · {older.length}<span className="muted small"> · 一小时内没动静；完整历史在会话页</span></summary>{older.map(row)}</details>}</>; })()}
+              }; return <>{activeList.map(row)}{activeList.length === 0 && older.length > 0 && <div className="muted small" style={{ padding: "4px 2px" }}>{t("现在没有活跃会话")}</div>}{older.length > 0 && <details className="older-sessions"><summary>{t("更早的会话 · {n}", { n: older.length })}<span className="muted small">{t(" · 一小时内没动静；完整历史在会话页")}</span></summary>{older.map(row)}</details>}</>; })()}
             </div>
           )}
-          {a.current.length > 0 && <details className="agent-task-context"><summary>关联进行中任务 · {a.current.length}</summary>{a.current.map(i => <button key={i.id} className="cur" onClick={() => onSelect(i.id)}><div className="t">{i.title}</div><div className="mono muted small">{i.id}{delegatedBy(i) ? ` · ← ${actorOf(delegatedBy(i), me)?.name ?? delegatedBy(i)} 派的` : ""}</div></button>)}</details>}
+          {a.current.length > 0 && <details className="agent-task-context"><summary>{t("关联进行中任务 · {n}", { n: a.current.length })}</summary>{a.current.map(i => <button key={i.id} className="cur" onClick={() => onSelect(i.id)}><div className="t">{i.title}</div><div className="mono muted small">{i.id}{delegatedBy(i) ? t(" · ← {who} 派的", { who: actorOf(delegatedBy(i), me)?.name ?? delegatedBy(i) }) : ""}</div></button>)}</details>}
           {(() => {
             // 派活关系: tasks this agent handed out, and tasks handed to it, still open.
             const open = issues.filter((i) => i.status !== "closed");
@@ -258,16 +264,16 @@ export function AgentsView({ agents, scheduled, apps, issues, me, onSelect, onFo
             const own = open.filter((i) => actorOf(delegatedTo(i), me)?.id === a.actor.id && self(i));
             if (!out.length && !got.length && !own.length) return null;
             return <div className="agent-delegations">
-              {out.length > 0 && <div><span className="lbl">派出 {out.length}</span>{out.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>→ {actorOf(delegatedTo(i), me)?.name ?? delegatedTo(i)} · {i.title.slice(0, 28)}</button>)}</div>}
-              {own.length > 0 && <div><span className="lbl" title="这个 Agent 的一个会话派给了它自己的另一个会话">自派 {own.length}</span>{own.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>↻ {i.title.slice(0, 28)}</button>)}</div>}
-              {got.length > 0 && <div><span className="lbl">接到 {got.length}</span>{got.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>← {actorOf(delegatedBy(i), me)?.name ?? delegatedBy(i)} · {i.title.slice(0, 28)}</button>)}</div>}
+              {out.length > 0 && <div><span className="lbl">{t("派出 {n}", { n: out.length })}</span>{out.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>→ {actorOf(delegatedTo(i), me)?.name ?? delegatedTo(i)} · {i.title.slice(0, 28)}</button>)}</div>}
+              {own.length > 0 && <div><span className="lbl" title={t("这个 Agent 的一个会话派给了它自己的另一个会话")}>{t("自派 {n}", { n: own.length })}</span>{own.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>↻ {i.title.slice(0, 28)}</button>)}</div>}
+              {got.length > 0 && <div><span className="lbl">{t("接到 {n}", { n: got.length })}</span>{got.map((i) => <button key={i.id} className="chip" onClick={() => onSelect(i.id)}>← {actorOf(delegatedBy(i), me)?.name ?? delegatedBy(i)} · {i.title.slice(0, 28)}</button>)}</div>}
             </div>;
           })()}
 
         </div>
       );})}
-      {scheduled.length > 0 && <details className="offline-agents"><summary>定时会话 · {scheduled.length}<span className="muted small"> · 不计入在跑、未读和通知</span></summary><div className="sessions">{scheduled.map((s) => <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className={`sess ${s.state}`}><span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span><div className="agent-session-main"><div className="agent-session-title"><span className="proj-name">{s.herdr?.title || s.title || s.project || s.cwd}</span><span className={`st sm ${s.state === "working" ? "prog" : "open"}`}>{sessionStatus(s)}</span></div><div className="agent-session-meta"><span>{actorOf(s.agent, "")?.name}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? `${ago(s.last_at)}活动` : ""}</span></div></div><div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)}>打开</button></div></div>)}</div></details>}
-      <details className="offline-agents"><summary>未检测到活动的 Agent · {agents.filter(a => !a.online && !a.current.length).length}</summary><div>{agents.filter(a => !a.online && !a.current.length).map(a => <span key={a.actor.id}>{a.actor.name}</span>)}</div></details>
+      {scheduled.length > 0 && <details className="offline-agents"><summary>{t("定时会话 · {n}", { n: scheduled.length })}<span className="muted small">{t(" · 不计入在跑、未读和通知")}</span></summary><div className="sessions">{scheduled.map((s) => <div key={s.session_id} data-session={`${s.host ?? "local"}:${s.agent}:${s.session_id}`} className={`sess ${s.state}`}><span className={`src-ic ${s.source_kind}`}>{SOURCE_ICON[s.source_kind]}</span><div className="agent-session-main"><div className="agent-session-title"><span className="proj-name">{s.herdr?.title || s.title || s.project || s.cwd}</span><span className={`st sm ${s.state === "working" ? "prog" : "open"}`}>{sessionStatus(s)}</span></div><div className="agent-session-meta"><span>{actorOf(s.agent, "")?.name}</span>{s.remote && <span>{s.host_name}</span>}<span>{s.last_at ? t("{ago}活动", { ago: ago(s.last_at) }) : ""}</span></div></div><div className="agent-session-actions"><button className="copy-btn" onClick={() => onFocus(s.session_id)}>{t("打开")}</button></div></div>)}</div></details>}
+      <details className="offline-agents"><summary>{t("未检测到活动的 Agent · {n}", { n: agents.filter(a => !a.online && !a.current.length).length })}</summary><div>{agents.filter(a => !a.online && !a.current.length).map(a => <span key={a.actor.id}>{a.actor.name}</span>)}</div></details>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { Comment, Issue } from "../types";
 import { actorOf, isMe, discussionConclusion } from "../derive";
 import { Markdown } from "./Markdown";
 import { KINDS, KIND_ACTOR } from "./Delegate";
+import { useT } from "../i18n";
 
 export const TAG = "【讨论】";
 export const DISCUSSION_LABEL = "dispatch:discussion";
@@ -40,6 +41,7 @@ type Img = { path: string; preview: string };
 // (polled while a round runs), the typing bubbles from discussions/<task>.live.json, one more
 // round, the person's own line, and the wrap-up (conclusion + document).
 export function useDiscussion({ api, me, issues, task, parts, leader, watch, onDone, onError }: { api: Api; me: string; issues: Issue[]; task: string; parts: Participant[]; leader: number; watch?: boolean; onDone: (m: string) => void; onError: (m: string) => void }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [quiet, setQuiet] = useState(0);
@@ -94,7 +96,10 @@ export function useDiscussion({ api, me, issues, task, parts, leader, watch, onD
       setQuiet(r.quiet_rounds ?? 0);
       const skipped = (r.skipped?.length ?? 0), spoke = (r.comments ?? []).filter((c: Comment) => !/^【讨论】发起[:：]/.test(c.text.trimStart())).length;
       const judge = (r.judge ?? []).find((j: { everyone: boolean }) => !j.everyone) as { picked: string[] } | undefined;
-      onDone(`这轮 ${spoke} 条发言${skipped ? `，${skipped} 人没话说` : ""}${judge ? `，只叫了 ${judge.picked.join("、")}` : ""}${(r.quiet_rounds ?? 0) >= 2 ? "；连续两轮没有新提议了，可以整理成文档收尾" : ""}`);
+      onDone(t("这轮 {n} 条发言", { n: spoke })
+        + (skipped ? t("，{n} 人没话说", { n: skipped }) : "")
+        + (judge ? t("，只叫了 {who}", { who: judge.picked.join(t("、")) }) : "")
+        + ((r.quiet_rounds ?? 0) >= 2 ? t("；连续两轮没有新提议了，可以整理成文档收尾") : ""));
     } catch (e) { onError(String(e)); }
     finally { setBusy(false); }
   };
@@ -115,21 +120,21 @@ export function useDiscussion({ api, me, issues, task, parts, leader, watch, onD
   const makeDoc = async () => {
     if (!task) return;
     setDocBusy(true);
-    try { const t = await api.on("local", ["discuss-doc", task, "--json"]); const r = JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); setDoc(r.doc); if (r.conclusion) setFreshConclusion(r.conclusion); setQuiet(0); onDone("结论和讨论文档已写进任务，验收项也填好了"); return true; }
+    try { const raw = await api.on("local", ["discuss-doc", task, "--json"]); const r = JSON.parse(raw.slice(Math.max(0, raw.indexOf("{")))); setDoc(r.doc); if (r.conclusion) setFreshConclusion(r.conclusion); setQuiet(0); onDone(t("结论和讨论文档已写进任务，验收项也填好了")); return true; }
     catch (e) { onError(String(e)); return false; }
     finally { setDocBusy(false); }
   };
   const saveImage = async (f: File, name: string): Promise<Img> => {
     const data = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
-    const t = await api.on("local", ["save-image", "--json"], JSON.stringify({ name: f.name || name, data }));
-    return { path: JSON.parse(t.slice(Math.max(0, t.indexOf("{")))).path, preview: data };
+    const raw = await api.on("local", ["save-image", "--json"], JSON.stringify({ name: f.name || name, data }));
+    return { path: JSON.parse(raw.slice(Math.max(0, raw.indexOf("{")))).path, preview: data };
   };
 
   const issue = task ? issues.find((i) => i.id === task) : undefined;
   const existingDoc = (issue?.description ?? "").split("\n\n## 讨论文档")[1] ?? "";
   const docText = doc || existingDoc.replace(/^[^\n]*\n/, "");
   const stored = discussionConclusion(issue?.description, comments);
-  const conclusion = freshConclusion ? { text: freshConclusion, when: "刚刚", by: "" } : stored;
+  const conclusion = freshConclusion ? { text: freshConclusion, when: t("刚刚"), by: "" } : stored;
   const said = comments.filter((c) => c.text.trimStart().startsWith(TAG)).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const system = comments.filter((c) => c.text.trimStart().startsWith("【系统】")).sort((a, b) => a.created_at.localeCompare(b.created_at));
   // Rounds: what the members said since the person last spoke (the 发起 line or a line typed here).
@@ -153,6 +158,7 @@ interface Props { api: Api; projects: string[]; issues: Issue[]; me: string; ini
 // reads the context and leaves one 【讨论】 comment; the leader (or the summary model) writes the
 // conclusion on demand. It all lives on a 【讨论】 task, so it can be split into work.
 export function DiscussDialog({ api, projects, issues, me, initialProject, initialTask, onClose, onOpened, onDelegate, onAll, onDone, onError }: Props) {
+  const t = useT();
   const [topic, setTopic] = useState("");
   const [project, setProject] = useState(initialProject ?? "");
   const [parts, setParts] = useState<Participant[]>([{ kind: "claude", model: "" }, { kind: "codex", model: "" }]);
@@ -173,7 +179,7 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
   const addFiles = async (files: File[]) => {
     for (const f of files.filter((x) => x.type.startsWith("image/"))) {
       setSaving((n) => n + 1);
-      try { const im = await d.saveImage(f, "pasted"); setImages((xs) => [...xs, { ...im, name: f.name || "粘贴的图片" }]); }
+      try { const im = await d.saveImage(f, "pasted"); setImages((xs) => [...xs, { ...im, name: f.name || t("粘贴的图片") }]); }
       catch (e) { onError(String(e)); }
       finally { setSaving((n) => n - 1); }
     }
@@ -200,43 +206,43 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className={`dialog delegate discuss-dialog${full ? " full" : ""}`} role="dialog" aria-label="讨论一个念头">
-        <h3>讨论一个念头{project ? ` · ${project}` : ""}{task ? <span className="mono muted small"> · {task}</span> : null}<span className="spacer" />{onAll && <button className="btn ghost sm" onClick={() => { onAll(task || undefined); onClose(); }} title="到「讨论」页看全部讨论">看全部 ›</button>}<button className="btn ghost sm" onClick={() => setFull(!full)} title={full ? "缩回窗口" : "占满整页"}>{full ? "⤡ 缩回" : "⤢ 放大"}</button></h3>
+      <div className={`dialog delegate discuss-dialog${full ? " full" : ""}`} role="dialog" aria-label={t("讨论一个念头")}>
+        <h3>{t("讨论一个念头")}{project ? ` · ${project}` : ""}{task ? <span className="mono muted small"> · {task}</span> : null}<span className="spacer" />{onAll && <button className="btn ghost sm" onClick={() => { onAll(task || undefined); onClose(); }} title={t("到「讨论」页看全部讨论")}>{t("看全部 ›")}</button>}<button className="btn ghost sm" onClick={() => setFull(!full)} title={full ? t("缩回窗口") : t("占满整页")}>{full ? t("⤡ 缩回") : t("⤢ 放大")}</button></h3>
         {!task && <>
-          <p className="muted small">把一个想法交给几个 Agent 各说一次：值不值得做、怎么做、怎么拆、风险在哪。每个 Agent 读项目现状和坑，只留一条发言就停。你看完可以回一句，点「让他们回应」他们就接着讨论；方向定了就「整理成文档」，再派人或拆分。</p>
-          <label>念头<textarea rows={6} autoFocus placeholder="比如：把洞察报告改成每周自动发到手机；或者：要不要给 Dispatch 做 iOS 原生版。截图直接粘贴进来。" value={topic} onChange={(e) => setTopic(e.target.value)} onPaste={onPaste} disabled={busy} /></label>
+          <p className="muted small">{t("把一个想法交给几个 Agent 各说一次：值不值得做、怎么做、怎么拆、风险在哪。每个 Agent 读项目现状和坑，只留一条发言就停。你看完可以回一句，点「让他们回应」他们就接着讨论；方向定了就「整理成文档」，再派人或拆分。")}</p>
+          <label>{t("念头")}<textarea rows={6} autoFocus placeholder={t("比如：把洞察报告改成每周自动发到手机；或者：要不要给 Dispatch 做 iOS 原生版。截图直接粘贴进来。")} value={topic} onChange={(e) => setTopic(e.target.value)} onPaste={onPaste} disabled={busy} /></label>
           <div className="disc-images">
-            {images.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt={im.name} title={im.path} /><button className="x" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label="移除图片">✕</button></div>)}
-            <label className="disc-img-add btn sm">{saving ? "存图中…" : "＋ 图片"}<input type="file" accept="image/*" multiple hidden disabled={busy} onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} /></label>
-            <span className="muted small">贴进来或选文件；图片存在本机，Agent 发言前会先看。</span>
+            {images.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt={im.name} title={im.path} /><button className="x" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label={t("移除图片")}>✕</button></div>)}
+            <label className="disc-img-add btn sm">{saving ? t("存图中…") : t("＋ 图片")}<input type="file" accept="image/*" multiple hidden disabled={busy} onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} /></label>
+            <span className="muted small">{t("贴进来或选文件；图片存在本机，Agent 发言前会先看。")}</span>
           </div>
           <div className="new-session-selects">
-            <label>项目<select value={project} onChange={(e) => setProject(e.target.value)} disabled={busy}><option value="">不挂项目，就一个念头</option>{projects.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
+            <label>{t("项目")}<select value={project} onChange={(e) => setProject(e.target.value)} disabled={busy}><option value="">{t("不挂项目，就一个念头")}</option>{projects.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
           </div>
           <div className="disc-parts">
-            <div className="muted small">参加的 Agent（同一种可以加多个，各选各的模型）；选一个当领队：它每轮最后发言并归纳，结论和文档由它写，派活默认给它</div>
+            <div className="muted small">{t("参加的 Agent（同一种可以加多个，各选各的模型）；选一个当领队：它每轮最后发言并归纳，结论和文档由它写，派活默认给它")}</div>
             {parts.map((p, i) => <div key={i} className="disc-part">
-              <label className="disc-leader" title="领队"><input type="radio" name="disc-leader" checked={Math.min(leader, parts.length - 1) === i} disabled={busy} onChange={() => setLeader(i)} /> 领队</label>
+              <label className="disc-leader" title={t("领队")}><input type="radio" name="disc-leader" checked={Math.min(leader, parts.length - 1) === i} disabled={busy} onChange={() => setLeader(i)} /> {t("领队")}</label>
               <select value={p.kind} disabled={busy} onChange={(e) => setParts(parts.map((x, j) => j === i ? { kind: e.target.value, model: "" } : x))}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-              <select value={p.model} disabled={busy} onChange={(e) => setParts(parts.map((x, j) => j === i ? { ...x, model: e.target.value } : x))}>{(MODELS[p.kind] ?? [["", "默认"]]).map(([m, l]) => <option key={m} value={m}>{l}</option>)}</select>
-              <button className="link sm" disabled={busy || parts.length <= 1} onClick={() => { setParts(parts.filter((_, j) => j !== i)); if (leader === i) setLeader(0); else if (leader > i) setLeader(leader - 1); }}>移除</button>
+              <select value={p.model} disabled={busy} onChange={(e) => setParts(parts.map((x, j) => j === i ? { ...x, model: e.target.value } : x))}>{(MODELS[p.kind] ?? [["", "默认"]]).map(([m, l]) => <option key={m} value={m}>{t(l)}</option>)}</select>
+              <button className="link sm" disabled={busy || parts.length <= 1} onClick={() => { setParts(parts.filter((_, j) => j !== i)); if (leader === i) setLeader(0); else if (leader > i) setLeader(leader - 1); }}>{t("移除")}</button>
             </div>)}
-            <button className="link sm" disabled={busy || parts.length >= 6} onClick={() => setParts([...parts, { kind: "claude", model: "" }])}>＋ 再加一个</button>
+            <button className="link sm" disabled={busy || parts.length >= 6} onClick={() => setParts([...parts, { kind: "claude", model: "" }])}>{t("＋ 再加一个")}</button>
           </div>
-          <label>想让他们决定什么（可空）<input placeholder="比如：先做手机端还是先做自动化？" value={question} onChange={(e) => setQuestion(e.target.value)} disabled={busy} /></label>
-          {recent.length > 0 && <div className="disc-recent"><div className="muted small">最近的讨论{onAll && <> · <button className="link sm" onClick={() => { onAll(); onClose(); }}>看全部</button></>}</div>{recent.map((i) => <button key={i.id} className="disc-recent-row" onClick={() => { restoreFrom(i.description ?? ""); setTask(i.id); }}><span className="t">{i.title.replace(/^【讨论】/, "")}</span><span className="muted small mono">{i.id}</span></button>)}</div>}
+          <label>{t("想让他们决定什么（可空）")}<input placeholder={t("比如：先做手机端还是先做自动化？")} value={question} onChange={(e) => setQuestion(e.target.value)} disabled={busy} /></label>
+          {recent.length > 0 && <div className="disc-recent"><div className="muted small">{t("最近的讨论")}{onAll && <> · <button className="link sm" onClick={() => { onAll(); onClose(); }}>{t("看全部")}</button></>}</div>{recent.map((i) => <button key={i.id} className="disc-recent-row" onClick={() => { restoreFrom(i.description ?? ""); setTask(i.id); }}><span className="t">{i.title.replace(/^【讨论】/, "")}</span><span className="muted small mono">{i.id}</span></button>)}</div>}
         </>}
 
-        {task && <DiscussChat api={api} d={d} me={me} showConclusion onError={onError} between={showDoc && d.hasDoc ? <div className="disc-doc"><div className="l1"><b>讨论文档</b><span className="muted small">已写进任务描述</span><span className="spacer" /><button className="link sm" onClick={() => setShowDoc(false)}>收起</button></div><Markdown src={d.docText} className="compact" /></div> : null} />}
+        {task && <DiscussChat api={api} d={d} me={me} showConclusion onError={onError} between={showDoc && d.hasDoc ? <div className="disc-doc"><div className="l1"><b>{t("讨论文档")}</b><span className="muted small">{t("已写进任务描述")}</span><span className="spacer" /><button className="link sm" onClick={() => setShowDoc(false)}>{t("收起")}</button></div><Markdown src={d.docText} className="compact" /></div> : null} />}
 
         <div className="foot">
-          <button className="btn ghost" disabled={busy} onClick={onClose}>{task ? "关闭" : "取消"}</button>
-          {task && d.hasDoc && !showDoc && <button className="btn" disabled={busy || d.docBusy} onClick={() => setShowDoc(true)}>看文档</button>}
-          {task && <button className="btn" disabled={busy || d.docBusy} onClick={() => void makeDoc()} title="收尾：先写（覆盖）一条结论，再把讨论整理成文档（背景、结论、方案、步骤、风险、验收）写进任务；讨论继续后可以再整理一次">{d.docBusy ? "整理中…" : d.hasDoc ? "重新整理" : "整理成文档"}</button>}
-          {task && d.hasDoc && <button className="btn" disabled={busy || d.docBusy} onClick={delegate} title="选一个 Agent 和模型，读这份文档开工">派 Agent 去做 →</button>}
-          {task && <button className="btn" disabled={busy} onClick={() => { onOpened(task, "split"); onClose(); }} title="或者拆成几个子任务分给不同 Agent">拆分</button>}
-          {task && !busy && <span className="disc-parts-inline">{parts.map((p, i) => <span key={i} className={`chip${Math.min(leader, parts.length - 1) === i ? " disc-leader-tag" : ""}`}>{partName(p)}{Math.min(leader, parts.length - 1) === i ? " · 领队" : ""}</span>)}</span>}
-          <button className="btn primary" disabled={busy || !parts.length || (!task && !topic.trim())} onClick={() => void go()}>{busy ? "讨论中…" : task ? "让他们回应" : `请 ${parts.length} 个 Agent 讨论`}</button>
+          <button className="btn ghost" disabled={busy} onClick={onClose}>{task ? t("关闭") : t("取消")}</button>
+          {task && d.hasDoc && !showDoc && <button className="btn" disabled={busy || d.docBusy} onClick={() => setShowDoc(true)}>{t("看文档")}</button>}
+          {task && <button className="btn" disabled={busy || d.docBusy} onClick={() => void makeDoc()} title={t("收尾：先写（覆盖）一条结论，再把讨论整理成文档（背景、结论、方案、步骤、风险、验收）写进任务；讨论继续后可以再整理一次")}>{d.docBusy ? t("整理中…") : d.hasDoc ? t("重新整理") : t("整理成文档")}</button>}
+          {task && d.hasDoc && <button className="btn" disabled={busy || d.docBusy} onClick={delegate} title={t("选一个 Agent 和模型，读这份文档开工")}>{t("派 Agent 去做 →")}</button>}
+          {task && <button className="btn" disabled={busy} onClick={() => { onOpened(task, "split"); onClose(); }} title={t("或者拆成几个子任务分给不同 Agent")}>{t("拆分")}</button>}
+          {task && !busy && <span className="disc-parts-inline">{parts.map((p, i) => <span key={i} className={`chip${Math.min(leader, parts.length - 1) === i ? " disc-leader-tag" : ""}`}>{partName(p)}{Math.min(leader, parts.length - 1) === i ? ` · ${t("领队")}` : ""}</span>)}</span>}
+          <button className="btn primary" disabled={busy || !parts.length || (!task && !topic.trim())} onClick={() => void go()}>{busy ? t("讨论中…") : task ? t("让他们回应") : t("请 {n} 个 Agent 讨论", { n: parts.length })}</button>
         </div>
       </div>
     </div>

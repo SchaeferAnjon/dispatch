@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, useRef, type ReactNode } from 'react';
 import type { Api } from '../api';
 import type { SessionRef } from '../types';
+import { t as tr, useT } from '../i18n';
 
 export interface Attachment { id: string; name: string; path: string; ts: string; mime: string; exists: boolean }
 export interface AttachmentData { name: string; path: string; mime: string; size: number; data: string; text?: string }
@@ -13,13 +14,14 @@ export const dataUrl = (a: AttachmentData) => `data:${a.mime};base64,${a.data}`;
 const cache = new Map<string, Promise<AttachmentData>>();
 
 export function MediaProvider({ api, session, children }: { api: Api; session?: Pick<SessionRef, 'host' | 'agent' | 'session_id'>; children: ReactNode }) {
+  const t = useT();
   const [value, setValue] = useState<AttachmentData | null>(null);
   const [error, setError] = useState('');
   const [show, setShow] = useState(false);
   const [url, setUrl] = useState('');
   const requestId = useRef(0);
   const read = useCallback((ref: string) => {
-    if (!session) return Promise.reject(new Error('请先打开会话'));
+    if (!session) return Promise.reject(new Error(tr('请先打开会话')));
     const key = `${session.host || 'local'}:${session.agent}:${session.session_id}:${ref}`;
     if (!cache.has(key)) {
       if (cache.size > 30) cache.delete(cache.keys().next().value!);
@@ -64,15 +66,16 @@ export function MediaProvider({ api, session, children }: { api: Api; session?: 
   }, [show, step]);
   const html = value?.mime === 'text/html' ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'">${value.text || ''}` : '';
   return <MediaContext.Provider value={{ read, open, thumb }}>{children}{show && <div className="overlay media-overlay" onMouseDown={e => e.target === e.currentTarget && setShow(false)}>
-    <div className="media-dialog" role="dialog" aria-modal="true" aria-label="附件预览"><header><b>{value?.name || (error ? '无法预览' : '正在读取附件…')}</b>{value && <span className="muted small mono">{value.mime.replace('image/', '')} · {value.size >= 1048576 ? `${(value.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(value.size / 1024))} KB`}</span>}<span className="spacer" />{group.length > 1 && <span className="media-nav"><button className="btn sm" onClick={() => step(-1)} aria-label="上一张">‹</button><span className="mono small">{at + 1} / {group.length}</span><button className="btn sm" onClick={() => step(1)} aria-label="下一张">›</button></span>}{value && <a className="btn sm" href={url} download={value.name}>下载</a>}<button className="btn sm" autoFocus onClick={() => setShow(false)} aria-label="关闭附件预览">✕</button></header>
+    <div className="media-dialog" role="dialog" aria-modal="true" aria-label={t("附件预览")}><header><b>{value?.name || (error ? t('无法预览') : t('正在读取附件…'))}</b>{value && <span className="muted small mono">{value.mime.replace('image/', '')} · {value.size >= 1048576 ? `${(value.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(value.size / 1024))} KB`}</span>}<span className="spacer" />{group.length > 1 && <span className="media-nav"><button className="btn sm" onClick={() => step(-1)} aria-label={t("上一张")}>‹</button><span className="mono small">{at + 1} / {group.length}</span><button className="btn sm" onClick={() => step(1)} aria-label={t("下一张")}>›</button></span>}{value && <a className="btn sm" href={url} download={value.name}>{t("下载")}</a>}<button className="btn sm" autoFocus onClick={() => setShow(false)} aria-label={t("关闭附件预览")}>✕</button></header>
       {error && <p className="err">{error}</p>}
-      {value && <div className="media-content">{value.mime.startsWith('image/') ? <img src={dataUrl(value)} alt={value.name} /> : html ? <iframe title={value.name} sandbox="allow-scripts" srcDoc={html} /> : value.mime === 'application/pdf' ? <iframe title={value.name} src={url} /> : value.mime.startsWith('video/') ? <video controls src={url} /> : value.mime.startsWith('audio/') ? <audio controls src={url} /> : value.text != null ? <pre>{value.text}</pre> : <p>此文件可下载后用对应应用打开。</p>}</div>}
-      {value?.mime === 'text/html' && <footer>HTML 在隔离预览中运行；外部网络不会加载；同目录图片可预览。复杂外部依赖请在原项目中查看。</footer>}
+      {value && <div className="media-content">{value.mime.startsWith('image/') ? <img src={dataUrl(value)} alt={value.name} /> : html ? <iframe title={value.name} sandbox="allow-scripts" srcDoc={html} /> : value.mime === 'application/pdf' ? <iframe title={value.name} src={url} /> : value.mime.startsWith('video/') ? <video controls src={url} /> : value.mime.startsWith('audio/') ? <audio controls src={url} /> : value.text != null ? <pre>{value.text}</pre> : <p>{t('此文件可下载后用对应应用打开。')}</p>}</div>}
+      {value?.mime === 'text/html' && <footer>{t('HTML 在隔离预览中运行；外部网络不会加载；同目录图片可预览。复杂外部依赖请在原项目中查看。')}</footer>}
     </div></div>}</MediaContext.Provider>;
 }
 
 // A picture inside a conversation turn: thumbnail now, the full viewer on click.
 export function InlineImage({ id, group }: { id: string; group?: string[] }) {
+  const tx = useT();
   const media = useMedia();
   const t = media?.thumb(id);
   const [src, setSrc] = useState('');
@@ -80,14 +83,15 @@ export function InlineImage({ id, group }: { id: string; group?: string[] }) {
   // Only when the batch has no thumbnail for this id (a very new picture) fall back to one read.
   useEffect(() => { if (t !== '' || !media) return; let alive = true; media.read(id).then(v => { if (alive) setSrc(dataUrl(v)); }).catch(() => { if (alive) setFailed(true); }); return () => { alive = false; }; }, [id, media, t]);
   const shown = t || src;
-  if (failed) return <span className="inline-image broken muted small">图片无法读取</span>;
-  return <button className={`inline-image${shown ? '' : ' loading'}`} onClick={() => media?.open(id, group)} title="点开看大图（左右键切换）">{shown ? <img src={shown} alt="会话图片" loading="lazy" /> : <span className="ph" aria-label="图片载入中" />}</button>;
+  if (failed) return <span className="inline-image broken muted small">{tx('图片无法读取')}</span>;
+  return <button className={`inline-image${shown ? '' : ' loading'}`} onClick={() => media?.open(id, group)} title={tx("点开看大图（左右键切换）")}>{shown ? <img src={shown} alt={tx("会话图片")} loading="lazy" /> : <span className="ph" aria-label={tx("图片载入中")} />}</button>;
 }
 
 // Several pictures in one turn: a tidy grid of same-size tiles instead of a pile of
 // differently sized images. Past `max` tiles the last one says how many more; the
 // lightbox walks through all of them.
 export function ImageGrid({ ids, max = 8 }: { ids: string[]; max?: number }) {
+  const t = useT();
   const media = useMedia();
   const [all, setAll] = useState(false);
   const shown = all ? ids : ids.slice(0, max);
@@ -95,17 +99,18 @@ export function ImageGrid({ ids, max = 8 }: { ids: string[]; max?: number }) {
   if (ids.length === 0) return null;
   return <div className={`img-grid n${Math.min(shown.length, 4)}`}>
     {shown.map(id => <InlineImage key={id} id={id} group={ids} />)}
-    {rest > 0 && <button className="inline-image more" onClick={() => setAll(true)} title="显示全部"><span>+{rest}</span></button>}
-    {ids.length > 1 && <button className="img-grid-open link sm" onClick={() => media?.open(ids[0], ids)}>{ids.length} 张 · 逐张看</button>}
+    {rest > 0 && <button className="inline-image more" onClick={() => setAll(true)} title={t("显示全部")}><span>+{rest}</span></button>}
+    {ids.length > 1 && <button className="img-grid-open link sm" onClick={() => media?.open(ids[0], ids)}>{t("{n} 张 · 逐张看", { n: ids.length })}</button>}
   </div>;
 }
 
 export function AttachmentList({ items }: { items: Attachment[] }) {
+  const t = useT();
   const media = useMedia();
   // Files that are gone (cleaned temp screenshots, mostly) collapse into one line instead of one dead card each.
   const gone = items.filter(a => !a.exists);
   const here = items.filter(a => a.exists);
-  return <div className="attachment-list">{items.length === 0 ? <p className="muted">没有找到图片或链接的本地文件。</p> : <>{here.map(a => a.mime.startsWith('image/') ? <Thumb key={a.id} a={a} onOpen={() => media?.open(a.id, here.filter(x => x.mime.startsWith('image/')).map(x => x.id))} /> : <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">{a.mime === 'text/html' ? '‹/›' : '▤'}</span><span><b>{a.name}</b><small>{a.mime} · 点击预览</small></span><span>›</span></button>)}{gone.length > 0 && <details className="attachment-gone"><summary className="muted small">{gone.length} 个文件的原文件已不可用（临时截图被清理了）</summary>{gone.map(a => <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">▤</span><span><b>{a.name}</b><small>{a.mime} · 点开看原因</small></span><span>›</span></button>)}</details>}</>}</div>;
+  return <div className="attachment-list">{items.length === 0 ? <p className="muted">{t('没有找到图片或链接的本地文件。')}</p> : <>{here.map(a => a.mime.startsWith('image/') ? <Thumb key={a.id} a={a} onOpen={() => media?.open(a.id, here.filter(x => x.mime.startsWith('image/')).map(x => x.id))} /> : <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">{a.mime === 'text/html' ? '‹/›' : '▤'}</span><span><b>{a.name}</b><small>{t('{mime} · 点击预览', { mime: a.mime })}</small></span><span>›</span></button>)}{gone.length > 0 && <details className="attachment-gone"><summary className="muted small">{t('{n} 个文件的原文件已不可用（临时截图被清理了）', { n: gone.length })}</summary>{gone.map(a => <button className="attachment-card" key={a.id} onClick={() => media?.open(a.id)}><span className="attachment-icon">▤</span><span><b>{a.name}</b><small>{t('{mime} · 点开看原因', { mime: a.mime })}</small></span><span>›</span></button>)}</details>}</>}</div>;
 }
 
 function Thumb({ a, onOpen }: { a: Attachment; onOpen: () => void }) {

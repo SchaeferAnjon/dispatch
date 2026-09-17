@@ -36,6 +36,7 @@ import { GraphView } from "./components/Graph";
 import { OverviewView, Tour } from "./components/Guide";
 import { MobileNav } from "./components/MobileNav";
 import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
+import { intlLocale, useLocale, useT } from "./i18n";
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View, MoveJob } from "./types";
 
 type Theme = "light" | "dark" | "";
@@ -67,6 +68,8 @@ function parseHash(h: string): Place | null {
 const EMPTY_FILTERS: Filters = { project: null, mine: false, urgent: false, agent: null, blocked: false, review: false };
 
 export default function App() {
+  const t = useT();
+  const locale = useLocale();
   const [newSession, setNewSession] = useState(false);
   const [newSessionContext, setNewSessionContext] = useState<Activity>();
   const [newSessionProject,setNewSessionProject] = useState<string|null>(null);
@@ -84,7 +87,7 @@ export default function App() {
       await api.sessionSeen(a.host ?? 'local', a.key, reply);
       acknowledged.current.set(activityKey(a), reply);
       setActivity(old => ({ ...old, sessions: old.sessions.map(x => activityKey(x) === activityKey(a) && x.reply_id === reply ? { ...x, unread: false } : x) }));
-    } catch { setToast({text: "标记已读失败，请重试", err: true}); }
+    } catch { setToast({text: t("标记已读失败，请重试"), err: true}); }
   }, [api]);
   const markUnread = useCallback(async (a: Activity) => {
     if (!api) return;
@@ -92,7 +95,7 @@ export default function App() {
       await api.sessionSeen(a.host ?? 'local', a.key, "unread");
       acknowledged.current.delete(activityKey(a));
       setActivity(old => ({ ...old, sessions: old.sessions.map(x => activityKey(x) === activityKey(a) && x.reply_id ? { ...x, unread: true } : x) }));
-    } catch { setToast({text: "标为未读失败，请重试", err: true}); }
+    } catch { setToast({text: t("标为未读失败，请重试"), err: true}); }
   }, [api]);
   useEffect(() => {
     if (!api) return;
@@ -113,8 +116,8 @@ export default function App() {
   // New releases: checked once a day after start-up; the title bar shows a chip when one exists.
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const checkUpdate = useCallback(async () => { if (!api) return; try { const r = JSON.parse((await api.on("local", ["update", "check", "--json"])).replace(/^[^{]*/, "")) as UpdateInfo; setUpdate(r); } catch (e) { setUpdate({ current: "?", latest: "", url: "", error: String(e) }); } }, [api]);
-  useEffect(() => { if (!api || !isTauri) return; const t = window.setTimeout(() => void checkUpdate(), 8_000); const d = window.setInterval(() => void checkUpdate(), 24 * 3600_000); return () => { window.clearTimeout(t); window.clearInterval(d); }; }, [api, checkUpdate]);
-  const applyUpdate = async () => { if (!api) return; try { say("正在下载新版本…"); const r = JSON.parse((await api.on("local", ["update", "apply", "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(`已更新到 v${r.updated_to}，正在重启`); } catch (e) { say(String(e), true); } };
+  useEffect(() => { if (!api || !isTauri) return; const tm = window.setTimeout(() => void checkUpdate(), 8_000); const d = window.setInterval(() => void checkUpdate(), 24 * 3600_000); return () => { window.clearTimeout(tm); window.clearInterval(d); }; }, [api, checkUpdate]);
+  const applyUpdate = async () => { if (!api) return; try { say(t("正在下载新版本…")); const r = JSON.parse((await api.on("local", ["update", "apply", "--json"])).replace(/^[^{]*/, "")); if (r.error) say(String(r.error), true); else say(t("已更新到 v{v}，正在重启", { v: r.updated_to })); } catch (e) { say(String(e), true); } };
   const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [presence, setPresence] = useState<Presence>({ sessions: [], apps: [] });
   const [err, setErr] = useState<string | null>(null);
@@ -138,10 +141,10 @@ export default function App() {
       } catch { /* offline; try again later */ }
     };
     void tick();
-    const t = window.setInterval(tick, 60_000);
+    const tm = window.setInterval(tick, 60_000);
     const vis = () => { if (document.visibilityState === "visible") void tick(); };
     document.addEventListener("visibilitychange", vis);
-    return () => { window.clearInterval(t); document.removeEventListener("visibilitychange", vis); };
+    return () => { window.clearInterval(tm); document.removeEventListener("visibilitychange", vis); };
   }, []);
   const initialPlace = useRef<Place | null>(parseHash(window.location.hash));
   const [view, changeView] = useState<View>(initialPlace.current?.view ?? "home");
@@ -204,12 +207,12 @@ export default function App() {
     if (!prev || placeToHash(prev) === placeToHash(placeNow)) return;
     // The states of a restored place settle over a couple of renders; none of those is a new step.
     if (Date.now() - restoredAt.current < 400) return;
-    setTrail((t) => [...t.slice(-29), prev]);
+    setTrail((tr) => [...tr.slice(-29), prev]);
   }, [placeNow]);
   const goBackPlace = () => {
     const p = trail[trail.length - 1]; if (!p) return;
     restoredAt.current = Date.now();
-    setTrail((t) => t.slice(0, -1)); setBackStack([]);
+    setTrail((tr) => tr.slice(0, -1)); setBackStack([]);
     changeView(p.view); setSelected(p.selected); setProjectSelection(p.project);
     if (p.view === "sessions") { setSessionFocus(p.session); setSessionShown(p.session); }
     if (p.view === "discuss") { setDiscussFocus(p.discussion ?? null); setDiscussShown(p.discussion ?? null); }
@@ -232,9 +235,9 @@ export default function App() {
     if (!api) return;
     const handler = (e: MouseEvent) => {
       if (!e.metaKey || e.button !== 0) return;
-      const t = e.target as HTMLElement | null;
-      if (!t || typeof t.closest !== "function" || t.closest("input,textarea,select,a[href]")) return;
-      const el = t.closest<HTMLElement>("[data-project],[data-session],[data-task]");
+      const el0 = e.target as HTMLElement | null;
+      if (!el0 || typeof el0.closest !== "function" || el0.closest("input,textarea,select,a[href]")) return;
+      const el = el0.closest<HTMLElement>("[data-project],[data-session],[data-task]");
       if (!el) return;
       let hash = "";
       if (el.dataset.project !== undefined && el.dataset.project) hash = `#/projects/${encodeURIComponent(el.dataset.project)}`;
@@ -257,7 +260,7 @@ export default function App() {
     const proj = ref?.project_override || ref?.project;
     if (proj && proj !== UNGROUPED_PROJECT) openProject(proj); else if (view === "projects" && projectSelection) setProjectSelection(null); else changeView("home");
   };
-  const backLabel = (p: Place) => p.view === "sessions" && p.session ? "会话" : p.view === "projects" && p.project ? `项目 ${p.project}` : VIEW_LABEL[p.view];
+  const backLabel = (p: Place) => p.view === "sessions" && p.session ? t("会话") : p.view === "projects" && p.project ? t("项目 {name}", { name: p.project }) : t(VIEW_LABEL[p.view]);
   // The tour never opens on its own; the design should carry itself. `?` still has it.
   const [tour, setTour] = useState(false);
   const closeTour = () => setTour(false);
@@ -331,8 +334,8 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     // Backstop for the file watcher; cheap now that bd runs against the shared server.
-    const t = window.setInterval(() => reload(), 10_000);
-    return () => window.clearInterval(t);
+    const tm = window.setInterval(() => reload(), 10_000);
+    return () => window.clearInterval(tm);
   }, [api, reload]);
 
   // Presence is cheap (a ps call + a few JSON files), so poll it often.
@@ -341,8 +344,8 @@ export default function App() {
     let alive = true;
     const tick = async () => { try { const p = await api.presence(); if (alive) { setPresence(p); setPresenceLoaded(true); } } catch { /* keep last */ } };
     tick();
-    const t = window.setInterval(tick, 5_000);
-    return () => { alive = false; window.clearInterval(t); };
+    const tm = window.setInterval(tick, 5_000);
+    return () => { alive = false; window.clearInterval(tm); };
   }, [api]);
 
   useEffect(() => {
@@ -388,17 +391,17 @@ export default function App() {
   const pollMoves = useCallback(async () => {
     if (!api) return;
     try {
-      const t = await api.on(moveHost.current, ["project-moves", "--json"]);
-      const jobs = JSON.parse(t.slice(Math.max(0, t.indexOf("[")))) as MoveJob[];
+      const out = await api.on(moveHost.current, ["project-moves", "--json"]);
+      const jobs = JSON.parse(out.slice(Math.max(0, out.indexOf("[")))) as MoveJob[];
       setMoveJobs(jobs);
       for (const j of jobs) {
         if (j.state === "running" || announced.current.has(j.id) || Date.now() / 1000 - j.updated > 600) continue;
         announced.current.add(j.id);
-        if (j.state === "failed") { say(`迁移 ${j.project} → ${j.to} 失败：${j.error ?? ""}`, true); continue; }
+        if (j.state === "failed") { say(t("迁移 {project} → {host} 失败：{error}", { project: j.project, host: j.to, error: j.error ?? "" }), true); continue; }
         const x = j.result;
-        say([`已把 ${j.project} 交给 ${j.to}`, x?.git_checked ? (x.git_ok ? "Git 两边一致" : `Git 没对上，去 ${j.to} 看 git status`) : "",
-          x?.sessions ? `${x.sessions - x.sessions_failed} 个会话已在那边接着跑` : "", x?.sessions_failed ? `${x.sessions_failed} 个会话没迁过去` : "",
-          x?.history ? `${x.history} 段历史会话已搬过去` : "", x?.history_failed ? `${x.history_failed} 段历史没搬成` : "", x?.owner_error ? `项目归属更新失败：${x.owner_error}` : ""].filter(Boolean).join("；"),
+        say([t("已把 {project} 交给 {host}", { project: j.project, host: j.to }), x?.git_checked ? (x.git_ok ? t("Git 两边一致") : t("Git 没对上，去 {host} 看 git status", { host: j.to })) : "",
+          x?.sessions ? t("{n} 个会话已在那边接着跑", { n: x.sessions - x.sessions_failed }) : "", x?.sessions_failed ? t("{n} 个会话没迁过去", { n: x.sessions_failed }) : "",
+          x?.history ? t("{n} 段历史会话已搬过去", { n: x.history }) : "", x?.history_failed ? t("{n} 段历史没搬成", { n: x.history_failed }) : "", x?.owner_error ? t("项目归属更新失败：{error}", { error: x.owner_error }) : ""].filter(Boolean).join(t("；")),
           !!x?.owner_error || !!x?.sessions_failed || !!(x?.git_checked && !x.git_ok));
         api.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
         void reload();
@@ -455,7 +458,7 @@ export default function App() {
         if (!alive) return;
         setAlertCount(xs.length);
         const unseen = xs.filter((x) => !notifiedAlerts.current.has(x.id));
-        if (unseen.length && notifiedAlerts.current.size > 0) void api.notify("洞察", unseen.length === 1 ? unseen[0].text : `${unseen.length} 条新的会话洞察，统计页可看`).catch(() => {});
+        if (unseen.length && notifiedAlerts.current.size > 0) void api.notify(t("洞察"), unseen.length === 1 ? unseen[0].text : t("{n} 条新的会话洞察，统计页可看", { n: unseen.length })).catch(() => {});
         xs.forEach((x) => notifiedAlerts.current.add(x.id));
         if (notifiedAlerts.current.size === 0) notifiedAlerts.current.add("primed");
       } catch { /* optional */ }
@@ -465,12 +468,12 @@ export default function App() {
     const profileDue = () => api.profileDue().catch(() => {});
     const rulesSyncDue = () => api.rulesSyncDue().catch(() => {});
     const first = window.setTimeout(() => { void summary(); void alerts(); void due(); void profileDue(); void rulesSyncDue(); }, 4_000);
-    const t = window.setInterval(summary, 30 * 60_000);
+    const tm = window.setInterval(summary, 30 * 60_000);
     const t2 = window.setInterval(() => void alerts(), 10 * 60_000);
     const t3 = window.setInterval(() => void due(), 60 * 60_000);
     const t4 = window.setInterval(() => void profileDue(), 60 * 60_000);
     const t5 = window.setInterval(() => void rulesSyncDue(), 60 * 60_000);
-    return () => { alive = false; window.clearTimeout(first); window.clearInterval(t); window.clearInterval(t2); window.clearInterval(t3); window.clearInterval(t4); window.clearInterval(t5); };
+    return () => { alive = false; window.clearTimeout(first); window.clearInterval(tm); window.clearInterval(t2); window.clearInterval(t3); window.clearInterval(t4); window.clearInterval(t5); };
   }, [api]);
 
   // The Macs on the tailnet (this one + hosts.json), for the 机器 strip on the Agents view.
@@ -480,8 +483,8 @@ export default function App() {
     let alive = true;
     const tick = async () => { try { const h = await api.hosts(); if (alive) setHosts(h); } catch { /* keep last */ } };
     tick();
-    const t = window.setInterval(tick, 60_000);
-    return () => { alive = false; window.clearInterval(t); };
+    const tm = window.setInterval(tick, 60_000);
+    return () => { alive = false; window.clearInterval(tm); };
   }, [api]);
   // Settings 页「机器」：rename pushes to every known peer so their hosts.json agrees;
   // delete just drops the local entry (host_rows()/remote_dispatch() re-read the file each
@@ -491,7 +494,7 @@ export default function App() {
     try {
       const r = JSON.parse((await api.on(h.local ? "local" : h.id, ["init", "rename-self", name, "--json"])).replace(/^[^{]*/, ""));
       if (r.error) { say(String(r.error), true); return; }
-      say(`已改名为 ${r.name ?? name}`);
+      say(t("已改名为 {name}", { name: r.name ?? name }));
       await refreshHosts();
     } catch (e) { say(String(e), true); }
   };
@@ -500,7 +503,7 @@ export default function App() {
     try {
       const r = JSON.parse((await api.on("local", ["init", "remove-host", h.id, "--json"])).replace(/^[^{]*/, ""));
       if (r.error) { say(String(r.error), true); return; }
-      say(`已删除 ${h.name}，不再尝试连接它`);
+      say(t("已删除 {name}，不再尝试连接它", { name: h.name }));
       await refreshHosts();
     } catch (e) { say(String(e), true); }
   };
@@ -509,7 +512,7 @@ export default function App() {
     try {
       await api.on("local", ["hosts", "--refresh", h.id, "--json"]);
       await refreshHosts();
-      say(`已重新检测 ${h.name}`);
+      say(t("已重新检测 {name}", { name: h.name }));
     } catch (e) { say(String(e), true); }
   };
 
@@ -520,8 +523,8 @@ export default function App() {
     let alive = true;
     const tick = async () => { try { const l = await api.sessionList(); if (alive) { const m = new Map<string, SessionRef>(); for (const r of [...dropMovedOriginals(l)].sort((a, b) => Number(!!a.remote) - Number(!!b.remote))) m.set(m.has(r.session_id) ? `${r.session_id}@${r.host}` : r.session_id, r); setRefs(m); } } catch { /* index not ready */ } };
     tick();
-    const t = window.setInterval(tick, 60_000);
-    return () => { alive = false; window.clearInterval(t); };
+    const tm = window.setInterval(tick, 60_000);
+    return () => { alive = false; window.clearInterval(tm); };
   }, [api]);
   const hostId = useMemo(() => { if (!hostFilter) return ""; const h = hosts.find((x) => x.name === hostFilter); return h ? (h.local ? "local" : h.id) : ""; }, [hostFilter, hosts]);
   const localName = hosts.find((h) => h.local)?.name ?? "";
@@ -533,8 +536,8 @@ export default function App() {
     let running = false;
     const pass = async () => { if (running) return; running = true; try { await api.on("local", ["session-summary", "auto", "--limit", "2", "--json"]); } catch { /* next pass */ } finally { running = false; } };
     const first = window.setTimeout(pass, 20_000);
-    const t = window.setInterval(pass, 3 * 60_000);
-    return () => { window.clearTimeout(first); window.clearInterval(t); };
+    const tm = window.setInterval(pass, 3 * 60_000);
+    return () => { window.clearTimeout(first); window.clearInterval(tm); };
   }, [api, settings.summary_auto]);
   // Auto-archive finished tasks: once at startup and once a day, the CLI labels anything
   // closed longer than the setting with dispatch:archived. 0 means the setting is off.
@@ -545,17 +548,17 @@ export default function App() {
       if (running) return; running = true;
       try {
         const r = JSON.parse((await api.on("local", ["task-archive", "--json"])).replace(/^[^{]*/, "")) as { archived?: string[] };
-        if (r.archived?.length) { say(`已自动归档 ${r.archived.length} 项完成超过 ${settings.task_archive_days} 天的任务`); await reload(); }
+        if (r.archived?.length) { say(t("已自动归档 {n} 项完成超过 {days} 天的任务", { n: r.archived.length, days: settings.task_archive_days })); await reload(); }
       } catch { /* next pass */ } finally { running = false; }
     };
     const first = window.setTimeout(pass, 12_000);
-    const t = window.setInterval(pass, 24 * 60 * 60_000);
-    return () => { window.clearTimeout(first); window.clearInterval(t); };
+    const tm = window.setInterval(pass, 24 * 60 * 60_000);
+    return () => { window.clearTimeout(first); window.clearInterval(tm); };
   }, [api, settings.task_archive_days, reload, say]);
   const archiveDays = settings.session_archive_days;
-  const saveSettings = async (next: DispatchSettings) => { if (!api) return; try { await api.remember(SETTINGS_KEY, serializeSettings(next)); setSettings(next); say("设置已保存"); } catch (e) { say(String(e), true); } };
+  const saveSettings = async (next: DispatchSettings) => { if (!api) return; try { await api.remember(SETTINGS_KEY, serializeSettings(next)); setSettings(next); say(t("设置已保存")); } catch (e) { say(String(e), true); } };
   // A real push through the CLI, so the button tests the same path the events use.
-  const testNotify = async () => { if (!api) return; try { const r = JSON.parse((await api.on("local", ["notify", "Dispatch 测试通知", "看到这条就说明推送通了", "--json"])).replace(/^[^{]*/, "")) as { ok?: boolean; channel?: string; error?: string; fallback?: string }; if (r.channel === "macos") say("已发本机通知。在「环境」页配 NTFY_URL 或 BARK_KEY 就能推到手机"); else if (r.ok) say(`已推到手机（${r.channel}）`); else say(`${r.error ?? "没发出去"}${r.fallback ? "，已退回本机通知" : ""}`, true); } catch (e) { say(String(e), true); } };
+  const testNotify = async () => { if (!api) return; try { const r = JSON.parse((await api.on("local", ["notify", t("Dispatch 测试通知"), t("看到这条就说明推送通了"), "--json"])).replace(/^[^{]*/, "")) as { ok?: boolean; channel?: string; error?: string; fallback?: string }; if (r.channel === "macos") say(t("已发本机通知。在「环境」页配 NTFY_URL 或 BARK_KEY 就能推到手机")); else if (r.ok) say(t("已推到手机（{channel}）", { channel: r.channel ?? "" })); else { const m = r.error ?? t("没发出去"); say(r.fallback ? t("{msg}，已退回本机通知", { msg: m }) : m, true); } } catch (e) { say(String(e), true); } };
   const known = useMemo(() => knownProjects(issues, activity.sessions), [issues, activity]);
   const normalise = useCallback(<T extends { cwd: string; project: string; project_override?: string; scheduled?: boolean; path?: string; entrypoint?: string; title?: string }>(x: T): T => ({ ...x, project: resolveProject(x, known, settings.workspace_roots), scheduled: x.scheduled ?? (settings.sdk_sessions_scheduled && isScriptSession(x) ? true : undefined) }), [known, settings.sdk_sessions_scheduled, settings.workspace_roots]);
   // This Mac's rows arrive without a machine name (only peers' are tagged); name them too, so every
@@ -580,7 +583,7 @@ export default function App() {
   const setProjectFlag = async (name: string, change: { starred?: boolean; archived?: boolean; alias?: string }) => {
     if (!api) return;
     const next = withProjectFlag(projectFlags, name, change);
-    try { await api.remember(PROJECT_FLAGS_KEY, serializeProjectFlags(next)); setProjectFlags(next); say(change.alias !== undefined ? (change.alias.trim() && change.alias.trim() !== name ? `${name} 现在显示为「${change.alias.trim()}」` : `${name} 恢复原名`) : change.starred === true ? `已收藏 ${name}` : change.starred === false ? `已取消收藏 ${name}` : change.archived === true ? `已归档 ${name}，工作台不再显示` : `已取消归档 ${name}`); }
+    try { await api.remember(PROJECT_FLAGS_KEY, serializeProjectFlags(next)); setProjectFlags(next); say(change.alias !== undefined ? (change.alias.trim() && change.alias.trim() !== name ? t("{name} 现在显示为「{alias}」", { name, alias: change.alias.trim() }) : t("{name} 恢复原名", { name })) : change.starred === true ? t("已收藏 {name}", { name }) : change.starred === false ? t("已取消收藏 {name}", { name }) : change.archived === true ? t("已归档 {name}，工作台不再显示", { name }) : t("已取消归档 {name}", { name })); }
     catch (e) { say(String(e), true); }
   };
   // One name per Mac: labels and saved filters written under an old name (rename, system name) map to the current one.
@@ -590,11 +593,11 @@ export default function App() {
   const issuesF = useMemo(() => hostIssues.filter(i=>!isTrashed(i)&&!isArchivedTask(i)&&!isOutcome(i)), [hostIssues]);
   // Closed more than 30 days ago and not yet archived: what the 归档 button would put away.
   const archivable = useMemo(() => hostIssues.filter((i) => i.status === "closed" && !isTrashed(i) && !isArchivedTask(i) && !isOutcome(i) && Date.now() - Date.parse(i.closed_at ?? i.updated_at) > 30 * 86_400_000), [hostIssues]);
-  const archiveOld = async () => { if (!api || !archivable.length) return; say(`正在归档 ${archivable.length} 项…`); try { for (const i of archivable) await api.labels(i.id, ["dispatch:archived"], []); say(`已归档 ${archivable.length} 项完成超过 30 天的任务，「已归档」里能找到`); await reload(); } catch (e) { say(String(e), true); } };
+  const archiveOld = async () => { if (!api || !archivable.length) return; say(t("正在归档 {n} 项…", { n: archivable.length })); try { for (const i of archivable) await api.labels(i.id, ["dispatch:archived"], []); say(t("已归档 {n} 项完成超过 30 天的任务，「已归档」里能找到", { n: archivable.length })); await reload(); } catch (e) { say(String(e), true); } };
   const outcomesF = useMemo(() => issues.filter(i=>!isTrashed(i)&&isOutcome(i)&&(!hostFilter || linkedSessions(i).some(id=>!!refs.get(id)&&(refs.get(id)?.host_name||localName)===hostFilter) || sourceTasks(i).some(id=>hostIssues.some(t=>t.id===id)))), [issues, hostIssues, hostFilter, refs, localName]);
   const liveSessions = useMemo(() => presenceF.sessions.filter((s) => !s.scheduled), [presenceF]);
   const scheduledSessions = useMemo(() => presenceF.sessions.filter((s) => s.scheduled), [presenceF]);
-  const agents = useMemo(() => agentsFrom(issuesF, me, liveSessions), [issuesF, me, liveSessions]);
+  const agents = useMemo(() => agentsFrom(issuesF, me, liveSessions), [issuesF, me, liveSessions, locale]);
   const runningSessions = liveSessions.filter((s) => s.alive && s.state === "working").length;
   // The same project list the workbench and project hub show: resolved from conversations,
   // task labels and outcomes together, archived ones set aside.
@@ -683,7 +686,7 @@ export default function App() {
       for (const x of notificationInbox.waiting) {
         if (notified.current.has(key(x))) continue;
         notified.current.add(key(x));
-        api.notify(`${x.agent === 'codex' ? 'Codex' : x.agent === 'zcode' ? 'ZCode' : x.agent === 'opencode' ? 'OpenCode' : x.agent === 'hermes' ? 'Hermes' : 'Claude Code'} 等待确认`, `${x.herdr?.title || x.title || x.project || x.cwd} · ${x.host_name || '本机'} · 请打开会话查看确认请求`).catch(() => {});
+        api.notify(t("{agent} 等待确认", { agent: x.agent === 'codex' ? 'Codex' : x.agent === 'zcode' ? 'ZCode' : x.agent === 'opencode' ? 'OpenCode' : x.agent === 'hermes' ? 'Hermes' : 'Claude Code' }), t("{title} · {host} · 请打开会话查看确认请求", { title: x.herdr?.title || x.title || x.project || x.cwd, host: x.host_name || t('本机') })).catch(() => {});
       }
     }, 8000);
     return () => window.clearTimeout(timer);
@@ -697,14 +700,14 @@ export default function App() {
     // Use the same shared readings as the overview and header.
     const local = selectQuotas(quota).filter(q => q.windows.length);
     const names: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", pi: "pi", zcode: "ZCode", opencode: "OpenCode", hermes: "Hermes" };
-    const until = (epoch: number | null) => { if (!epoch) return ""; const m = Math.round((epoch * 1000 - Date.now()) / 60_000); return m <= 0 ? "" : m < 60 ? `${m}m 后重置` : m < 48 * 60 ? `${Math.floor(m / 60)}h 后重置` : `${Math.round(m / 1440)}d 后重置`; };
+    const until = (epoch: number | null) => { if (!epoch) return ""; const m = Math.round((epoch * 1000 - Date.now()) / 60_000); return m <= 0 ? "" : m < 60 ? t("{m}m 后重置", { m }) : m < 48 * 60 ? t("{h}h 后重置", { h: Math.floor(m / 60) }) : t("{d}d 后重置", { d: Math.round(m / 1440) }); };
     // The title stays short; each agent's quota goes into the click menu, one line per window.
     const quotaLines = local.flatMap((q) => q.windows.map((w) => `${names[q.agent] ?? q.agent} · ${w.label} ${w.used_percent === null ? "—" : Math.round(w.used_percent) + "%"}${until(w.resets_at) ? ` · ${until(w.resets_at)}` : ""}`));
     const title = `${unread}\u2009●●\u2009${working}`;
     const tooltip = [
-      `Dispatch · 蓝点 ${unread} 未读回复 · 黄点 ${working} 正在运行`,
-      `${notificationInbox.waiting.length} 等你 · ${notificationInbox.review.length} 待 Agent 复核 · ${issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length} 项未完成`,
-      ...(quotaLines.length ? ['', '额度（已使用）', ...quotaLines] : []),
+      t("Dispatch · 蓝点 {unread} 未读回复 · 黄点 {working} 正在运行", { unread, working }),
+      t("{waiting} 等你 · {review} 待 Agent 复核 · {open} 项未完成", { waiting: notificationInbox.waiting.length, review: notificationInbox.review.length, open: issues.filter((i) => i.status !== "closed" && !isOutcome(i) && !isTrashed(i)).length }),
+      ...(quotaLines.length ? ['', t('额度（已使用）'), ...quotaLines] : []),
     ].join('\n');
     api.tray(title, tooltip, quotaLines).catch(() => {});
   }, [api, observedPresence, notificationInbox, issues, activityRows, quota, inArchivedProject]);
@@ -718,29 +721,29 @@ export default function App() {
     const i = issues.find((x) => x.id === id);
     if (!i || columnOf(i) === to) return;
     const closed = i.status === "closed";
-    if (to === "todo") return run("移到待办", async () => { if (closed) await api.reopen(id); else await api.setStatus(id, "open"); });
+    if (to === "todo") return run(t("移到待办"), async () => { if (closed) await api.reopen(id); else await api.setStatus(id, "open"); });
     // Moving to 进行中 only changes status; the person viewing never becomes the assignee.
-    if (to === "prog") return run("移到进行中", async () => { if (closed) await api.reopen(id); await api.setStatus(id, "in_progress"); });
-    if (to === "done") return run("标记完成", async () => { if (!closed) await api.close(id, "在 Dispatch 里拖到已完成"); });
+    if (to === "prog") return run(t("移到进行中"), async () => { if (closed) await api.reopen(id); await api.setStatus(id, "in_progress"); });
+    if (to === "done") return run(t("标记完成"), async () => { if (!closed) await api.close(id, "在 Dispatch 里拖到已完成"); });
   };
 
   const create = async (input: NewIssue) => {
     if (!api) return;
-    try { const i = await api.create(input); setCreating(false); say(`已创建 ${i?.id ?? ""}`); await reload(); if (i?.id) setSelected(i.id); } catch (e) { say(String(e), true); }
+    try { const i = await api.create(input); setCreating(false); say(t("已创建 {id}", { id: i?.id ?? "" })); await reload(); if (i?.id) setSelected(i.id); } catch (e) { say(String(e), true); }
   };
 
   const nextTheme = () => setTheme(theme === "" ? "dark" : theme === "dark" ? "light" : "");
 
   const focusSession = async (id: string) => {
     if (!api) return;
-    try { say((await api.focusSession(id)).trim() || "已切过去"); } catch (e) { say(String(e), true); }
+    try { say((await api.focusSession(id)).trim() || t("已切过去")); } catch (e) { say(String(e), true); }
   };
 
   // The most recent conversation folder of a project: where a delegated agent should start.
   const dirOfProject = useCallback((name: string) => { const p = projectGroups(projectRows, issuesF, outcomesF).find((g) => g.name === name); const a = p?.sessions.find((x) => x.cwd && !/^\/(?:Users|home)\/[^/]+\/?$/.test(x.cwd)); return a?.cwd ?? ""; }, [projectRows, issuesF, outcomesF]);
-  const startAgent = async (i: AgentStartInput) => { const r = await api!.agentStart(i); say(r ? `已在 ${r.host} 起了 ${r.kind}` : "起 Agent 失败"); return r; };
+  const startAgent = async (i: AgentStartInput) => { const r = await api!.agentStart(i); say(r ? t("已在 {host} 起了 {kind}", { host: r.host, kind: r.kind }) : t("起 Agent 失败")); return r; };
 
-  const phoneLink = isTauri && api ? async () => { try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say(/100\.\d+\.\d+\.\d+/.test(url) ? "手机访问链接已复制。手机先连上 Tailscale 再用浏览器打开；链接自带登录令牌，不用输密码，可添加到主屏幕" : "手机访问链接已复制。手机和电脑要在同一个网络里；链接自带登录令牌，不用输密码"); } catch (e) { say(String(e), true); } } : undefined;
+  const phoneLink = isTauri && api ? async () => { try { const url = (await api.on("local", ["serve", "url"])).trim(); await api.copy(url); say(/100\.\d+\.\d+\.\d+/.test(url) ? t("手机访问链接已复制。手机先连上 Tailscale 再用浏览器打开；链接自带登录令牌，不用输密码，可添加到主屏幕") : t("手机访问链接已复制。手机和电脑要在同一个网络里；链接自带登录令牌，不用输密码")); } catch (e) { say(String(e), true); } } : undefined;
   // The settings page shows the same QR the terminal prints; the CLI owns the encoding, so
   // fetch it only when that page is open (this also creates serve.json on first use).
   const [phoneQr, setPhoneQr] = useState("");
@@ -759,7 +762,7 @@ export default function App() {
       const s = await api.on("local", ["serve", "host", id]);
       setPhoneQr("");
       setPhoneTick((n) => n + 1);
-      say(s.trim() + "。手机上重新打开一次新链接（或扫新二维码）");
+      say(t("{msg}。手机上重新打开一次新链接（或扫新二维码）", { msg: s.trim() }));
     } catch (e) { say(String(e), true); }
   } : undefined;
 
@@ -781,25 +784,25 @@ export default function App() {
   const viewMenuItems: ViewMenuItem[] = [
     // What this page can do, then what every page can do.
     ...(BOARD_VIEWS.includes(view) ? [
-      { label: view === "board" ? "切到表格" : "切到看板", onClick: () => setView(view === "board" ? "table" : "board") },
-      { label: "清除筛选", onClick: () => { setFilters(EMPTY_FILTERS); setQuery(""); }, disabled: !Object.values(filters).some(Boolean) && filters.project === null && !query },
-      { label: "回收站", onClick: () => setView("trash") },
-      { label: "已归档任务", onClick: () => setView("archive") },
-      ...(archivable.length ? [{ label: `归档 30 天前完成的（${archivable.length}）`, onClick: () => void archiveOld() }] : []),
+      { label: view === "board" ? t("切到表格") : t("切到看板"), onClick: () => setView(view === "board" ? "table" : "board") },
+      { label: t("清除筛选"), onClick: () => { setFilters(EMPTY_FILTERS); setQuery(""); }, disabled: !Object.values(filters).some(Boolean) && filters.project === null && !query },
+      { label: t("回收站"), onClick: () => setView("trash") },
+      { label: t("已归档任务"), onClick: () => setView("archive") },
+      ...(archivable.length ? [{ label: t("归档 30 天前完成的（{n}）", { n: archivable.length }), onClick: () => void archiveOld() }] : []),
     ] : []),
-    ...(view === "trash" || view === "archive" ? [{ label: "返回看板", onClick: () => setView("board") }] : []),
-    ...(view === "inbox" && inbox.unread.length > 0 ? [{ label: `全部标记已读（${inbox.unread.length}）`, onClick: async () => { for (const a of inbox.unread) if (a.reply_id) await markRead(a, a.reply_id); } }] : []),
-    ...(view === "settings" ? [{ label: "检查更新", onClick: () => void checkUpdate() }] : []),
-    { label: "新建会话", hint: "⌘N", onClick: () => setNewSession(true) },
-    { label: "新建任务", hint: "⌘T", onClick: () => setCreating(true) },
-    { label: "刷新", hint: "⌘R", onClick: () => void reload() },
-    { label: "搜索", hint: "⌘K", onClick: () => setSearch(true) },
-    ...(isTauri && api ? [{ label: "复制手机访问链接", onClick: () => void phoneLink?.() }] : []),
-    { label: theme === "dark" ? "切换为浅色主题" : theme === "light" ? "跟随系统主题" : "切换为深色主题", onClick: () => nextTheme() },
+    ...(view === "trash" || view === "archive" ? [{ label: t("返回看板"), onClick: () => setView("board") }] : []),
+    ...(view === "inbox" && inbox.unread.length > 0 ? [{ label: t("全部标记已读（{n}）", { n: inbox.unread.length }), onClick: async () => { for (const a of inbox.unread) if (a.reply_id) await markRead(a, a.reply_id); } }] : []),
+    ...(view === "settings" ? [{ label: t("检查更新"), onClick: () => void checkUpdate() }] : []),
+    { label: t("新建会话"), hint: "⌘N", onClick: () => setNewSession(true) },
+    { label: t("新建任务"), hint: "⌘T", onClick: () => setCreating(true) },
+    { label: t("刷新"), hint: "⌘R", onClick: () => void reload() },
+    { label: t("搜索"), hint: "⌘K", onClick: () => setSearch(true) },
+    ...(isTauri && api ? [{ label: t("复制手机访问链接"), onClick: () => void phoneLink?.() }] : []),
+    { label: theme === "dark" ? t("切换为浅色主题") : theme === "light" ? t("跟随系统主题") : t("切换为深色主题"), onClick: () => nextTheme() },
   ];
 
   // The noVNC page asks for a login: it is this Mac's account, which is the part new users miss.
-  const screenLink = async () => { const h = hosts.find((x) => x.local); if (!h?.novnc || !api) { say("还没配置屏幕访问，设置页有说明", true); return; } if (!isTauri && window.matchMedia("(max-width: 760px)").matches) { window.open(h.novnc, "_blank"); return; } try { await api.copy(h.novnc); say(`屏幕链接已复制。手机先连上 Tailscale 再打开；页面要登录时，输入这台 Mac 的用户名（${h.ssh?.includes("@") ? h.ssh.split("@")[0] : "登录这台电脑用的那个"}）和开机密码`); } catch (e) { say(String(e), true); } };
+  const screenLink = async () => { const h = hosts.find((x) => x.local); if (!h?.novnc || !api) { say(t("还没配置屏幕访问，设置页有说明"), true); return; } if (!isTauri && window.matchMedia("(max-width: 760px)").matches) { window.open(h.novnc, "_blank"); return; } try { await api.copy(h.novnc); say(t("屏幕链接已复制。手机先连上 Tailscale 再打开；页面要登录时，输入这台 Mac 的用户名（{user}）和开机密码", { user: h.ssh?.includes("@") ? h.ssh.split("@")[0] : t("登录这台电脑用的那个") })); } catch (e) { say(String(e), true); } };
 
   // 设置 → 屏幕访问 → 配置: the CLI walks the steps (noVNC + websockify + launchd + Serve HTTPS)
   // and reports the one manual step left (macOS Screen Sharing). Refresh hosts so the row flips at once.
@@ -807,8 +810,8 @@ export default function App() {
     try {
       const r = JSON.parse((await api.on("local", ["screen", "setup", "--json"])).replace(/^[^{]*/, "")) as ScreenSetupResult;
       if (r.error) say(r.error, true);
-      else if (r.state?.ready) say("屏幕访问已就绪，手机连上 Tailscale 就能看这台电脑");
-      else say(r.manual?.[0] ? `还差一步：${r.manual[0].title}` : "配置完成", !r.ok);
+      else if (r.state?.ready) say(t("屏幕访问已就绪，手机连上 Tailscale 就能看这台电脑"));
+      else say(r.manual?.[0] ? t("还差一步：{step}", { step: r.manual[0].title }) : t("配置完成"), !r.ok);
       try { setHosts(await api.hosts()); } catch { /* keep last */ }
       return r;
     } catch (e) { say(String(e), true); return { ok: false, error: String(e) }; }
@@ -837,13 +840,13 @@ export default function App() {
       const patch = { summary: r.summary };
       setActivity((old) => ({ ...old, sessions: old.sessions.map((x) => activityKey(x) === activityKey(a) ? { ...x, ...patch } : x) }));
       setRefs((old) => new Map([...old].map(([id, ref]) => [id, ref.session_id === a.session_id ? { ...ref, ...patch } : ref])));
-      say(r.cached ? "总结没变（会话没有新内容）" : `已总结（${r.provider}）`);
+      say(r.cached ? t("总结没变（会话没有新内容）") : t("已总结（{provider}）", { provider: r.provider ?? "" }));
     } catch (e) { say(String(e), true); }
   };
 
   const copyResume = async (agent: string, sessionId: string, cwd: string) => {
     if (!api) return;
-    try { const cmd = await api.resumeCmd(agent, sessionId, cwd); await api.copy(cmd); say("恢复命令已复制，去终端粘贴回车"); } catch (e) { say(String(e), true); }
+    try { const cmd = await api.resumeCmd(agent, sessionId, cwd); await api.copy(cmd); say(t("恢复命令已复制，去终端粘贴回车")); } catch (e) { say(String(e), true); }
   };
 
   // Until first-run setup is finished, the app is a blank shell around the guide: no board,
@@ -852,23 +855,23 @@ export default function App() {
     return (
       <div className="app setup-shell">
         <div className="titlebar" data-tauri-drag-region>
-          <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">调度台</span></div>
-          <div className="crumb" data-tauri-drag-region><b>首次设置</b></div>
-          <div className="tb-right"><button className="btn ghost" onClick={nextTheme} title={theme === "dark" ? "主题：深色 · 点一下切浅色" : theme === "light" ? "主题：浅色 · 点一下跟随系统" : "主题：跟随系统 · 点一下切深色"} aria-label="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button></div>
+          <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">{t("调度台")}</span></div>
+          <div className="crumb" data-tauri-drag-region><b>{t("首次设置")}</b></div>
+          <div className="tb-right"><button className="btn ghost" onClick={nextTheme} title={theme === "dark" ? t("主题：深色 · 点一下切浅色") : theme === "light" ? t("主题：浅色 · 点一下跟随系统") : t("主题：跟随系统 · 点一下切深色")} aria-label={t("切换主题")}>{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button></div>
         </div>
         <div className="body setup-body-wrap">
           <main className="main"><section className="view"><SetupView api={api} status={initStatus} onStatus={setInitStatus} onDone={async () => { try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); } catch { setInitStatus({ ...initStatus, done: true }); } void reload(); setView("home"); }} onError={(m) => say(m, true)} onNotify={say} /></section></main>
         </div>
-        {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}{toast.undo && <button className="link" onClick={() => { const u = toast.undo; setToast(null); u?.(); }}>撤销</button>}</div>}
+        {toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}{toast.undo && <button className="link" onClick={() => { const u = toast.undo; setToast(null); u?.(); }}>{t("撤销")}</button>}</div>}
       </div>
     );
   }
 
   return (
-    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{const patch=<T extends {title:string}>(r:T):T=>({...r,...c,...(c.title_override?{title:c.title_override}:{})});setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?patch(r):r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?patch(x):x)}));say(c.title_override!==undefined?(c.title_override?`已改名为「${c.title_override}」`:'已恢复自动标题'):c.scheduled===true?'已归入定时会话，默认隐藏':c.scheduled===false?'已恢复普通会话':c.starred===true?'已收藏：追踪中，不会自动归档':c.starred===false?'已取消收藏':c.archived===true?'已归档，会话页「已归档」可找回':c.archived===false?'已取消归档':'项目关联已保存');}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onUnread: markUnread, onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), onSummarize: summarizeSession, hosts, onMove: async (a, hostId, hostName) => {
+    <SessionActions api={api} notify={say}><ConversationActions api={api} projects={Array.from(new Set([...projects.map(p=>p.name),...activity.sessions.map(a=>a.project_override||a.project)])).filter(Boolean)} onSaved={(a,c)=>{const patch=<T extends {title:string}>(r:T):T=>({...r,...c,...(c.title_override?{title:c.title_override}:{})});setRefs(old=>new Map([...old].map(([id,r])=>[id,r.session_id===a.session_id?patch(r):r])));setActivity(old=>({...old,sessions:old.sessions.map(x=>activityKey(x)===activityKey(a)?patch(x):x)}));say(c.title_override!==undefined?(c.title_override?t('已改名为「{title}」',{title:c.title_override}):t('已恢复自动标题')):c.scheduled===true?t('已归入定时会话，默认隐藏'):c.scheduled===false?t('已恢复普通会话'):c.starred===true?t('已收藏：追踪中，不会自动归档'):c.starred===false?t('已取消收藏'):c.archived===true?t('已归档，会话页「已归档」可找回'):c.archived===false?t('已取消归档'):t('项目关联已保存'));}} archiveDays={archiveDays} actions={{ onOpen: openSession, onRead: (a) => markRead(a, a.reply_id!), onUnread: markUnread, onResume: (a) => void copyResume(a.agent, a.session_id, a.cwd), onSummarize: summarizeSession, hosts, onMove: async (a, hostId, hostName) => {
         const run = async (extra: string[]) => JSON.parse((await api!.on("local", ["move", a.session_id, "--to", hostId, "--json", ...extra])).replace(/^[^{]*/, ""));
         setMigrationCheck(null);
-        say(`正在预检：${hostName} 上的 Git 状态、要改哪些文件…`);
+        say(t("正在预检：{host} 上的 Git 状态、要改哪些文件…", { host: hostName }));
         try {
           // Preflight first: what the hand-over would change or refuse, before anything moves.
           const p = await run(["--dry-run"]);
@@ -877,47 +880,47 @@ export default function App() {
           if (conflicts.length) { setToast(null); setMigrationCheck({ project: p.project || conversationProject(a), host: "local", cwd: p.cwd || a.cwd, target: hostName, remoteCwd: p.remote_cwd || "", conflicts }); return; }
           const f = p.files;
           const others: { title: string; state: string }[] = p.others_here ?? [];
-          const lines = [`把会话和项目 ${p.project} 交给 ${hostName}：${p.remote_cwd}`,
-            f ? `文件：同步 ${f.send} 个${f.delete ? `、删除 ${f.delete} 个（这边已删）` : ""}${f.skipped?.length ? `；构建产物不搬：${f.skipped.join("、")}` : ""}` : "不同步文件",
-            p.git?.history ? "Git 历史用 git push 过去，那边的 stash 保留" : "",
-            p.already_there ? `${hostName} 上已经在跑这个会话，不会再开一份` : "",
-            others.length ? `⚠ 这边还有 ${others.length} 个会话在这个项目里（${others.map((o) => `${o.title || "未命名"}·${o.state}`).join("、")}），它们会继续改这边的文件` : "",
-            "这边的原会话会直接关掉（正在跑的也关），在那边接着跑；项目以后归那台，新建会话默认开在那边。"].filter(Boolean);
-          if (!await confirmAction(lines.join("\n"))) { say("已取消迁移"); return; }
-          say(`正在把项目交给 ${hostName}…`);
+          const lines = [t("把会话和项目 {project} 交给 {host}：{cwd}", { project: p.project, host: hostName, cwd: p.remote_cwd }),
+            f ? t("文件：同步 {n} 个", { n: f.send }) + (f.delete ? t("、删除 {n} 个（这边已删）", { n: f.delete }) : "") + (f.skipped?.length ? t("；构建产物不搬：{list}", { list: f.skipped.join(t("、")) }) : "") : t("不同步文件"),
+            p.git?.history ? t("Git 历史用 git push 过去，那边的 stash 保留") : "",
+            p.already_there ? t("{host} 上已经在跑这个会话，不会再开一份", { host: hostName }) : "",
+            others.length ? t("⚠ 这边还有 {n} 个会话在这个项目里（{list}），它们会继续改这边的文件", { n: others.length, list: others.map((o) => `${o.title || t("未命名")}·${o.state}`).join(t("、")) }) : "",
+            t("这边的原会话会直接关掉（正在跑的也关），在那边接着跑；项目以后归那台，新建会话默认开在那边。")].filter(Boolean);
+          if (!await confirmAction(lines.join("\n"))) { say(t("已取消迁移")); return; }
+          say(t("正在把项目交给 {host}…", { host: hostName }));
           const r = await run([]);
           if (r.error) { say(String(r.error), true); return; }
           const v = r.git?.verify;
-          const original: Record<string, string> = { stopped: "这边的原会话已停掉", working: "这边的原会话还在跑，跑完关掉它", self: "这边的原会话就是发起迁移的，说完这轮关掉", failed: "这边的原会话没停下，手动关掉", "not-running": "", kept: "" };
-          say([`已交给 ${hostName}：${r.remote_cwd}`, v?.checked ? (v.head_match && v.dirty_match ? "Git 两边一致" : `Git 没对上，去 ${hostName} 看 git status`) : "", original[r.original?.state] ?? "",
-            others.length ? `这边还有 ${others.length} 个会话在改这个项目` : "", r.owner?.error ? `项目归属更新失败：${r.owner.error}` : ""].filter(Boolean).join("；"), !!r.owner?.error || !!(v?.checked && !(v.head_match && v.dirty_match)));
+          const original: Record<string, string> = { stopped: t("这边的原会话已停掉"), working: t("这边的原会话还在跑，跑完关掉它"), self: t("这边的原会话就是发起迁移的，说完这轮关掉"), failed: t("这边的原会话没停下，手动关掉"), "not-running": "", kept: "" };
+          say([t("已交给 {host}：{cwd}", { host: hostName, cwd: r.remote_cwd }), v?.checked ? (v.head_match && v.dirty_match ? t("Git 两边一致") : t("Git 没对上，去 {host} 看 git status", { host: hostName })) : "", original[r.original?.state] ?? "",
+            others.length ? t("这边还有 {n} 个会话在改这个项目", { n: others.length }) : "", r.owner?.error ? t("项目归属更新失败：{error}", { error: r.owner.error }) : ""].filter(Boolean).join(t("；")), !!r.owner?.error || !!(v?.checked && !(v.head_match && v.dirty_match)));
           api!.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
         } catch (e) { say(String(e), true); }
       } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectHome(projectRows.filter((a) => conversationProject(a) === n))); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className={`app${solo ? " solo" : ""}${sideCollapsed ? " side-collapsed" : ""}`}>
       <div className="titlebar" data-tauri-drag-region>
-        <div className="lead" data-tauri-drag-region><button className="btn ghost sm side-toggle" onClick={toggleSide} title={sideCollapsed ? "展开左侧栏" : "收起左侧栏（窗口不到半屏时会自动收起）"} aria-label={sideCollapsed ? "展开左侧栏" : "收起左侧栏"}>{sideCollapsed ? "☰" : "⇤"}</button><b className="lead-mobile">Dispatch</b></div>
+        <div className="lead" data-tauri-drag-region><button className="btn ghost sm side-toggle" onClick={toggleSide} title={sideCollapsed ? t("展开左侧栏") : t("收起左侧栏（窗口不到半屏时会自动收起）")} aria-label={sideCollapsed ? t("展开左侧栏") : t("收起左侧栏")}>{sideCollapsed ? "☰" : "⇤"}</button><b className="lead-mobile">Dispatch</b></div>
         <div className="crumb" data-tauri-drag-region>
-          {backTarget ? <button className="btn ghost sm" onClick={goBackPlace} title="返回上一页（按你刚才的路径倒退一步）">‹ 返回{backLabel(backTarget)}</button>
-            : backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}{hostFilter && <><span>{hostFilter}</span><span className="sep">›</span></>}<b>{VIEW_LABEL[view]}</b>
+          {backTarget ? <button className="btn ghost sm" onClick={goBackPlace} title={t("返回上一页（按你刚才的路径倒退一步）")}>‹ {t("返回{label}", { label: backLabel(backTarget) })}</button>
+            : backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ {t("返回{label}", { label: t(VIEW_LABEL[backStack[backStack.length - 1].view]) })}</button>}{hostFilter && <><span>{hostFilter}</span><span className="sep">›</span></>}<b>{t(VIEW_LABEL[view])}</b>
           {view === "projects" && projectSelection && <><span className="sep">›</span><span>{projectLabel(projectFlags, projectSelection)}</span></>}
-          {BOARD_VIEWS.includes(view) && filters.project !== null && <><span className="sep">›</span><span>{filters.project || "未分项目"}</span></>}
-          <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? `同步 ${lastSync.toLocaleTimeString("zh-CN", { hour12: false })}` : "连接中…"}{!isTauri && (isServed ? " · 网页连接" : " · 示例数据")}</span>
+          {BOARD_VIEWS.includes(view) && filters.project !== null && <><span className="sep">›</span><span>{filters.project || t("未分项目")}</span></>}
+          <span className="sync" title={info ? `${info.bd_bin} · ${info.version}` : ""}>{lastSync ? t("同步 {time}", { time: lastSync.toLocaleTimeString(intlLocale(), { hour12: false }) }) : t("连接中…")}{!isTauri && (isServed ? t(" · 网页连接") : t(" · 示例数据"))}</span>
         </div>
         <div className="tb-right">
-          <button className="btn ghost" onClick={() => setSearch(true)} title="搜项目、会话、任务">搜索 <kbd>⌘K</kbd></button>
-          <button className="btn ghost" onClick={() => setTour(true)} title="导览：这个软件怎么用">?</button>
-          <button className="btn ghost" onClick={detach} title="分离：把当前页面挪到一个独立窗口，这里回到上一页或所属项目（右键会话/任务/项目也有「在新窗口打开」）" aria-label="把当前页面分离到新窗口">⧉</button>
-          <button className="btn ghost" onClick={nextTheme} title={theme === "dark" ? "主题：深色 · 点一下切浅色" : theme === "light" ? "主题：浅色 · 点一下跟随系统" : "主题：跟随系统 · 点一下切深色"} aria-label="切换主题">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
+          <button className="btn ghost" onClick={() => setSearch(true)} title={t("搜项目、会话、任务")}>{t("搜索")} <kbd>⌘K</kbd></button>
+          <button className="btn ghost" onClick={() => setTour(true)} title={t("导览：这个软件怎么用")}>?</button>
+          <button className="btn ghost" onClick={detach} title={t("分离：把当前页面挪到一个独立窗口，这里回到上一页或所属项目（右键会话/任务/项目也有「在新窗口打开」）")} aria-label={t("把当前页面分离到新窗口")}>⧉</button>
+          <button className="btn ghost" onClick={nextTheme} title={theme === "dark" ? t("主题：深色 · 点一下切浅色") : theme === "light" ? t("主题：浅色 · 点一下跟随系统") : t("主题：跟随系统 · 点一下切深色")} aria-label={t("切换主题")}>{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</button>
           {quotaByAgent.map(({ agent: a, q }) => (
-            <button key={`${a.actor.id}:${q.host_name}`} className="home-quota" onClick={() => setView("quota")} title={`${a.actor.name} 的额度 · ${[q.host_name, ...(q.also ?? [])].join(" + ")} · ${q.updated_at ? new Date(q.updated_at * 1000).toLocaleTimeString() + "更新" : "尚未更新"} · 点开看详情`}>
+            <button key={`${a.actor.id}:${q.host_name}`} className="home-quota" onClick={() => setView("quota")} title={t("{name} 的额度 · {hosts} · {when} · 点开看详情", { name: a.actor.name, hosts: [q.host_name, ...(q.also ?? [])].join(" + "), when: q.updated_at ? t("{time}更新", { time: new Date(q.updated_at * 1000).toLocaleTimeString(intlLocale()) }) : t("尚未更新") })}>
               <Avatar actor={a.actor} online={a.online} size={16} />
               {!!q.conflict?.length && <span>{q.host_name}</span>}
               {q.windows.map((w) => { const p = w.used_percent ?? 0; return <span key={w.label} className={`q${p >= 90 ? " crit" : p >= 70 ? " warn" : ""}`}><span className="ql">{w.label}</span><span className="qbar"><i style={{ width: `${Math.min(100, p)}%` }} /></span><span className="mono">{w.used_percent === null ? "—" : `${Math.round(p)}%`}</span></span>; })}
             </button>
           ))}
-          {update?.newer && !update.error && <button className="btn ghost update-chip" onClick={() => setView("settings")} title={`有新版本 v${update.latest}，点开设置更新`}>↑ v{update.latest}</button>}
-          <button className="btn ghost status" onClick={() => setView("agents")} title="查看 Agent 状态"><span className="pulse" />{counts.agents} 在线 · {runningSessions} 进行中 ›</button>
-          <button className="btn ghost" onClick={() => setNewSession(true)} title="新建会话（⌘N）">＋ 会话</button>
+          {update?.newer && !update.error && <button className="btn ghost update-chip" onClick={() => setView("settings")} title={t("有新版本 v{v}，点开设置更新", { v: update.latest })}>↑ v{update.latest}</button>}
+          <button className="btn ghost status" onClick={() => setView("agents")} title={t("查看 Agent 状态")}><span className="pulse" />{t("{n} 在线 · {m} 进行中 ›", { n: counts.agents, m: runningSessions })}</button>
+          <button className="btn ghost" onClick={() => setNewSession(true)} title={t("新建会话（⌘N）")}>{t("＋ 会话")}</button>
         </div>
       </div>
 
@@ -925,29 +928,29 @@ export default function App() {
         <Sidebar info={info} view={view} setView={setView} counts={counts} projects={projects} agents={agents} filters={filters} setFilters={setFilters} hosts={hosts} hostFilter={hostFilter} setHostFilter={(h) => { setHostFilter(h); setSelected(null); }} onAllTasks={allTasks} onOverview={() => setView("overview")} />
         <main className="main">
           <div className={`toolbar${TASK_VIEWS.includes(view) ? "" : " bare"}`}>
-            {backStack.length > 0 && previousView && <button className="btn sm mobile-context-back" onClick={goBack}>‹ {VIEW_LABEL[previousView]}</button>}
-            <h2>{VIEW_LABEL[view]}{BOARD_VIEWS.includes(view) && filters.project !== null && <span className="muted"> · {filters.project || "未分项目"}</span>}</h2>
-            {hosts.length > 1 && <select className="mobile-host-filter" aria-label="选择机器" value={hostFilter} onChange={e => { setHostFilter(e.target.value); setSelected(null); }}><option value="">全部机器</option>{hosts.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}</select>}
+            {backStack.length > 0 && previousView && <button className="btn sm mobile-context-back" onClick={goBack}>‹ {t(VIEW_LABEL[previousView])}</button>}
+            <h2>{t(VIEW_LABEL[view])}{BOARD_VIEWS.includes(view) && filters.project !== null && <span className="muted"> · {filters.project || t("未分项目")}</span>}</h2>
+            {hosts.length > 1 && <select className="mobile-host-filter" aria-label={t("选择机器")} value={hostFilter} onChange={e => { setHostFilter(e.target.value); setSelected(null); }}><option value="">{t("全部机器")}</option>{hosts.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}</select>}
             {TASK_VIEWS.includes(view) && (
               <div className="views">
-                <button className={view === "board" ? "on" : ""} onClick={() => setView("board")}>看板</button>
-                <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>表格</button>
-                <button className={view === "trash" ? "on" : ""} onClick={() => setView("trash")} title="移到回收站的任务，可恢复">回收站{hostIssues.some(isTrashed) ? ` ${hostIssues.filter(isTrashed).length}` : ""}</button>
-                <button className={view === "archive" ? "on" : ""} onClick={() => setView("archive")} title="归档过的已完成任务：不进已完成列，不计数">已归档{hostIssues.some(isArchivedTask) ? ` ${hostIssues.filter(isArchivedTask).length}` : ""}</button>
+                <button className={view === "board" ? "on" : ""} onClick={() => setView("board")}>{t("看板")}</button>
+                <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>{t("表格")}</button>
+                <button className={view === "trash" ? "on" : ""} onClick={() => setView("trash")} title={t("移到回收站的任务，可恢复")}>{t("回收站")}{hostIssues.some(isTrashed) ? ` ${hostIssues.filter(isTrashed).length}` : ""}</button>
+                <button className={view === "archive" ? "on" : ""} onClick={() => setView("archive")} title={t("归档过的已完成任务：不进已完成列，不计数")}>{t("已归档")}{hostIssues.some(isArchivedTask) ? ` ${hostIssues.filter(isArchivedTask).length}` : ""}</button>
               </div>
             )}
             <span className="spacer" />
             {BOARD_VIEWS.includes(view) && (<>
-              <label className="search board-search">🔍<input ref={searchRef} placeholder="筛任务、ID、Agent…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="清除任务筛选" onClick={() => setQuery("")}>✕</button>}</label>
-              <select className="sess-agent" value={boardSort} onChange={(e) => changeBoardSort(e.target.value as BoardSort)} aria-label="任务排序" title="每一列里任务怎么排；项目分组里收藏的在前">{BOARD_SORTS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}</select>
-              <button className="chip" onClick={() => setCreating(true)} title="任务通常由 Agent 自己建；这里手动建一条">＋ 新任务</button>
-              {archivable.length > 0 && <button className="chip" onClick={() => void archiveOld()} title="把完成超过 30 天的任务收起来，已完成列和计数都会变小；随时可以取消归档">归档 30 天前完成的 {archivable.length}</button>}
-              <button className="chip" disabled={!Object.values(filters).some(Boolean) && filters.project === null && !query} onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>清除筛选</button>
-              <button className={`chip${filters.review ? " on" : ""}${counts.review ? "" : " zero"}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>Agent 复核 {counts.review}</button>
-              <button className={`chip${filters.blocked ? " on" : ""}${counts.blocked ? "" : " zero"}`} onClick={() => setFilters({ ...filters, blocked: !filters.blocked, review: false })}>阻塞 {counts.blocked}</button>
+              <label className="search board-search">🔍<input ref={searchRef} placeholder={t("筛任务、ID、Agent…")} value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label={t("清除任务筛选")} onClick={() => setQuery("")}>✕</button>}</label>
+              <select className="sess-agent" value={boardSort} onChange={(e) => changeBoardSort(e.target.value as BoardSort)} aria-label={t("任务排序")} title={t("每一列里任务怎么排；项目分组里收藏的在前")}>{BOARD_SORTS.map((o) => <option key={o.key} value={o.key}>{t(o.label)}</option>)}</select>
+              <button className="chip" onClick={() => setCreating(true)} title={t("任务通常由 Agent 自己建；这里手动建一条")}>{t("＋ 新任务")}</button>
+              {archivable.length > 0 && <button className="chip" onClick={() => void archiveOld()} title={t("把完成超过 30 天的任务收起来，已完成列和计数都会变小；随时可以取消归档")}>{t("归档 30 天前完成的 {n}", { n: archivable.length })}</button>}
+              <button className="chip" disabled={!Object.values(filters).some(Boolean) && filters.project === null && !query} onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>{t("清除筛选")}</button>
+              <button className={`chip${filters.review ? " on" : ""}${counts.review ? "" : " zero"}`} onClick={() => setFilters({ ...filters, review: !filters.review, blocked: false })}>{t("Agent 复核 {n}", { n: counts.review })}</button>
+              <button className={`chip${filters.blocked ? " on" : ""}${counts.blocked ? "" : " zero"}`} onClick={() => setFilters({ ...filters, blocked: !filters.blocked, review: false })}>{t("阻塞 {n}", { n: counts.blocked })}</button>
               <button className={`chip${filters.urgent ? " on" : ""}`} onClick={() => setFilters({ ...filters, urgent: !filters.urgent })}>P0–P1</button>
               {filters.agent && <button className="chip on" onClick={() => setFilters({ ...filters, agent: null })}>{filters.agent} ✕</button>}
-              <span className="muted mono" style={{ fontSize: 11 }}>{visible.length} 项</span>
+              <span className="muted mono" style={{ fontSize: 11 }}>{t("{n} 项", { n: visible.length })}</span>
             </>)}
           </div>
           {err && <div className="err">{err}</div>}
@@ -955,27 +958,27 @@ export default function App() {
             {view === "home" && api && <HomeView onDiscuss={() => setDiscuss({})} insight={insight} alertCount={alertCount} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onLocate={locateProject} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
             {view === "projects" && api && <ProjectHub moveJobs={moveJobs} onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} hosts={hosts} owners={projectOwners}
               onMoveProject={async (name, cwd, fromHost, to) => {
-                const run = async (extra: string[]) => { const t = await api.on(fromHost, ["project", cwd, "--move-to", to.name, "--json", ...extra]); return JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); };
+                const run = async (extra: string[]) => { const out = await api.on(fromHost, ["project", cwd, "--move-to", to.name, "--json", ...extra]); return JSON.parse(out.slice(Math.max(0, out.indexOf("{")))); };
                 setMigrationCheck(null);
-                say(`正在预检：把 ${name} 交给 ${to.name} 会改什么…`);
+                say(t("正在预检：把 {name} 交给 {host} 会改什么…", { name, host: to.name }));
                 try {
                   const p = await run(["--dry-run"]);
                   if (p.error) { say(String(p.error), true); return; }
                   const conflicts: string[] = p.git?.conflicts ?? [];
                   if (conflicts.length) { setToast(null); setMigrationCheck({ project: name, host: fromHost, cwd: p.cwd || cwd, target: to.name, remoteCwd: p.remote_cwd || "", conflicts }); return; }
                   const f = p.files ?? {}; const sessions: { title: string; state: string }[] = p.sessions ?? [];
-                  const lines = [`把项目 ${name} 整个交给 ${to.name}：${p.remote_cwd}`,
-                    `文件：同步 ${f.send ?? 0} 个${f.delete ? `、删除 ${f.delete} 个（这边已删）` : ""}${f.skipped?.length ? `；构建产物不搬：${f.skipped.join("、")}` : ""}`,
-                    p.git?.history ? "Git 历史用 git push 过去，那边的 stash 保留" : "",
-                    sessions.length ? `这边开着的 ${sessions.length} 个会话会直接关掉（正在跑的也关），在 ${to.name} 上接着跑：${sessions.map((s) => `${s.title || "未命名"}·${s.state === "working" ? "正在跑" : "空闲"}`).join("、")}` : "这边没有开着的会话",
-                    p.history?.count ? `其余 ${p.history.count} 段历史会话（${p.history.mb} MB）的记录也搬过去，Dispatch 里都显示在 ${to.name}` : "",
-                    "以后这个项目归那台，新建会话默认开在那边。"].filter(Boolean);
-                  if (!await confirmAction(lines.join("\n"))) { say("已取消迁移"); return; }
+                  const lines = [t("把项目 {name} 整个交给 {host}：{cwd}", { name, host: to.name, cwd: p.remote_cwd }),
+                    t("文件：同步 {n} 个", { n: f.send ?? 0 }) + (f.delete ? t("、删除 {n} 个（这边已删）", { n: f.delete }) : "") + (f.skipped?.length ? t("；构建产物不搬：{list}", { list: f.skipped.join(t("、")) }) : ""),
+                    p.git?.history ? t("Git 历史用 git push 过去，那边的 stash 保留") : "",
+                    sessions.length ? t("这边开着的 {n} 个会话会直接关掉（正在跑的也关），在 {host} 上接着跑：{list}", { n: sessions.length, host: to.name, list: sessions.map((x) => `${x.title || t("未命名")}·${x.state === "working" ? t("正在跑") : t("空闲")}`).join(t("、")) }) : t("这边没有开着的会话"),
+                    p.history?.count ? t("其余 {n} 段历史会话（{mb} MB）的记录也搬过去，Dispatch 里都显示在 {host}", { n: p.history.count, mb: p.history.mb, host: to.name }) : "",
+                    t("以后这个项目归那台，新建会话默认开在那边。")].filter(Boolean);
+                  if (!await confirmAction(lines.join("\n"))) { say(t("已取消迁移")); return; }
                   // The move runs as a background worker on the source Mac: this window can go anywhere
                   // (or be closed) meanwhile; the project shows the bar until it ends.
                   const r = await run(["--background"]);
                   if (r.error) { say(String(r.error), true); return; }
-                  say(`已开始把 ${name} 交给 ${to.name}，进度在项目上显示；切到别的页面也会继续`);
+                  say(t("已开始把 {name} 交给 {host}，进度在项目上显示；切到别的页面也会继续", { name, host: to.name }));
                   setMoveJobs((jobs) => [r as MoveJob, ...jobs.filter((j) => j.id !== r.id)]);
                   moveHost.current = fromHost;
                   void pollMoves();
@@ -985,11 +988,11 @@ export default function App() {
             {view === "inbox" && <InboxView onSummarize={summarizeSession} onDigest={digestUnread} onRead={a => markRead(a, a.reply_id!)} onOpen={openSession} initialTab={inboxTab} items={inbox} me={me} onSelect={setSelected} onFocus={focusSession} />}
             {view === "board" && <Board sort={boardSort} starred={starredProjects} progress={progress} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} onMove={move} onAdd={() => setCreating(true)} />}
             {view === "table" && <TableView starred={starredProjects} issues={visible} selected={selected} onSelect={setSelected} me={me} rootOf={rootIssue} />}
-            {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(t, what) => api?.copy(t).then(() => say(what.endsWith("。") ? what : `${what}已复制`)).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
+            {view === "agents" && <AgentsView onPhoneLink={phoneLink ? () => void phoneLink() : undefined} agents={agents} scheduled={scheduledSessions} apps={presenceF.apps} issues={issuesF} me={me} onSelect={(id) => { setSelected(id); }} onFocus={focusSession} refs={refsF} hosts={hosts} onOpenUrl={(u) => api?.openPath(u).catch((e) => say(String(e), true))} onCopyText={(text, what) => api?.copy(text).then(() => say(what.endsWith("。") ? what : t("{what}已复制", { what }))).catch((e) => say(String(e), true))} onDelegate={(h) => setDelegate({ host: h.id })} />}
             {view === "discuss" && api && <DiscussView api={api} me={me} issues={issuesF} initialTask={discussFocus} onShown={setDiscussShown} onNew={() => setDiscuss({})} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, kind: leader?.kind, model: leader?.model })} onDone={say} onError={(m) => say(m, true)} />}
-            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} onBack={previousView ? { label: VIEW_LABEL[previousView], go: goBack } : undefined} localHostName={hosts.find(h => h.local)?.name} onProject={openProject} solo={solo} offlineHosts={hosts.filter(h => !h.local && !h.online).map(h => ({ id: h.id, name: h.name }))} />}
-            {view === "archive" && <><p className="trash-note">归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
-            {view === "trash" && <><p className="trash-note">移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
+            {view === "sessions" && api && <SessionsView archivedProjects={new Set(projectList.archived.map((p) => p.name))} refs={[...refsF.values()]} scriptCount={scriptCount} refsLoaded={refs.size > 0 || activity.updated_at > 0} archiveDays={archiveDays} outcomes={outcomesF} activities={activityF} issues={issuesF} onSeen={markRead} activityError={activityError} key={(sessionFocus ?? "all") + hostId} api={api} me={me} live={presenceF.sessions} hostId={hostId} onSelectTask={setSelected} onSelected={setSessionShown} onDone={say} onError={(m) => say(m, true)} initialId={sessionFocus ?? (info?.initial_task?.startsWith("session:") ? info.initial_task.slice(8) : null)} onBack={previousView ? { label: t(VIEW_LABEL[previousView]), go: goBack } : undefined} localHostName={hosts.find(h => h.local)?.name} onProject={openProject} solo={solo} offlineHosts={hosts.filter(h => !h.local && !h.online).map(h => ({ id: h.id, name: h.name }))} />}
+            {view === "archive" && <><p className="trash-note">{t("归档的已完成任务：不进已完成列、不计入数量，记录和依赖都在。右键或点击 ⋯ 可取消归档。")}</p><TableView issues={hostIssues.filter(isArchivedTask)} selected={selected} onSelect={setSelected} me={me}/></>}
+            {view === "trash" && <><p className="trash-note">{t("移除的任务保留记录与依赖，不会进入待办队列。右键或点击 ⋯ 可恢复。")}</p><TableView issues={hostIssues.filter(isTrashed)} selected={selected} onSelect={setSelected} me={me}/></>}
             {(view === "stats" || view === "quota") && api && <UsageView quota={{ rows: quota, busy: quotaBusy, error: quotaError, refresh: refreshQuota }} key={view} initialTab={view === "quota" ? "quota" : undefined} onDone={say} onStart={startAgent} onDelegate={(prompt, label) => setDelegate({ host: hostId && hostId !== "local" ? hostId : undefined, prompt, label })} onOpenSession={openSession} api={api} me={me} host={hostId} hostName={hostFilter} onError={(m) => say(m, true)} />}
             {view === "skills" && api && <SkillsView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
             {view === "rules" && api && <RulesView hostId={hostId} api={api} hosts={hosts} onDone={say} onError={(m) => say(m, true)} />}
@@ -1007,20 +1010,20 @@ export default function App() {
 
       <MobileNav view={view} setView={(v) => { if (v === "board" || v === "table") allTasks(); else setView(v); }} badge={counts.inbox} />
       {tour && <Tour onClose={closeTour} onGo={(v) => setView(v)} />}
-      {newSession && api && <NewSession api={api} hosts={hosts} {...newSessionTarget(ownerHostId(newSessionProject ? projectOwners[newSessionProject] : undefined, hosts), newSessionContext, hostId)} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(`会话已创建，项目关联失败：${String(e)}`,true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
+      {newSession && api && <NewSession api={api} hosts={hosts} {...newSessionTarget(ownerHostId(newSessionProject ? projectOwners[newSessionProject] : undefined, hosts), newSessionContext, hostId)} onComputer={host => { setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); setView("agents"); }} onClose={() => {setNewSession(false);setNewSessionContext(undefined);setNewSessionProject(null);}} onCreated={async (sid, host, agent) => { if(newSessionProject&&newSessionProject!==UNGROUPED_PROJECT)try{await api.on(host,["session-preferences",`${agent}:${sid}`,JSON.stringify({project_override:newSessionProject}),"--json"]);}catch(e){say(t("会话已创建，项目关联失败：{error}",{error:String(e)}),true);} setNewSessionProject(null);setNewSessionContext(undefined); setNewSession(false); setHostFilter(hosts.find(h => host === (h.local ? "local" : h.id))?.name || ""); openSession(sid); }} />}
       {discuss && api && <DiscussDialog api={api} me={me} issues={issuesF} projects={projects.map((p) => p.name).filter(Boolean)} initialProject={discuss.project} initialTask={discuss.task} onClose={() => { setDiscuss(null); void reload(); }} onOpened={(id, intent) => { setDetailWf(intent); setSelected(id); }} onDelegate={(tid, prompt, leader) => setDelegate({ task: tid, prompt, kind: leader?.kind, model: leader?.model })} onAll={openDiscussion} onDone={say} onError={(m) => say(m, true)} />}
       {delegate && api && <Delegate api={api} hosts={hosts} initialHost={delegate.host} initialCwd={delegate.cwd} initialTask={delegate.task} initialPrompt={delegate.prompt} initialLabel={delegate.label} initialKind={delegate.kind} initialModel={delegate.model} issues={issuesF} me={me} dirOfProject={dirOfProject} onClose={() => { setDelegate(null); void reload(); }} onStart={startAgent} onShowSessions={(name) => { setDelegate(null); setHostFilter(name); setSessionFocus(null); navigateContext("sessions"); void reload(); }} />}
       {search && <SearchPalette archiveDays={archiveDays} projects={projects.map((p) => p.name)} rows={projectRows} issues={issuesF} me={me} onProject={openProject} onSession={openSession} onTask={(id) => setSelected(id)} onClose={() => setSearch(false)} />}
       {creating && <NewTask projects={projectOptions.formal} otherProjects={projectOptions.other} defaultProject={filters.project} onCancel={() => setCreating(false)} onCreate={create} />}
       {migrationCheck && <div className="toast err" role="alert" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-        <div>没有迁移，{migrationCheck.target} 那边会丢东西：{migrationCheck.conflicts.join("；")}</div>
+        <div>{t("没有迁移，{host} 那边会丢东西：{list}", { host: migrationCheck.target, list: migrationCheck.conflicts.join(t("；")) })}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><button className="btn" style={{ color: 'var(--ink)' }} onClick={() => {
-          setDelegate({ host: hosts.find(h => (h.local ? 'local' : h.id) === migrationCheck.host)?.id || migrationCheck.host, cwd: migrationCheck.cwd, prompt: migrationCheckPrompt(migrationCheck), label: `迁移检查 · ${migrationCheck.project}`, kind: 'pi', model: 'glm-5.3-flash' });
+          setDelegate({ host: hosts.find(h => (h.local ? 'local' : h.id) === migrationCheck.host)?.id || migrationCheck.host, cwd: migrationCheck.cwd, prompt: migrationCheckPrompt(migrationCheck), label: t("迁移检查 · {project}", { project: migrationCheck.project }), kind: 'pi', model: 'glm-5.3-flash' });
           setMigrationCheck(null);
-        }}>启动 Agent 检查</button><button className="btn" style={{ color: 'var(--ink)' }} onClick={() => setMigrationCheck(null)}>关闭</button></div>
+        }}>{t("启动 Agent 检查")}</button><button className="btn" style={{ color: 'var(--ink)' }} onClick={() => setMigrationCheck(null)}>{t("关闭")}</button></div>
       </div>}
       {!migrationCheck && toast && <div className={`toast${toast.err ? " err" : ""}`}>{toast.text}</div>}
-      {webUpdate && <button className="toast web-update" onClick={() => window.location.reload()}>网页版已更新到 v{webUpdate} · 点这里刷新</button>}
+      {webUpdate && <button className="toast web-update" onClick={() => window.location.reload()}>{t("网页版已更新到 v{v} · 点这里刷新", { v: webUpdate })}</button>}
       <GlobalContextMenu issues={issues} sessions={sessionByKey} />
     </div></TaskActions></ItemMenus></ViewMenu></ProjectActions></ConversationActions></SessionActions>
   );

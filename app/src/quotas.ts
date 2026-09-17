@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import type { Quota } from './types';
 
 export type SharedQuota = Quota & { also?: string[]; conflict?: string[] };
@@ -29,12 +30,12 @@ export function selectQuotas(rows: Quota[], hostName = '', localHostName = ''): 
   for (const q of sorted) {
     const twin = groups.find(m => m.agent === q.agent && m.windows.some(w => q.windows.some(v => sameWindow(w, v)))
       && !m.windows.some(w => q.windows.some(v => contradicts(w, v))));
-    if (twin) twin.also = [...(twin.also ?? []), q.host_name || '本机'];
+    if (twin) twin.also = [...(twin.also ?? []), q.host_name || t('本机')];
     else groups.push({ ...q });
   }
   for (const q of groups) {
     q.conflict = groups.filter(other => other !== q && other.agent === q.agent
-      && other.windows.length && q.windows.length).map(other => other.host_name || '本机');
+      && other.windows.length && q.windows.length).map(other => other.host_name || t('本机'));
   }
   const local = (q: SharedQuota) => localHostName
     ? q.host_name === localHostName || !!q.also?.includes(localHostName)

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { Block, SessionDetail, SessionTail, TimelineMsg, ToolStatus } from "./types";
 
 // The conversation as the session page shows it: which turns and which steps are visible, and
@@ -31,9 +32,9 @@ export function foldLabel(tools: ToolBlock[]): string {
   const counts = new Map<string, number>();
   const kind = (n: string) => SHELL.has(n) ? "跑了 %d 条命令" : READ.has(n) ? "读了 %d 个文件" : SEARCH.has(n) ? "搜了 %d 次" : EDIT.has(n) ? "改了 %d 处" : WEB.has(n) ? "查了 %d 个网页" : AGENT.has(n) ? "派了 %d 个子 Agent" : `${n} × %d`;
   for (const t of tools) { const k = kind(t.name.split(".").pop() || t.name); counts.set(k, (counts.get(k) ?? 0) + 1); }
-  const parts = [...counts].map(([k, n]) => k.replace("%d", String(n)).replace(/ × 1$/, ""));
-  const errors = tools.filter((t) => t.status === "error").length;
-  return parts.join("、") + (errors ? ` · ${errors} 个出错` : "");
+  const parts = [...counts].map(([k, n]) => t(k).replace("%d", String(n)).replace(/ × 1$/, ""));
+  const errors = tools.filter((x) => x.status === "error").length;
+  return parts.join(t("、")) + (errors ? ` · ${t("{n} 个出错", { n: errors })}` : "");
 }
 
 // Which turns to draw, with the steps each keeps. 只看结论 keeps your messages and the last reply

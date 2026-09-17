@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Api } from "../api";
 import type { EnvVar, Host } from "../types";
 import { HostPicker, hostReason } from "./HostPicker";
+import { useT } from "../i18n";
 
 interface Props { api: Api; hosts: Host[]; hostId?: string; onDone: (m: string) => void; onError: (m: string) => void }
 const parseJson = <T,>(s: string, fallback: T): T => { try { const i = Math.min(...[s.indexOf("{"), s.indexOf("[")].filter((x) => x >= 0)); return JSON.parse(s.slice(i)); } catch { return fallback; } };
@@ -28,6 +29,7 @@ export function EnvKeys(props: KeysProps) {
 }
 
 function EnvKeyList({ api, host, blocked, onDone, onError, compact }: KeysProps) {
+  const t = useT();
   const [items, setItems] = useState<EnvVar[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [shown, setShown] = useState<Record<string, string>>({});
@@ -44,7 +46,7 @@ function EnvKeyList({ api, host, blocked, onDone, onError, compact }: KeysProps)
     try { const value = (await api.on(host, ["env", "get", name])).trimEnd(); setShown(old => ({ ...old, [name]: value })); } catch (e) { onError(String(e)); }
   };
   const copy = async (name: string) => {
-    try { await api.copy((await api.on(host, ["env", "get", name])).trimEnd()); onDone(`${name} 已复制`); } catch (e) { onError(String(e)); }
+    try { await api.copy((await api.on(host, ["env", "get", name])).trimEnd()); onDone(t("{name} 已复制", { name })); } catch (e) { onError(String(e)); }
   };
   // Deleting a key is not undoable (the value is gone): ask for a second click.
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -53,12 +55,12 @@ function EnvKeyList({ api, host, blocked, onDone, onError, compact }: KeysProps)
     if (pendingDelete !== name) { setPendingDelete(name); window.setTimeout(() => setPendingDelete((k) => (k === name ? null : k)), 4000); return; }
     setPendingDelete(null);
     setBusy(true);
-    try { await api.on(host, ["env", "unset", name]); setShown({}); onDone(`${name} 已删除`); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
+    try { await api.on(host, ["env", "unset", name]); setShown({}); onDone(t("{name} 已删除", { name })); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
   // A key with a project is listed to agents only inside that project and shown on its project page.
   const save = async (name: string, value: string, note: string, project: string) => {
     setBusy(true);
-    try { await api.on(host, ["env", "set", name, "--stdin", "--note", note, "--project", project], value); setShown({}); setQuery(name); onDone(`${name} 已保存`); setEditing(null); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
+    try { await api.on(host, ["env", "set", name, "--stdin", "--note", note, "--project", project], value); setShown({}); setQuery(name); onDone(t("{name} 已保存", { name })); setEditing(null); await load(); } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
   const needle = query.trim().toLowerCase();
   const filtered = items.filter(v => `${v.name} ${v.note} ${v.project || ""}`.toLowerCase().includes(needle));
@@ -66,30 +68,30 @@ function EnvKeyList({ api, host, blocked, onDone, onError, compact }: KeysProps)
   return (
     <div className={compact ? "env-keys compact" : "env-keys"}>
       <div className="env-toolbar">
-        <span className="muted small">{needle ? `${filtered.length} / ${items.length}` : items.length} 个</span>
+        <span className="muted small">{t("{n} 个", { n: needle ? `${filtered.length} / ${items.length}` : items.length })}</span>
         <span className="spacer" />
-        <button className="btn sm" disabled={!!blocked || busy} onClick={() => setEditing({ name: "", note: "", project: "", isNew: true })}>＋ 添加</button>
+        <button className="btn sm" disabled={!!blocked || busy} onClick={() => setEditing({ name: "", note: "", project: "", isNew: true })}>{t("＋ 添加")}</button>
       </div>
-      <label className="search env-search"><input aria-label="搜索密钥名称或用途" placeholder="搜索名称、用途或项目…" value={query} onChange={e => setQuery(e.target.value)} />{query && <button className="env-clear" aria-label="清空密钥搜索" onClick={() => setQuery("")}>×</button>}</label>
-      {!compact && <p className="pit-hint">存在 <span className="mono">~/.config/dispatch/env</span>（仅本人可读）。fish 新终端自动加载；Agent 在会话开始只看到变量名和用途，需要时 <span className="mono">dispatch env get 名字</span> 取值——不用你每次会话重贴 Key。不进任务板、不进知识库。</p>}
-      {!loaded && <div className="empty">载入中…</div>}
-      {error && <div className="err">{error}<button className="btn sm" onClick={() => void load()}>重新读取</button></div>}
+      <label className="search env-search"><input aria-label={t("搜索密钥名称或用途")} placeholder={t("搜索名称、用途或项目…")} value={query} onChange={e => setQuery(e.target.value)} />{query && <button className="env-clear" aria-label={t("清空密钥搜索")} onClick={() => setQuery("")}>×</button>}</label>
+      {!compact && <p className="pit-hint">{t("存在 ~/.config/dispatch/env（仅本人可读）。fish 新终端自动加载；Agent 在会话开始只看到变量名和用途，需要时 dispatch env get 名字 取值——不用你每次会话重贴 Key。不进任务板、不进知识库。")}</p>}
+      {!loaded && <div className="empty">{t("载入中…")}</div>}
+      {error && <div className="err">{error}<button className="btn sm" onClick={() => void load()}>{t("重新读取")}</button></div>}
       {blocked && <div className="empty">{blocked}</div>}
-      {!blocked && !error && loaded && items.length === 0 && <div className="empty">还没有密钥，点击「添加」保存。</div>}
-      {!blocked && loaded && items.length > 0 && filtered.length === 0 && <div className="empty">没有匹配的密钥<button className="btn sm" onClick={() => setQuery("")}>清空搜索</button></div>}
+      {!blocked && !error && loaded && items.length === 0 && <div className="empty">{t("还没有密钥，点击「添加」保存。")}</div>}
+      {!blocked && loaded && items.length > 0 && filtered.length === 0 && <div className="empty">{t("没有匹配的密钥")}<button className="btn sm" onClick={() => setQuery("")}>{t("清空搜索")}</button></div>}
       <div className="env-list">
         {filtered.map((v) => (
           <article key={v.name} className="env-item" aria-label={v.name}>
-            <h4 className="mono">{v.name}{v.project && <span className="chip env-project" title="只属于这个项目：Agent 只在该项目的会话里看到它，项目页也会列出">{v.project}</span>}</h4>
+            <h4 className="mono">{v.name}{v.project && <span className="chip env-project" title={t("只属于这个项目：Agent 只在该项目的会话里看到它，项目页也会列出")}>{v.project}</span>}</h4>
             {v.note && <p className="env-note">{v.note}</p>}
-            <div className="env-value mono">{shown[v.name] !== undefined ? shown[v.name] : v.masked}<span className="muted"> · {v.length} 位</span></div>
+            <div className="env-value mono">{shown[v.name] !== undefined ? shown[v.name] : v.masked}<span className="muted"> · {t("{n} 位", { n: v.length })}</span></div>
             <div className="env-actions">
-              <button className="btn ghost sm" disabled={busy} aria-label={`${shown[v.name] !== undefined ? "隐藏" : "显示"} ${v.name}`} onClick={() => reveal(v.name)}>{shown[v.name] !== undefined ? "隐藏" : "显示"}</button>
-              <button className="btn ghost sm" disabled={busy} aria-label={`复制 ${v.name}`} onClick={() => copy(v.name)}>复制</button>
-              <button className="btn ghost sm" disabled={busy} aria-label={`编辑 ${v.name}`} onClick={() => setEditing({ name: v.name, note: v.note, project: v.project || "", isNew: false })}>编辑</button>
-              <details className="env-more"><summary aria-label={`更多操作 ${v.name}`}>更多</summary><div>
-                <button className="btn ghost sm" disabled={busy} onClick={() => void api.copy(`dispatch env get ${v.name}`).then(() => onDone("取用命令已复制")).catch(e => onError(String(e)))}>复制取用命令</button>
-                <button className="btn ghost sm danger" disabled={busy} onClick={() => remove(v.name)}>{pendingDelete === v.name ? "再点一次确认删除（值找不回来）" : "删除密钥"}</button>
+              <button className="btn ghost sm" disabled={busy} aria-label={shown[v.name] !== undefined ? t("隐藏 {name}", { name: v.name }) : t("显示 {name}", { name: v.name })} onClick={() => reveal(v.name)}>{shown[v.name] !== undefined ? t("隐藏") : t("显示")}</button>
+              <button className="btn ghost sm" disabled={busy} aria-label={t("复制 {name}", { name: v.name })} onClick={() => copy(v.name)}>{t("复制")}</button>
+              <button className="btn ghost sm" disabled={busy} aria-label={t("编辑 {name}", { name: v.name })} onClick={() => setEditing({ name: v.name, note: v.note, project: v.project || "", isNew: false })}>{t("编辑")}</button>
+              <details className="env-more"><summary aria-label={t("更多操作 {name}", { name: v.name })}>{t("更多")}</summary><div>
+                <button className="btn ghost sm" disabled={busy} onClick={() => void api.copy(`dispatch env get ${v.name}`).then(() => onDone(t("取用命令已复制"))).catch(e => onError(String(e)))}>{t("复制取用命令")}</button>
+                <button className="btn ghost sm danger" disabled={busy} onClick={() => remove(v.name)}>{pendingDelete === v.name ? t("再点一次确认删除（值找不回来）") : t("删除密钥")}</button>
               </div></details>
             </div>
           </article>
@@ -101,6 +103,7 @@ function EnvKeyList({ api, host, blocked, onDone, onError, compact }: KeysProps)
 }
 
 function EnvDialog({ initial, busy, onCancel, onSave }: { initial: { name: string; note: string; project: string; isNew: boolean }; busy: boolean; onCancel: () => void; onSave: (n: string, v: string, note: string, project: string) => Promise<void> }) {
+  const t = useT();
   const [name, setName] = useState(initial.name);
   const [value, setValue] = useState("");
   const [note, setNote] = useState(initial.note);
@@ -108,17 +111,17 @@ function EnvDialog({ initial, busy, onCancel, onSave }: { initial: { name: strin
   const ok = !busy && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && value.trim().length > 0;
   return (
     <div className="overlay" onMouseDown={(e) => !busy && e.target === e.currentTarget && onCancel()}>
-      <div className="dialog env-dialog" role="dialog" aria-modal="true" aria-label="环境变量" onKeyDown={(e) => { if (e.key === "Escape" && !busy) onCancel(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && ok) onSave(name.trim(), value.trim(), note.trim(), project.trim()); }}>
-        <h3>{initial.isNew ? "添加变量" : `改 ${initial.name} 的值`}</h3>
+      <div className="dialog env-dialog" role="dialog" aria-modal="true" aria-label={t("环境变量")} onKeyDown={(e) => { if (e.key === "Escape" && !busy) onCancel(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && ok) onSave(name.trim(), value.trim(), note.trim(), project.trim()); }}>
+        <h3>{initial.isNew ? t("添加变量") : t("改 {name} 的值", { name: initial.name })}</h3>
         <div className="row">
-          <label>变量名<input autoFocus={initial.isNew} value={name} disabled={!initial.isNew} onChange={(e) => setName(e.target.value.toUpperCase())} placeholder="ZHIPU_API_KEY" /></label>
-          <label>用途<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="智谱 GLM（GetNewWord / bookmark 用）" /></label>
+          <label>{t("变量名")}<input autoFocus={initial.isNew} value={name} disabled={!initial.isNew} onChange={(e) => setName(e.target.value.toUpperCase())} placeholder="ZHIPU_API_KEY" /></label>
+          <label>{t("用途")}<input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("智谱 GLM（GetNewWord / bookmark 用）")} /></label>
         </div>
-        <label>项目（可空）<input value={project} onChange={(e) => setProject(e.target.value)} placeholder="留空＝所有项目都能用；填项目名＝只在该项目里出现" /></label>
-        <label>值<textarea autoFocus={!initial.isNew} value={value} onChange={(e) => setValue(e.target.value)} placeholder="粘贴 Key" spellCheck={false} /></label>
+        <label>{t("项目（可空）")}<input value={project} onChange={(e) => setProject(e.target.value)} placeholder={t("留空＝所有项目都能用；填项目名＝只在该项目里出现")} /></label>
+        <label>{t("值")}<textarea autoFocus={!initial.isNew} value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("粘贴 Key")} spellCheck={false} /></label>
         <div className="foot">
-          <button className="btn ghost" disabled={busy} onClick={onCancel}>取消</button>
-          <button className="btn primary" disabled={!ok} onClick={() => onSave(name.trim(), value.trim(), note.trim(), project.trim())}>{busy ? "保存中…" : "保存 ⌘⏎"}</button>
+          <button className="btn ghost" disabled={busy} onClick={onCancel}>{t("取消")}</button>
+          <button className="btn primary" disabled={!ok} onClick={() => onSave(name.trim(), value.trim(), note.trim(), project.trim())}>{busy ? t("保存中…") : t("保存 ⌘⏎")}</button>
         </div>
       </div>
     </div>

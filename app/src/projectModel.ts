@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import type { Activity, Issue, SessionRef } from './types';
 import { UNGROUPED_PROJECT, conversationProject } from './activity';
 import { projectOf } from './derive';
@@ -32,6 +33,6 @@ export function projectConversations(live:Activity[], refs:SessionRef[]):Activit
   const keys=new Set(live.map(a=>`${a.host||'local'}:${a.agent}:${a.session_id}`));
   return [...live,...refs.filter(r=>!keys.has(`${r.host||'local'}:${r.agent}:${r.session_id}`)).map(r=>({
     ...r,key:`${r.agent}:${r.session_id}`,tasks:Object.keys(r.tasks||{}),state:'unknown',stale:true,
-    unread:false,activity:'历史会话，打开查看完整记录',version:'',events:[],tracking_since:0,source:'catalog'
+    unread:false,activity:t('历史会话，打开查看完整记录'),version:'',events:[],tracking_since:0,source:'catalog'
   }))].sort((a,b)=>b.last_at-a.last_at);
 }

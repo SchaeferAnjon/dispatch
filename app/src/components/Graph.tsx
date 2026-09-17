@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import dagre from "@dagrejs/dagre";
 import type { Api } from "../api";
 import { actorOf, ago, projectColor } from "../derive";
+import { useT } from "../i18n";
 
 interface Props { api: Api; me: string; version: number; selected: string | null; onSelect: (id: string) => void; onOpenSession: (sessionId: string) => void; projects: { name: string; count: number }[] }
 
@@ -49,42 +50,44 @@ export function nodeSize(kind: GKind, label: string): { w: number; h: number; li
 }
 
 function LinSessionRow({ s, me, showRelation }: { s: LinSession; me: string; showRelation?: boolean }) {
+  const t = useT();
   const a = actorOf(s.agent, me);
   return <div className="lin-session">
     <div className="lin-session-head">
       <span className={`av ${a?.kind || "human"} lin-av`} style={{ width: 18, height: 18, fontSize: 8 }}>{a?.glyph || s.agent.slice(0, 1).toUpperCase()}</span>
       <span className="lin-session-agent">{a?.name || s.agent}</span>
       <span className="lin-session-title" title={s.title || s.session_id}>{sessionLabel(s)}</span>
-      {s.state && <span className={`lin-state${s.live ? " live" : ""}`}>{LIN_STATE[s.state] || s.state}</span>}
-      {showRelation && s.relation ? <span className="muted small lin-relation">{s.relation}</span> : null}
-      {s.verdict ? <span className={`review-verdict${s.verdict === "别关" ? " hold" : ""}`}>{s.verdict}</span> : null}
+      {s.state && <span className={`lin-state${s.live ? " live" : ""}`}>{t(LIN_STATE[s.state] || s.state)}</span>}
+      {showRelation && s.relation ? <span className="muted small lin-relation">{t(s.relation)}</span> : null}
+      {s.verdict ? <span className={`review-verdict${s.verdict === "别关" ? " hold" : ""}`}>{t(s.verdict)}</span> : null}
     </div>
     {isDoer(s) && s.summary && <p className="review-summary small">{s.summary}</p>}
     {isDoer(s) && s.reason && <p className="review-note muted small">{s.reason}</p>}
-    {isDoer(s) && !!s.also_count && <p className="muted small lin-also">还涉及 {s.also_count} 个任务{Array.isArray(s.also) && s.also.length ? `：${s.also.slice(0, 3).join("、")}${s.also.length < s.also_count ? "…" : ""}` : ""}</p>}
+    {isDoer(s) && !!s.also_count && <p className="muted small lin-also">{t("还涉及 {n} 个任务", { n: s.also_count })}{Array.isArray(s.also) && s.also.length ? `${t("：")}${s.also.slice(0, 3).join(t("、"))}${s.also.length < s.also_count ? "…" : ""}` : ""}</p>}
   </div>;
 }
 
 function LinTaskCard({ task, me, onSelect }: { task: LinTask; me: string; onSelect: (id: string) => void }) {
+  const t = useT();
   const st = LIN_STATUS[task.status] || { text: task.status, cls: "open" };
   const total = task.acceptance_total || 0;
   const done = task.acceptance_done || 0;
   return <article className="lin-task">
     <div className="lin-task-head">
-      <button className="link lin-task-title" title="打开这个任务" onClick={() => onSelect(task.id)}>{task.title}</button>
-      <span className={`st sm ${st.cls}`}>{st.text}</span>
+      <button className="link lin-task-title" title={t("打开这个任务")} onClick={() => onSelect(task.id)}>{task.title}</button>
+      <span className={`st sm ${st.cls}`}>{t(st.text)}</span>
       <code className="muted small mono">{task.id}</code>
     </div>
     <div className="lin-task-meta">
       {total > 0 && <span className="lin-prog"><span className="bar"><i style={{ width: `${Math.min(100, (done / total) * 100)}%` }} /></span><span className="mono small muted">{done}/{total}</span></span>}
       {task.assignee && <span className="muted small">{actorOf(task.assignee, me)?.name || task.assignee}</span>}
-      {task.last_at ? <span className="muted small">最后进展 {ago(task.last_at)}</span> : null}
-      {task.mentions_count > 0 && <span className="muted small">提到 {task.mentions_count} 次</span>}
-      {task.deps.length > 0 && task.deps.map((d, i) => <span className="lin-dep chip" key={`${d.id}-${i}`} title={d.id}>{d.label}{d.id ? ` · ${short(d.id, 10)}` : ""}</span>)}
+      {task.last_at ? <span className="muted small">{t("最后进展 {ago}", { ago: ago(task.last_at) })}</span> : null}
+      {task.mentions_count > 0 && <span className="muted small">{t("提到 {n} 次", { n: task.mentions_count })}</span>}
+      {task.deps.length > 0 && task.deps.map((d, i) => <span className="lin-dep chip" key={`${d.id}-${i}`} title={d.id}>{t(d.label)}{d.id ? ` · ${short(d.id, 10)}` : ""}</span>)}
     </div>
     {task.sessions.length > 0 && <div className="lin-sessions">{task.sessions.map((s) => <LinSessionRow key={s.session_id} s={s} me={me} showRelation />)}</div>}
     {task.events.length > 0 && <div className="lin-events">{task.events.map((e, i) => <div className="lin-event" key={`${e.ts}-${i}`}>
-      <span className={`review-kind k-${e.kind}`}>{LIN_KIND[e.kind] || e.kind}</span>
+      <span className={`review-kind k-${e.kind}`}>{t(LIN_KIND[e.kind] || e.kind)}</span>
       <span className="review-date mono">{eventDate(e.ts)}</span>
       {e.kind === "commit" && e.ref ? <code className="review-ref mono">{String(e.ref).slice(0, 7)}</code> : null}
       <span className="review-text clamp-2" title={e.text}>{e.text}</span>
@@ -93,21 +96,22 @@ function LinTaskCard({ task, me, onSelect }: { task: LinTask; me: string; onSele
 }
 
 function NodePanel({ n, me, onSelect, onOpenSession, onClose }: { n: GNode; me: string; onSelect: (id: string) => void; onOpenSession: (sessionId: string) => void; onClose: () => void }) {
+  const tx = useT();
   if (n.kind === "task") {
     const t = n.task!;
     const st = LIN_STATUS[t.status] || { text: t.status, cls: "open" };
     const a = actorOf(t.assignee, me);
     const total = t.acceptance_total || 0, done = t.acceptance_done || 0;
     return <aside className="node-panel">
-      <div className="np-head"><span className="np-kind">任务</span><button className="np-close" onClick={onClose} aria-label="关闭">×</button></div>
+      <div className="np-head"><span className="np-kind">{tx("任务")}</span><button className="np-close" onClick={onClose} aria-label={tx("关闭")}>×</button></div>
       <h3 className="np-title">{t.title}</h3>
       <div className="np-meta">
-        <span className={`st sm ${st.cls}`}>{st.text}</span>
+        <span className={`st sm ${st.cls}`}>{tx(st.text)}</span>
         {a && <span className="muted small">{a.name}</span>}
         {total > 0 && <span className="lin-prog"><span className="bar"><i style={{ width: `${Math.min(100, (done / total) * 100)}%` }} /></span><span className="mono small muted">{done}/{total}</span></span>}
-        {t.last_at ? <span className="muted small">最后进展 {ago(t.last_at)}</span> : null}
+        {t.last_at ? <span className="muted small">{tx("最后进展 {ago}", { ago: ago(t.last_at) })}</span> : null}
       </div>
-      <button className="btn sm primary np-open" onClick={() => onSelect(t.id)}>打开任务</button>
+      <button className="btn sm primary np-open" onClick={() => onSelect(t.id)}>{tx("打开任务")}</button>
     </aside>;
   }
   if (n.kind === "session") {
@@ -115,35 +119,36 @@ function NodePanel({ n, me, onSelect, onOpenSession, onClose }: { n: GNode; me: 
     const a = actorOf(s.agent, me);
     const state = s.state || "ended";
     return <aside className="node-panel">
-      <div className="np-head"><span className="np-kind">会话</span><button className="np-close" onClick={onClose} aria-label="关闭">×</button></div>
+      <div className="np-head"><span className="np-kind">{tx("会话")}</span><button className="np-close" onClick={onClose} aria-label={tx("关闭")}>×</button></div>
       <h3 className="np-title">{sessionLabel(s)}</h3>
       <div className="np-meta">
         {a && <span className={`av ${a.kind}`} style={{ width: 18, height: 18, fontSize: 8 }}>{a.glyph}</span>}
         {a && <span className="muted small">{a.name}</span>}
-        <span className={`lin-state${s.live ? " live" : ""}`}>{LIN_STATE[state] || state}</span>
-        {s.verdict ? <span className={`review-verdict${s.verdict === "别关" ? " hold" : ""}`}>{s.verdict}</span> : null}
+        <span className={`lin-state${s.live ? " live" : ""}`}>{tx(LIN_STATE[state] || state)}</span>
+        {s.verdict ? <span className={`review-verdict${s.verdict === "别关" ? " hold" : ""}`}>{tx(s.verdict)}</span> : null}
       </div>
       {s.summary && <p className="review-summary small">{s.summary}</p>}
       {s.reason && <p className="review-note muted small">{s.reason}</p>}
-      {!!s.also_count && <p className="muted small lin-also">还涉及 {s.also_count} 个任务{Array.isArray(s.also) && s.also.length ? `：${s.also.slice(0, 3).join("、")}${s.also.length < s.also_count ? "…" : ""}` : ""}</p>}
-      <button className="btn sm primary np-open" onClick={() => onOpenSession(s.session_id)}>打开会话</button>
+      {!!s.also_count && <p className="muted small lin-also">{tx("还涉及 {n} 个任务", { n: s.also_count })}{Array.isArray(s.also) && s.also.length ? `${tx("：")}${s.also.slice(0, 3).join(tx("、"))}${s.also.length < s.also_count ? "…" : ""}` : ""}</p>}
+      <button className="btn sm primary np-open" onClick={() => onOpenSession(s.session_id)}>{tx("打开会话")}</button>
     </aside>;
   }
   const e = n.ev!;
   return <aside className="node-panel">
-    <div className="np-head"><span className="np-kind">进展</span><button className="np-close" onClick={onClose} aria-label="关闭">×</button></div>
+    <div className="np-head"><span className="np-kind">{tx("进展")}</span><button className="np-close" onClick={onClose} aria-label={tx("关闭")}>×</button></div>
     <div className="np-meta">
-      <span className={`review-kind k-${e.kind}`}>{LIN_KIND[e.kind] || e.kind}</span>
+      <span className={`review-kind k-${e.kind}`}>{tx(LIN_KIND[e.kind] || e.kind)}</span>
       <span className="review-date mono">{eventDate(e.ts)}</span>
       {e.kind === "commit" && e.ref ? <code className="review-ref mono">{String(e.ref).slice(0, 7)}</code> : null}
     </div>
     <p className="review-text np-text">{e.text}</p>
-    {e.by && <span className="muted small">记录者 {actorOf(e.by, me)?.name || e.by}</span>}
-    {n.taskId && <button className="btn sm primary np-open" onClick={() => onSelect(n.taskId!)}>打开任务</button>}
+    {e.by && <span className="muted small">{tx("记录者 {who}", { who: actorOf(e.by, me)?.name || e.by })}</span>}
+    {n.taskId && <button className="btn sm primary np-open" onClick={() => onSelect(n.taskId!)}>{tx("打开任务")}</button>}
   </aside>;
 }
 
 export function GraphView({ api, me, version, selected, onSelect, onOpenSession, projects }: Props) {
+  const t = useT();
   const [picked, setPicked] = useState("");
   const [data, setData] = useState<LinData | null>(null);
   const [busy, setBusy] = useState(false);
@@ -259,71 +264,71 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
   const doing = first ? (first.sessions.find((s) => isDoer(s) && s.live) || first.sessions.find(isDoer)) : undefined;
   const who = doing ? (actorOf(doing.agent, me)?.name || doing.agent) : first ? (actorOf(first.assignee, me)?.name || first.assignee) : "";
   const sentence = first
-    ? doing ? `${who} 在会话「${sessionLabel(doing)}」做「${first.title}」` : `${who || "有人"} 在做「${first.title}」`
-    : "暂时没有进行中的任务";
+    ? doing ? t("{who} 在会话「{session}」做「{task}」", { who, session: sessionLabel(doing), task: first.title }) : t("{who} 在做「{task}」", { who: who || t("有人"), task: first.title })
+    : t("暂时没有进行中的任务");
 
   const nodeCount = model.nodes.filter((n) => model.connected.has(n.id)).length;
 
   return <div className="lineage">
     <aside className="lineage-side">
-      <div className="lineage-side-head">项目 <span className="muted small">{projects.length}</span></div>
+      <div className="lineage-side-head">{t("项目")} <span className="muted small">{projects.length}</span></div>
       <div className="lineage-projects">
         {projects.map((p) => <button key={p.name} className={`lineage-proj${p.name === active ? " on" : ""}`} onClick={() => pick(p.name)}>
           <span className="proj" style={{ background: projectColor(p.name) }} />
           <span className="lineage-proj-name">{p.name}</span>
           {p.count > 0 && <span className="muted small mono">{p.count}</span>}
         </button>)}
-        {projects.length === 0 && <p className="empty small">还没有项目。</p>}
+        {projects.length === 0 && <p className="empty small">{t("还没有项目。")}</p>}
       </div>
     </aside>
     <div className="lineage-main">
       <div className="lineage-top">
         <div className="lineage-head">
-          <h3>{data?.project || active || "脉络"}</h3>
+          <h3>{data?.project || active || t("脉络")}</h3>
           <p className="lineage-sentence">{sentence}</p>
         </div>
-        {data && <span className="muted small">{data.counts.tasks} 个任务 · {data.counts.live_sessions} 个活会话 · {data.counts.unassigned_sessions} 个未挂会话</span>}
+        {data && <span className="muted small">{t("{tasks} 个任务 · {live} 个活会话 · {loose} 个未挂会话", { tasks: data.counts.tasks, live: data.counts.live_sessions, loose: data.counts.unassigned_sessions })}</span>}
       </div>
       <div className="lineage-tools">
-        <div className="review-seg" role="tablist" aria-label="视图">
-          <button role="tab" aria-selected={tab === "graph"} className={tab === "graph" ? "on" : ""} onClick={() => setTab("graph")}>图</button>
-          <button role="tab" aria-selected={tab === "list"} className={tab === "list" ? "on" : ""} onClick={() => setTab("list")}>清单</button>
+        <div className="review-seg" role="tablist" aria-label={t("视图")}>
+          <button role="tab" aria-selected={tab === "graph"} className={tab === "graph" ? "on" : ""} onClick={() => setTab("graph")}>{t("图")}</button>
+          <button role="tab" aria-selected={tab === "list"} className={tab === "list" ? "on" : ""} onClick={() => setTab("list")}>{t("清单")}</button>
         </div>
-        <button className={`chip${onlyProg ? " on" : ""}`} aria-pressed={onlyProg} onClick={() => setOnlyProg(!onlyProg)}>只看进行中</button>
-        <button className={`chip${onlyLive ? " on" : ""}`} aria-pressed={onlyLive} onClick={() => setOnlyLive(!onlyLive)}>只看有活会话</button>
-        <button className={`chip${onlyWait ? " on" : ""}`} aria-pressed={onlyWait} onClick={() => setOnlyWait(!onlyWait)}>只看我在等的</button>
+        <button className={`chip${onlyProg ? " on" : ""}`} aria-pressed={onlyProg} onClick={() => setOnlyProg(!onlyProg)}>{t("只看进行中")}</button>
+        <button className={`chip${onlyLive ? " on" : ""}`} aria-pressed={onlyLive} onClick={() => setOnlyLive(!onlyLive)}>{t("只看有活会话")}</button>
+        <button className={`chip${onlyWait ? " on" : ""}`} aria-pressed={onlyWait} onClick={() => setOnlyWait(!onlyWait)}>{t("只看我在等的")}</button>
         <span className="spacer" />
-        <span className="muted small">最近 {data?.days ?? 14} 天 · {visibleTasks.length} 个任务</span>
+        <span className="muted small">{t("最近 {days} 天 · {n} 个任务", { days: data?.days ?? 14, n: visibleTasks.length })}</span>
       </div>
       <div className="lineage-body">
         {tab === "list" ? <div className="lineage-tree">
-          {busy && !data && <p className="empty">正在读脉络…</p>}
+          {busy && !data && <p className="empty">{t("正在读脉络…")}</p>}
           {err && <p className="err" role="alert">{err}</p>}
-          {!busy && !err && data && visibleTasks.length === 0 && <p className="muted small">没有符合条件的任务。</p>}
+          {!busy && !err && data && visibleTasks.length === 0 && <p className="muted small">{t("没有符合条件的任务。")}</p>}
           {visibleTasks.map((t) => <LinTaskCard key={t.id} task={t} me={me} onSelect={onSelect} />)}
           {data && data.unassigned_sessions.length > 0 && <section className="lineage-unassigned">
-            <h4>未挂任务的会话 <span className="muted">{data.unassigned_sessions.length}</span></h4>
+            <h4>{t("未挂任务的会话")} <span className="muted">{data.unassigned_sessions.length}</span></h4>
             {data.unassigned_sessions.map((s) => <LinSessionRow key={s.session_id} s={s} me={me} />)}
           </section>}
         </div> : <div className="lineage-graph">
           <div className="graph-wrap">
             <div className="graph-tools">
-              <span className="muted small mono">{nodeCount} 节点 · {model.edges.length} 边</span>
+              <span className="muted small mono">{t("{nodes} 节点 · {edges} 边", { nodes: nodeCount, edges: model.edges.length })}</span>
               <span className="spacer" />
-              <input type="range" min={0.4} max={1.5} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} title="缩放" style={{ width: 90 }} />
+              <input type="range" min={0.4} max={1.5} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} title={t("缩放")} style={{ width: 90 }} />
             </div>
             <div className="graph-legend small muted">
-              <span><i className="lg origin" />发起会话（任务在这段会话里建的，主线）</span>
-              <span><i className="lg thin" />顺带做（会话顺手接的其他任务）</span>
-              <span><i className="lg discovered" />派生出</span>
-              <span><i className="lg blocks" />解锁</span>
-              <span><i className="lg parent" />包含</span>
-              <span>任务 → 会话 → 进展/提交，从左到右；悬停或选中一个节点，整条线高亮</span>
+              <span><i className="lg origin" />{t("发起会话（任务在这段会话里建的，主线）")}</span>
+              <span><i className="lg thin" />{t("顺带做（会话顺手接的其他任务）")}</span>
+              <span><i className="lg discovered" />{t("派生出")}</span>
+              <span><i className="lg blocks" />{t("解锁")}</span>
+              <span><i className="lg parent" />{t("包含")}</span>
+              <span>{t("任务 → 会话 → 进展/提交，从左到右；悬停或选中一个节点，整条线高亮")}</span>
             </div>
             <div className="graph-scroll">
-              {busy && !data && <div className="empty">正在读脉络…</div>}
+              {busy && !data && <div className="empty">{t("正在读脉络…")}</div>}
               {err && <p className="err" role="alert">{err}</p>}
-              {!busy && data && nodeCount === 0 && model.loose.length === 0 && <div className="empty">这些任务还没有会话或进展，连不成线。</div>}
+              {!busy && data && nodeCount === 0 && model.loose.length === 0 && <div className="empty">{t("这些任务还没有会话或进展，连不成线。")}</div>}
               {nodeCount > 0 && (
                 <svg width={layout.width * zoom} height={layout.height * zoom} viewBox={`0 0 ${layout.width} ${layout.height}`} className="graph-svg">
                   <defs>
@@ -348,7 +353,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                     return (
                       <g key={i}>
                         <path d={d} className={cls} markerEnd={hi ? "url(#arr-hi)" : "url(#arr)"} />
-                        {hi && lbl && <text x={mid.x} y={mid.y - 6} className="edge-lbl">{lbl}</text>}
+                        {hi && lbl && <text x={mid.x} y={mid.y - 6} className="edge-lbl">{t(lbl)}</text>}
                       </g>
                     );
                   })}
@@ -360,9 +365,9 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                     const handlers = { onMouseEnter: () => setHover(n.id), onMouseLeave: () => setHover(null), onClick: () => clickNode(n), role: "button" as const, tabIndex: 0 };
                     const s = n;
                     if (n.kind === "task") {
-                      const t = n.task!;
-                      const st = LIN_STATUS[t.status] || { text: t.status, cls: "open" };
-                      const a = actorOf(t.assignee, me);
+                      const tk = n.task!;
+                      const st = LIN_STATUS[tk.status] || { text: tk.status, cls: "open" };
+                      const a = actorOf(tk.assignee, me);
                       return <g key={n.id} transform={`translate(${p.x - s.w / 2},${p.y - s.h / 2})`} className={cls} {...handlers}>
                         <rect width={s.w} height={s.h} rx={9} className="node-bg" />
                         <rect x={0} y={0} width={4} height={s.h} rx={2} className={`node-stripe ${st.cls}`} />
@@ -370,9 +375,9 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                           <div className="node-body">
                             <div className="node-t" style={{ WebkitLineClamp: n.lines }} title={n.label}>{n.label}</div>
                             <div className="node-m">
-                              <span className={`st sm ${st.cls}`}>{st.text}</span>
+                              <span className={`st sm ${st.cls}`}>{t(st.text)}</span>
                               {a && <span className={`av ${a.kind}`} style={{ width: 14, height: 14, fontSize: 7 }}>{a.glyph}</span>}
-                              <span className="mono muted">{t.id}</span>
+                              <span className="mono muted">{tk.id}</span>
                             </div>
                           </div>
                         </foreignObject>
@@ -390,7 +395,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                             <div className="node-t" style={{ WebkitLineClamp: n.lines }} title={n.label}>{n.label}</div>
                             <div className="node-m">
                               {a && <span className={`av ${a.kind}`} style={{ width: 14, height: 14, fontSize: 7 }}>{a.glyph}</span>}
-                              <span className={`lin-state${ss.live ? " live" : ""}`}>{LIN_STATE[state] || state}</span>
+                              <span className={`lin-state${ss.live ? " live" : ""}`}>{t(LIN_STATE[state] || state)}</span>
                             </div>
                           </div>
                         </foreignObject>
@@ -401,7 +406,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
                       <rect width={s.w} height={s.h} rx={8} className="node-bg step-bg" />
                       <foreignObject x={8} y={4} width={s.w - 12} height={s.h - 8}>
                         <div className="step-body">
-                          <span className={`review-kind k-${e.kind}`}>{LIN_KIND[e.kind] || e.kind}</span>
+                          <span className={`review-kind k-${e.kind}`}>{t(LIN_KIND[e.kind] || e.kind)}</span>
                           <span className="step-t" style={{ WebkitLineClamp: n.lines }} title={e.text}>{n.label}</span>
                         </div>
                       </foreignObject>
@@ -411,7 +416,7 @@ export function GraphView({ api, me, version, selected, onSelect, onOpenSession,
               )}
               {model.loose.length > 0 && (
                 <div className="loose">
-                  <h4>还没连上线的任务 <span className="muted">{model.loose.length}</span></h4>
+                  <h4>{t("还没连上线的任务")} <span className="muted">{model.loose.length}</span></h4>
                   <div className="loose-list">
                     {model.loose.map((n) => { const st = LIN_STATUS[n.status] || { cls: "open" }; return <button key={n.id} className={`chip${sel === n.id ? " on" : ""}`} onClick={() => clickNode(n)}><span className={`dot ${st.cls}`} />{n.label}<span className="mono muted">{n.task!.id}</span></button>; })}
                   </div>

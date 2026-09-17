@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { collapse, diffStat, pairRows, patchRows, type DiffRow } from "../diff";
+import { useT } from "../i18n";
 
 // One diff, the way a code-review tool shows it: line numbers on both sides, +/− gutter,
 // the changed words inside a replaced line highlighted, unchanged runs folded behind a
@@ -12,6 +13,7 @@ type Filter = "all" | "add" | "del";
 interface Props { rows: DiffRow[]; label?: string; copyText?: string; defaultOpen?: boolean; ctx?: number }
 
 export function DiffTable({ rows: full, label, copyText, defaultOpen, ctx = 3 }: Props) {
+  const t = useT();
   const stat = useMemo(() => diffStat(full), [full]);
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<boolean>(defaultOpen ?? full.length <= COLLAPSE_ROWS);
@@ -41,21 +43,21 @@ export function DiffTable({ rows: full, label, copyText, defaultOpen, ctx = 3 }:
         <span className="mono small diffstat"><span className="add">+{stat.add}</span> <span className="del">−{stat.del}</span></span>
         <span className="spacer" />
         {open && (stat.add > 0 || stat.del > 0) && <span className="views xs">
-          <button className={filter === "all" ? "on" : ""} onClick={() => setFilter("all")}>全部</button>
-          <button className={filter === "add" ? "on" : ""} disabled={!stat.add} onClick={() => setFilter("add")}>只看新增</button>
-          <button className={filter === "del" ? "on" : ""} disabled={!stat.del} onClick={() => setFilter("del")}>只看删除</button>
+          <button className={filter === "all" ? "on" : ""} onClick={() => setFilter("all")}>{t("全部")}</button>
+          <button className={filter === "add" ? "on" : ""} disabled={!stat.add} onClick={() => setFilter("add")}>{t("只看新增")}</button>
+          <button className={filter === "del" ? "on" : ""} disabled={!stat.del} onClick={() => setFilter("del")}>{t("只看删除")}</button>
         </span>}
-        {copyText && <button className="link sm" onClick={copy}>{copied ? "已复制" : "复制新内容"}</button>}
-        {full.length > COLLAPSE_ROWS && <button className="link sm" onClick={() => setOpen(!open)}>{open ? "收起" : `展开 ${full.length} 行`}</button>}
+        {copyText && <button className="link sm" onClick={copy}>{copied ? t("已复制") : t("复制新内容")}</button>}
+        {full.length > COLLAPSE_ROWS && <button className="link sm" onClick={() => setOpen(!open)}>{open ? t("收起") : t("展开 {n} 行", { n: full.length })}</button>}
       </div>
-      {!open && <div className="dv-folded muted small">改动较大（{full.length} 行），先看上面的统计；点「展开」再看全文。</div>}
+      {!open && <div className="dv-folded muted small">{t("改动较大（{n} 行），先看上面的统计；点「展开」再看全文。", { n: full.length })}</div>}
       {open && (
         <pre className="diff dv-pre" style={{ ["--w" as string]: `${width}ch` }}>
           {shown.map((r, k) => {
             if (r.kind === "hunk") return <div key={k} className="hunk-line">{r.text}</div>;
             if (r.kind === "skip") return r.start >= 0
-              ? <button key={k} className="skip" onClick={() => setExpanded((s) => new Set(s).add(r.start))} title="展开这些未变的行">… {r.count} 行未变，点开 …</button>
-              : <div key={k} className="skip">… 跳过 {r.count} 行 …</div>;
+              ? <button key={k} className="skip" onClick={() => setExpanded((s) => new Set(s).add(r.start))} title={t("展开这些未变的行")}>{t("… {n} 行未变，点开 …", { n: r.count })}</button>
+              : <div key={k} className="skip">{t("… 跳过 {n} 行 …", { n: r.count })}</div>;
             return (
               <div key={k} className={`ln ${r.kind}`}>
                 <span className="no">{r.oldNo ?? ""}</span><span className="no">{r.newNo ?? ""}</span>
@@ -64,7 +66,7 @@ export function DiffTable({ rows: full, label, copyText, defaultOpen, ctx = 3 }:
               </div>
             );
           })}
-          {rows.length > cap && <button className="skip" onClick={() => setCap((c) => c + HARD_CAP)}>… 还有 {rows.length - cap} 行，再显示 {Math.min(HARD_CAP, rows.length - cap)} 行 …</button>}
+          {rows.length > cap && <button className="skip" onClick={() => setCap((c) => c + HARD_CAP)}>{t("… 还有 {rest} 行，再显示 {more} 行 …", { rest: rows.length - cap, more: Math.min(HARD_CAP, rows.length - cap) })}</button>}
         </pre>
       )}
     </div>

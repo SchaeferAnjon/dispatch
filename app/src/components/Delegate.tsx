@@ -3,6 +3,7 @@ import type { Api, AgentStartInput, AgentStartResult } from "../api";
 import { control } from "./SessionActions";
 import { actorOf, projectOf } from "../derive";
 import type { Host, Issue } from "../types";
+import { useT } from "../i18n";
 
 // 派活: start an agent on a machine through Herdr, optionally handing it a task it
 // claims as its own, and send it the first prompt.
@@ -28,12 +29,13 @@ interface Props {
 }
 
 export function Delegate({ api, hosts, initialHost, initialCwd, initialTask, initialPrompt, initialLabel, initialKind, initialModel, issues, me, dirOfProject, onClose, onStart, onShowSessions }: Props) {
+  const t = useT();
   const online = hosts.filter((h) => h.online || h.local);
   const [hostId, setHostId] = useState(initialHost ?? (online.find((h) => h.local)?.id ?? online[0]?.id ?? ""));
   const host = hosts.find((h) => h.id === hostId);
   const [kind, setKind] = useState(initialKind || "claude");
   const [model, setModel] = useState(initialModel || "");
-  const MODELS: Record<string, [string, string][]> = { pi: [["", "默认"], ["glm-5.3-flash", "GLM 5.3 Flash"]], claude: [["", "默认"], ["claude-fable-5-1", "Fable 5.1（最强）"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku（快、省）"]], codex: [["", "默认"], ["gpt-5.5", "gpt-5.5"], ["gpt-5.6-terra", "gpt-5.6-terra"], ["gpt-6-astra", "gpt-6-astra"]] };
+  const MODELS: Record<string, [string, string][]> = { pi: [["", t("默认")], ["glm-5.3-flash", "GLM 5.3 Flash"]], claude: [["", t("默认")], ["claude-fable-5-1", t("Fable 5.1（最强）")], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", t("Haiku（快、省）")]], codex: [["", t("默认")], ["gpt-5.5", "gpt-5.5"], ["gpt-5.6-terra", "gpt-5.6-terra"], ["gpt-6-astra", "gpt-6-astra"]] };
   const [taskId, setTaskId] = useState(initialTask ?? "");
   const task = issues.find((i) => i.id === taskId);
   const suggestedCwd = task ? dirOfProject(projectOf(task)) : "";
@@ -70,40 +72,40 @@ export function Delegate({ api, hosts, initialHost, initialCwd, initialTask, ini
   // Grouped so the eye lands on the tasks that are actually free: this project's, then others', then ones someone already holds.
   const proj = initialTask ? projectOf(issues.find((i) => i.id === initialTask) ?? ({} as Issue)) : "";
   const groups: [string, typeof candidates][] = [
-    [proj ? `${proj} · 待接手` : "待接手", candidates.filter((i) => !i.assignee && (!proj || projectOf(i) === proj))],
-    ["其他项目 · 待接手", candidates.filter((i) => !i.assignee && proj && projectOf(i) !== proj)],
-    ["已有人在做", candidates.filter((i) => !!i.assignee)],
+    [proj ? t("{project} · 待接手", { project: proj }) : t("待接手"), candidates.filter((i) => !i.assignee && (!proj || projectOf(i) === proj))],
+    [t("其他项目 · 待接手"), candidates.filter((i) => !i.assignee && proj && projectOf(i) !== proj)],
+    [t("已有人在做"), candidates.filter((i) => !!i.assignee)],
   ];
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog delegate" role="dialog" aria-label="派活">
-        <h3>派活{task ? ` · ${task.title}` : initialLabel ? ` · ${initialLabel}` : ""}</h3>
-        <p className="muted small">在所选电脑的 Herdr 里起一个 Agent，把任务记到它名下，并发第一句话。它会以自己的身份认领任务，完成后 dispatch done。</p>
+      <div className="dialog delegate" role="dialog" aria-label={t("派活")}>
+        <h3>{t("派活")}{task ? ` · ${task.title}` : initialLabel ? ` · ${initialLabel}` : ""}</h3>
+        <p className="muted small">{t("在所选电脑的 Herdr 里起一个 Agent，把任务记到它名下，并发第一句话。它会以自己的身份认领任务，完成后 dispatch done。")}</p>
         <div className="new-session-selects">
-          <label>电脑<select value={hostId} onChange={(e) => setHostId(e.target.value)}>{hosts.map((h) => <option key={h.id} value={h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? " · 离线" : ""}</option>)}</select></label>
-          <label>Agent<select value={kind} onChange={(e) => { setKind(e.target.value); setModel(""); }} title="Herdr 能起的 Agent。Gemini CLI / OpenCode 能派活，但它们的对话 Dispatch 还读不到">{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
-          <label>模型<select value={model} onChange={(e) => setModel(e.target.value)}>{(MODELS[kind] ?? [["", "默认"]]).map(([m, l]) => <option key={m} value={m}>{l}</option>)}</select></label>
+          <label>{t("电脑")}<select value={hostId} onChange={(e) => setHostId(e.target.value)}>{hosts.map((h) => <option key={h.id} value={h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? t(" · 离线") : ""}</option>)}</select></label>
+          <label>Agent<select value={kind} onChange={(e) => { setKind(e.target.value); setModel(""); }} title={t("Herdr 能起的 Agent。Gemini CLI / OpenCode 能派活，但它们的对话 Dispatch 还读不到")}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+          <label>{t("模型")}<select value={model} onChange={(e) => setModel(e.target.value)}>{(MODELS[kind] ?? [["", t("默认")]]).map(([m, l]) => <option key={m} value={m}>{l}</option>)}</select></label>
         </div>
-        <label>任务<select value={taskId} onChange={(e) => setTaskId(e.target.value)}><option value="">不挂任务，只发一句话</option>{groups.filter(([, xs]) => xs.length).map(([label, xs]) => <optgroup key={label} label={label}>{xs.map((i) => <option key={i.id} value={i.id}>{i.id} · {i.title}{i.assignee ? ` · 现在 ${actorOf(i.assignee, me)?.name ?? i.assignee}` : ""}</option>)}</optgroup>)}</select></label>
-        <label>目录<div className="folder-path"><input placeholder={suggestedCwd ? `默认：${suggestedCwd}` : host?.local ? "默认：~（家目录）；点「选择…」挑一个" : "默认：那台机器的家目录"} value={cwd} onChange={(e) => setCwd(e.target.value)} />{api && <button className="btn sm" type="button" disabled={busy || browseBusy} onClick={picking ? () => setPicking(false) : openPicker}>{picking ? "收起" : "选择…"}</button>}</div></label>
+        <label>{t("任务")}<select value={taskId} onChange={(e) => setTaskId(e.target.value)}><option value="">{t("不挂任务，只发一句话")}</option>{groups.filter(([, xs]) => xs.length).map(([label, xs]) => <optgroup key={label} label={label}>{xs.map((i) => <option key={i.id} value={i.id}>{i.id} · {i.title}{i.assignee ? t(" · 现在 {who}", { who: actorOf(i.assignee, me)?.name ?? i.assignee }) : ""}</option>)}</optgroup>)}</select></label>
+        <label>{t("目录")}<div className="folder-path"><input placeholder={suggestedCwd ? t("默认：{dir}", { dir: suggestedCwd }) : host?.local ? t("默认：~（家目录）；点「选择…」挑一个") : t("默认：那台机器的家目录")} value={cwd} onChange={(e) => setCwd(e.target.value)} />{api && <button className="btn sm" type="button" disabled={busy || browseBusy} onClick={picking ? () => setPicking(false) : openPicker}>{picking ? t("收起") : t("选择…")}</button>}</div></label>
         {picking && <div className="folder-picker" aria-busy={browseBusy}>
-          <div className="folder-picker-heading"><b>浏览文件夹</b><span className="muted small">{folders?.path}</span><button className="link" disabled={!folders || browseBusy || folders.path === folders.parent} onClick={() => browse(folders!.parent)}>↑ 上一级</button></div>
-          {browseBusy ? <p className="muted">读取文件夹…</p> : <div className="folder-children">{folders?.children.map((f) => <button key={f.path} type="button" onClick={() => browse(f.path)}>▱ {f.name}<span>›</span></button>)}{folders?.children.length === 0 && <p className="muted">没有子文件夹，就用当前目录。</p>}</div>}
-          {!!folders?.recent.length && <select aria-label="最近使用的文件夹" value="" disabled={browseBusy} onChange={(e) => browse(e.target.value)}><option value="">最近使用的文件夹…</option>{folders.recent.map((p) => <option key={p} value={p}>{p}</option>)}</select>}
+          <div className="folder-picker-heading"><b>{t("浏览文件夹")}</b><span className="muted small">{folders?.path}</span><button className="link" disabled={!folders || browseBusy || folders.path === folders.parent} onClick={() => browse(folders!.parent)}>{t("↑ 上一级")}</button></div>
+          {browseBusy ? <p className="muted">{t("读取文件夹…")}</p> : <div className="folder-children">{folders?.children.map((f) => <button key={f.path} type="button" onClick={() => browse(f.path)}>▱ {f.name}<span>›</span></button>)}{folders?.children.length === 0 && <p className="muted">{t("没有子文件夹，就用当前目录。")}</p>}</div>}
+          {!!folders?.recent.length && <select aria-label={t("最近使用的文件夹")} value="" disabled={browseBusy} onChange={(e) => browse(e.target.value)}><option value="">{t("最近使用的文件夹…")}</option>{folders.recent.map((p) => <option key={p} value={p}>{p}</option>)}</select>}
         </div>}
-        <label>第一句话<textarea rows={4} placeholder={defaultPrompt || "要它做什么"} value={prompt} onChange={(e) => setPrompt(e.target.value)} /></label>
+        <label>{t("第一句话")}<textarea rows={4} placeholder={defaultPrompt || t("要它做什么")} value={prompt} onChange={(e) => setPrompt(e.target.value)} /></label>
         {err && <div className="err">{err}</div>}
         {res && (
           <div className="sel-text small">
-            <div><b>{res.prompt_sent ? '会话已启动，第一句话已发送' : '会话已创建，请检查输入状态'}</b> · {res.host}{res.warning ? ` · ${res.warning}` : ""}</div>
-            {res.prompt_sent && <p>Agent 会在后台继续处理，可以到会话页查看进度和回复。</p>}
+            <div><b>{res.prompt_sent ? t('会话已启动，第一句话已发送') : t('会话已创建，请检查输入状态')}</b> · {res.host}{res.warning ? ` · ${res.warning}` : ""}</div>
+            {res.prompt_sent && <p>{t("Agent 会在后台继续处理，可以到会话页查看进度和回复。")}</p>}
             {res.output && <pre className="diff" style={{ maxHeight: 220, overflow: "auto" }}>{res.output.split("\n").filter((l) => l.trim()).slice(-25).join("\n")}</pre>}
           </div>
         )}
         <div className="foot">
-          <button className="btn ghost" onClick={onClose}>{res ? "关闭" : "取消"}</button>
-          {res && onShowSessions && <button className="btn primary" onClick={() => onShowSessions(res.host)}>查看会话</button>}
-          <button className={`btn ${res ? 'ghost' : 'primary'}`} disabled={busy || !host || (!prompt.trim() && !defaultPrompt)} onClick={go}>{busy ? "正在启动并发送第一句话…" : res ? "再派一个" : `派给 ${actorName}`}</button>
+          <button className="btn ghost" onClick={onClose}>{res ? t("关闭") : t("取消")}</button>
+          {res && onShowSessions && <button className="btn primary" onClick={() => onShowSessions(res.host)}>{t("查看会话")}</button>}
+          <button className={`btn ${res ? 'ghost' : 'primary'}`} disabled={busy || !host || (!prompt.trim() && !defaultPrompt)} onClick={go}>{busy ? t("正在启动并发送第一句话…") : res ? t("再派一个") : t("派给 {who}", { who: actorName })}</button>
         </div>
       </div>
     </div>

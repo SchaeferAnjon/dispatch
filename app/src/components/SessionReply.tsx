@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent
 import type { Api } from '../api';
 import type { SessionRef, TimelineMsg } from '../types';
 import { control as sessionControl } from './SessionActions';
+import { t, useT } from '../i18n';
 
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number; delivered?: boolean }
 interface DesktopRequest { id: string; kind: 'command' | 'file' | 'permission' | 'question' | 'option' | 'elicitation' | 'other'; summary: string; reason?: string; cwd?: string; files?: string[]; questions?: { id: string; text: string; options: string[] }[] }
@@ -29,7 +30,7 @@ interface Attached { path: string; preview: string; name: string }
 export async function shrinkImage(file: File, maxSide = 2000): Promise<string> {
   const dataUrl = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(file); });
   if (file.size < 600_000 && file.type !== 'image/heic' && file.type !== 'image/heif') return dataUrl;
-  const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('无法读取这张图片')); i.src = dataUrl; });
+  const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(t('无法读取这张图片'))); i.src = dataUrl; });
   const k = Math.min(1, maxSide / Math.max(img.width, img.height));
   const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
   c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
@@ -46,6 +47,7 @@ const messageId = () => {
 };
 
 export function SessionReply({ api, session, messages, onSent }: { api: Api; session: SessionRef; messages: TimelineMsg[]; onSent: () => void }) {
+  const t = useT();
   const host = session.host || 'local';
   const storageKey = `dispatch-reply:${host}:${session.agent}:${session.session_id}`;
   const [draft, setDraft] = useState(() => { try { return sessionStorage.getItem(storageKey) || ''; } catch { return ''; } });
@@ -68,10 +70,10 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
       setSaving(n => n + 1);
       try {
         const data = await shrinkImage(f);
-        const t = await api.on(host, ['save-image', '--json'], JSON.stringify({ name: f.name || 'photo', data }));
-        const saved = readJson<{ path: string }>(t);
-        if (alive.current) setImages(xs => [...xs, { path: saved.path, preview: data, name: f.name || '图片' }]);
-      } catch (e) { if (alive.current) setError(/usage:|invalid choice/.test(String(e)) ? '会话所在机器的 dispatch 太旧，还不会存图片；更新那台机器后再试。' : `图片没传上去：${String(e)}`); }
+        const raw = await api.on(host, ['save-image', '--json'], JSON.stringify({ name: f.name || 'photo', data }));
+        const saved = readJson<{ path: string }>(raw);
+        if (alive.current) setImages(xs => [...xs, { path: saved.path, preview: data, name: f.name || t('图片') }]);
+      } catch (e) { if (alive.current) setError(/usage:|invalid choice/.test(String(e)) ? t('会话所在机器的 dispatch 太旧，还不会存图片；更新那台机器后再试。') : t('图片没传上去：{err}', { err: String(e) })); }
       finally { if (alive.current) setSaving(n => n - 1); }
     }
   };
@@ -105,7 +107,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
       }
       return c;
     } catch (e) {
-      if (alive.current) { setConnection(null); setError(`暂时无法连接：${String(e)}`); }
+      if (alive.current) { setConnection(null); setError(t('暂时无法连接：{err}', { err: String(e) })); }
       return null;
     }
   };
@@ -195,7 +197,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
       if (res.state !== 'accepted') { setError(res.note); return; }
       if (attempt.current?.id === r.id) forgetAttempt();
       if (edit) { setDraft(old => old.trim() ? old : (res.text ?? r.text)); textarea.current?.focus(); }
-      setNotice(edit ? '已撤回，改好再发' : '已撤回');
+      setNotice(edit ? t('已撤回，改好再发') : t('已撤回'));
       await load();
     } catch (e) { setError(String(e)); }
     finally { setWithdrawing(''); }
@@ -219,28 +221,28 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   const desktop = connection?.desktop;
   const desktopBlock = desktop && (desktop.requests.length > 0 || desktop.running) ? <div className="reply-desktop" role="status">
     {desktop.requests.map(r => <div key={r.id} className={`reply-request k-${r.kind}`}>
-      <div className="reply-request-head"><b>{REQUEST_LABEL[r.kind] ?? '等确认'}</b><span className="reply-request-text">{r.summary}</span></div>
+      <div className="reply-request-head"><b>{t(REQUEST_LABEL[r.kind] ?? '等确认')}</b><span className="reply-request-text">{r.summary}</span></div>
       {r.reason && <p className="muted small">{r.reason}</p>}
       {r.cwd && <p className="muted small mono">{r.cwd}</p>}
       {(r.kind === 'command' || r.kind === 'file') && <div className="reply-request-actions">
-        <button className="btn sm primary" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'accept' })}>批准</button>
-        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'acceptForSession' })} title="这个会话里同类的都批准">本会话都批准</button>
-        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'decline' })}>拒绝</button>
+        <button className="btn sm primary" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'accept' })}>{t('批准')}</button>
+        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'acceptForSession' })} title={t('这个会话里同类的都批准')}>{t('本会话都批准')}</button>
+        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'decline' })}>{t('拒绝')}</button>
       </div>}
       {r.kind === 'permission' && <div className="reply-request-actions">
-        <button className="btn sm primary" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'accept' })}>批准（本轮）</button>
-        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'decline' })}>拒绝</button>
+        <button className="btn sm primary" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'accept' })}>{t('批准（本轮）')}</button>
+        <button className="btn sm" type="button" disabled={switching} onClick={() => void control({ request_id: r.id, decision: 'decline' })}>{t('拒绝')}</button>
       </div>}
       {r.kind === 'question' && <div className="reply-request-answers">
         {(r.questions ?? []).map(q => <label key={q.id}><span>{q.text}</span>
           {q.options.length > 0 && <div className="reply-request-options">{q.options.map(o => <button key={o} type="button" className={`btn sm${answerDraft[q.id] === o ? ' on' : ''}`} onClick={() => setAnswerDraft(d => ({ ...d, [q.id]: o }))}>{o}</button>)}</div>}
-          <input value={answerDraft[q.id] ?? ''} onChange={e => setAnswerDraft(d => ({ ...d, [q.id]: e.target.value }))} placeholder={q.options.length ? '或自己写' : '你的回答'} />
+          <input value={answerDraft[q.id] ?? ''} onChange={e => setAnswerDraft(d => ({ ...d, [q.id]: e.target.value }))} placeholder={q.options.length ? t('或自己写') : t('你的回答')} />
         </label>)}
-        <button className="btn sm primary" type="button" disabled={switching || !(r.questions ?? []).every(q => (answerDraft[q.id] ?? '').trim())} onClick={() => void control({ request_id: r.id, answers: Object.fromEntries((r.questions ?? []).map(q => [q.id, { answers: [answerDraft[q.id]] }])) })}>回答</button>
+        <button className="btn sm primary" type="button" disabled={switching || !(r.questions ?? []).every(q => (answerDraft[q.id] ?? '').trim())} onClick={() => void control({ request_id: r.id, answers: Object.fromEntries((r.questions ?? []).map(q => [q.id, { answers: [answerDraft[q.id]] }])) })}>{t('回答')}</button>
       </div>}
-      {(r.kind === 'option' || r.kind === 'elicitation' || r.kind === 'other') && <p className="muted small">这种请求得在 Codex 桌面端里处理。</p>}
+      {(r.kind === 'option' || r.kind === 'elicitation' || r.kind === 'other') && <p className="muted small">{t('这种请求得在 Codex 桌面端里处理。')}</p>}
     </div>)}
-    {desktop.running && <div className="reply-request-actions"><span className="muted small">它正在跑</span><button className="btn sm" type="button" disabled={switching} onClick={() => void control({ interrupt: true })} title="停下当前这轮（桌面端的 Stop）">打断</button></div>}
+    {desktop.running && <div className="reply-request-actions"><span className="muted small">{t('它正在跑')}</span><button className="btn sm" type="button" disabled={switching} onClick={() => void control({ interrupt: true })} title={t('停下当前这轮（桌面端的 Stop）')}>{t('打断')}</button></div>}
   </div> : null;
   const send = async (mode: 'queue' | 'interrupt' = 'queue', conn: Connection | null = connection) => {
     // Pictures travel as separate --image arguments: the CLI attaches them the way each agent
@@ -263,7 +265,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
       await load();
     } catch {
       // Reconcile the same receipt on a network retry; never generate a fresh ID.
-      if (alive.current) setError('连接中断，草稿已保留。点“确认发送结果”查询或重试同一条消息。');
+      if (alive.current) setError(t('连接中断，草稿已保留。点“确认发送结果”查询或重试同一条消息。'));
     } finally {
       locked.current = false;
       if (alive.current) setBusy(false);
@@ -276,49 +278,49 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   // holds several queued messages, and each one stays visible here until its turn comes.
   const pending = (connection?.receipts ?? []).filter(r => r.state === 'accepted' && r.id !== dismissed && !r.delivered && !shownInTranscript(r) && Date.now() / 1000 - r.created < 6 * 3600).sort((a, b) => a.created - b.created);
   const unknown = last && (last.state === 'unknown' || last.state === 'sending');
-  return <section className={`session-reply${big ? " big" : ""}`} aria-label="回复当前会话">
-    {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map((r, i) => <div key={r.id} className="reply-queued"><div className="reply-queued-body"><span>你 · {r.note}</span><p>{r.text}</p></div>
+  return <section className={`session-reply${big ? " big" : ""}`} aria-label={t('回复当前会话')}>
+    {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>{t('已排队 {n} 条，本轮结束后按顺序处理', { n: pending.length })}</span>}{pending.map((r, i) => <div key={r.id} className="reply-queued"><div className="reply-queued-body"><span>{t('你')} · {r.note}</span><p>{r.text}</p></div>
       {session.agent === 'claude-code' && i === pending.length - 1 && connection?.working && <div className="reply-request-actions reply-queued-actions">
-        <button className="btn sm" type="button" disabled={!!withdrawing || busy} onClick={() => void withdraw(r, false)} title="从 Claude Code 的队列里拿回来，不发了">{withdrawing === r.id ? '正在撤回…' : '撤回'}</button>
-        <button className="btn sm" type="button" disabled={!!withdrawing || busy} onClick={() => void withdraw(r, true)} title="拿回来放进输入框，改好再发">撤回并编辑</button>
+        <button className="btn sm" type="button" disabled={!!withdrawing || busy} onClick={() => void withdraw(r, false)} title={t('从 Claude Code 的队列里拿回来，不发了')}>{withdrawing === r.id ? t('正在撤回…') : t('撤回')}</button>
+        <button className="btn sm" type="button" disabled={!!withdrawing || busy} onClick={() => void withdraw(r, true)} title={t('拿回来放进输入框，改好再发')}>{t('撤回并编辑')}</button>
       </div>}</div>)}</div>}
     {desktopBlock}
     {connection?.blocked && <div className="reply-desktop reply-blocked" role="status">
-      <div className="reply-request-head"><b>它在电脑上等确认</b><span className="reply-request-text">下面是那块屏幕；按键直接发到原终端</span></div>
+      <div className="reply-request-head"><b>{t('它在电脑上等确认')}</b><span className="reply-request-text">{t('下面是那块屏幕；按键直接发到原终端')}</span></div>
       {connection.screen && <pre className="reply-screen">{connection.screen.split('\n').slice(-14).join('\n')}</pre>}
       <div className="reply-request-actions reply-keys">
-        {([['up', '↑'], ['down', '↓'], ['enter', '⏎ 确认'], ['esc', 'Esc'], ['y', 'y'], ['n', 'n'], ['1', '1'], ['2', '2'], ['3', '3']] as [string, string][]).map(([k, label]) =>
+        {([['up', '↑'], ['down', '↓'], ['enter', t('⏎ 确认')], ['esc', 'Esc'], ['y', 'y'], ['n', 'n'], ['1', '1'], ['2', '2'], ['3', '3']] as [string, string][]).map(([k, label]) =>
           <button key={k} className={`btn sm${k === 'enter' ? ' primary' : ''}`} type="button" disabled={switching} onClick={() => void control({ keys: [k] })}>{label}</button>)}
       </div>
     </div>}
-    {notice && <div className="reply-receipt" role="status"><span>{notice}</span><button className="link" type="button" onClick={() => setNotice('')}>好</button></div>}
-    <div className="reply-connection"><span>{connection?.label || (error ? '连接暂时不可用' : '正在连接原会话…')}</span>
+    {notice && <div className="reply-receipt" role="status"><span>{notice}</span><button className="link" type="button" onClick={() => setNotice('')}>{t('好')}</button></div>}
+    <div className="reply-connection"><span>{connection?.label || (error ? t('连接暂时不可用') : t('正在连接原会话…'))}</span>
       {connection?.available && (connection.mode || connection.model) && <span className="reply-switches">
-        {connection.mode && <select aria-label="权限模式" title="权限模式：终端里的 Shift+Tab" value={connection.mode} disabled={switching} onChange={e => void control({ mode: e.target.value })}>{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODES.some(([v]) => v === connection.mode) && <option value={connection.mode}>{connection.mode}</option>}</select>}
-        {connection.model && <select aria-label="模型" title="模型：终端里的 /model" value={modelAlias(connection.model)} disabled={switching || !!connection.working} onChange={e => void control({ model: e.target.value })}>{MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODELS.some(([v]) => v === modelAlias(connection.model!)) && <option value={modelAlias(connection.model)}>{connection.model}</option>}</select>}
+        {connection.mode && <select aria-label={t('权限模式')} title={t('权限模式：终端里的 Shift+Tab')} value={connection.mode} disabled={switching} onChange={e => void control({ mode: e.target.value })}>{MODES.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}{!MODES.some(([v]) => v === connection.mode) && <option value={connection.mode}>{connection.mode}</option>}</select>}
+        {connection.model && <select aria-label={t('模型')} title={t('模型：终端里的 /model')} value={modelAlias(connection.model)} disabled={switching || !!connection.working} onChange={e => void control({ model: e.target.value })}>{MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODELS.some(([v]) => v === modelAlias(connection.model!)) && <option value={modelAlias(connection.model)}>{connection.model}</option>}</select>}
       </span>}
       {!connection?.available && connection?.adoptable && <button className="btn sm" type="button" disabled={adopting || connection.adopt_state === 'working'}
-        title={connection.adopt_state === 'working' ? `它正在 ${connection.source_app || '原终端'} 里跑，等它停下来再接` : `把它从 ${connection.source_app || '原终端'} 接进那台电脑的 Herdr，再发这条`}
-        onClick={() => void adopt()}>{adopting ? '正在接…' : '接进 Herdr 再发'}</button>}
+        title={connection.adopt_state === 'working' ? t('它正在 {where} 里跑，等它停下来再接', { where: connection.source_app || t('原终端') }) : t('把它从 {where} 接进那台电脑的 Herdr，再发这条', { where: connection.source_app || t('原终端') })}
+        onClick={() => void adopt()}>{adopting ? t('正在接…') : t('接进 Herdr 再发')}</button>}
       {!connection?.available && connection?.resumable && <button className="btn sm primary" type="button" disabled={reviving || busy}
-        title="在电脑的 Herdr 里新开一个页签恢复这段对话（同一份记录），恢复好就把你打的这条发过去"
-        onClick={() => void revive()}>{reviving ? '正在恢复…' : draft.trim() || images.length ? '在电脑上恢复并发送' : '在电脑上恢复这段会话'}</button>}
-      {!connection?.available && <button className="link" onClick={() => void load()}>重新连接</button>}</div>
+        title={t('在电脑的 Herdr 里新开一个页签恢复这段对话（同一份记录），恢复好就把你打的这条发过去')}
+        onClick={() => void revive()}>{reviving ? t('正在恢复…') : draft.trim() || images.length ? t('在电脑上恢复并发送') : t('在电脑上恢复这段会话')}</button>}
+      {!connection?.available && <button className="link" onClick={() => void load()}>{t('重新连接')}</button>}</div>
     <form onSubmit={e => { e.preventDefault(); void send(); }}>
-      {menu.length > 0 && <ul className="reply-slash" role="listbox" aria-label="可用的 / 命令">
+      {menu.length > 0 && <ul className="reply-slash" role="listbox" aria-label={t('可用的 / 命令')}>
         {menu.map((c, i) => <li key={c.name} role="option" aria-selected={i === cursor} className={i === cursor ? 'on' : ''}
           onMouseDown={e => { e.preventDefault(); pick(c); }} onMouseEnter={() => setCursor(i)}>
-          <b>/{c.name}</b><span>{c.description}</span><i>{KIND_LABEL[c.kind]}</i>
+          <b>/{c.name}</b><span>{c.description}</span><i>{t(KIND_LABEL[c.kind])}</i>
         </li>)}
       </ul>}
-      {query !== null && commands === null && <div className="reply-slash reply-slash-loading">正在读取可用命令…</div>}
+      {query !== null && commands === null && <div className="reply-slash reply-slash-loading">{t('正在读取可用命令…')}</div>}
       {(images.length > 0 || saving > 0) && <div className="reply-images">
-        {images.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt={im.name} title={im.path} /><button type="button" className="x" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label="移除图片">✕</button></div>)}
-        {saving > 0 && <span className="muted small">传图中…</span>}
+        {images.map((im, i) => <div key={im.path} className="disc-img"><img src={im.preview} alt={im.name} title={im.path} /><button type="button" className="x" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label={t('移除图片')}>✕</button></div>)}
+        {saving > 0 && <span className="muted small">{t('传图中…')}</span>}
       </div>}
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={e => { void addFiles(Array.from(e.target.files || [])); e.target.value = ''; }} />
-      <button className="btn reply-attach" type="button" disabled={busy || !!unknown} onClick={() => fileInput.current?.click()} title="发图片：手机可拍照或选相册，电脑也可以直接粘贴" aria-label="添加图片">📷</button>
-      <div className="reply-box"><textarea ref={textarea} onPaste={onPaste} aria-label="回复内容" placeholder={connection?.working ? "" : images.length ? "说说这张图要干什么（可不填）" : "在这里回复…"} value={draft} maxLength={16000} rows={1} disabled={busy || !!unknown}
+      <button className="btn reply-attach" type="button" disabled={busy || !!unknown} onClick={() => fileInput.current?.click()} title={t('发图片：手机可拍照或选相册，电脑也可以直接粘贴')} aria-label={t('添加图片')}>📷</button>
+      <div className="reply-box"><textarea ref={textarea} onPaste={onPaste} aria-label={t('回复内容')} placeholder={connection?.working ? "" : images.length ? t('说说这张图要干什么（可不填）') : t('在这里回复…')} value={draft} maxLength={16000} rows={1} disabled={busy || !!unknown}
         onChange={e => { setDraft(e.target.value); if (receipt?.state === 'failed') setReceipt(null); }}
         onKeyDown={e => {
           if (e.nativeEvent.isComposing) return;
@@ -329,10 +331,10 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
           else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(menu[Math.min(cursor, menu.length - 1)]); }
           else if (e.key === 'Escape') { e.preventDefault(); setMenuClosed(draft); }
         }} />
-      <button className="btn reply-expand" type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setBig(b => !b); textarea.current?.focus(); }} title={big ? '收起输入框' : '放大输入框'} aria-label={big ? '收起输入框' : '放大输入框'}>{big ? '⤡' : '⤢'}</button></div>
-      {connection?.working && <button className="btn" type="button" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title="先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导">打断并发送</button>}
-      <button className="btn primary" type="submit" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} title={connection?.working ? '排进队列，本轮结束 Agent 就会看到' : undefined}>{busy ? '发送中…' : attempt.current ? '确认发送结果' : connection?.working ? '排队发送' : '发送'}</button>
+      <button className="btn reply-expand" type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setBig(b => !b); textarea.current?.focus(); }} title={big ? t('收起输入框') : t('放大输入框')} aria-label={big ? t('收起输入框') : t('放大输入框')}>{big ? '⤡' : '⤢'}</button></div>
+      {connection?.working && <button className="btn" type="button" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} onClick={() => void send('interrupt')} title={t('先按 Esc 打断当前这轮，再把这条发给它——像 Codex 的引导')}>{t('打断并发送')}</button>}
+      <button className="btn primary" type="submit" onMouseDown={e => e.preventDefault()} disabled={busy || !!saving || (!draft.trim() && !images.length) || !connection?.available || !!unknown} title={connection?.working ? t('排进队列，本轮结束 Agent 就会看到') : undefined}>{busy ? t('发送中…') : attempt.current ? t('确认发送结果') : connection?.working ? t('排队发送') : t('发送')}</button>
     </form>
-    {(error || unknown || last?.state==='failed') && <div className="reply-error" role="alert">{error || last?.note}{unknown && <><button className="link" onClick={() => { setReceipt(null); void load(); }}>检查送达状态</button><button className="link" onClick={()=>{setDismissed(last.id);forgetAttempt();setError('');}}>已核对，继续编辑</button></>}</div>}
+    {(error || unknown || last?.state==='failed') && <div className="reply-error" role="alert">{error || last?.note}{unknown && <><button className="link" onClick={() => { setReceipt(null); void load(); }}>{t('检查送达状态')}</button><button className="link" onClick={()=>{setDismissed(last.id);forgetAttempt();setError('');}}>{t('已核对，继续编辑')}</button></>}</div>}
   </section>;
 }

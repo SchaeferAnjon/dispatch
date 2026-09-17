@@ -3,6 +3,7 @@ import { conversationProject, conversationSummary, sessionLifecycle } from "../a
 import { ago, actorOf, projectColor, projectOf, relTime, statusLabel } from "../derive";
 import type { Activity, Issue } from "../types";
 import { Avatar } from "./ui";
+import { useT } from "../i18n";
 
 interface Props {
   archiveDays: number;
@@ -21,6 +22,7 @@ type Hit = { kind: "project"; key: string; name: string } | { kind: "session"; k
 // One search box for the whole app (⌘K): projects, conversations and tasks in one
 // list, so the user never has to know which view a thing lives in first.
 export function SearchPalette({ archiveDays, projects, rows, issues, me, onProject, onSession, onTask, onClose }: Props) {
+  const t = useT();
   const [q, setQ] = useState("");
   const [cursor, setCursor] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -50,14 +52,14 @@ export function SearchPalette({ archiveDays, projects, rows, issues, me, onProje
     if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(0, c - 1)); }
     if (e.key === "Enter" && hits[cursor]) { e.preventDefault(); pick(hits[cursor]); }
   };
-  const groups: { kind: Hit["kind"]; label: string }[] = [{ kind: "project", label: "项目" }, { kind: "session", label: "会话" }, { kind: "task", label: "任务" }];
+  const groups: { kind: Hit["kind"]; label: string }[] = [{ kind: "project", label: t("项目") }, { kind: "session", label: t("会话") }, { kind: "task", label: t("任务") }];
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog palette" role="dialog" aria-label="搜索" onKeyDown={onKey}>
-        <label className="search palette-input">🔍<input ref={input} placeholder="搜项目、会话、任务…" value={q} onChange={(e) => setQ(e.target.value)} autoCorrect="off" autoCapitalize="off" autoComplete="off" spellCheck={false} /><kbd>esc</kbd></label>
-        {q.trim() && hits.length === 0 && <div className="empty">没有匹配的项目、会话或任务</div>}
-        {!q.trim() && <div className="palette-hint muted small">输入关键词；↑↓ 选择，⏎ 打开。项目名、会话标题或目录、任务标题或 ID 都能搜。</div>}
+      <div className="dialog palette" role="dialog" aria-label={t("搜索")} onKeyDown={onKey}>
+        <label className="search palette-input">🔍<input ref={input} placeholder={t("搜项目、会话、任务…")} value={q} onChange={(e) => setQ(e.target.value)} autoCorrect="off" autoCapitalize="off" autoComplete="off" spellCheck={false} /><kbd>esc</kbd></label>
+        {q.trim() && hits.length === 0 && <div className="empty">{t("没有匹配的项目、会话或任务")}</div>}
+        {!q.trim() && <div className="palette-hint muted small">{t("输入关键词；↑↓ 选择，⏎ 打开。项目名、会话标题或目录、任务标题或 ID 都能搜。")}</div>}
         <div className="palette-list">
           {groups.map(({ kind, label }) => {
             const list = hits.filter((h) => h.kind === kind);
@@ -68,8 +70,8 @@ export function SearchPalette({ archiveDays, projects, rows, issues, me, onProje
                 {list.map((h) => {
                   const idx = hits.indexOf(h);
                   const cls = `palette-row${idx === cursor ? " on" : ""}`;
-                  if (h.kind === "project") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><span className="proj" style={{ background: projectColor(h.name) }} /><b>{h.name}</b><span className="muted small">进入项目</span></div>;
-                  if (h.kind === "session") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><Avatar actor={actorOf(h.a.agent, me)} size={20} /><span className="t"><b>{h.a.starred && "★ "}{h.a.title}</b><span className="sub">{conversationSummary(h.a)}</span></span><span className="muted small right">{sessionLifecycle(h.a, archiveDays) === "archived" && <span className="st sm open">已归档</span>} {conversationProject(h.a)} · {ago(h.a.last_at)}</span></div>;
+                  if (h.kind === "project") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><span className="proj" style={{ background: projectColor(h.name) }} /><b>{h.name}</b><span className="muted small">{t("进入项目")}</span></div>;
+                  if (h.kind === "session") return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><Avatar actor={actorOf(h.a.agent, me)} size={20} /><span className="t"><b>{h.a.starred && "★ "}{h.a.title}</b><span className="sub">{conversationSummary(h.a)}</span></span><span className="muted small right">{sessionLifecycle(h.a, archiveDays) === "archived" && <span className="st sm open">{t("已归档")}</span>} {conversationProject(h.a)} · {ago(h.a.last_at)}</span></div>;
                   const st = statusLabel(h.i);
                   return <div key={h.key} className={cls} onMouseEnter={() => setCursor(idx)} onClick={() => pick(h)}><span className={`st sm ${st.cls}`}>{st.text}</span><span className="t"><b>{h.i.title}</b></span><span className="muted small right mono">{h.i.id} · {relTime(h.i.updated_at)}</span></div>;
                 })}

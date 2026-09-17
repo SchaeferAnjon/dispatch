@@ -1,6 +1,8 @@
 // Minimal line diff (LCS) for rendering Edit old/new pairs. Inputs are small
 // (a single tool call), so O(n·m) is fine; very large inputs fall back to a
 // plain replace view.
+import { t } from "./i18n";
+
 export type DiffLine = { kind: "same" | "add" | "del"; text: string };
 
 export function lineDiff(oldText: string, newText: string): DiffLine[] {
@@ -223,7 +225,7 @@ export function diffRows(diff: ToolDiff): { label?: string; rows: DiffRow[] }[] 
   if (diff.kind === "patch") return [{ rows: codexPatchRows(diff.text) }];
   if (diff.kind === "write") return [{ rows: pairRows("", diff.new) }];
   if (diff.kind === "pair") return [{ rows: pairRows(diff.old, diff.new) }];
-  return diff.edits.map((e, i) => ({ label: `第 ${i + 1} 处`, rows: pairRows(e.old, e.new) }));
+  return diff.edits.map((e, i) => ({ label: t("第 {n} 处", { n: i + 1 }), rows: pairRows(e.old, e.new) }));
 }
 
 // A tool call's file_path is absolute; show it relative to the session's cwd when it lives there.

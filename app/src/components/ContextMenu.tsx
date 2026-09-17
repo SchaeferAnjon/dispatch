@@ -3,6 +3,7 @@ import { getApi } from '../api';
 import type { Activity, Issue } from '../types';
 import { useTaskMenu } from './TaskActions';
 import { useConversationMenu } from './ConversationActions';
+import { useT } from '../i18n';
 
 // Where a menu opens from. React's MouseEvent satisfies this, and so does the
 // synthetic anchor the global right-click handler builds from a DOM element.
@@ -35,18 +36,19 @@ interface ProjectMenuActions { starred: (name: string) => boolean; archived: (na
 const ProjectContext = createContext<(name: string, e: Anchor) => void>(() => {});
 export const useProjectMenu = () => useContext(ProjectContext);
 export function ProjectActions({ children, ...act }: ProjectMenuActions & { children: ReactNode }) {
+  const t = useT();
   const [menu, setMenu] = useState<{ name: string; x: number; y: number; from: HTMLElement | null } | null>(null);
   const open = (name: string, e: Anchor) => { e.preventDefault(); e.stopPropagation(); setMenu({ name, x: e.clientX, y: e.clientY, from: e.currentTarget as HTMLElement | null }); };
   const close = () => setMenu(null);
   const run = (fn: () => void) => { fn(); close(); };
-  return <ProjectContext.Provider value={open}>{children}{menu && <MenuPanel x={menu.x} y={menu.y} title={menu.name} label="项目操作" onClose={close} returnTo={menu.from}>
-    <MenuItem onClick={() => run(() => act.onProject(menu.name))}>进入项目</MenuItem>
-    <MenuItem onClick={() => run(() => void getApi().then(x => x.openWindow(`#/projects/${encodeURIComponent(menu.name)}`)))}>在新窗口打开</MenuItem>
-    <MenuItem onClick={() => run(() => act.onNew(menu.name))}>在这个项目新建会话</MenuItem>
-    <MenuItem onClick={() => run(() => act.onTasks(menu.name))}>只看它的任务</MenuItem>
+  return <ProjectContext.Provider value={open}>{children}{menu && <MenuPanel x={menu.x} y={menu.y} title={menu.name} label={t("项目操作")} onClose={close} returnTo={menu.from}>
+    <MenuItem onClick={() => run(() => act.onProject(menu.name))}>{t('进入项目')}</MenuItem>
+    <MenuItem onClick={() => run(() => void getApi().then(x => x.openWindow(`#/projects/${encodeURIComponent(menu.name)}`)))}>{t('在新窗口打开')}</MenuItem>
+    <MenuItem onClick={() => run(() => act.onNew(menu.name))}>{t('在这个项目新建会话')}</MenuItem>
+    <MenuItem onClick={() => run(() => act.onTasks(menu.name))}>{t('只看它的任务')}</MenuItem>
     <hr />
-    <MenuItem onClick={() => run(() => act.onFlag(menu.name, { starred: !act.starred(menu.name) }))}>{act.starred(menu.name) ? '取消收藏' : '收藏：置顶'}</MenuItem>
-    <MenuItem onClick={() => run(() => act.onFlag(menu.name, { archived: !act.archived(menu.name) }))}>{act.archived(menu.name) ? '取消归档' : '归档：从工作台隐藏'}</MenuItem>
+    <MenuItem onClick={() => run(() => act.onFlag(menu.name, { starred: !act.starred(menu.name) }))}>{act.starred(menu.name) ? t('取消收藏') : t('收藏：置顶')}</MenuItem>
+    <MenuItem onClick={() => run(() => act.onFlag(menu.name, { archived: !act.archived(menu.name) }))}>{act.archived(menu.name) ? t('取消归档') : t('归档：从工作台隐藏')}</MenuItem>
   </MenuPanel>}</ProjectContext.Provider>;
 }
 
@@ -63,13 +65,14 @@ export function useViewMenuExtras(items: ViewMenuItem[], deps: unknown[]) {
   useEffect(() => { setExtras(items); return () => setExtras([]); }, deps);
 }
 export function ViewMenu({ items, children }: { items: ViewMenuItem[]; children: ReactNode }) {
+  const t = useT();
   const [menu, setMenu] = useState<{ x: number; y: number; from: HTMLElement | null } | null>(null);
   const [extras, setExtras] = useState<ViewMenuItem[]>([]);
   const open = (e: Anchor) => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, from: e.currentTarget as HTMLElement | null }); };
   const close = () => setMenu(null);
   const ctx = useRef<ViewMenuContext>({ open, setExtras });
   ctx.current.open = open;
-  return <ViewContext.Provider value={ctx.current}>{children}{menu && <MenuPanel x={menu.x} y={menu.y} label="快捷操作" onClose={close} returnTo={menu.from}>
+  return <ViewContext.Provider value={ctx.current}>{children}{menu && <MenuPanel x={menu.x} y={menu.y} label={t("快捷操作")} onClose={close} returnTo={menu.from}>
     {extras.map(i => <MenuItem key={i.label} disabled={i.disabled} hint={i.hint} onClick={() => { i.onClick(); close(); }}>{i.label}</MenuItem>)}
     {extras.length > 0 && <hr />}
     {items.map(i => <MenuItem key={i.label} disabled={i.disabled} hint={i.hint} onClick={() => { i.onClick(); close(); }}>{i.label}</MenuItem>)}
@@ -90,6 +93,7 @@ export function useItemMenu(kind: string, resolver: Resolver, deps: unknown[]) {
   useEffect(() => register(kind, resolver), deps);
 }
 export function ItemMenus({ children }: { children: ReactNode }) {
+  const t = useT();
   const resolvers = useRef(new Map<string, Resolver>());
   const [menu, setMenu] = useState<{ spec: ItemMenuSpec; x: number; y: number; from: HTMLElement | null } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -98,7 +102,7 @@ export function ItemMenus({ children }: { children: ReactNode }) {
     open: (kind, id, el, e) => { const r = resolvers.current.get(kind); const spec = r?.(id, el); if (!spec) return false; e.preventDefault(); e.stopPropagation(); setMenu({ spec, x: e.clientX, y: e.clientY, from: el }); return true; },
   });
   const close = () => setMenu(null);
-  return <ItemContext.Provider value={ctx.current}>{children}{menu && <MenuPanel x={menu.x} y={menu.y} title={menu.spec.title} label="操作" busy={busy} onClose={close} returnTo={menu.from}>
+  return <ItemContext.Provider value={ctx.current}>{children}{menu && <MenuPanel x={menu.x} y={menu.y} title={menu.spec.title} label={t("操作")} busy={busy} onClose={close} returnTo={menu.from}>
     {menu.spec.items.map((i, n) => i === "-" ? <hr key={n} /> : <MenuItem key={i.label} disabled={i.disabled || busy} danger={i.danger} hint={i.hint} onClick={async () => { setBusy(true); try { await i.onClick(); } finally { setBusy(false); close(); } }}>{i.label}</MenuItem>)}
   </MenuPanel>}</ItemContext.Provider>;
 }

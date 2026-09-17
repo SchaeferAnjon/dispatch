@@ -1,13 +1,14 @@
+import { t } from "./i18n";
 import type { Column, Comment, HistoryEntry, Issue, Session, SourceKind } from "./types";
 
 export function durSince(epochSec: number): string {
   if (!epochSec) return "";
   const m = Math.max(0, Math.round((Date.now() / 1000 - epochSec) / 60));
-  if (m < 1) return "刚刚";
-  if (m < 60) return `${m} 分钟`;
+  if (m < 1) return t("刚刚");
+  if (m < 60) return t("{m} 分钟", { m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} 小时 ${m % 60} 分`;
-  return `${Math.floor(h / 24)} 天`;
+  if (h < 24) return t("{h} 小时 {m} 分", { h, m: m % 60 });
+  return t("{d} 天", { d: Math.floor(h / 24) });
 }
 
 export type AgentKind = "claude" | "codex" | "zcode" | "opencode" | "hermes" | "cursor" | "human" | "pi";
@@ -41,7 +42,7 @@ export function actorOf(raw: string | undefined, me: string): Actor | null {
   const k = KNOWN[raw.toLowerCase()];
   if (k) return { id: raw, ...k };
   // The person at the keyboard. The app addresses them as 你, never 我.
-  if (isMe(raw, me)) return { id: me, name: "你", kind: "human", glyph: "你" };
+  if (isMe(raw, me)) return { id: me, name: t("你"), kind: "human", glyph: t("你") };
   return { id: raw, name: raw, kind: "human", glyph: raw.slice(0, 1).toUpperCase() };
 }
 
@@ -70,14 +71,14 @@ export const COLUMNS: { key: Column; label: string; cls: string }[] = [
   { key: "done", label: "已完成", cls: "done" },
 ];
 export function statusLabel(i: Issue): { text: string; cls: string } {
-  if (i.labels?.includes("dispatch:trashed")) return { text: "回收站", cls: "open" };
-  if (isReviewed(i)) return { text: "已复核", cls: "rev" };
+  if (i.labels?.includes("dispatch:trashed")) return { text: t("回收站"), cls: "open" };
+  if (isReviewed(i)) return { text: t("已复核"), cls: "rev" };
   switch (i.status) {
-    case "closed": return { text: needsReview(i) ? "待 Agent 复核" : "已完成", cls: "done" };
-    case "in_progress": return { text: "进行中", cls: "prog" };
-    case "blocked": return { text: "阻塞", cls: "block" };
-    case "deferred": return { text: "搁置", cls: "open" };
-    default: return { text: "待办", cls: "open" };
+    case "closed": return { text: needsReview(i) ? t("待 Agent 复核") : t("已完成"), cls: "done" };
+    case "in_progress": return { text: t("进行中"), cls: "prog" };
+    case "blocked": return { text: t("阻塞"), cls: "block" };
+    case "deferred": return { text: t("搁置"), cls: "open" };
+    default: return { text: t("待办"), cls: "open" };
   }
 }
 
@@ -92,14 +93,14 @@ export function projectColor(name: string): string {
 /** durSince with the "前" suffix, except "刚刚" which already is a point in time. Use this instead of `${durSince(x)}前`. */
 export function ago(epochSec: number): string {
   const d = durSince(epochSec);
-  return !d || d === "刚刚" ? d : `${d}前`;
+  return !d || d === t("刚刚") ? d : t("{d}前", { d });
 }
 
 export function relTime(iso?: string): string {
   if (!iso) return "";
   const d = Date.now() - new Date(iso).getTime();
   const m = Math.max(0, Math.round(d / 60_000));
-  if (m < 1) return "刚刚";
+  if (m < 1) return t("刚刚");
   if (m < 60) return `${m}m`;
   const h = Math.round(m / 60);
   if (h < 24) return `${h}h`;
@@ -152,7 +153,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
   for (const s of sessions) {
     if (!s.alive || RETIRED_AGENTS.has(s.agent)) continue;
     const p = ensure(s.agent);
-    if (s.daemon) { p.daemon = s.source_app || "常驻"; continue; }
+    if (s.daemon) { p.daemon = s.source_app || t("常驻"); continue; }
     p.sessions.push(s);
   }
   for (const p of map.values()) {
@@ -165,7 +166,7 @@ export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []
       bs.set(key, b);
     }
     p.bySource = [...bs.values()].sort((a, b) => b.count - a.count);
-    if (p.daemon) p.bySource.push({ kind: "chat", label: `${p.daemon} · 常驻`, count: 0, working: 0 });
+    if (p.daemon) p.bySource.push({ kind: "chat", label: t("{app} · 常驻", { app: p.daemon }), count: 0, working: 0 });
     p.sessions.sort((a, b) => Number(b.state === "working") - Number(a.state === "working") || b.last_at - a.last_at);
     const recentWrite = !!p.lastActive && Date.now() - new Date(p.lastActive).getTime() < ONLINE_WINDOW_MIN * 60_000;
     // A live process is the truth; bd write recency only covers agents without hooks.
@@ -195,17 +196,17 @@ export function eventsFrom(history: HistoryEntry[], comments: Comment[], audit: 
     const cur = e.Issue;
     const ts = new Date(e.CommitDate).toISOString();
     if (!prev) {
-      ev.push({ ts, actor: cur.created_by, kind: "created", text: "创建", cmd: `bd create "${cur.title}"` });
+      ev.push({ ts, actor: cur.created_by, kind: "created", text: t("创建"), cmd: `bd create "${cur.title}"` });
     } else {
-      if (cur.assignee !== prev.assignee && cur.assignee) ev.push({ ts, actor: auditNear(ts, "assignee")?.actor ?? cur.assignee, kind: "claimed", text: prev.assignee ? `改派给 ${cur.assignee}` : "认领", cmd: `bd update ${cur.id} --claim` });
+      if (cur.assignee !== prev.assignee && cur.assignee) ev.push({ ts, actor: auditNear(ts, "assignee")?.actor ?? cur.assignee, kind: "claimed", text: prev.assignee ? t("改派给 {who}", { who: cur.assignee }) : t("认领"), cmd: `bd update ${cur.id} --claim` });
       if (cur.status !== prev.status) {
         const who = auditNear(ts, "status")?.actor ?? cur.assignee;
-        if (cur.status === "closed") ev.push({ ts, actor: who, kind: "closed", text: "完成", cmd: `bd close ${cur.id}${cur.close_reason ? ` --reason "${cur.close_reason}"` : ""}` });
-        else if (!(cur.status === "in_progress" && cur.assignee !== prev.assignee)) ev.push({ ts, actor: who, kind: "status", text: `状态 → ${statusLabel(cur).text}`, cmd: `bd update ${cur.id} --status ${cur.status}` });
+        if (cur.status === "closed") ev.push({ ts, actor: who, kind: "closed", text: t("完成"), cmd: `bd close ${cur.id}${cur.close_reason ? ` --reason "${cur.close_reason}"` : ""}` });
+        else if (!(cur.status === "in_progress" && cur.assignee !== prev.assignee)) ev.push({ ts, actor: who, kind: "status", text: t("状态 → {status}", { status: statusLabel(cur).text }), cmd: `bd update ${cur.id} --status ${cur.status}` });
       }
       const wasRev = (prev.labels ?? []).includes("reviewed"), isRev = (cur.labels ?? []).includes("reviewed");
-      if (isRev && !wasRev) ev.push({ ts, actor: auditNear(ts)?.actor, kind: "reviewed", text: "审核通过", cmd: `bd update ${cur.id} --add-label reviewed` });
-      if (cur.title !== prev.title || cur.description !== prev.description || cur.priority !== prev.priority || cur.acceptance_criteria !== prev.acceptance_criteria) ev.push({ ts, actor: auditNear(ts)?.actor, kind: "edited", text: "编辑" });
+      if (isRev && !wasRev) ev.push({ ts, actor: auditNear(ts)?.actor, kind: "reviewed", text: t("审核通过"), cmd: `bd update ${cur.id} --add-label reviewed` });
+      if (cur.title !== prev.title || cur.description !== prev.description || cur.priority !== prev.priority || cur.acceptance_criteria !== prev.acceptance_criteria) ev.push({ ts, actor: auditNear(ts)?.actor, kind: "edited", text: t("编辑") });
     }
     prev = cur;
   }
@@ -322,14 +323,14 @@ export function needsAttention(s: Session): boolean {
   return s.alive && s.registered && s.attention === "input";
 }
 export function sessionStatus(s: Session): string {
-  if (!s.alive) return "已结束";
-  if (needsAttention(s)) return "等待确认";
-  if (s.state === "unknown" || !s.registered) return "状态未知";
-  return s.state === "working" ? "在跑" : "空闲";
+  if (!s.alive) return t("已结束");
+  if (needsAttention(s)) return t("等待确认");
+  if (s.state === "unknown" || !s.registered) return t("状态未知");
+  return s.state === "working" ? t("在跑") : t("空闲");
 }
 export function sessionEvidence(s: Session): string {
-  const source = s.state_source === "transcript" ? "实际会话记录" : s.state_source === "hook" || s.last_event ? `事件上报${s.last_event ? ` · ${s.last_event}` : ""}` : s.registered ? "会话检测" : "仅检测到进程，未接入执行状态";
-  return `${source} · ${s.last_at ? `最后活动 ${ago(s.last_at)}` : "无活动时间"}`;
+  const source = s.state_source === "transcript" ? t("实际会话记录") : s.state_source === "hook" || s.last_event ? `${t("事件上报")}${s.last_event ? ` · ${s.last_event}` : ""}` : s.registered ? t("会话检测") : t("仅检测到进程，未接入执行状态");
+  return `${source} · ${s.last_at ? t("最后活动 {ago}", { ago: ago(s.last_at) }) : t("无活动时间")}`;
 }
 
 // A discussion's conclusion: one block in the task description (`## 讨论结论（when · model）`),

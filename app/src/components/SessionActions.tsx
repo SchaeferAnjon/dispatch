@@ -3,6 +3,7 @@ import { isTauri, type Api } from '../api';
 import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 import type { Host } from '../types';
 import { shrinkImage, withImages } from './SessionReply';
+import { t, useT } from '../i18n';
 
 type Target = { session_id: string; agent: string; host?: string; host_name?: string };
 interface Launch { request_id: string; state: string; message: string; session_id?: string; agent: string; cwd: string }
@@ -31,7 +32,7 @@ export function useOpenSession() {
     try {
       if (session.agent === 'zcode') { ctx.notify(await ctx.api.on(session.host || 'local', ['focus', session.session_id])); return; }
       const r = await control<Launch>(ctx.api, session.host || 'local', 'open', { ...session, request_id: requests.current.get(key) });
-      ctx.notify(`${session.host_name || '电脑'}：${r.message}`);
+      ctx.notify(t('{host}：{message}', { host: session.host_name || t('电脑'), message: r.message }));
       if (r.request_id) {
         for (let n = 0; n < 80; n++) {
           await new Promise(resolve => window.setTimeout(resolve, 2000));
@@ -45,6 +46,7 @@ export function useOpenSession() {
 }
 
 export function OpenSessionButton({ session, compact = false }: { session: Target; compact?: boolean }) {
+  const t = useT();
   const ctx = useContext(Context);
   const [busy, setBusy] = useState(false);
   const request = useRef<string | null>(null);
@@ -56,7 +58,7 @@ export function OpenSessionButton({ session, compact = false }: { session: Targe
     try {
       if (session.agent === 'zcode') { ctx.notify(await ctx.api.on(session.host || 'local', ['focus', session.session_id])); return; }
       const r = await control<Launch>(ctx.api, session.host || 'local', 'open', { ...session, request_id: request.current });
-      ctx.notify(`${session.host_name || '电脑'}：${r.message}`);
+      ctx.notify(t('{host}：{message}', { host: session.host_name || t('电脑'), message: r.message }));
       if (r.request_id) {
         // Keep one request identity until the server confirms the result.
         for (let n=0; n<80; n++) {
@@ -70,8 +72,8 @@ export function OpenSessionButton({ session, compact = false }: { session: Targe
     finally { setBusy(false); }
   };
   if (!supported) return null;
-  return <button type="button" className={`btn sm original-session${compact ? ' compact' : ''}`} disabled={busy || !ctx?.api} onClick={open} title={`在${session.host_name || '电脑'}的 ${names[session.agent]} 中打开此会话`}>
-    {busy ? '正在打开…' : <><span className="open-desktop-label">打开 {names[session.agent]} 会话 ↗</span><span className="open-mobile-label">在电脑上打开 ↗</span></>}
+  return <button type="button" className={`btn sm original-session${compact ? ' compact' : ''}`} disabled={busy || !ctx?.api} onClick={open} title={t('在{host}的 {agent} 中打开此会话', { host: session.host_name || t('电脑'), agent: names[session.agent] })}>
+    {busy ? t('正在打开…') : <><span className="open-desktop-label">{t('打开 {agent} 会话 ↗', { agent: names[session.agent] })}</span><span className="open-mobile-label">{t('在电脑上打开 ↗')}</span></>}
   </button>;
 }
 
@@ -82,6 +84,7 @@ export const canAdopt = (s: { agent: string; host?: string; herdr?: unknown; sou
   !s.herdr && ['claude-code', 'codex', 'pi'].includes(s.agent) && s.source_app !== 'Herdr' && (!s.session_id.startsWith('pid-') || !!s.probable_session_id);
 
 export function AdoptButton({ session, compact = false, className = 'btn sm' }: { session: { agent: string; session_id: string; host?: string; herdr?: unknown; source_app?: string; state?: string; probable_session_id?: string; remote?: boolean }; compact?: boolean; className?: string }) {
+  const t = useT();
   const ctx = useContext(Context);
   const [busy, setBusy] = useState(false);
   const request = useRef<string | null>(null);
@@ -99,21 +102,22 @@ export function AdoptButton({ session, compact = false, className = 'btn sm' }: 
         for (let n = 0; n < 60; n++) {
           await new Promise(resolve => window.setTimeout(resolve, 2000));
           const s = await control<Launch>(ctx.api, host, 'status', { request_id: r.request_id });
-          if (!['starting', 'running'].includes(s.state)) { ctx.notify(s.state === 'ready' ? `已接到 Herdr：${s.message}` : s.message, s.state !== 'ready'); break; }
+          if (!['starting', 'running'].includes(s.state)) { ctx.notify(s.state === 'ready' ? t('已接到 Herdr：{message}', { message: s.message }) : s.message, s.state !== 'ready'); break; }
         }
       }
       request.current = null;
     } catch (e) { ctx.notify(String(e), true); }
     finally { setBusy(false); }
   };
-  const where = session.source_app && session.source_app !== '未登记' ? session.source_app : '别的终端';
+  const where = session.source_app && session.source_app !== '未登记' ? session.source_app : t('别的终端');
   return <button type="button" className={`${className} adopt-session${compact ? ' compact' : ''}`} disabled={busy || !ctx?.api || working} onClick={adopt}
-    title={working ? `它正在 ${where} 里跑，等它停下来再接` : `它现在在 ${where} 里。停掉那边的进程，在 Herdr 新标签里恢复同一个会话（有标题、能判断在跑/等你、手机端能回复）`}>
-    {busy ? '正在接…' : compact ? '接到 Herdr' : `从 ${where} 接到 Herdr`}
+    title={working ? t('它正在 {where} 里跑，等它停下来再接', { where }) : t('它现在在 {where} 里。停掉那边的进程，在 Herdr 新标签里恢复同一个会话（有标题、能判断在跑/等你、手机端能回复）', { where })}>
+    {busy ? t('正在接…') : compact ? t('接到 Herdr') : t('从 {where} 接到 Herdr', { where })}
   </button>;
 }
 
 export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCreated, onComputer }: { api: Api; hosts: Host[]; initialHost: string; initialCwd?: string; onClose: () => void; onCreated: (sid: string, host: string, agent: string) => void; onComputer: (host: string) => void }) {
+  const t = useT();
   const [host, setHost] = useState(initialHost || 'local');
   const [agent, setAgent] = useState('claude-code');
   const [path, setPath] = useState('');
@@ -139,10 +143,10 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
       try {
         const image = f.type.startsWith('image/');
         const data = image ? await shrinkImage(f) : await readAsDataUrl(f);
-        const t = await api.on(host, [image ? 'save-image' : 'save-file', '--json'], JSON.stringify({ name: f.name || (image ? 'photo' : 'file'), data }));
-        const saved = JSON.parse(t.slice(t.indexOf('{'))) as { path: string };
-        setFiles((xs) => [...xs, { path: saved.path, name: f.name || (image ? '图片' : '文件'), image, preview: image ? data : undefined }]);
-      } catch (e) { setError(/usage:|invalid choice/.test(String(e)) ? '那台电脑的 Dispatch 太旧，还不会存附件；更新后再试。' : `附件没传上去：${String(e)}`); }
+        const raw = await api.on(host, [image ? 'save-image' : 'save-file', '--json'], JSON.stringify({ name: f.name || (image ? 'photo' : 'file'), data }));
+        const saved = JSON.parse(raw.slice(raw.indexOf('{'))) as { path: string };
+        setFiles((xs) => [...xs, { path: saved.path, name: f.name || (image ? t('图片') : t('文件')), image, preview: image ? data : undefined }]);
+      } catch (e) { setError(/usage:|invalid choice/.test(String(e)) ? t('那台电脑的 Dispatch 太旧，还不会存附件；更新后再试。') : t('附件没传上去：{err}', { err: String(e) })); }
       finally { setSaving((n) => n - 1); }
     }
   };
@@ -165,7 +169,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
   const finder = isTauri && host === 'local';
   const pick = async () => {
     setError('');
-    try { const p = await pickFolder({ directory: true, multiple: false, title: '选择工作文件夹', defaultPath: path || undefined }); if (typeof p === 'string' && p) { setPath(p); void browse(p); } }
+    try { const p = await pickFolder({ directory: true, multiple: false, title: t('选择工作文件夹'), defaultPath: path || undefined }); if (typeof p === 'string' && p) { setPath(p); void browse(p); } }
     catch (e) { setError(String(e)); }
   };
   useEffect(() => {
@@ -173,7 +177,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
     let active = true; let timer = 0;
     const poll = async () => {
       try { const r = await control<Launch>(api, host, 'status', {request_id: launch.request_id}); if (active) { setLaunch(r); setError(''); if (r.state === 'ready' && r.session_id) { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onCreated(r.session_id, host, agent); } } }
-      catch (e) { if (active) setError(`连接中断，正在重新查询创建结果：${String(e)}`); }
+      catch (e) { if (active) setError(t('连接中断，正在重新查询创建结果：{err}', { err: String(e) })); }
       if (active) timer = window.setTimeout(poll, 2000);
     };
     timer = window.setTimeout(poll, 1000);
@@ -185,7 +189,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
   const submit = async () => {
     if (busy || launch || saving || (!prompt.trim() && !files.length) || !path) return;
     setBusy(true); setError(''); request.current ??= id();
-    const pending = { request_id: request.current, state: 'starting', host, agent, cwd: path, message: '正在连接电脑…' };
+    const pending = { request_id: request.current, state: 'starting', host, agent, cwd: path, message: t('正在连接电脑…') };
     try { sessionStorage.setItem('dispatch-new-session', JSON.stringify(pending)); } catch { /* private mode */ }
     try { const r = await control<Launch>(api, host, 'start', {request_id: request.current, agent, cwd: path, prompt: messageWithFiles(prompt), focus: finder}); setLaunch(r); }
     catch (e) {
@@ -205,7 +209,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
   const locked = busy || !!launch;
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => { dialog.current?.focus(); }, []);
-  return <div className="overlay"><div className="dialog new-session-dialog" role="dialog" ref={dialog} tabIndex={-1} aria-modal="true" aria-label="新建会话" onKeyDown={e => {
+  return <div className="overlay"><div className="dialog new-session-dialog" role="dialog" ref={dialog} tabIndex={-1} aria-modal="true" aria-label={t('新建会话')} onKeyDown={e => {
       if (e.key === 'Escape') onClose();
       if (e.key === 'Tab') {
         const nodes = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled)') || []);
@@ -214,30 +218,30 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
         else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
       }
     }}>
-    <header><div><h3>新建会话</h3><p>选择工作目录，直接开始一段新对话。</p></div><button className="btn ghost" aria-label="关闭新建会话" onClick={onClose}>✕</button></header>
+    <header><div><h3>{t('新建会话')}</h3><p>{t('选择工作目录，直接开始一段新对话。')}</p></div><button className="btn ghost" aria-label={t('关闭新建会话')} onClick={onClose}>✕</button></header>
     {!launch && <><div className="new-session-selects">
-      <label>运行电脑<select aria-label="运行电脑" value={host} disabled={locked} onChange={e => setHost(e.target.value)}>{hosts.length ? hosts.map(h => <option key={h.id} value={h.local ? 'local' : h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? ' · 离线' : ''}</option>) : <option value="local">本机</option>}</select></label>
-      <label>Agent<select aria-label="Agent" title="能在 Dispatch 里看到对话并回复的 Agent；派活对话框里的 Gemini CLI 只能派，看不到" value={agent} disabled={locked} onChange={e => setAgent(e.target.value)}>{Object.entries(names).filter(([k]) => k !== 'zcode').map(([k,n]) => <option key={k} value={k}>{n}</option>)}</select></label>
+      <label>{t('运行电脑')}<select aria-label={t('运行电脑')} value={host} disabled={locked} onChange={e => setHost(e.target.value)}>{hosts.length ? hosts.map(h => <option key={h.id} value={h.local ? 'local' : h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? ` · ${t('离线')}` : ''}</option>) : <option value="local">{t('本机')}</option>}</select></label>
+      <label>Agent<select aria-label="Agent" title={t('能在 Dispatch 里看到对话并回复的 Agent；派活对话框里的 Gemini CLI 只能派，看不到')} value={agent} disabled={locked} onChange={e => setAgent(e.target.value)}>{Object.entries(names).filter(([k]) => k !== 'zcode').map(([k,n]) => <option key={k} value={k}>{n}</option>)}</select></label>
     </div>
-    <label>工作文件夹<div className="folder-path"><input aria-label="工作文件夹" value={path} disabled={locked} onChange={e => setPath(e.target.value)} placeholder="输入完整路径，或从下方选择" />{finder && <button className="btn sm" type="button" disabled={locked} onClick={() => void pick()} title="用 Finder 选一个文件夹">从 Finder 选择…</button>}<button className="btn sm" type="button" disabled={locked || browseBusy} onClick={() => browse(path)}>前往</button></div></label>
+    <label>{t('工作文件夹')}<div className="folder-path"><input aria-label={t('工作文件夹')} value={path} disabled={locked} onChange={e => setPath(e.target.value)} placeholder={t('输入完整路径，或从下方选择')} />{finder && <button className="btn sm" type="button" disabled={locked} onClick={() => void pick()} title={t('用 Finder 选一个文件夹')}>{t('从 Finder 选择…')}</button>}<button className="btn sm" type="button" disabled={locked || browseBusy} onClick={() => browse(path)}>{t('前往')}</button></div></label>
     <div className="folder-picker" aria-busy={browseBusy}>
-      <div className="folder-picker-heading"><b>浏览文件夹</b><button className="link" disabled={!folders || locked || browseBusy || folders.path === folders.parent} onClick={() => browse(folders!.parent)}>↑ 上一级</button></div>
-      {browseBusy ? <p className="muted">读取文件夹…</p> : <div className="folder-children">{folders?.children.map(f => <button key={f.path} type="button" disabled={locked} onClick={() => browse(f.path)}>▱ {f.name}<span>›</span></button>)}{folders?.children.length === 0 && <p className="muted">没有子文件夹，可直接使用当前目录。</p>}</div>}
-      {folders?.truncated && <small>子文件夹较多，可输入完整路径前往。</small>}
+      <div className="folder-picker-heading"><b>{t('浏览文件夹')}</b><button className="link" disabled={!folders || locked || browseBusy || folders.path === folders.parent} onClick={() => browse(folders!.parent)}>{t('↑ 上一级')}</button></div>
+      {browseBusy ? <p className="muted">{t('读取文件夹…')}</p> : <div className="folder-children">{folders?.children.map(f => <button key={f.path} type="button" disabled={locked} onClick={() => browse(f.path)}>▱ {f.name}<span>›</span></button>)}{folders?.children.length === 0 && <p className="muted">{t('没有子文件夹，可直接使用当前目录。')}</p>}</div>}
+      {folders?.truncated && <small>{t('子文件夹较多，可输入完整路径前往。')}</small>}
     </div>
-    {!!folders?.recent.length && <label>最近使用<select aria-label="最近使用的文件夹" value="" disabled={locked || browseBusy} onChange={e => browse(e.target.value)}><option value="">选择最近使用的文件夹…</option>{folders.recent.map(p => <option key={p} value={p}>{p}</option>)}</select></label>}
-    <label>第一条消息<textarea aria-label="第一条消息" value={prompt} disabled={locked} maxLength={16000} onChange={e => setPrompt(e.target.value)} onPaste={onPaste} placeholder={files.length ? '说说这些图片/文件要干什么（可不填）' : '告诉 Agent 这次想做什么…（可粘贴图片）'} /></label>
+    {!!folders?.recent.length && <label>{t('最近使用')}<select aria-label={t('最近使用的文件夹')} value="" disabled={locked || browseBusy} onChange={e => browse(e.target.value)}><option value="">{t('选择最近使用的文件夹…')}</option>{folders.recent.map(p => <option key={p} value={p}>{p}</option>)}</select></label>}
+    <label>{t('第一条消息')}<textarea aria-label={t('第一条消息')} value={prompt} disabled={locked} maxLength={16000} onChange={e => setPrompt(e.target.value)} onPaste={onPaste} placeholder={files.length ? t('说说这些图片/文件要干什么（可不填）') : t('告诉 Agent 这次想做什么…（可粘贴图片）')} /></label>
     <div className="new-session-attach">
-      <button className="btn sm" type="button" disabled={locked} onClick={() => imageInput.current?.click()} title="加图片：手机可拍照或选相册，电脑也可以直接粘贴到上面">📷 图片</button>
-      <button className="btn sm" type="button" disabled={locked} onClick={() => fileInput.current?.click()} title="加文件：存到运行那台电脑上，Agent 用 Read 看">📎 文件</button>
-      {saving > 0 && <span className="muted small">正在上传 {saving} 个…</span>}
+      <button className="btn sm" type="button" disabled={locked} onClick={() => imageInput.current?.click()} title={t('加图片：手机可拍照或选相册，电脑也可以直接粘贴到上面')}>📷 {t('图片')}</button>
+      <button className="btn sm" type="button" disabled={locked} onClick={() => fileInput.current?.click()} title={t('加文件：存到运行那台电脑上，Agent 用 Read 看')}>📎 {t('文件')}</button>
+      {saving > 0 && <span className="muted small">{t('正在上传 {n} 个…', { n: saving })}</span>}
       <input ref={imageInput} type="file" accept="image/*" multiple hidden onChange={e => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
       <input ref={fileInput} type="file" multiple hidden onChange={e => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
-      {files.map((f) => <span key={f.path} className="new-session-file" title={f.path}>{f.preview ? <img src={f.preview} alt="" /> : '📄'}<span className="n">{f.name}</span><button type="button" className="link" aria-label={`移除 ${f.name}`} disabled={locked} onClick={() => setFiles((xs) => xs.filter((x) => x.path !== f.path))}>✕</button></span>)}
+      {files.map((f) => <span key={f.path} className="new-session-file" title={f.path}>{f.preview ? <img src={f.preview} alt="" /> : '📄'}<span className="n">{f.name}</span><button type="button" className="link" aria-label={t('移除 {name}', { name: f.name })} disabled={locked} onClick={() => setFiles((xs) => xs.filter((x) => x.path !== f.path))}>✕</button></span>)}
     </div>
-    <p className="new-session-note">Agent 在所选电脑的终端中运行，沿用已有登录和权限设置。{finder ? '创建好后会直接切到 Herdr 所在的终端；也可以回到 Dispatch 查看进展并继续回复。' : '你可以留在 Dispatch 查看进展并继续回复。'}</p></>}
-    {launch && <div className="launch-progress" role="status"><b>{launch.state === 'ready' ? '会话已就绪' : launch.state === 'attention' || launch.state === 'failed' ? '需要查看电脑' : '正在新建会话…'}</b><p>{launch.message}</p><code>{launch.cwd}</code>{['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => onComputer(host)}>查看电脑与连接</button>}{launch.session_id && <button className="btn primary" onClick={() => onCreated(launch.session_id!, host, agent)}>进入会话</button>}</div>}
+    <p className="new-session-note">{t('Agent 在所选电脑的终端中运行，沿用已有登录和权限设置。')}{finder ? t('创建好后会直接切到 Herdr 所在的终端；也可以回到 Dispatch 查看进展并继续回复。') : t('你可以留在 Dispatch 查看进展并继续回复。')}</p></>}
+    {launch && <div className="launch-progress" role="status"><b>{launch.state === 'ready' ? t('会话已就绪') : launch.state === 'attention' || launch.state === 'failed' ? t('需要查看电脑') : t('正在新建会话…')}</b><p>{launch.message}</p><code>{launch.cwd}</code>{['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => onComputer(host)}>{t('查看电脑与连接')}</button>}{launch.session_id && <button className="btn primary" onClick={() => onCreated(launch.session_id!, host, agent)}>{t('进入会话')}</button>}</div>}
     {error && <p className="new-session-error" role="alert">{error}</p>}
-    <div className="foot"><button className="btn" onClick={onClose}>{launch ? '收起' : '取消'}</button>{!launch && <button className="btn primary" disabled={busy || browseBusy || !path || saving > 0 || (!prompt.trim() && !files.length)} onClick={submit}>{busy ? '正在创建…' : '创建并发送'}</button>}{launch && ['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onClose(); }}>已了解</button>}</div>
+    <div className="foot"><button className="btn" onClick={onClose}>{launch ? t('收起') : t('取消')}</button>{!launch && <button className="btn primary" disabled={busy || browseBusy || !path || saving > 0 || (!prompt.trim() && !files.length)} onClick={submit}>{busy ? t('正在创建…') : t('创建并发送')}</button>}{launch && ['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onClose(); }}>{t('已了解')}</button>}</div>
   </div></div>;
 }

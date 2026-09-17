@@ -10,6 +10,25 @@ use tauri::{AppHandle, Emitter, Manager};
 // never contend with each other (only with external agents).
 static BD_LOCK: Mutex<()> = Mutex::new(());
 static BUNDLED_CLI: OnceLock<PathBuf> = OnceLock::new();
+// ---- Native strings (tray menu, spawn errors) follow the interface language. The webview owns the
+// choice (localStorage `dispatch-locale`) and pushes it here at startup and on every change; until
+// then Chinese, the source language. The quota lines are kept so a language change can rebuild the menu.
+static LOCALE: Mutex<String> = Mutex::new(String::new());
+static TRAY_LINES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+fn locale() -> String { LOCALE.lock().map(|l| l.clone()).unwrap_or_default() }
+fn tr(key: &'static str) -> &'static str {
+    match (locale().as_str(), key) {
+        ("en", "show") => "Open Dispatch", ("de", "show") => "Dispatch öffnen", (_, "show") => "打开 Dispatch",
+        ("en", "quit") => "Quit", ("de", "quit") => "Beenden", (_, "quit") => "退出",
+        ("en", "cannot_start") => "Cannot start {what} ({bin}): {err}", ("de", "cannot_start") => "{what} kann nicht gestartet werden ({bin}): {err}", (_, "cannot_start") => "无法启动 {what}（{bin}）：{err}",
+        ("en", "not_skill_dir") => "Not inside a skills directory, refused: {path}", ("de", "not_skill_dir") => "Nicht im Skills-Verzeichnis, abgelehnt: {path}", (_, "not_skill_dir") => "不在技能目录里，拒绝：{path}",
+        ("en", "memories_parse") => "Could not parse memories: {err}", ("de", "memories_parse") => "Memories konnten nicht gelesen werden: {err}", (_, "memories_parse") => "memories 解析失败：{err}",
+        _ => key,
+    }
+}
+fn cannot_start(what: &str, bin: &Path, err: impl std::fmt::Display) -> String {
+    tr("cannot_start").replace("{what}", what).replace("{bin}", &bin.display().to_string()).replace("{err}", &err.to_string())
+}
 
 fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
@@ -66,7 +85,7 @@ fn run_bd_blocking(args: &[String]) -> Result<String, String> {
                 .env("NO_COLOR", "1")
                 .env("PATH", &path)
                 .output()
-                .map_err(|e| format!("无法启动 bd（{}）：{}", bin.display(), e))?
+                .map_err(|e| cannot_start("bd", &bin, e))?
         };
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         let stderr = String::from_utf8_lossy(&out.stderr).to_string();
@@ -313,7 +332,7 @@ fn run_dispatch_blocking(args: &[String]) -> Result<String, String> {
         .env("BEADS_ACTOR", actor()) // the GUI speaks as the human, whatever shell launched it
         .env("PATH", path)
         .output()
-        .map_err(|e| format!("无法启动 dispatch（{}）：{}", bin.display(), e))?;
+        .map_err(|e| cannot_start("dispatch", &bin, e))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
@@ -340,7 +359,7 @@ fn run_dispatch_stdin_blocking(args: &[String], stdin: Option<String>) -> Result
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("无法启动 dispatch（{}）：{}", bin.display(), e))?;
+        .map_err(|e| cannot_start("dispatch", &bin, e))?;
     if let Some(text) = stdin {
         if let Some(mut si) = child.stdin.take() {
             let _ = si.write_all(text.as_bytes());
@@ -478,7 +497,7 @@ fn skill_file(name: &str) -> Result<PathBuf, String> {
     // Only files inside the skill pool or an agent's skills dir may be edited.
     let allowed = [home().join(".cc-switch/skills"), home().join(".claude/skills"), home().join(".agents/skills"), home().join("Projects")];
     if !allowed.iter().any(|d| std::fs::canonicalize(d).map(|d| real.starts_with(d)).unwrap_or(false)) {
-        return Err(format!("不在技能目录里，拒绝：{}", real.display()));
+        return Err(tr("not_skill_dir").replace("{path}", &real.display().to_string()));
     }
     Ok(real)
 }
@@ -659,7 +678,7 @@ struct Memory {
 #[tauri::command]
 async fn memories_list() -> Result<Vec<Memory>, String> {
     let raw = run_bd(args(&["memories", "--json"])).await.map(json_only)?;
-    let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("memories 解析失败：{e}"))?;
+    let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| tr("memories_parse").replace("{err}", &e.to_string()))?;
     let mut out = Vec::new();
     if let Some(obj) = v.as_object() {
         for (k, val) in obj {
@@ -821,40 +840,57 @@ fn compact_tray_title(tray: &tauri::tray::TrayIcon, title: String) -> Result<(),
     }).map_err(|e| e.to_string())
 }
 
+// The click menu carries what the title should not: one line per agent's quota, between
+// "open" and "quit". Rebuilt on every quota refresh and on a language change.
+fn tray_menu<M: Manager<tauri::Wry>>(m: &M, lines: &[String]) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    let show = MenuItem::with_id(m, "show", tr("show"), true, None::<&str>).map_err(|e| e.to_string())?;
+    let quit = MenuItem::with_id(m, "quit", tr("quit"), true, None::<&str>).map_err(|e| e.to_string())?;
+    let menu = Menu::new(m).map_err(|e| e.to_string())?;
+    menu.append(&show).map_err(|e| e.to_string())?;
+    if !lines.is_empty() {
+        menu.append(&PredefinedMenuItem::separator(m).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        for (i, line) in lines.iter().enumerate() {
+            let item = MenuItem::with_id(m, format!("quota-{i}"), line, false, None::<&str>).map_err(|e| e.to_string())?;
+            menu.append(&item).map_err(|e| e.to_string())?;
+        }
+    }
+    menu.append(&PredefinedMenuItem::separator(m).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    menu.append(&quit).map_err(|e| e.to_string())?;
+    Ok(menu)
+}
+
 #[tauri::command]
 fn tray_update(app: AppHandle, title: String, tooltip: String, lines: Vec<String>) -> Result<(), String> {
-    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     if let Some(tray) = app.tray_by_id("main") {
         #[cfg(target_os = "macos")]
         compact_tray_title(&tray, title)?;
         #[cfg(not(target_os = "macos"))]
         tray.set_title(Some(title)).map_err(|e| e.to_string())?;
         tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
-        // The click menu carries what the title should not: one line per agent's quota.
-        let show = MenuItem::with_id(&app, "show", "打开 Dispatch", true, None::<&str>).map_err(|e| e.to_string())?;
-        let quit = MenuItem::with_id(&app, "quit", "退出", true, None::<&str>).map_err(|e| e.to_string())?;
-        let menu = Menu::new(&app).map_err(|e| e.to_string())?;
-        menu.append(&show).map_err(|e| e.to_string())?;
-        if !lines.is_empty() {
-            menu.append(&PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-            for (i, line) in lines.iter().enumerate() {
-                let item = MenuItem::with_id(&app, format!("quota-{i}"), line, false, None::<&str>).map_err(|e| e.to_string())?;
-                menu.append(&item).map_err(|e| e.to_string())?;
-            }
-        }
-        menu.append(&PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        menu.append(&quit).map_err(|e| e.to_string())?;
+        let menu = tray_menu(&app, &lines)?;
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+    }
+    if let Ok(mut l) = TRAY_LINES.lock() { *l = lines; }
+    Ok(())
+}
+
+// The webview's language choice: remembered for native strings, and the tray menu is rebuilt in it.
+#[tauri::command]
+fn set_locale(app: AppHandle, locale: String) -> Result<(), String> {
+    let locale = match locale.as_str() { "en" | "de" => locale, _ => "zh".to_string() };
+    if let Ok(mut l) = LOCALE.lock() { if *l == locale { return Ok(()); } *l = locale; }
+    let lines = TRAY_LINES.lock().map(|l| l.clone()).unwrap_or_default();
+    if let Some(tray) = app.tray_by_id("main") {
+        let menu = tray_menu(&app, &lines)?;
         tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem};
+fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::tray::TrayIconBuilder;
-    let show = MenuItem::with_id(app, "show", "打开 Dispatch", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let menu = tray_menu(app, &[])?;
     TrayIconBuilder::with_id("main")
         // Original monochrome menu bar icon, at its original size.
         .icon(tauri::image::Image::new(include_bytes!("../icons/tray.rgba"), 44, 44))
@@ -907,7 +943,7 @@ pub fn run() {
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_interactions, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, open_window, session_activity, session_seen, session_detail, focus_session, memories_list, memory_set, memory_forget,
-            skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, dispatch_on, tray_update,
+            skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, dispatch_on, tray_update, set_locale,
             rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path
         ])
         .build(tauri::generate_context!())

@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import type { Activity } from './types';
 
 export const activityKey = (a: Activity) => `${a.host ?? 'local'}:${a.key}`;
@@ -43,7 +44,7 @@ export function conversationSummary(a: Activity): string {
         if (m) { try { found = JSON.parse(m[1]); break; } catch { /* next field */ } }
       }
     }
-    if (!found) return '已收到结构化结果，打开会话查看详情。';
+    if (!found) return t('已收到结构化结果，打开会话查看详情。');
     text = found;
   }
   text = text.replace(/```[\s\S]*?(?:```|$)/g, '')
@@ -52,7 +53,7 @@ export function conversationSummary(a: Activity): string {
     .replace(/<[^>]+>/g, '')
     .replace(/^[\s#>*-]+/gm, '').replace(/[*_`]/g, '')
     .replace(/\s+/g, ' ').trim();
-  if (!text) return '暂时没有可用摘要，打开会话查看记录。';
+  if (!text) return t('暂时没有可用摘要，打开会话查看记录。');
   const sentence = text.match(/^.*?[。！？][”’"]?/u)?.[0]?.trim();
   const result = sentence && sentence.length >= 12 ? sentence : text;
   return result.length > 110 ? result.slice(0, 109) + '…' : result;
@@ -84,16 +85,16 @@ export function resolveProject(a: { cwd: string; project: string; project_overri
 }
 export function conversationProject(a: Activity): string { return resolveProject(a); }
 export function activityLabel(a: Activity) {
-  if (a.stale) return '活动已暂停更新';
-  if (a.state === 'working') return '进行中';
-  return a.unread ? '未读回复' : '本轮结束';
+  if (a.stale) return t('活动已暂停更新');
+  if (a.state === 'working') return t('进行中');
+  return a.unread ? t('未读回复') : t('本轮结束');
 }
 /** One line for a list row: only what adds information. A finished, read turn says nothing; a stale
  *  "still working" record never claims to be processing your message. */
 export function activityLine(a: Activity): string {
-  if (a.stale) return a.state === 'working' ? '记录已停止更新（最后在处理时中断）' : '';
-  if (a.state === 'working') return a.activity ? `进行中 · ${a.activity}` : '进行中';
-  return a.unread ? '未读回复' : '';
+  if (a.stale) return a.state === 'working' ? t('记录已停止更新（最后在处理时中断）') : '';
+  if (a.state === 'working') return a.activity ? t('进行中 · {activity}', { activity: a.activity }) : t('进行中');
+  return a.unread ? t('未读回复') : '';
 }
 export function canReadReply(a: Activity | undefined, reply: string | undefined, atLatest: boolean, visible: boolean, timeline: boolean) {
   return Boolean(a?.unread && reply && a.reply_id === reply && atLatest && visible && timeline);

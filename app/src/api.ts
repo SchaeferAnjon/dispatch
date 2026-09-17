@@ -1,5 +1,6 @@
 import type { ActivitySnapshot, Comment, GraphData, HistoryEntry, Host, Info, Issue, Memory, NewIssue, Presence, Quota, RulesStatus, SessionDetail, SessionRef, Skill, Stats, UpdateFields, SkillImprove, EnvVar, Insights, InsightAlert, InsightReport, InsightReportList } from "./types";
 import { fixtureApi } from "./fixtures";
+import { t } from "./i18n";
 import type { Interaction } from "./derive";
 
 export interface AgentStartInput { kind: string; host?: string; cwd?: string; model?: string; task?: string; prompt?: string; label?: string; timeout?: number }
@@ -83,7 +84,7 @@ export async function copyFallback(text: string) {
   try {
     field.select();
     field.setSelectionRange(0, text.length);
-    if (!document.execCommand("copy")) throw new Error("浏览器未允许复制，请显示内容后长按复制");
+    if (!document.execCommand("copy")) throw new Error(t("浏览器未允许复制，请显示内容后长按复制"));
   } finally {
     field.remove();
     focused?.focus({ preventScroll: true });
@@ -129,10 +130,10 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "openWindow" | 
     },
     presence: async () => ({ sessions: parse(await call("sessions"), []), apps: [] }),
     taskSessions: async (id) => parse<SessionRef[]>(await call("task_sessions", { id }), []),
-    sessionActivity: async () => { const r = parse<ActivitySnapshot | null>(await call("session_activity"), null); if (!r?.sessions) throw new Error("活动更新不可用"); return r; },
+    sessionActivity: async () => { const r = parse<ActivitySnapshot | null>(await call("session_activity"), null); if (!r?.sessions) throw new Error(t("活动更新不可用")); return r; },
     sessionSeen: async (host, key, reply) => void (await call("session_seen", { host, key, reply })),
     sessionList: async () => parse<SessionRef[]>(await call("session_list"), []),
-    sessionDetail: async (id) => { const d = parse<SessionDetail | null>(await call("session_detail", { id }), null); if (!d) throw new Error("读不到这个会话"); return d; },
+    sessionDetail: async (id) => { const d = parse<SessionDetail | null>(await call("session_detail", { id }), null); if (!d) throw new Error(t("读不到这个会话")); return d; },
     focusSession: (id) => call("focus_session", { id }),
     resumeCmd: (agent, sessionId, cwd) => invoke<string>("resume_cmd", { agent, sessionId, cwd }),
     skills: async () => parse<Skill[]>(await call("skills_list"), []),
@@ -208,7 +209,7 @@ async function tauriApi(): Promise<Api> {
 function httpApi(): Api {
   const post = async (cmd: string, args?: Record<string, unknown>) => {
     const r = await fetch("/api/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd, args: args ?? {} }), credentials: "same-origin" })
-      .catch(() => { throw new Error("与电脑的连接暂时中断，请检查网络或电脑是否在线。"); });
+      .catch(() => { throw new Error(t("与电脑的连接暂时中断，请检查网络或电脑是否在线。")); });
     const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
     if (!r.ok || body.error) throw new Error(body.error ?? `HTTP ${r.status}`);
     return body as { result?: string; value?: unknown };

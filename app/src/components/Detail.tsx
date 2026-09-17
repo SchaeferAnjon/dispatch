@@ -9,12 +9,14 @@ import { linkedSessions } from "../projectModel";
 import { FileHunks } from "./Sessions";
 import { ImageGrid, MediaProvider } from "./Media";
 import { KINDS } from "./Delegate";
+import { useT } from "../i18n";
 
 interface Props { rows: Activity[]; onOpenSession: (id: string) => void; onDiscuss?: (taskId: string) => void; initialWf?: "split" | "discuss"; id: string; api: Api; me: string; initial: Issue | null; root: Issue | null; stamp: string; live: Session[]; onClose: () => void; onSelect: (id: string) => void; onError: (m: string) => void; onDone: (m: string, undo?: () => void) => void }
 
 // `initial` comes from the already-loaded list so the panel paints instantly;
 // `stamp` (the issue's updated_at) is what triggers a refetch, not every list reload.
 export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initial, root, stamp, live, onClose, onSelect, onError, onDone }: Props) {
+  const t = useT();
   const [editProperties, setEditProperties] = useState(false);
   // The right column (diffs, images) is what needs width; the left one can step aside. Remembered per device.
   const [wide, setWide] = useState<boolean>(() => { try { return localStorage.getItem("dispatch-detail-wide") === "1"; } catch { return false; } });
@@ -80,7 +82,7 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
   }, [id, api]);
 
   const copyResume = async (cmd: string) => {
-    try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); }
+    try { await api.copy(cmd); onDone(t("恢复命令已复制，去终端粘贴回车")); } catch (e) { onError(String(e)); }
   };
   const [editTitle, setEditTitle] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState<string | null>(null);
@@ -111,14 +113,14 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
   const runDiscuss = async () => {
     if (!wfKinds.length) return;
     setWfBusy(true);
-    try { const raw = await api.on("local", ["discuss", id, "--with", wfKinds.join(","), ...(wfQuestion.trim() ? ["--question", wfQuestion.trim()] : []), "--json"]); const r = JSON.parse(raw.slice(raw.indexOf("{"))); onDone(`讨论结束：${(r.comments?.length ?? 1) - 1} 条发言`); setWf(""); await refreshAfterWorkflow(); }
+    try { const raw = await api.on("local", ["discuss", id, "--with", wfKinds.join(","), ...(wfQuestion.trim() ? ["--question", wfQuestion.trim()] : []), "--json"]); const r = JSON.parse(raw.slice(raw.indexOf("{"))); onDone(t("讨论结束：{n} 条发言", { n: (r.comments?.length ?? 1) - 1 })); setWf(""); await refreshAfterWorkflow(); }
     catch (e) { onError(String(e)); } finally { setWfBusy(false); }
   };
   const runSplit = async () => {
     const rows = wfRows.filter((r) => r.title.trim());
     if (!rows.length) return;
     setWfBusy(true);
-    try { const raw = await api.on("local", ["split", id, ...rows.flatMap((r) => ["--to", `${r.kind}:${r.title.trim()}${r.desc.trim() ? "|" + r.desc.trim() : ""}`]), "--json"]); const r = JSON.parse(raw.slice(raw.indexOf("{"))); onDone(`已拆出 ${r.subtasks?.length ?? rows.length} 个子任务并派出`); setWf(""); await refreshAfterWorkflow(); }
+    try { const raw = await api.on("local", ["split", id, ...rows.flatMap((r) => ["--to", `${r.kind}:${r.title.trim()}${r.desc.trim() ? "|" + r.desc.trim() : ""}`]), "--json"]); const r = JSON.parse(raw.slice(raw.indexOf("{"))); onDone(t("已拆出 {n} 个子任务并派出", { n: r.subtasks?.length ?? rows.length })); setWf(""); await refreshAfterWorkflow(); }
     catch (e) { onError(String(e)); } finally { setWfBusy(false); }
   };
 
@@ -136,7 +138,7 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
 
   useEffect(() => { setIssue(initial); setComments([]); setHistory([]); setEditTitle(null); setEditDesc(null); setEditAc(null); setClosing(false); setReason(""); }, [id]);
 
-  if (!issue) return <aside className="detail"><div className="dh"><span className="id">{id}</span><button className="x" onClick={onClose}>✕</button></div><div className="empty">载入中…</div></aside>;
+  if (!issue) return <aside className="detail"><div className="dh"><span className="id">{id}</span><button className="x" onClick={onClose}>✕</button></div><div className="empty">{t("载入中…")}</div></aside>;
 
   const act = async (label: string, fn: () => Promise<void>) => {
     setBusy(true);
@@ -149,7 +151,7 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
       await api.comment(id, draft.trim());
       setDraft("");
       try { sessionStorage.removeItem(`dispatch-draft:${id}`); } catch { /* storage unavailable */ }
-      onDone("留言已发");
+      onDone(t("留言已发"));
     } catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
   const who = actorOf(issue.assignee, me);
@@ -169,73 +171,73 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
     const next = ac.map((a, i) => (i === idx ? { ...a, done: !a.done, by: a.done ? undefined : me } : a));
     setBusy(true);
     api.update(id, { acceptance: serializeAcceptance(next) })
-      .then(() => onDone(next[idx].done ? "已勾上验收项" : "已取消勾选", () => { void api.update(id, { acceptance: before }).then(() => onDone("已撤销")).catch((e) => onError(String(e))); }))
+      .then(() => onDone(next[idx].done ? t("已勾上验收项") : t("已取消勾选"), () => { void api.update(id, { acceptance: before }).then(() => onDone(t("已撤销"))).catch((e) => onError(String(e))); }))
       .catch((e) => onError(String(e))).finally(() => setBusy(false));
   };
 
   return (
     <aside className={`detail${wide ? " wide" : ""}`}>
       <div className="dh">
-        <button className="btn sm detail-back" onClick={onClose} aria-label="返回">‹ 返回</button>
-        <span className="id" title={"任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识"}>{issue.id}</span><span>·</span><span>{projectOf(issue) || "未分项目"}</span>
-        <button className="btn ghost sm" onClick={() => { setEditProperties(v => !v); setClosing(false); }}>{editProperties ? "收起编辑" : "编辑属性"}</button>
+        <button className="btn sm detail-back" onClick={onClose} aria-label={t("返回")}>{t("‹ 返回")}</button>
+        <span className="id" title={t("任务编号：Beads 自动生成，前缀是板的名字（task），后面三位是随机编码，没有含义，只用来唯一标识")}>{issue.id}</span><span>·</span><span>{projectOf(issue) || t("未分项目")}</span>
+        <button className="btn ghost sm" onClick={() => { setEditProperties(v => !v); setClosing(false); }}>{editProperties ? t("收起编辑") : t("编辑属性")}</button>
         <span className="spacer" />
-        <button className="btn ghost sm detail-wide" onClick={toggleWide} title={wide ? "显示左栏（属性、描述、验收、活动）" : "收起左栏，让文件改动和产物占满宽度"}>{wide ? "⇤ 显示左栏" : "⇥ 收起左栏"}</button>
+        <button className="btn ghost sm detail-wide" onClick={toggleWide} title={wide ? t("显示左栏（属性、描述、验收、活动）") : t("收起左栏，让文件改动和产物占满宽度")}>{wide ? t("⇤ 显示左栏") : t("⇥ 收起左栏")}</button>
 
       </div>
       <div className="dbody">
        <div className="dcol dcol-main">
         {editTitle === null ? (
-          <h3 onClick={() => { if (editProperties) setEditTitle(issue.title); }} title={editProperties ? "点击编辑标题" : undefined}>{issue.title}</h3>
+          <h3 onClick={() => { if (editProperties) setEditTitle(issue.title); }} title={editProperties ? t("点击编辑标题") : undefined}>{issue.title}</h3>
         ) : (
           <textarea className="title" value={editTitle} autoFocus rows={2} onChange={(e) => setEditTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") setEditTitle(null); if (e.key === "Enter") { e.preventDefault(); const t = editTitle.trim(); setEditTitle(null); if (t && t !== issue.title) act("标题已改", () => api.update(id, { title: t })); } }}
-            onBlur={() => { const t = editTitle.trim(); setEditTitle(null); if (t && t !== issue.title) act("标题已改", () => api.update(id, { title: t })); }} />
+            onKeyDown={(e) => { if (e.key === "Escape") setEditTitle(null); if (e.key === "Enter") { e.preventDefault(); const v = editTitle.trim(); setEditTitle(null); if (v && v !== issue.title) act(t("标题已改"), () => api.update(id, { title: v })); } }}
+            onBlur={() => { const v = editTitle.trim(); setEditTitle(null); if (v && v !== issue.title) act(t("标题已改"), () => api.update(id, { title: v })); }} />
         )}
 
         <div className="props">
-          <span className="k">状态</span>
+          <span className="k">{t("状态")}</span>
           <span className="v">
             {!editProperties ? <span className={`st sm ${st.cls}`}>{st.text}</span> : <select value={issue.status} disabled={busy} onChange={(e) => {
               const v = e.target.value;
               if (v === "closed") { setClosing(true); return; }
-              if (issue.status === "closed") return act("已重新打开", async () => { await api.reopen(id); if (v !== "open") await api.setStatus(id, v); });
-              return act("状态已改", () => api.setStatus(id, v));
+              if (issue.status === "closed") return act(t("已重新打开"), async () => { await api.reopen(id); if (v !== "open") await api.setStatus(id, v); });
+              return act(t("状态已改"), () => api.setStatus(id, v));
             }}>
-              <option value="open">待办</option>
-              <option value="in_progress">进行中</option>
-              <option value="blocked">阻塞</option>
-              <option value="deferred">搁置</option>
-              <option value="closed">已完成</option>
+              <option value="open">{t("待办")}</option>
+              <option value="in_progress">{t("进行中")}</option>
+              <option value="blocked">{t("阻塞")}</option>
+              <option value="deferred">{t("搁置")}</option>
+              <option value="closed">{t("已完成")}</option>
             </select>}
           </span>
-          <span className="k">负责</span>
-          <span className="v">{who ? <><Avatar actor={who} />{who.name}</> : <span className="muted">未认领</span>}</span>
-          <span className="k">优先级</span>
+          <span className="k">{t("负责")}</span>
+          <span className="v">{who ? <><Avatar actor={who} />{who.name}</> : <span className="muted">{t("未认领")}</span>}</span>
+          <span className="k">{t("优先级")}</span>
           <span className="v">
-            {!editProperties ? <Pri p={issue.priority} /> : <select value={issue.priority} disabled={busy} onChange={(e) => act("优先级已改", () => api.update(id, { priority: Number(e.target.value) }))}>
-              {[0, 1, 2, 3, 4].map((p) => <option key={p} value={p}>P{p}{p === 0 ? " 最急" : p === 4 ? " 最低" : ""}</option>)}
+            {!editProperties ? <Pri p={issue.priority} /> : <select value={issue.priority} disabled={busy} onChange={(e) => act(t("优先级已改"), () => api.update(id, { priority: Number(e.target.value) }))}>
+              {[0, 1, 2, 3, 4].map((p) => <option key={p} value={p}>{p === 0 ? t("P0 最急") : p === 4 ? t("P4 最低") : `P${p}`}</option>)}
             </select>}
           </span>
-          {delegatedBy(issue) && (<><span className="k">派活</span><span className="v">{delegatedBy(issue) === delegatedTo(issue) ? `${actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给另一个自己的会话` : `${actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue)} 派给 ${actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue)}`}</span></>)}
-          <span className="k">类型</span><span className="v">{TYPE_LABEL[issue.issue_type] ?? issue.issue_type}</span>
-          <span className="k">项目</span><span className="v"><ProjectTag name={projectOf(issue)} /></span>
-          {root && (<><span className="k">源自</span><span className="v"><span className="link" onClick={() => onSelect(root.id)} title={root.title}>{root.id}</span><span className="muted" style={{ fontSize: 12 }}>{root.title}</span></span></>)}
-          {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && !l.startsWith("delegated-") && !l.startsWith("host:") && l !== "reviewed").length > 0 && (<><span className="k">标签</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && !l.startsWith("delegated-") && !l.startsWith("host:") && l !== "reviewed").join(" · ")}</span></>)}
-          {(issue.dependencies ?? []).length > 0 && (<><span className="k">依赖</span><span className="v">{issue.dependencies!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}{d.status === "closed" ? " ✓" : ""}</span>)}</span></>)}
-          {(issue.dependents ?? []).length > 0 && (<><span className="k">被依赖</span><span className="v">{issue.dependents!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}</span>)}</span></>)}
-          <span className="k">创建</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.created_at)}{issue.created_by ? ` · ${actorOf(issue.created_by, me)?.name}` : ""}</span>
-          {issue.closed_at && (<><span className="k">完成</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.closed_at)}</span></>)}
+          {delegatedBy(issue) && (<><span className="k">{t("派活")}</span><span className="v">{delegatedBy(issue) === delegatedTo(issue) ? t("{who} 派给另一个自己的会话", { who: actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue) }) : t("{from} 派给 {to}", { from: actorOf(delegatedBy(issue), me)?.name ?? delegatedBy(issue), to: actorOf(delegatedTo(issue), me)?.name ?? delegatedTo(issue) })}</span></>)}
+          <span className="k">{t("类型")}</span><span className="v">{t(TYPE_LABEL[issue.issue_type] ?? issue.issue_type)}</span>
+          <span className="k">{t("项目")}</span><span className="v"><ProjectTag name={projectOf(issue)} /></span>
+          {root && (<><span className="k">{t("源自")}</span><span className="v"><span className="link" onClick={() => onSelect(root.id)} title={root.title}>{root.id}</span><span className="muted" style={{ fontSize: 12 }}>{root.title}</span></span></>)}
+          {(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && !l.startsWith("delegated-") && !l.startsWith("host:") && l !== "reviewed").length > 0 && (<><span className="k">{t("标签")}</span><span className="v mono" style={{ fontSize: 12 }}>{(issue.labels ?? []).filter((l) => !l.startsWith("project:") && !l.startsWith("session:") && !l.startsWith("session-origin:") && !l.startsWith("outcome-task:") && !l.startsWith("dispatch:") && !l.startsWith("delegated-") && !l.startsWith("host:") && l !== "reviewed").join(" · ")}</span></>)}
+          {(issue.dependencies ?? []).length > 0 && (<><span className="k">{t("依赖")}</span><span className="v">{issue.dependencies!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}{d.status === "closed" ? " ✓" : ""}</span>)}</span></>)}
+          {(issue.dependents ?? []).length > 0 && (<><span className="k">{t("被依赖")}</span><span className="v">{issue.dependents!.map((d) => <span key={d.id} className="link" onClick={() => onSelect(d.id)} title={d.title}>{d.id}</span>)}</span></>)}
+          <span className="k">{t("创建")}</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.created_at)}{issue.created_by ? ` · ${actorOf(issue.created_by, me)?.name}` : ""}</span>
+          {issue.closed_at && (<><span className="k">{t("完成")}</span><span className="v mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtTime(issue.closed_at)}</span></>)}
         </div>
 
         {editProperties && <div className="actions">
-          {issue.status !== "closed" && !closing && <button className="btn sm" disabled={busy} onClick={() => setClosing(true)}>标记完成</button>}
-          {issue.status === "closed" && <button className="btn sm" disabled={busy} onClick={() => act("已重新打开", () => api.reopen(id))}>重新打开</button>}
+          {issue.status !== "closed" && !closing && <button className="btn sm" disabled={busy} onClick={() => setClosing(true)}>{t("标记完成")}</button>}
+          {issue.status === "closed" && <button className="btn sm" disabled={busy} onClick={() => act(t("已重新打开"), () => api.reopen(id))}>{t("重新打开")}</button>}
           {closing && (
             <div className="reason">
-              <input autoFocus placeholder="完成说明（交付内容与验证结果）" value={reason} onChange={(e) => setReason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && reason.trim()) { setClosing(false); act("已完成", () => api.close(id, reason.trim())); } if (e.key === "Escape") setClosing(false); }} />
-              <button className="btn primary sm" disabled={!reason.trim() || busy} onClick={() => { setClosing(false); act("已完成", () => api.close(id, reason.trim())); }}>完成</button>
-              <button className="btn ghost sm" onClick={() => setClosing(false)}>取消</button>
+              <input autoFocus placeholder={t("完成说明（交付内容与验证结果）")} value={reason} onChange={(e) => setReason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && reason.trim()) { setClosing(false); act(t("已完成"), () => api.close(id, reason.trim())); } if (e.key === "Escape") setClosing(false); }} />
+              <button className="btn primary sm" disabled={!reason.trim() || busy} onClick={() => { setClosing(false); act(t("已完成"), () => api.close(id, reason.trim())); }}>{t("完成")}</button>
+              <button className="btn ghost sm" onClick={() => setClosing(false)}>{t("取消")}</button>
             </div>
           )}
         </div>}
@@ -246,78 +248,78 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
           if (issue.status === "closed" && !discussion.length && !subtasks.length) return null;
           return (
             <section className="sec workflow">
-              <h4>讨论与分工{onDiscuss && discussion.length > 0 && <button className="btn ghost sm" onClick={() => onDiscuss(id)}>可视化 · 继续讨论</button>}</h4>
-              {(() => { const con = discussionConclusion(issue.description, comments); return con ? <div className="disc-conclusion"><div className="l1"><b>结论</b><span className="muted small">总结模型归纳 · {con.when.includes("T") ? relTime(con.when) : con.when}</span></div><Markdown src={con.text} className="compact" /></div> : null; })()}
+              <h4>{t("讨论与分工")}{onDiscuss && discussion.length > 0 && <button className="btn ghost sm" onClick={() => onDiscuss(id)}>{t("可视化 · 继续讨论")}</button>}</h4>
+              {(() => { const con = discussionConclusion(issue.description, comments); return con ? <div className="disc-conclusion"><div className="l1"><b>{t("结论")}</b><span className="muted small">{t("总结模型归纳 · {when}", { when: con.when.includes("T") ? relTime(con.when) : con.when })}</span></div><Markdown src={con.text} className="compact" /></div> : null; })()}
               {discussion.length > 0 && <div className="discussion">{discussion.map((c) => { const a = actorOf(c.author, me); return <div key={c.id} className="say"><Avatar actor={a} /><div><div className="l1"><b>{a?.name ?? c.author}</b><span className="ts">{relTime(c.created_at)}</span></div><Markdown src={c.text.trimStart().slice(4)} className="compact" /></div></div>; })}</div>}
               {subtasks.length > 0 && <div className="subtasks">{subtasks.map((d) => { const st = statusLabel(d); const who = actorOf(d.assignee, me); return <button key={d.id} className="subtask" onClick={() => onSelect(d.id)}><span className={`st sm ${st.cls}`}>{st.text}</span><span className="t">{d.title}</span>{who && <span className="muted small">{who.name}</span>}<span className="mono muted small">{d.id}</span></button>; })}</div>}
-              {issue.status !== "closed" && wf === "" && <div className="task-links"><button className="btn sm" onClick={() => setWf("discuss")}>发起讨论…</button><button className="btn sm" onClick={() => setWf("split")}>拆分并派活…</button></div>}
+              {issue.status !== "closed" && wf === "" && <div className="task-links"><button className="btn sm" onClick={() => setWf("discuss")}>{t("发起讨论…")}</button><button className="btn sm" onClick={() => setWf("split")}>{t("拆分并派活…")}</button></div>}
               {wf === "discuss" && <div className="wf-form">
                 <div className="task-links">{KINDS.map(([k, l]) => <label key={k} className="chip"><input type="checkbox" checked={wfKinds.includes(k)} onChange={(e) => setWfKinds(e.target.checked ? [...wfKinds, k] : wfKinds.filter((x) => x !== k))} /> {l}</label>)}</div>
-                <input placeholder="想让他们决定什么（可空）" value={wfQuestion} onChange={(e) => setWfQuestion(e.target.value)} />
-                <p className="muted small">每个 Agent 无头直调（claude -p / codex exec / pi），读任务和前面的发言，各留一条【讨论】评论；通常一分钟内到齐，期间这个面板会等着。</p>
-                <div className="task-links"><button className="btn primary sm" disabled={wfBusy || !wfKinds.length} onClick={() => void runDiscuss()}>{wfBusy ? "讨论进行中…" : "开始讨论"}</button><button className="btn sm" disabled={wfBusy} onClick={() => setWf("")}>取消</button></div>
+                <input placeholder={t("想让他们决定什么（可空）")} value={wfQuestion} onChange={(e) => setWfQuestion(e.target.value)} />
+                <p className="muted small">{t("每个 Agent 无头直调（claude -p / codex exec / pi），读任务和前面的发言，各留一条【讨论】评论；通常一分钟内到齐，期间这个面板会等着。")}</p>
+                <div className="task-links"><button className="btn primary sm" disabled={wfBusy || !wfKinds.length} onClick={() => void runDiscuss()}>{wfBusy ? t("讨论进行中…") : t("开始讨论")}</button><button className="btn sm" disabled={wfBusy} onClick={() => setWf("")}>{t("取消")}</button></div>
               </div>}
               {wf === "split" && <div className="wf-form">
-                {wfRows.map((r, n) => <div key={n} className="wf-row"><select value={r.kind} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, kind: e.target.value } : x))}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select><input placeholder="子任务标题" value={r.title} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, title: e.target.value } : x))} /><input placeholder="说明（可空）" value={r.desc} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, desc: e.target.value } : x))} /></div>)}
-                <div className="task-links"><button className="link" onClick={() => setWfRows([...wfRows, { kind: "codex", title: "", desc: "" }])}>＋ 再加一个</button></div>
-                <p className="muted small">每个子任务建成父任务的子项，标上谁派给谁，并在 Herdr 里起对应 Agent 开始做。</p>
-                <div className="task-links"><button className="btn primary sm" disabled={wfBusy || !wfRows.some((r) => r.title.trim())} onClick={() => void runSplit()}>{wfBusy ? "拆分中…" : "拆分并派出"}</button><button className="btn sm" disabled={wfBusy} onClick={() => setWf("")}>取消</button></div>
+                {wfRows.map((r, n) => <div key={n} className="wf-row"><select value={r.kind} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, kind: e.target.value } : x))}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select><input placeholder={t("子任务标题")} value={r.title} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, title: e.target.value } : x))} /><input placeholder={t("说明（可空）")} value={r.desc} onChange={(e) => setWfRows(wfRows.map((x, i) => i === n ? { ...x, desc: e.target.value } : x))} /></div>)}
+                <div className="task-links"><button className="link" onClick={() => setWfRows([...wfRows, { kind: "codex", title: "", desc: "" }])}>{t("＋ 再加一个")}</button></div>
+                <p className="muted small">{t("每个子任务建成父任务的子项，标上谁派给谁，并在 Herdr 里起对应 Agent 开始做。")}</p>
+                <div className="task-links"><button className="btn primary sm" disabled={wfBusy || !wfRows.some((r) => r.title.trim())} onClick={() => void runSplit()}>{wfBusy ? t("拆分中…") : t("拆分并派出")}</button><button className="btn sm" disabled={wfBusy} onClick={() => setWf("")}>{t("取消")}</button></div>
               </div>}
             </section>
           );
         })()}
         {issue.status === "closed" && <section className="sec review-evidence">
-          <h4>交付与验证 <span className="muted">{isReviewed(issue) ? "已记录复核通过" : needsReview(issue) ? "等待 Agent 复核" : "已完成 · 无需你点击审核"}</span></h4>
-          <p className="review-gap">{ac.length ? `${ac.filter((a) => a.done).length}/${ac.length} 项已勾选 · ${ac.filter((a) => !a.done).length} 项仍待核对` : "尚未填写验收标准"}</p>
-          {ac.some((a) => !a.done) && <details open><summary>待核对的验收项</summary><ul className="checks">{ac.filter((a) => !a.done).map((a, n) => <li key={n}>{a.text}</li>)}</ul></details>}
-          <details><summary>查看记录依据 · {comments.length} 条进展 / 留言 · {refs.length} 个关联会话</summary>
-            <p className="muted small">以下是原始记录，测试结果需要结合完成说明和会话核对。</p>
-            {comments.length ? [...comments].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 3).map((c) => <div key={c.id} className="evidence-note"><b>{c.author} · {fmtTime(c.created_at)}</b><Markdown src={c.text} className="compact" /></div>) : <p>没有进展记录</p>}
-            {refs.map((r) => <button key={r.session_id} className="btn sm" onClick={() => onOpenSession(r.session_id)}>查看会话 · {r.project || r.session_id.slice(0, 8)}</button>)}
+          <h4>{t("交付与验证")} <span className="muted">{isReviewed(issue) ? t("已记录复核通过") : needsReview(issue) ? t("等待 Agent 复核") : t("已完成 · 无需你点击审核")}</span></h4>
+          <p className="review-gap">{ac.length ? t("{done}/{total} 项已勾选 · {left} 项仍待核对", { done: ac.filter((a) => a.done).length, total: ac.length, left: ac.filter((a) => !a.done).length }) : t("尚未填写验收标准")}</p>
+          {ac.some((a) => !a.done) && <details open><summary>{t("待核对的验收项")}</summary><ul className="checks">{ac.filter((a) => !a.done).map((a, n) => <li key={n}>{a.text}</li>)}</ul></details>}
+          <details><summary>{t("查看记录依据 · {comments} 条进展 / 留言 · {refs} 个关联会话", { comments: comments.length, refs: refs.length })}</summary>
+            <p className="muted small">{t("以下是原始记录，测试结果需要结合完成说明和会话核对。")}</p>
+            {comments.length ? [...comments].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 3).map((c) => <div key={c.id} className="evidence-note"><b>{c.author} · {fmtTime(c.created_at)}</b><Markdown src={c.text} className="compact" /></div>) : <p>{t("没有进展记录")}</p>}
+            {refs.map((r) => <button key={r.session_id} className="btn sm" onClick={() => onOpenSession(r.session_id)}>{t("查看会话 · {what}", { what: r.project || r.session_id.slice(0, 8) })}</button>)}
           </details>
-          {!issue.close_reason && <p className="review-gap">缺少完成说明，尚无法判断交付内容与验证结果。</p>}
+          {!issue.close_reason && <p className="review-gap">{t("缺少完成说明，尚无法判断交付内容与验证结果。")}</p>}
         </section>}
 
         {issue.status === "closed" && issue.close_reason && <div className="sec">
-          <h4>完成说明</h4>
+          <h4>{t("完成说明")}</h4>
           <p className={expandedReason ? "" : "completion-preview"}>{issue.close_reason}</p>
-          <button className="link-btn" aria-expanded={expandedReason} onClick={() => setExpandedReason(!expandedReason)}>{expandedReason ? "收起" : "展开完成说明"}</button>
+          <button className="link-btn" aria-expanded={expandedReason} onClick={() => setExpandedReason(!expandedReason)}>{expandedReason ? t("收起") : t("展开完成说明")}</button>
         </div>}
 
         <div className="sec">
-          <h4>描述</h4>
+          <h4>{t("描述")}</h4>
           {editDesc === null ? (
-            issue.description ? <div className="md-edit" onDoubleClick={() => setEditDesc(issue.description ?? "")} title="双击编辑"><Markdown src={issue.description} className="compact" /></div>
-              : <p className="empty-p" onClick={() => setEditDesc("")} title="点击编辑">还没写描述——下一个接手的 Agent 会不知道为什么做这件事。</p>
+            issue.description ? <div className="md-edit" onDoubleClick={() => setEditDesc(issue.description ?? "")} title={t("双击编辑")}><Markdown src={issue.description} className="compact" /></div>
+              : <p className="empty-p" onClick={() => setEditDesc("")} title={t("点击编辑")}>{t("还没写描述——下一个接手的 Agent 会不知道为什么做这件事。")}</p>
           ) : (
             <textarea className="edit" value={editDesc} autoFocus onChange={(e) => setEditDesc(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") setEditDesc(null); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.target as HTMLTextAreaElement).blur(); }}
-              onBlur={() => { const d = editDesc; setEditDesc(null); if (d !== (issue.description ?? "")) act("描述已改", () => api.update(id, { description: d })); }} />
+              onBlur={() => { const d = editDesc; setEditDesc(null); if (d !== (issue.description ?? "")) act(t("描述已改"), () => api.update(id, { description: d })); }} />
           )}
         </div>
 
         <div className="sec">
-          <h4>验收标准{editAc === null && <button className="btn ghost sm" onClick={() => setEditAc(issue.acceptance_criteria ?? "")}>{ac.length ? "编辑" : "添加"}</button>}</h4>
+          <h4>{t("验收标准")}{editAc === null && <button className="btn ghost sm" onClick={() => setEditAc(issue.acceptance_criteria ?? "")}>{ac.length ? t("编辑") : t("添加")}</button>}</h4>
           {editAc === null ? (
-            ac.length ? <ul className="checks">{ac.map((a, i) => { const who = a.done && a.by ? actorOf(a.by, me) : null; const isMe = a.done && !!a.by && (a.by === me || who?.name === "你"); const self = a.done && !!a.by && !isMe && a.by === issue.assignee; return <li key={i}><span className={`box${a.done ? " on" : ""}`} onClick={() => toggleAc(i)} role="checkbox" aria-checked={a.done}>{a.done ? "✓" : ""}</span><span>{a.text}</span>{a.done && a.by && <span className={`ac-by${isMe ? " me" : self ? " self" : " peer"}`} title={`${a.by} 勾的`}>{isMe ? "你核对" : self ? `自审 · ${who?.name ?? a.by}` : `复核 · ${who?.name ?? a.by}`}</span>}{a.done && !a.by && <span className="ac-by muted" title="没有署名：改之前勾的">未署名</span>}</li>; })}</ul> : <p className="empty-p" style={{ margin: 0 }}>没有验收标准</p>
+            ac.length ? <ul className="checks">{ac.map((a, i) => { const who = a.done && a.by ? actorOf(a.by, me) : null; const isMe = a.done && !!a.by && (a.by === me || who?.name === t("你")); const self = a.done && !!a.by && !isMe && a.by === issue.assignee; return <li key={i}><span className={`box${a.done ? " on" : ""}`} onClick={() => toggleAc(i)} role="checkbox" aria-checked={a.done}>{a.done ? "✓" : ""}</span><span>{a.text}</span>{a.done && a.by && <span className={`ac-by${isMe ? " me" : self ? " self" : " peer"}`} title={t("{who} 勾的", { who: a.by })}>{isMe ? t("你核对") : self ? t("自审 · {who}", { who: who?.name ?? a.by }) : t("复核 · {who}", { who: who?.name ?? a.by })}</span>}{a.done && !a.by && <span className="ac-by muted" title={t("没有署名：改之前勾的")}>{t("未署名")}</span>}</li>; })}</ul> : <p className="empty-p" style={{ margin: 0 }}>{t("没有验收标准")}</p>
           ) : (
-            <textarea className="edit" value={editAc} autoFocus placeholder={"- [ ] 一行一条\n- [x] 已完成的打 x"} onChange={(e) => setEditAc(e.target.value)}
+            <textarea className="edit" value={editAc} autoFocus placeholder={t("- [ ] 一行一条\n- [x] 已完成的打 x")} onChange={(e) => setEditAc(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") setEditAc(null); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.target as HTMLTextAreaElement).blur(); }}
-              onBlur={() => { const v = editAc; setEditAc(null); if (v !== (issue.acceptance_criteria ?? "")) act("验收标准已改", () => api.update(id, { acceptance: v })); }} />
+              onBlur={() => { const v = editAc; setEditAc(null); if (v !== (issue.acceptance_criteria ?? "")) act(t("验收标准已改"), () => api.update(id, { acceptance: v })); }} />
           )}
         </div>
 
         <div className="sec">
-          <h4>活动</h4>
+          <h4>{t("活动")}</h4>
           <div className="act">
-            {events.length === 0 && <p className="empty-p">还没有活动</p>}
+            {events.length === 0 && <p className="empty-p">{t("还没有活动")}</p>}
             {events.map((ev, i) => {
               const a = actorOf(ev.actor, me);
               return (
                 <div className="ev" key={i}>
                   {a ? <Avatar actor={a} /> : <span className="av" style={{ background: "var(--line-2)", color: "var(--ink-2)" }}>·</span>}
                   <div>
-                    <div className="l1"><b>{a?.name ?? "系统"}</b><span className="muted">{ev.kind === "comment" ? "留言" : ev.text}</span><span className="ts" title={fmtTime(ev.ts)}>{relTime(ev.ts)}</span></div>
+                    <div className="l1"><b>{a?.name ?? t("系统")}</b><span className="muted">{ev.kind === "comment" ? t("留言") : ev.text}</span><span className="ts" title={fmtTime(ev.ts)}>{relTime(ev.ts)}</span></div>
                     {ev.kind === "comment" ? <div className="note"><Markdown src={ev.text} className="compact" /></div> : ev.cmd ? <span className="cmd">{ev.cmd}</span> : null}
                   </div>
                 </div>
@@ -329,28 +331,28 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
        <div className="dcol dcol-side">
         {related.length > 0 && (
           <details className="sec context-fold">
-            <summary>相关的坑 <span className="muted">{related.length} 条 · {semantic ? "按这条任务的意思找的，跨项目" : `项目 ${proj} 的经验`}</span></summary>
+            <summary>{t("相关的坑")} <span className="muted">{t("{n} 条", { n: related.length })} · {semantic ? t("按这条任务的意思找的，跨项目") : t("项目 {project} 的经验", { project: proj })}</span></summary>
             <div className="rel-pits">
               {shownPits.map((p) => (
                 <div key={p.key} className="rel-pit">
-                  <div className="l1"><span className="lbl trap">坑</span><span>{p.trap}</span>{semantic && p.score ? <span className="muted small">{p.score.toFixed(2)}</span> : null}</div>
-                  {p.fix && <div className="l1"><span className="lbl fix">解法</span><span>{p.fix}</span></div>}
+                  <div className="l1"><span className="lbl trap">{t("坑")}</span><span>{p.trap}</span>{semantic && p.score ? <span className="muted small">{p.score.toFixed(2)}</span> : null}</div>
+                  {p.fix && <div className="l1"><span className="lbl fix">{t("解法")}</span><span>{p.fix}</span></div>}
                 </div>
               ))}
-              {related.length > shownPits.length && <button className="link sm" onClick={() => setAllPits(true)}>还有 {related.length - shownPits.length} 条，展开</button>}
+              {related.length > shownPits.length && <button className="link sm" onClick={() => setAllPits(true)}>{t("还有 {n} 条，展开", { n: related.length - shownPits.length })}</button>}
             </div>
           </details>
         )}
 
         <section className="sec git-sec">
-          <h4>Git 提交 <span className="muted">{commits ? `${commits.commits.length} 个` : "…"} · 提交信息里带 {id}，或完成说明里写了哈希的</span></h4>
-          {commits && commits.commits.length === 0 && <p className="empty-p" style={{ margin: 0 }}>{commits.root ? "还没有对上的提交。Agent 提交时在信息末尾写上任务 id，或在完成说明里写 commit 哈希，这里就会列出来。" : "这个项目不在 git 仓库里，或者找不到它的目录。"}</p>}
+          <h4>{t("Git 提交")} <span className="muted">{commits ? t("{n} 个", { n: commits.commits.length }) : "…"}{t(" · 提交信息里带 {id}，或完成说明里写了哈希的", { id })}</span></h4>
+          {commits && commits.commits.length === 0 && <p className="empty-p" style={{ margin: 0 }}>{commits.root ? t("还没有对上的提交。Agent 提交时在信息末尾写上任务 id，或在完成说明里写 commit 哈希，这里就会列出来。") : t("这个项目不在 git 仓库里，或者找不到它的目录。")}</p>}
           {commits && commits.commits.length > 0 && <div className="git-list">
             {commits.commits.map((c) => (
               <details key={c.hash} className="git-commit">
                 <summary><span className="mono hash">{c.short}</span><span className="subj">{c.subject}</span><span className="mono small diffstat"><span className="add">+{c.add}</span> <span className="del">−{c.del}</span></span><span className="muted small">{relTime(c.date)}</span></summary>
                 <div className="git-files">
-                  <div className="muted small">{fmtTime(c.date)} · {c.author} · {c.file_count} 个文件{commits.remote ? <> · <button className="link" onClick={() => api.openPath(`${commits.remote}/commit/${c.hash}`)}>在 GitHub 打开 ↗</button></> : null} · <button className="link" onClick={() => api.copy(c.hash).then(() => onDone("已复制 commit 哈希")).catch(() => {})}>复制哈希</button></div>
+                  <div className="muted small">{fmtTime(c.date)} · {c.author} · {t("{n} 个文件", { n: c.file_count })}{commits.remote ? <> · <button className="link" onClick={() => api.openPath(`${commits.remote}/commit/${c.hash}`)}>{t("在 GitHub 打开 ↗")}</button></> : null} · <button className="link" onClick={() => api.copy(c.hash).then(() => onDone(t("已复制 commit 哈希"))).catch(() => {})}>{t("复制哈希")}</button></div>
                   {c.files.map((f) => <div key={f} className="mono small git-file">{f}</div>)}
                 </div>
               </details>
@@ -359,20 +361,20 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
         </section>
 
         <section className="sec work-sec">
-          <h4>文件修改与产出 <span className="muted">{work.reduce((n, w) => n + w.files.length, 0)} 个文件 · {work.reduce((n, w) => n + w.attachments.length, 0)} 个产物 · 来自明确关联的会话</span></h4>
-          {work.length === 0 ? <p className="empty-p" style={{ margin: 0 }}>{issue && linkedSessions(issue).length ? "关联的会话里没有记录到文件改动或产物。" : "还没有关联会话，所以这里是空的。Agent 认领或记进展时会自动关联；下面「对话中提到过」的会话只是线索。"}</p> : work.map((w) => (
+          <h4>{t("文件修改与产出")} <span className="muted">{t("{files} 个文件 · {artifacts} 个产物 · 来自明确关联的会话", { files: work.reduce((n, w) => n + w.files.length, 0), artifacts: work.reduce((n, w) => n + w.attachments.length, 0) })}</span></h4>
+          {work.length === 0 ? <p className="empty-p" style={{ margin: 0 }}>{issue && linkedSessions(issue).length ? t("关联的会话里没有记录到文件改动或产物。") : t("还没有关联会话，所以这里是空的。Agent 认领或记进展时会自动关联；下面「对话中提到过」的会话只是线索。")}</p> : work.map((w) => (
             <div key={w.sid} className="work-block">
               <div className="work-head"><button className="link" onClick={() => onOpenSession(w.sid)}>{w.title} ↗</button></div>
-              {w.files.length > 0 && <div className="work-files">{w.files.map((f) => <details key={f.path} className="fdiff file work-file" data-menu="file" data-id={f.path} open={w.files.length <= 3}><summary title={f.path}><code>{f.path.replace(/^\/Users\/[^/]+/, "~").replace(/^(.{0,18}).*?([^/]+\/[^/]+)$/, (m, a, b) => (m.length > 44 ? `${a}…/${b}` : m))}</code><span className="muted small">{f.changes.length} 次</span></summary><FileHunks changes={f.changes} /></details>)}</div>}
+              {w.files.length > 0 && <div className="work-files">{w.files.map((f) => <details key={f.path} className="fdiff file work-file" data-menu="file" data-id={f.path} open={w.files.length <= 3}><summary title={f.path}><code>{f.path.replace(/^\/Users\/[^/]+/, "~").replace(/^(.{0,18}).*?([^/]+\/[^/]+)$/, (m, a, b) => (m.length > 44 ? `${a}…/${b}` : m))}</code><span className="muted small">{t("{n} 次", { n: f.changes.length })}</span></summary><FileHunks changes={f.changes} /></details>)}</div>}
               {w.attachments.length > 0 && <MediaProvider api={api} session={{ agent: w.agent, session_id: w.sid, host: w.host }}><div className="work-attachments"><ImageGrid ids={w.attachments.filter((a) => a.mime.startsWith("image/")).map((a) => a.id)} max={6} />{w.attachments.filter((a) => !a.mime.startsWith("image/")).map((a) => <button key={a.id} className="chip" title={a.path || a.mime} onClick={() => (a.path ? api.openPath(a.path).catch(() => onOpenSession(w.sid)) : onOpenSession(w.sid))}>📄 {a.name}</button>)}</div></MediaProvider>}
             </div>
           ))}
         </section>
 
         <details className="sec context-fold">
-          <summary>对话中提到过 <span className="muted">{refs.length} 个会话 · 仅供参考，不代表归属</span></summary>
+          <summary>{t("对话中提到过")} <span className="muted">{t("{n} 个会话 · 仅供参考，不代表归属", { n: refs.length })}</span></summary>
           {refs.length === 0 ? (
-            <p className="empty-p" style={{ margin: 0 }}>还没有会话提到 {id}。</p>
+            <p className="empty-p" style={{ margin: 0 }}>{t("还没有会话提到 {id}。", { id })}</p>
           ) : (
             <div className="sess-list">
               {refs.map((r) => {
@@ -382,11 +384,11 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
                   <div key={r.session_id} className={`sref${l ? " live" : ""}`} title={r.cwd}>
                     <Avatar actor={a} />
                     <div className="info">
-                      <div>{r.project || r.cwd || "（未知目录）"} <span className="muted">· {r.mentions} 次提到</span>{l ? <span className="muted"> · {l.source_app}{l.state === "working" ? " · 在跑" : " · 开着"}</span> : null}</div>
-                      <div className="l2">{r.session_id} · {r.last_at ? `最近 ${ago(r.last_at)}` : ""}</div>
+                      <div>{r.project || r.cwd || t("（未知目录）")} <span className="muted">{t("· {n} 次提到", { n: r.mentions })}</span>{l ? <span className="muted"> · {l.source_app}{l.state === "working" ? t(" · 在跑") : t(" · 开着")}</span> : null}</div>
+                      <div className="l2">{r.session_id} · {r.last_at ? t("最近 {ago}", { ago: ago(r.last_at) }) : ""}</div>
                     </div>
-                    <button className="btn sm" onClick={() => onOpenSession(r.session_id)}>查看记录</button>
-                    <button className="copy-btn" onClick={() => copyResume(r.resume_cmd)} title={r.resume_cmd}>{"复制恢复命令"}</button>
+                    <button className="btn sm" onClick={() => onOpenSession(r.session_id)}>{t("查看记录")}</button>
+                    <button className="copy-btn" onClick={() => copyResume(r.resume_cmd)} title={r.resume_cmd}>{t("复制恢复命令")}</button>
                   </div>
                 );
               })}
@@ -397,9 +399,9 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
        </div>
       </div>
       <div className="compose">
-        <textarea placeholder="留言给下一个接手的 Agent…（⌘⏎ 发送）" value={draft} disabled={busy} rows={1} onChange={(e) => setDraft(e.target.value)}
+        <textarea placeholder={t("留言给下一个接手的 Agent…（⌘⏎ 发送）")} value={draft} disabled={busy} rows={1} onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void sendComment(); } }} />
-        <button className="btn primary" disabled={!draft.trim() || busy} onClick={() => void sendComment()}>发送</button>
+        <button className="btn primary" disabled={!draft.trim() || busy} onClick={() => void sendComment()}>{t("发送")}</button>
       </div>
     </aside>
   );

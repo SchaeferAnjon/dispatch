@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { View } from "../types";
+import { useT } from "../i18n";
 
 // The tour follows the product's one axis: a project has conversations, a
 // conversation spins off tasks, tasks add up to outcomes.
@@ -12,20 +13,21 @@ const STEPS: { title: string; body: string; view: View }[] = [
 ];
 
 export function Tour({ onClose, onGo }: { onClose: () => void; onGo: (v: View) => void }) {
+  const t = useT();
   const [i, setI] = useState(0);
   const s = STEPS[i];
   useEffect(() => { onGo(s.view); }, [i]);
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog tour" role="dialog" aria-label="导览" onKeyDown={(e) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowRight" || e.key === "Enter") setI(Math.min(STEPS.length - 1, i + 1)); if (e.key === "ArrowLeft") setI(Math.max(0, i - 1)); }}>
+      <div className="dialog tour" role="dialog" aria-label={t("导览")} onKeyDown={(e) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowRight" || e.key === "Enter") setI(Math.min(STEPS.length - 1, i + 1)); if (e.key === "ArrowLeft") setI(Math.max(0, i - 1)); }}>
         <div className="tour-step muted small">{i + 1} / {STEPS.length}</div>
-        <h3>{s.title}</h3>
-        <p>{s.body}</p>
+        <h3>{t(s.title)}</h3>
+        <p>{t(s.body)}</p>
         <div className="tour-dots">{STEPS.map((_, k) => <i key={k} className={k === i ? "on" : ""} onClick={() => setI(k)} />)}</div>
         <div className="foot">
-          <button className="btn ghost" onClick={onClose}>跳过</button>
-          {i > 0 && <button className="btn" onClick={() => setI(i - 1)}>上一步</button>}
-          {i < STEPS.length - 1 ? <button className="btn primary" autoFocus onClick={() => setI(i + 1)}>下一步</button> : <button className="btn primary" autoFocus onClick={onClose}>开始用</button>}
+          <button className="btn ghost" onClick={onClose}>{t("跳过")}</button>
+          {i > 0 && <button className="btn" onClick={() => setI(i - 1)}>{t("上一步")}</button>}
+          {i < STEPS.length - 1 ? <button className="btn primary" autoFocus onClick={() => setI(i + 1)}>{t("下一步")}</button> : <button className="btn primary" autoFocus onClick={onClose}>{t("开始用")}</button>}
         </div>
       </div>
     </div>
@@ -53,41 +55,42 @@ export interface OverviewStats { projects: number; inbox: number; sessions: numb
 
 // A page, not a dialog: every section of Dispatch with what it is for and its live numbers.
 export function OverviewView({ stats, onGo, onTour, onSetup }: { stats: OverviewStats; onGo: (v: View) => void; onTour: () => void; onSetup?: () => void }) {
+  const t = useT();
   const live: Partial<Record<View, string>> = {
-    home: `${stats.running} 个会话在跑 · ${stats.open} 项未完成`,
-    projects: `${stats.projects} 个项目`,
-    inbox: stats.inbox ? `${stats.inbox} 项等你` : "暂时没有等你的事",
-    sessions: `${stats.sessions} 段会话`,
-    board: `${stats.tasks} 项任务 · ${stats.open} 项未完成`,
-    agents: `${stats.agentsOnline}/${stats.agentsTotal} 在线 · ${stats.hosts} 台机器`,
-    skills: `${stats.skills} 个技能`,
-    rules: stats.rulesSynced === null ? "" : stats.rulesSynced ? "共同规则已同步" : "共同规则有待同步",
-    pitfalls: `${stats.wiki} 条记录`,
+    home: t("{running} 个会话在跑 · {open} 项未完成", { running: stats.running, open: stats.open }),
+    projects: t("{n} 个项目", { n: stats.projects }),
+    inbox: stats.inbox ? t("{n} 项等你", { n: stats.inbox }) : t("暂时没有等你的事"),
+    sessions: t("{n} 段会话", { n: stats.sessions }),
+    board: t("{tasks} 项任务 · {open} 项未完成", { tasks: stats.tasks, open: stats.open }),
+    agents: t("{online}/{total} 在线 · {hosts} 台机器", { online: stats.agentsOnline, total: stats.agentsTotal, hosts: stats.hosts }),
+    skills: t("{n} 个技能", { n: stats.skills }),
+    rules: stats.rulesSynced === null ? "" : stats.rulesSynced ? t("共同规则已同步") : t("共同规则有待同步"),
+    pitfalls: t("{n} 条记录", { n: stats.wiki }),
     settings: stats.version ? `v${stats.version}` : "",
   };
   return (
     <div className="overview-page">
       <header className="setup-head">
         <div>
-          <h2>Dispatch 总览</h2>
-          <p>一条线贯穿所有页面：<b>项目</b>里发生<b>会话</b>，会话延伸出<b>任务</b>，任务汇成<b>成果</b>。Agent 在下面干活，你在上面看、回复、派活。每张卡是一个页面，点进去。</p>
+          <h2>{t("Dispatch 总览")}</h2>
+          <p>{t("一条线贯穿所有页面：项目里发生会话，会话延伸出任务，任务汇成成果。Agent 在下面干活，你在上面看、回复、派活。每张卡是一个页面，点进去。")}</p>
         </div>
         <div className="setup-head-actions">
-          <button className="btn" onClick={onTour}>看一遍导览</button>
-          {onSetup && <button className="btn" onClick={onSetup}>首次设置</button>}
+          <button className="btn" onClick={onTour}>{t("看一遍导览")}</button>
+          {onSetup && <button className="btn" onClick={onSetup}>{t("首次设置")}</button>}
         </div>
       </header>
       <div className="overview-grid page">
-        {PAGES.map((p) => <button key={p.view} className="overview-card" onClick={() => onGo(p.view)}><b>{p.title}</b><span>{p.body}</span>{live[p.view] && <em className="mono">{live[p.view]}</em>}</button>)}
+        {PAGES.map((p) => <button key={p.view} className="overview-card" onClick={() => onGo(p.view)}><b>{t(p.title)}</b><span>{t(p.body)}</span>{live[p.view] && <em className="mono">{live[p.view]}</em>}</button>)}
       </div>
       <section className="overview-howto">
-        <h4>怎么用</h4>
+        <h4>{t("怎么用")}</h4>
         <ul>
-          <li><b>右键</b>任何东西：任务、会话、项目、技能、文件、机器，都有它自己的操作；空白处右键是本页的操作。</li>
-          <li><b>⌘K</b> 搜项目、会话、任务；<b>⌘N</b> 新建会话；<b>⌘T</b> 新任务；<b>⌘R</b> 刷新。</li>
-          <li><b>手机</b>：连上 Tailscale 后，用相机扫设置页「手机访问」里的二维码，或复制那里的链接用浏览器打开，可添加到主屏幕；「看屏幕」能看并操作这台电脑。</li>
-          <li><b>两台电脑</b>：第二台装好后在首次设置里「接入」第一台，任务板、规则、技能就是同一份；会话可以右键「迁移到另一台」接着做。</li>
-          <li><b>Agent 怎么知道这些</b>：每个新会话开头会收到 <code>dispatch prime</code> 注入的身份、当前项目任务和相关知识；它用 <code>dispatch begin / log / done</code> 记任务，用 <code>dispatch wiki</code> 记坑。</li>
+          <li>{t("右键任何东西：任务、会话、项目、技能、文件、机器，都有它自己的操作；空白处右键是本页的操作。")}</li>
+          <li>{t("⌘K 搜项目、会话、任务；⌘N 新建会话；⌘T 新任务；⌘R 刷新。")}</li>
+          <li>{t("手机：连上 Tailscale 后，用相机扫设置页「手机访问」里的二维码，或复制那里的链接用浏览器打开，可添加到主屏幕；「看屏幕」能看并操作这台电脑。")}</li>
+          <li>{t("两台电脑：第二台装好后在首次设置里「接入」第一台，任务板、规则、技能就是同一份；会话可以右键「迁移到另一台」接着做。")}</li>
+          <li>{t("Agent 怎么知道这些：每个新会话开头会收到 dispatch prime 注入的身份、当前项目任务和相关知识；它用 dispatch begin / log / done 记任务，用 dispatch wiki 记坑。")}</li>
         </ul>
       </section>
     </div>

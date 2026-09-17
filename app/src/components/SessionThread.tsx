@@ -7,6 +7,7 @@ import type { Block, TimelineMsg } from "../types";
 import { ImageGrid } from "./Media";
 import { Markdown, Linkified } from "./Markdown";
 import { DiffTable } from "./Diff";
+import { t, useT, useLocale } from "../i18n";
 
 // The conversation drawn with assistant-ui: every turn is one Thread message, an assistant turn's
 // steps are its parts — thinking as a Reasoning part (folded), a tool call as a tool-call part
@@ -37,7 +38,7 @@ function toMessages(list: TimelineMsg[], name: string, running: boolean): Msg[] 
     if (x.role === "gap") { out.push({ id, role: "system", content: [{ type: "text", text: x.text || "…" }], metadata: { custom: { kind: "gap", text: x.text } } }); return; }
     if (x.synthetic) { out.push({ id, role: "system", content: [{ type: "text", text: x.text || "…" }], metadata: { custom: { kind: "system", text: x.text, images: x.images } } }); return; }
     if (x.role === "user" || x.role === "tool") {
-      out.push({ id, role: "user", content: [{ type: "text", text: x.text || (x.images?.length ? "[图片]" : "…") }], metadata: { custom: { kind: "turn", role: x.role, name: x.role === "user" ? (x.queued ? "你 · 排队时发的" : "你") : "工具", ts: x.ts, cont: x.role === "tool" && out[out.length - 1]?.role === "assistant", images: x.images, tools: {}, folds: {} } } });
+      out.push({ id, role: "user", content: [{ type: "text", text: x.text || (x.images?.length ? "[图片]" : "…") }], metadata: { custom: { kind: "turn", role: x.role, name: x.role === "user" ? (x.queued ? t("你 · 排队时发的") : t("你")) : t("工具"), ts: x.ts, cont: x.role === "tool" && out[out.length - 1]?.role === "assistant", images: x.images, tools: {}, folds: {} } } });
       return;
     }
     const blocks = blocksOf(x);
@@ -49,7 +50,7 @@ function toMessages(list: TimelineMsg[], name: string, running: boolean): Msg[] 
     blocks.forEach((b, j) => {
       if (b.type === "text") { if (b.text.trim()) content.push({ type: "text", text: b.text }); return; }
       if (b.type === "tool_fold") { const key = `${id}:fold:${j}`; folds[key] = b.tools; content.push({ type: "tool-call", toolCallId: key, toolName: FOLD, args: {} as Record<string, never>, result: "" }); return; }
-      if (b.type === "thinking") { content.push({ type: "reasoning", text: b.text, unstable_summary: b.note || (b.text ? undefined : "内容未记录") }); return; }
+      if (b.type === "thinking") { content.push({ type: "reasoning", text: b.text, unstable_summary: b.note || (b.text ? undefined : t("内容未记录")) }); return; }
       const key = b.id || `${id}:${j}`;
       tools[key] = b;
       // assistant-ui treats a tool call without a result as still running (it inherits the message
@@ -92,10 +93,11 @@ function Text(p: TextMessagePartProps) {
 function Reasoning(p: ReasoningMessagePartProps) {
   // Transcripts write a thinking block once it is finished, so text means "thought"; the
   // shimmer is for a block that is still empty while the session runs (headless streams).
+  const t = useT();
   const running = p.status.type === "running";
   const text = (p.text || "").trim();
   // No readable thinking (signature only, redacted, summaries off): one quiet line, not a fold.
-  if (!text) return <div className={`tl-think bare${running ? " running" : ""}`}><span className="think-mark">💭</span>{running ? <span className="shimmer">思考中…</span> : <span className="muted">思考了{p.unstable_summary ? ` · ${p.unstable_summary}` : ""}</span>}</div>;
+  if (!text) return <div className={`tl-think bare${running ? " running" : ""}`}><span className="think-mark">💭</span>{running ? <span className="shimmer">{t("思考中…")}</span> : <span className="muted">{t("思考了")}{p.unstable_summary ? ` · ${p.unstable_summary}` : ""}</span>}</div>;
   // Shown whole, the way the terminal prints it: these are often the agent's running commentary
   // ("found it: …, next I'll …"), unreadable as a one-line peek. Muted so replies still stand out.
   return <div className="tl-think shown"><span className="think-mark">💭</span><div className="think-text sel-text"><Markdown src={text} className="compact" /></div></div>;
@@ -108,6 +110,7 @@ const argEntries = (input: Record<string, unknown>) => Object.entries(input).sor
 // argument and the result. An Edit/Write/MultiEdit/apply_patch call instead gets an
 // "Update(path) +N −M" header and a real diff body — the same rendering as the 文件 tab uses.
 function CardView({ name, status, summary, input, result, ts, shell }: { name: string; status: ToolBlock["status"]; summary: string; input: Record<string, unknown>; result: string; ts?: string; shell?: boolean }) {
+  const t = useT();
   const [tick, setTick] = useState(0);
   useEffect(() => { if (status !== "running" || !ts) return; const t = window.setInterval(() => setTick((n) => n + 1), 1000); return () => window.clearInterval(t); }, [status, ts]);
   const secs = status === "running" && ts ? Math.max(0, Math.round((Date.now() - Date.parse(ts)) / 1000)) : 0;
@@ -122,12 +125,12 @@ function CardView({ name, status, summary, input, result, ts, shell }: { name: s
   return (
     <details className={`tool-card ${status}${diff ? " edit-card" : ""}`} open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary title={diff ? diff.path : summary || undefined}>
-        <span className={`tool-status ${status}`} aria-label={STATUS_TEXT[status]}>{status === "running" ? <span className="spin" /> : STATUS_MARK[status]}</span>
+        <span className={`tool-status ${status}`} aria-label={t(STATUS_TEXT[status])}>{status === "running" ? <span className="spin" /> : STATUS_MARK[status]}</span>
         {diff ? (
           <>
             <b className="mono">{diff.kind === "write" ? "Write" : "Update"}({path})</b>
             {stat && (stat.add > 0 || stat.del > 0) && <span className="mono small diffstat"><span className="add">+{stat.add}</span> <span className="del">−{stat.del}</span></span>}
-            {diff.truncated && <span className="muted small" title="改动超出展示上限，只截了前面一部分">已截断</span>}
+            {diff.truncated && <span className="muted small" title={t("改动超出展示上限，只截了前面一部分")}>{t("已截断")}</span>}
             <span className="spacer" />
           </>
         ) : (
@@ -136,13 +139,13 @@ function CardView({ name, status, summary, input, result, ts, shell }: { name: s
             {summary && <span className={`tool-sum${shell ? " mono" : ""}`}>{summary}</span>}
           </>
         )}
-        <span className="muted small tool-state">{status === "running" ? `正在调用${secs > 2 ? ` · ${secs}s` : ""}` : STATUS_TEXT[status]}</span>
+        <span className="muted small tool-state">{status === "running" ? `${t("正在调用")}${secs > 2 ? ` · ${secs}s` : ""}` : t(STATUS_TEXT[status])}</span>
       </summary>
       <div className="tool-body">
         {blocks
           ? blocks.map((b, i) => <div key={i} className="hunk">{b.label && <div className="hunk-h muted small">{b.label}</div>}<DiffTable rows={b.rows} /></div>)
           : Object.keys(input).length > 0 && <dl className="tool-args">{argEntries(input).map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="sel-text">{typeof v === "string" ? v : JSON.stringify(v)}</dd></div>)}</dl>}
-        {result && (!diff || status === "error") ? <pre className={`tool-result${status === "error" ? " err" : ""}`}>{result}</pre> : !diff && status === "done" ? <div className="muted small">（没有输出）</div> : null}
+        {result && (!diff || status === "error") ? <pre className={`tool-result${status === "error" ? " err" : ""}`}>{result}</pre> : !diff && status === "done" ? <div className="muted small">{t("（没有输出）")}</div> : null}
       </div>
     </details>
   );
@@ -179,15 +182,17 @@ const ShellToolUIs = SHELL_TOOLS.map((toolName) => makeAssistantToolUI({ toolNam
 // assistant-ui adds an empty slot after a running message whose last part is a tool call:
 // between a finished call and the next step the agent is thinking; while the call runs the card's spinner is enough.
 function Empty({ status }: { status: { type: string } }) {
+  const t = useT();
   const c = useCustom();
   if (status.type !== "running" || (c.kind === "turn" && Object.values(c.tools).some((b) => b.status === "running"))) return null;
-  return <div className="tl-think bare running"><span className="think-mark">💭</span><span className="shimmer">思考中…</span></div>;
+  return <div className="tl-think bare running"><span className="think-mark">💭</span><span className="shimmer">{t("思考中…")}</span></div>;
 }
 const PARTS = { Text, Reasoning, Empty, tools: { Fallback: ToolCard } };
 
 function Turn() {
+  const t = useT();
   const c = useCustom();
-  if (c.kind === "typing") return <MessagePrimitive.Root className="tl assistant typing"><div className="tl-h"><b>{c.name}</b></div><div className="tl-think bare running"><span className="think-mark">💭</span><span className="shimmer">思考中…</span></div></MessagePrimitive.Root>;
+  if (c.kind === "typing") return <MessagePrimitive.Root className="tl assistant typing"><div className="tl-h"><b>{c.name}</b></div><div className="tl-think bare running"><span className="think-mark">💭</span><span className="shimmer">{t("思考中…")}</span></div></MessagePrimitive.Root>;
   if (c.kind !== "turn") return null;
   return (
     <MessagePrimitive.Root className={`tl ${c.role}${c.cont ? " cont" : ""}`}>
@@ -204,9 +209,10 @@ function UserText() {
   return <div className="tl-t sel-text"><Linkified text={text} /></div>;
 }
 function SystemLine() {
+  const t = useT();
   const c = useCustom();
   if (c.kind === "gap") return <div className="tl gap"><div className="muted">{c.text}</div></div>;
-  if (c.kind === "system") return <div className="tl system"><div className="muted small tl-system" title="不是你发的：Claude Code 的后台任务 / 子 Agent / hook 的通知，Agent 看到后可能会接一句">{/^Agent "/.test(c.text || "") ? "子 Agent" : "系统事件"} · {c.text}</div>{c.images && c.images.length > 0 && <div className="tl-system-images"><ImageGrid ids={c.images} /></div>}</div>;
+  if (c.kind === "system") return <div className="tl system"><div className="muted small tl-system" title={t("不是你发的：Claude Code 的后台任务 / 子 Agent / hook 的通知，Agent 看到后可能会接一句")}>{/^Agent "/.test(c.text || "") ? t("子 Agent") : t("系统事件")} · {c.text}</div>{c.images && c.images.length > 0 && <div className="tl-system-images"><ImageGrid ids={c.images} /></div>}</div>;
   return null;
 }
 const MESSAGES = { UserMessage: Turn, AssistantMessage: Turn, SystemMessage: SystemLine };
@@ -214,7 +220,9 @@ const MESSAGES = { UserMessage: Turn, AssistantMessage: Turn, SystemMessage: Sys
 interface Props { list: TimelineMsg[]; name: string; running?: boolean; cwd?: string }
 
 export function SessionThread({ list, name, running = false, cwd }: Props) {
-  const messages = useMemo(() => toMessages(list, name, running), [list, name, running]);
+  // The locale is a dependency: the names and notes toMessages bakes in must follow a switch.
+  const locale = useLocale();
+  const messages = useMemo(() => toMessages(list, name, running), [list, name, running, locale]);
   // Read-only: the reply box under the page sends messages, not this thread.
   const runtime = useExternalStoreRuntime<Msg>({ messages, isRunning: running, convertMessage: (m) => m, onNew: async () => {} });
   return (

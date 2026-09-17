@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useMedia, dataUrl } from "./Media";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { t, useLocale, useT } from "../i18n";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -23,28 +24,29 @@ export const openTask = (id: string) => window.dispatchEvent(new CustomEvent("di
 function linkifyTasks(dom: Document) {
   const walker = dom.createTreeWalker(dom.body, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) { const t = n as Text; if (!t.parentElement?.closest("a") && TASK_ID_RE.test(t.data)) nodes.push(t); TASK_ID_RE.lastIndex = 0; }
-  for (const t of nodes) {
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) { const node = n as Text; if (!node.parentElement?.closest("a") && TASK_ID_RE.test(node.data)) nodes.push(node); TASK_ID_RE.lastIndex = 0; }
+  for (const node of nodes) {
     const frag = dom.createDocumentFragment();
     let last = 0;
-    for (const m of t.data.matchAll(TASK_ID_RE)) {
-      if (m.index! > last) frag.appendChild(dom.createTextNode(t.data.slice(last, m.index)));
-      const a = dom.createElement("a"); a.className = "task-link"; a.dataset.task = m[0]; a.href = `#/board/task/${m[0]}`; a.title = "打开这条任务"; a.textContent = m[0];
+    for (const m of node.data.matchAll(TASK_ID_RE)) {
+      if (m.index! > last) frag.appendChild(dom.createTextNode(node.data.slice(last, m.index)));
+      const a = dom.createElement("a"); a.className = "task-link"; a.dataset.task = m[0]; a.href = `#/board/task/${m[0]}`; a.title = t("打开这条任务"); a.textContent = m[0];
       frag.appendChild(a); last = m.index! + m[0].length;
     }
-    if (last < t.data.length) frag.appendChild(dom.createTextNode(t.data.slice(last)));
-    t.replaceWith(frag);
+    if (last < node.data.length) frag.appendChild(dom.createTextNode(node.data.slice(last)));
+    node.replaceWith(frag);
   }
 }
 
 // Plain text with task ids turned into the same links (for user messages, summaries, replies).
 export function Linkified({ text }: { text: string }) {
+  const t = useT();
   const parts: ReactNode[] = [];
   let last = 0;
   for (const m of text.matchAll(TASK_ID_RE)) {
     if (m.index! > last) parts.push(text.slice(last, m.index));
     const id = m[0];
-    parts.push(<a key={m.index} className="task-link" href={`#/board/task/${id}`} title="打开这条任务" onClick={(e) => { e.preventDefault(); e.stopPropagation(); openTask(id); }}>{id}</a>);
+    parts.push(<a key={m.index} className="task-link" href={`#/board/task/${id}`} title={t("打开这条任务")} onClick={(e) => { e.preventDefault(); e.stopPropagation(); openTask(id); }}>{id}</a>);
     last = m.index! + id.length;
   }
   if (last < text.length) parts.push(text.slice(last));
@@ -52,6 +54,8 @@ export function Linkified({ text }: { text: string }) {
 }
 
 export function Markdown({ src, className, onRelativeLink }: { src: string; className?: string; onRelativeLink?: (href: string) => void }) {
+  const t = useT();
+  const locale = useLocale();
   const media = useMedia();
   const root = useRef<HTMLDivElement>(null);
   const html = useMemo(() => {
@@ -62,11 +66,11 @@ export function Markdown({ src, className, onRelativeLink }: { src: string; clas
     for (const a of dom.querySelectorAll('a[href^="mailto:"]')) { const addr = a.getAttribute('href')!.slice(7); if (/^[^@]+@(\d{1,3}\.){3}\d{1,3}$/.test(addr) || !addr.includes('.')) a.replaceWith(dom.createTextNode(a.textContent || addr)); }
     if (media) for (const img of dom.querySelectorAll('img')) {
       const path = img.getAttribute('src') || '';
-      if (path && !/^(https?:|data:|blob:)/i.test(path)) { img.dataset.attachment = path; img.removeAttribute('src'); img.alt = img.alt || '图片'; img.classList.add('local-image'); }
+      if (path && !/^(https?:|data:|blob:)/i.test(path)) { img.dataset.attachment = path; img.removeAttribute('src'); img.alt = img.alt || t('图片'); img.classList.add('local-image'); }
     }
     linkifyTasks(dom);
     return dom.body.innerHTML;
-  }, [src, Boolean(media)]);
+  }, [src, Boolean(media), locale]);
   const markup = useMemo(() => ({ __html: html }), [html]);
   useEffect(() => {
     if (!media || !root.current) return;
@@ -74,7 +78,7 @@ export function Markdown({ src, className, onRelativeLink }: { src: string; clas
     const observer = new IntersectionObserver(entries => {
       for (const entry of entries) if (entry.isIntersecting) {
         const img = entry.target as HTMLImageElement; observer.unobserve(img);
-        void media.read(img.dataset.attachment!).then(a => { if (alive) img.src = dataUrl(a); }).catch(() => { if (alive) { img.alt = '图片不可用，点击查看原因'; img.classList.add('unavailable'); } });
+        void media.read(img.dataset.attachment!).then(a => { if (alive) img.src = dataUrl(a); }).catch(() => { if (alive) { img.alt = t('图片不可用，点击查看原因'); img.classList.add('unavailable'); } });
       }
     }, { rootMargin: '200px' });
     root.current.querySelectorAll('img[data-attachment]').forEach(img => observer.observe(img));

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { View } from "../types";
 import { Icon } from "./icons";
+import { useT } from "../i18n";
 
 // Bottom tab bar for narrow screens. Five tabs is the most a thumb can aim at; the
 // rest of the views live behind 更多.
@@ -24,6 +25,7 @@ const MORE: { v: View; icon: string; label: string }[] = [
 ];
 
 export function MobileNav({ view, setView, badge }: { view: View; setView: (v: View) => void; badge: number }) {
+  const t = useT();
   const [more, setMore] = useState(false);
   const inMore = view === "quota" || view === "table" || view === "trash" || view === "archive" || MORE.some((m) => m.v === view);
   return (
@@ -32,19 +34,19 @@ export function MobileNav({ view, setView, badge }: { view: View; setView: (v: V
         <div className="m-sheet-bg" onClick={() => setMore(false)}>
           <div className="m-sheet" onClick={(e) => e.stopPropagation()}>
             {MORE.map((m) => (
-              <button key={m.v} className={(view === m.v || (view === "quota" && m.v === "stats") || (["table", "trash", "archive"].includes(view) && m.v === "board")) ? "on" : ""} onClick={() => { setView(m.v); setMore(false); }}><Icon name={m.icon} size={18} />{m.label}</button>
+              <button key={m.v} className={(view === m.v || (view === "quota" && m.v === "stats") || (["table", "trash", "archive"].includes(view) && m.v === "board")) ? "on" : ""} onClick={() => { setView(m.v); setMore(false); }}><Icon name={m.icon} size={18} />{t(m.label)}</button>
             ))}
           </div>
         </div>
       )}
       <nav className="m-nav">
-        {TABS.map((t) => (
-          <button key={t.v} className={view === t.v ? "on" : ""} onClick={() => { setView(t.v); setMore(false); }}>
-            <Icon name={t.icon} size={20} />{t.label}
-            {t.v === "inbox" && badge > 0 && <i className="m-badge">{badge}</i>}
+        {TABS.map((tab) => (
+          <button key={tab.v} className={view === tab.v ? "on" : ""} onClick={() => { setView(tab.v); setMore(false); }}>
+            <Icon name={tab.icon} size={20} />{t(tab.label)}
+            {tab.v === "inbox" && badge > 0 && <i className="m-badge">{badge}</i>}
           </button>
         ))}
-        <button className={inMore || more ? "on" : ""} onClick={() => setMore(!more)}><Icon name="board" size={20} />更多</button>
+        <button className={inMore || more ? "on" : ""} onClick={() => setMore(!more)}><Icon name="board" size={20} />{t("更多")}</button>
       </nav>
     </>
   );

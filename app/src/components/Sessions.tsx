@@ -15,6 +15,7 @@ import { OpenSessionButton, AdoptButton } from "./SessionActions";
 import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 import { SessionQuestion, pendingQuestion } from "./SessionQuestion";
+import { useT, useLocale } from "../i18n";
 
 interface Props { onBack?: { label: string; go: () => void }; localHostName?: string; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string; onProject?: (name: string) => void; solo?: boolean; offlineHosts?: { id: string; name: string }[] }
 
@@ -30,6 +31,7 @@ export function ChatList({ list, name, showTools, running, cwd }: { list: Timeli
 // A sub-agent's own transcript, opened from the parent's 子 Agent tab. The prompt it was
 // given is its first "user" turn; its final report is the last assistant text.
 export function SubagentDialog({ api, parent, sub, onClose }: { api: Api; parent: SessionRef; sub: SessionRef["subagents"][number]; onClose: () => void }) {
+  const t = useT();
   const [d, setD] = useState<SessionDetail | null>(null);
   const [err, setErr] = useState("");
   const [tools, setTools] = useState(false);
@@ -40,17 +42,17 @@ export function SubagentDialog({ api, parent, sub, onClose }: { api: Api; parent
   const nT = d?.messages.reduce((n, x) => n + x.tools.length, 0) ?? 0;
   const list = d?.messages ?? [];
   return <div className="overlay media-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-    <div className="media-dialog subagent-dialog" role="dialog" aria-modal="true" aria-label="子 Agent 对话">
-      <header><span className="sub-type">{sub.type || "子 Agent"}</span><b>{sub.description || sub.agent_id}</b><span className="muted small mono">{(sub.size / 1e3).toFixed(0)} KB · 深度 {sub.depth}</span><span className="spacer" />
-        <span className="views xs"><button className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>对话</button><button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")} disabled={!d?.files.length}>文件 {d?.files.length ?? 0}</button></span>
-        <button className={`chip${tools ? " on" : ""}`} onClick={() => setTools(!tools)} title="显示或隐藏工具调用">工具调用 <span className="mono muted">{nT}</span></button>
-        <button className="btn sm" autoFocus onClick={onClose} aria-label="关闭">✕</button></header>
+    <div className="media-dialog subagent-dialog" role="dialog" aria-modal="true" aria-label={t("子 Agent 对话")}>
+      <header><span className="sub-type">{sub.type || t("子 Agent")}</span><b>{sub.description || sub.agent_id}</b><span className="muted small mono">{(sub.size / 1e3).toFixed(0)} KB · {t("深度 {n}", { n: sub.depth })}</span><span className="spacer" />
+        <span className="views xs"><button className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>{t("对话")}</button><button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")} disabled={!d?.files.length}>{t("文件")} {d?.files.length ?? 0}</button></span>
+        <button className={`chip${tools ? " on" : ""}`} onClick={() => setTools(!tools)} title={t("显示或隐藏工具调用")}>{t("工具调用")} <span className="mono muted">{nT}</span></button>
+        <button className="btn sm" autoFocus onClick={onClose} aria-label={t("关闭")}>✕</button></header>
       <MediaProvider api={api} session={{ agent: parent.agent, session_id: `${parent.session_id}/sub/${sub.agent_id}`, host: parent.host }}>
         <div className="media-content subagent-body">
           {err && <p className="err">{err}</p>}
-          {!d && !err && <div className="empty small">读子 Agent 的记录中…</div>}
-          {d && tab === "chat" && <ChatList list={list} name={sub.type || "子 Agent"} showTools={tools} cwd={parent.cwd} />}
-          {d && tab === "files" && d.files.map((f) => <details key={f.path} className="fdiff" open={d.files.length <= 3}><summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {f.changes.length} 处</span></summary><FileHunks changes={f.changes} /></details>)}
+          {!d && !err && <div className="empty small">{t("读子 Agent 的记录中…")}</div>}
+          {d && tab === "chat" && <ChatList list={list} name={sub.type || t("子 Agent")} showTools={tools} cwd={parent.cwd} />}
+          {d && tab === "files" && d.files.map((f) => <details key={f.path} className="fdiff" open={d.files.length <= 3}><summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {t("{n} 处", { n: f.changes.length })}</span></summary><FileHunks changes={f.changes} /></details>)}
         </div>
       </MediaProvider>
     </div>
@@ -59,13 +61,14 @@ export function SubagentDialog({ api, parent, sub, onClose }: { api: Api; parent
 
 // One file's recorded edits, as diffs. Shared by the session files tab and the task detail.
 export function FileHunks({ changes }: { changes: FileChange[] }) {
+  const t = useT();
   return <>{changes.map((c, i) => {
     const lines = (c.new || "").split("\n").length;
     // One fold per file is enough (the file's own <details>); the hunk itself stays open.
-    const head = <div className="hunk-h muted small">{c.kind === "write" ? `写入整个文件 · ${lines} 行` : c.kind === "patch" ? `${c.op ?? "修改"}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : "编辑"}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>;
+    const head = <div className="hunk-h muted small">{c.kind === "write" ? t("写入整个文件 · {n} 行", { n: lines }) : c.kind === "patch" ? `${c.op ?? t("修改")}${c.add !== undefined ? ` · +${c.add} −${c.del ?? 0}` : ""}` : t("编辑")}{c.ts ? ` · ${fmtTime(c.ts)}` : ""}</div>;
     const body = c.kind === "patch"
-      ? (c.new ? <PatchDiff text={c.new} /> : <pre className="diff"><div className="skip">补丁内容没存下来</div></pre>)
-      : <PairDiff oldText={c.old} newText={c.new} label={c.kind === "write" ? "行号 = 文件行号" : "行号相对本段"} />;
+      ? (c.new ? <PatchDiff text={c.new} /> : <pre className="diff"><div className="skip">{t("补丁内容没存下来")}</div></pre>)
+      : <PairDiff oldText={c.old} newText={c.new} label={c.kind === "write" ? t("行号 = 文件行号") : t("行号相对本段")} />;
     return <div key={i} className="hunk">{head}{body}</div>;
   })}</>;
 }
@@ -73,9 +76,11 @@ export function FileHunks({ changes }: { changes: FileChange[] }) {
 // Which Mac's copy a row is: this Mac's keeps the bare id, another Mac's is id@host.
 const rowKey = (r: { session_id: string; host?: string; remote?: boolean }) => (r.remote && r.host ? `${r.session_id}@${r.host}` : r.session_id);
 // After `dispatch move` both copies keep running: say which one is the original.
-export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?: string } }) =>
-  r.moved_to_name ? <span className="host-chip moved" title="dispatch move 迁出的原会话；对方接手后可以关掉">已迁往 {r.moved_to_name}</span>
-  : r.moved_from_name ? <span className="host-chip moved" title="dispatch move 迁过来接手的会话">从 {r.moved_from_name} 迁来</span> : null;
+export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?: string } }) => {
+  const t = useT();
+  return r.moved_to_name ? <span className="host-chip moved" title={t("dispatch move 迁出的原会话；对方接手后可以关掉")}>{t("已迁往 {name}", { name: r.moved_to_name })}</span>
+  : r.moved_from_name ? <span className="host-chip moved" title={t("dispatch move 迁过来接手的会话")}>{t("从 {name} 迁来", { name: r.moved_from_name })}</span> : null;
+};
 
 // Conversations already read this run: reopening one shows it at once (then refreshes in the
 // background), instead of a blank 「读取对话记录…」 and a full re-parse — over ssh from the other Mac
@@ -83,6 +88,8 @@ export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?
 const detailCache = new Map<string, SessionDetail>();
 
 export function SessionsView({ onBack, onProject, solo = false, offlineHosts = [], localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
+  const t = useT();
+  const locale = useLocale();   // the view-menu extras below are built once per change: rebuild them on a switch
   const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
@@ -244,80 +251,80 @@ export function SessionsView({ onBack, onProject, solo = false, offlineHosts = [
   const counts = useMemo(() => { const seen = new Map<string, SessionRef | Activity>(); for (const r of [...refs, ...activities]) if (!seen.has(rowKey(r))) seen.set(rowKey(r), r); const all = [...seen.values()]; const life = (r: SessionRef | Activity) => archivedProjects.has(r.project_override || r.project) ? "archived" : sessionLifecycle(r, archiveDays); return { scheduled: all.filter((r) => r.scheduled).length, starred: all.filter((r) => !r.scheduled && life(r) === "starred").length, archived: all.filter((r) => !r.scheduled && life(r) === "archived").length }; }, [refs, activities, archiveDays, archivedProjects]);
 
   const liveOf = (id: string, host?: string) => live.find((s) => s.session_id === id && (host === undefined || (s.host ?? "local") === host));
-  const copy = async (cmd: string) => { try { await api.copy(cmd); onDone("恢复命令已复制，去终端粘贴回车"); } catch (e) { onError(String(e)); } };
+  const copy = async (cmd: string) => { try { await api.copy(cmd); onDone(t("恢复命令已复制，去终端粘贴回车")); } catch (e) { onError(String(e)); } };
   useItemMenu("file", (rel) => {
     const root = detail?.workspace?.root;
     if (!root) return null;
     const full = `${root.replace(/\/$/, "")}/${rel}`;
     return { title: rel, items: [
-      { label: "打开文件", onClick: () => api.openPath(full).catch((e) => onError(String(e))) },
-      { label: "在访达中打开", onClick: () => api.openPath(full.replace(/\/[^/]+$/, "")).catch((e) => onError(String(e))) },
-      { label: "复制路径", onClick: () => api.copy(full).then(() => onDone("路径已复制")) },
-      { label: "复制相对路径", onClick: () => api.copy(rel).then(() => onDone("已复制")) },
+      { label: t("打开文件"), onClick: () => api.openPath(full).catch((e) => onError(String(e))) },
+      { label: t("在访达中打开"), onClick: () => api.openPath(full.replace(/\/[^/]+$/, "")).catch((e) => onError(String(e))) },
+      { label: t("复制路径"), onClick: () => api.copy(full).then(() => onDone(t("路径已复制"))) },
+      { label: t("复制相对路径"), onClick: () => api.copy(rel).then(() => onDone(t("已复制"))) },
     ] };
   }, [detail?.workspace?.root, api]);
   useViewMenuExtras(detail ? [
-    { label: "复制恢复命令", onClick: () => void copy(detail.meta.resume_cmd) },
-    { label: "复制会话 ID", onClick: () => api.copy(detail.meta.session_id).then(() => onDone("已复制")) },
-  ] : [], [detail?.meta.session_id]);
+    { label: t("复制恢复命令"), onClick: () => void copy(detail.meta.resume_cmd) },
+    { label: t("复制会话 ID"), onClick: () => api.copy(detail.meta.session_id).then(() => onDone(t("已复制"))) },
+  ] : [], [detail?.meta.session_id, locale]);
 
   return (
     <MediaProvider api={api} session={detail?.meta}><div className={`sess-wrap${sel ? " has-selection" : ""}${listHidden || solo ? " list-hidden" : ""}${split ? " is-split" : ""}`}>
       <div className="sess-side">
         <div className="sess-tools">
-          <label className="search" style={{ width: "100%" }}>🔍<input placeholder="标题、目录、任务 ID…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+          <label className="search" style={{ width: "100%" }}>🔍<input placeholder={t("标题、目录、任务 ID…")} value={q} onChange={(e) => setQ(e.target.value)} /></label>
           <div className="views session-modes" style={{ marginTop: 6 }}>
-            <button className={mode === "active" ? "on" : ""} onClick={() => setMode("active")}>最近</button>
-            <button className={mode === "starred" ? "on" : ""} onClick={() => setMode("starred")} title="收藏的会话：长期追踪，不会自动归档">★ 追踪中 {counts.starred}</button>
-            <button className={mode === "archived" ? "on" : ""} onClick={() => setMode("archived")} title={`手动归档，或超过 ${archiveDays} 天没有活动`}>已归档 {counts.archived}</button>
-            {(counts.scheduled > 0 || scriptCount > 0) && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title="不是你在终端里开的：定时任务、脚本或别的 Agent 通过程序接口启动的会话">定时或脚本 {Math.max(counts.scheduled, scriptCount)}</button>}
+            <button className={mode === "active" ? "on" : ""} onClick={() => setMode("active")}>{t("最近")}</button>
+            <button className={mode === "starred" ? "on" : ""} onClick={() => setMode("starred")} title={t("收藏的会话：长期追踪，不会自动归档")}>★ {t("追踪中")} {counts.starred}</button>
+            <button className={mode === "archived" ? "on" : ""} onClick={() => setMode("archived")} title={t("手动归档，或超过 {days} 天没有活动", { days: archiveDays })}>{t("已归档")} {counts.archived}</button>
+            {(counts.scheduled > 0 || scriptCount > 0) && <button className={mode === "scheduled" ? "on" : ""} onClick={() => setMode("scheduled")} title={t("不是你在终端里开的：定时任务、脚本或别的 Agent 通过程序接口启动的会话")}>{t("定时或脚本")} {Math.max(counts.scheduled, scriptCount)}</button>}
           </div>
           <div className="sess-filter-row">
-            <select className="sess-agent" aria-label="按 Agent 筛选" value={agent} onChange={(e) => setAgent(e.target.value)} title="按 Agent 筛选">{[["", "全部 Agent"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"], ["opencode", "OpenCode"], ["hermes", "Hermes"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            <span className="muted small" title="当前筛选下的会话数">{items.length} 条</span>
+            <select className="sess-agent" aria-label={t("按 Agent 筛选")} value={agent} onChange={(e) => setAgent(e.target.value)} title={t("按 Agent 筛选")}>{[["", t("全部 Agent")], ["claude-code", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["zcode", "ZCode"], ["opencode", "OpenCode"], ["hermes", "Hermes"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <span className="muted small" title={t("当前筛选下的会话数")}>{t("{n} 条", { n: items.length })}</span>
           </div>
         </div>
         <div className="sess-items">
-          {!loaded && <div className="empty">索引中…（首次要读完全部历史）</div>}
-          {loaded && items.length === 0 && <div className="empty">{mode === "archived" ? `没有归档的会话（${archiveDays} 天没有活动的会自动归到这里）` : mode === "starred" ? "还没有收藏的会话。右键一条会话，选「收藏：长期追踪」。" : "没有匹配的会话"}</div>}
+          {!loaded && <div className="empty">{t("索引中…（首次要读完全部历史）")}</div>}
+          {loaded && items.length === 0 && <div className="empty">{mode === "archived" ? t("没有归档的会话（{days} 天没有活动的会自动归到这里）", { days: archiveDays }) : mode === "starred" ? t("还没有收藏的会话。右键一条会话，选「收藏：长期追踪」。") : t("没有匹配的会话")}</div>}
           {(() => { const isBlank = (r: SessionRef) => !r.title && r.user_msgs <= 1 && !r.starred && !activities.some((a) => a.session_id === r.session_id && (a.unread || (a.state === "working" && !a.stale))); const named = items.filter((r) => !isBlank(r)); const blank = items.filter(isBlank); const item = (r: SessionRef) => {
             const a = actorOf(r.agent, me);
             const l = liveOf(r.session_id, r.host ?? "local");
             const active = activities.find(a => a.session_id === r.session_id && (a.host ?? "local") === (r.host ?? "local"));
             return (
               <div key={rowKey(r)} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${isSel(r) ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { if (split) { placeInPane(r.session_id); return; } setSel(rowKey(r)); setTab("timeline"); }}>
-                <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title="追踪中">★</span>}<span className="t">{r.title || "（无标题）"}</span>{active?.unread && !(active.state === "working" && !active.stale) && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
-                <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}<span className={`host-chip${r.remote ? "" : " local"}`} title={r.remote ? `在 ${r.host_name} 上` : "在这台电脑上"}>{r.remote ? r.host_name : (localHostName || "本机")}</span><MovedChip r={r} /><span className="muted">{(ENTRY[r.entrypoint] ?? r.entrypoint) ? `· ${ENTRY[r.entrypoint] ?? r.entrypoint} ` : ""}· {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
+                <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title={t("追踪中")}>★</span>}<span className="t">{r.title || t("（无标题）")}</span>{active?.unread && !(active.state === "working" && !active.stale) && <span className="unread-dot" title={t("未读回复")} />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? t("在跑") : t("开着")}</span>}</div>
+                <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}<span className={`host-chip${r.remote ? "" : " local"}`} title={r.remote ? t("在 {host} 上", { host: r.host_name ?? "" }) : t("在这台电脑上")}>{r.remote ? r.host_name : (localHostName || t("本机"))}</span><MovedChip r={r} /><span className="muted">{(ENTRY[r.entrypoint] ?? r.entrypoint) ? `· ${t(ENTRY[r.entrypoint] ?? r.entrypoint)} ` : ""}· {t("{n} 轮", { n: r.user_msgs })}{r.subagents.length ? ` · ${t("{n} 子", { n: r.subagents.length })}` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && activityLine(active) && <div className={`l3 activity-text${active.state === "working" && !active.stale ? " working" : ""}`}>{activityLine(active)}</div>}
-                {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · 还有 ${own.length - 1} 项` : ""}</div> : null; })()}
+                {(() => { const own = issues.filter(i => linkedSessions(i).includes(r.session_id) && i.status !== "closed"); return own.length ? <div className="l3 linked-tasks"><span className="mono">{own[0].id}</span> {own[0].title}{own.length > 1 ? ` · ${t("还有 {n} 项", { n: own.length - 1 })}` : ""}</div> : null; })()}
               </button><div className="sess-item-actions touch-only"><ConversationMenuButton a={asActivity(r)} /></div></div>
             );
-          }; return <>{named.map(item)}{blank.length > 0 && <details className="sess-blank"><summary className="muted small">零散会话 · {blank.length}<span> · 没有标题、最多一句话</span></summary>{blank.map(item)}</details>}</>; })()}
+          }; return <>{named.map(item)}{blank.length > 0 && <details className="sess-blank"><summary className="muted small">{t("零散会话")} · {blank.length}<span> · {t("没有标题、最多一句话")}</span></summary>{blank.map(item)}</details>}</>; })()}
         </div>
       </div>
 
       <div className="sess-main">
         {split && <div className={`sess-split cols-${split.layout === 2 ? 2 : 2}`}>
           <div className="sess-split-bar">
-            <button className="btn sm" onClick={() => setListHidden((v) => !v)} title={listHidden ? "展开会话列表" : "收起会话列表"}>{listHidden ? "⇥ 列表" : "⇤ 收起列表"}</button>
-            <span className="muted small">分屏：点左边列表把会话放进高亮的格子</span><span className="spacer" />
-            <button className={`btn sm${split.layout === 2 ? " on" : ""}`} onClick={() => startSplit(2)}>2 格</button>
-            <button className={`btn sm${split.layout === 4 ? " on" : ""}`} onClick={() => startSplit(4)}>4 格</button>
-            <button className="btn sm" onClick={() => setSplit(null)}>退出分屏</button>
+            <button className="btn sm" onClick={() => setListHidden((v) => !v)} title={listHidden ? t("展开会话列表") : t("收起会话列表")}>{listHidden ? t("⇥ 列表") : t("⇤ 收起列表")}</button>
+            <span className="muted small">{t("分屏：点左边列表把会话放进高亮的格子")}</span><span className="spacer" />
+            <button className={`btn sm${split.layout === 2 ? " on" : ""}`} onClick={() => startSplit(2)}>{t("2 格")}</button>
+            <button className={`btn sm${split.layout === 4 ? " on" : ""}`} onClick={() => startSplit(4)}>{t("4 格")}</button>
+            <button className="btn sm" onClick={() => setSplit(null)}>{t("退出分屏")}</button>
           </div>
           <div className={`sess-panes n${split.layout}`}>
             {split.panes.map((id, i) => <div key={i} className={`sess-pane${split.focus === i ? " focus" : ""}`} onMouseDown={() => setSplit((c) => c ? { ...c, focus: i } : c)}>
-              <div className="sess-pane-head"><span className="t">{id ? titleOf(id) : `第 ${i + 1} 格 · 点左边列表选一段会话`}</span>{id && <button className="btn sm" onClick={() => setSplit((c) => { if (!c) return c; const panes = [...c.panes]; panes[i] = null; return { ...c, panes, focus: i }; })} aria-label="关闭这一格">✕</button>}</div>
-              {id ? <iframe title={titleOf(id)} src={soloUrl(id)} /> : <div className="empty">空</div>}
+              <div className="sess-pane-head"><span className="t">{id ? titleOf(id) : t("第 {n} 格 · 点左边列表选一段会话", { n: i + 1 })}</span>{id && <button className="btn sm" onClick={() => setSplit((c) => { if (!c) return c; const panes = [...c.panes]; panes[i] = null; return { ...c, panes, focus: i }; })} aria-label={t("关闭这一格")}>✕</button>}</div>
+              {id ? <iframe title={titleOf(id)} src={soloUrl(id)} /> : <div className="empty">{t("空")}</div>}
             </div>)}
           </div>
         </div>}
-        {!split && !sel && <div className="empty">选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
+        {!split && !sel && <div className="empty">{t("选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。")}</div>}
         {!split && sel && !detail && (() => {
           // The transcript lives on another Mac: when that Mac is off the tailnet the read cannot
           // succeed, and the message should say so instead of promising a retry.
           const away = selHost ? offlineHosts.find((h) => h.id === selHost || h.name === selHost) : undefined;
-          return <div className="empty">{busy ? "读取对话记录…" : away ? `这段会话在 ${away.name} 上，现在连不上那台电脑（它的 Tailscale 离线或在睡眠）；等它上线后会自动读到。` : loadError ? "暂时读不到会话，正在重试。" : ""}<button className="link" onClick={() => setSel(null)}>返回会话列表</button></div>;
+          return <div className="empty">{busy ? t("读取对话记录…") : away ? t("这段会话在 {host} 上，现在连不上那台电脑（它的 Tailscale 离线或在睡眠）；等它上线后会自动读到。", { host: away.name }) : loadError ? t("暂时读不到会话，正在重试。") : ""}<button className="link" onClick={() => setSel(null)}>{t("返回会话列表")}</button></div>;
         })()}
         {!split && detail && (() => {
           const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id, m.host ?? "local");
@@ -328,92 +335,92 @@ export function SessionsView({ onBack, onProject, solo = false, offlineHosts = [
           return (
             <>
               <div className="sess-head">
-                {!solo && <button className="btn sm list-toggle" onClick={() => setListHidden((v) => !v)} title={listHidden ? "展开会话列表" : "收起会话列表，对话占满整页"} aria-label={listHidden ? "展开会话列表" : "收起会话列表"}>{listHidden ? "⇥" : "⇤"}</button>}
-                {!solo && <button className="btn sm session-back" onClick={() => { if (onBack) onBack.go(); else setSel(null); }} title={onBack ? `回到${onBack.label}` : "回到会话列表"}>‹ {onBack ? onBack.label : "会话"}</button>}
+                {!solo && <button className="btn sm list-toggle" onClick={() => setListHidden((v) => !v)} title={listHidden ? t("展开会话列表") : t("收起会话列表，对话占满整页")} aria-label={listHidden ? t("展开会话列表") : t("收起会话列表")}>{listHidden ? "⇥" : "⇤"}</button>}
+                {!solo && <button className="btn sm session-back" onClick={() => { if (onBack) onBack.go(); else setSel(null); }} title={onBack ? t("回到{where}", { where: onBack.label }) : t("回到会话列表")}>‹ {onBack ? onBack.label : t("会话")}</button>}
                 <Avatar actor={a} size={28} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   {/* Which Mac this copy lives on: after `dispatch move` the same id exists on both. */}
-                  <div className="sess-host" title={m.remote ? `这段会话在 ${m.host_name} 上` : "这段会话在这台电脑上"}><span className={`host-chip${m.remote ? "" : " local"}`}>{m.remote ? m.host_name : (localHostName || "本机")}</span><MovedChip r={m} /></div>
-                  <div className="ttl">{m.title || "（无标题）"}</div>
+                  <div className="sess-host" title={m.remote ? t("这段会话在 {host} 上", { host: m.host_name ?? "" }) : t("这段会话在这台电脑上")}><span className={`host-chip${m.remote ? "" : " local"}`}>{m.remote ? m.host_name : (localHostName || t("本机"))}</span><MovedChip r={m} /></div>
+                  <div className="ttl">{m.title || t("（无标题）")}</div>
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
                 {(() => { const proj = m.project_override || m.project; return onProject && proj && proj !== UNGROUPED_PROJECT
-                  ? <button className="btn sm" onClick={() => onProject(proj)} title={`回到项目 ${proj}：回顾、任务、文档都在那里`}>项目 · {proj} ›</button> : null; })()}
-                {!solo && <button className="btn sm" onClick={() => startSplit(2)} title="分屏：这段会话放左边，再从列表选一段放右边，一起看">⊞ 分屏</button>}
+                  ? <button className="btn sm" onClick={() => onProject(proj)} title={t("回到项目 {name}：回顾、任务、文档都在那里", { name: proj })}>{t("项目")} · {proj} ›</button> : null; })()}
+                {!solo && <button className="btn sm" onClick={() => startSplit(2)} title={t("分屏：这段会话放左边，再从列表选一段放右边，一起看")}>{t("⊞ 分屏")}</button>}
                 {l && <AdoptButton session={l} compact />}
                 <OpenSessionButton session={m} />
-                {!NO_RESUME.has(m.agent) && <button className="btn sm desktop-session-action" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
-                <details className="session-actions-menu"><summary aria-label="会话操作">⋯</summary><div>
-                  {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)}>复制恢复命令</button>}
+                {!NO_RESUME.has(m.agent) && <button className="btn sm desktop-session-action" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>{t("复制恢复命令")}</button>}
+                <details className="session-actions-menu"><summary aria-label={t("会话操作")}>⋯</summary><div>
+                  {!NO_RESUME.has(m.agent) && <button className="btn sm" onClick={() => copy(m.resume_cmd)}>{t("复制恢复命令")}</button>}
                 </div></details>
               </div>
-              {current?.summary && <div className={`session-summary${summaryOpen ? "" : " folded"}`} title={summaryOpen ? "模型写的总结：目标、做了什么、还差什么" : "点开看完整总结"} onClick={() => setSummaryOpen((o) => !o)}><span className="conversation-caption">总结</span><span className="t"><Linkified text={current.summary} /></span></div>}
-              {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? '更新中断，保留上次记录' : current ? activityLabel(current) : '历史记录'}</strong><span>{current?.activity}</span>{running && (() => { const st = currentStep(detail.messages); return st.kind === 'idle' ? null : <span className="live-step small">{st.kind === 'tool' ? `正在调用 ${st.name}…` : st.kind === 'text' ? '正在回复…' : '思考中…'}</span>; })()}</div><span className="muted small">{current ? (ago(current.last_at)) : ''}</span></div>}
+              {current?.summary && <div className={`session-summary${summaryOpen ? "" : " folded"}`} title={summaryOpen ? t("模型写的总结：目标、做了什么、还差什么") : t("点开看完整总结")} onClick={() => setSummaryOpen((o) => !o)}><span className="conversation-caption">{t("总结")}</span><span className="t"><Linkified text={current.summary} /></span></div>}
+              {(current || activityError || loadError) && <div className={`session-live${activityError || loadError ? ' interrupted' : ''}`}><span className={`live-dot${current?.state === 'working' && !current.stale ? ' running' : ''}`} /><div><strong>{activityError || loadError ? t('更新中断，保留上次记录') : current ? activityLabel(current) : t('历史记录')}</strong><span>{current?.activity}</span>{running && (() => { const st = currentStep(detail.messages); return st.kind === 'idle' ? null : <span className="live-step small">{st.kind === 'tool' ? t('正在调用 {name}…', { name: st.name ?? "" }) : st.kind === 'text' ? t('正在回复…') : t('思考中…')}</span>; })()}</div><span className="muted small">{current ? (ago(current.last_at)) : ''}</span></div>}
               <details className="session-context" key={m.session_id}>
-                <summary>{m.user_msgs} 轮对话 · {m.subagents.length} 个子 Agent<span>会话信息</span></summary>
+                <summary>{t("{n} 轮对话", { n: m.user_msgs })} · {t("{n} 个子 Agent", { n: m.subagents.length })}<span>{t("会话信息")}</span></summary>
                 <div className="sess-meta kv">
-                <b>开始</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>
-                <b>最近</b><span className="mono">{m.last_ts ? `${fmtTime(m.last_ts)}（${ago(m.last_at)}）` : "?"}</span>
-                <b>来源</b><span>{ENTRY[m.entrypoint] ?? m.entrypoint ?? "?"}{l ? ` · ${l.source_app}` : ""}<span className={`host-chip${m.remote ? "" : " local"}`}>{m.remote ? m.host_name : (localHostName || "本机")}</span><MovedChip r={m} /></span>
-                <b>对话</b><span>{m.user_msgs} 轮 · {m.assistant_msgs} 次回复 · {(m.size / 1e6).toFixed(1)} MB</span>
-                <b>工具</b><span className="mono small">{Object.entries(detail.tool_counts).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</span>
-                {m.subagents.length > 0 && (<><b>子 Agent</b><span className="subs">{m.subagents.map((s) => <span key={s.agent_id} className="sub-chip" title={s.path}>↳ <b>{s.type}</b> {s.description}<span className="muted mono"> · {(s.size / 1e3).toFixed(0)} KB</span></span>)}</span></>)}
+                <b>{t("开始")}</b><span className="mono">{m.first_ts ? fmtTime(m.first_ts) : "?"}</span>
+                <b>{t("最近")}</b><span className="mono">{m.last_ts ? `${fmtTime(m.last_ts)}（${ago(m.last_at)}）` : "?"}</span>
+                <b>{t("来源")}</b><span>{ENTRY[m.entrypoint] ? t(ENTRY[m.entrypoint]) : (m.entrypoint ?? "?")}{l ? ` · ${l.source_app}` : ""}<span className={`host-chip${m.remote ? "" : " local"}`}>{m.remote ? m.host_name : (localHostName || t("本机"))}</span><MovedChip r={m} /></span>
+                <b>{t("对话")}</b><span>{t("{n} 轮", { n: m.user_msgs })} · {t("{n} 次回复", { n: m.assistant_msgs })} · {(m.size / 1e6).toFixed(1)} MB</span>
+                <b>{t("工具")}</b><span className="mono small">{Object.entries(detail.tool_counts).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</span>
+                {m.subagents.length > 0 && (<><b>{t("子 Agent")}</b><span className="subs">{m.subagents.map((s) => <span key={s.agent_id} className="sub-chip" title={s.path}>↳ <b>{s.type}</b> {s.description}<span className="muted mono"> · {(s.size / 1e3).toFixed(0)} KB</span></span>)}</span></>)}
                 </div>
               </details>
               <div className="views session-tabs">
-                <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>对话</button>
-                <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>图片与产物 {detail.attachments?.length || 0}</button>
-                <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")} title="这段会话改过的文件；目录里其他改动折在下面">文件 {detail.files.length}</button>
-                <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>任务与成果 {related.length + results.length}</button>
-                {m.subagents.length > 0 && <button className={tab === "subagents" ? "on" : ""} onClick={() => setTab("subagents")}>子 Agent {m.subagents.length}</button>}
+                <button className={tab === "timeline" ? "on" : ""} onClick={() => setTab("timeline")}>{t("对话")}</button>
+                <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>{t("图片与产物")} {detail.attachments?.length || 0}</button>
+                <button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")} title={t("这段会话改过的文件；目录里其他改动折在下面")}>{t("文件")} {detail.files.length}</button>
+                <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>{t("任务与成果")} {related.length + results.length}</button>
+                {m.subagents.length > 0 && <button className={tab === "subagents" ? "on" : ""} onClick={() => setTab("subagents")}>{t("子 Agent")} {m.subagents.length}</button>}
                 {tab === "timeline" && (() => {
                   const nT = detail.messages.reduce((s, x) => s + x.tools.length, 0);
                   return (
-                    <span className="kinds" title="怎么看这段对话">
-                      <button className={`chip${brief ? " on" : ""}`} onClick={toggleBrief} title="只显示你的问题和每一轮最后的回复，不看思考和工具调用">只看结论</button>
-                      <button className={`chip${kinds.tool ? " on" : ""}`} disabled={brief} onClick={() => flip("tool")} title="显示或隐藏工具调用卡片（正在运行的总会显示）">工具调用 <span className="mono muted">{nT}</span></button>
+                    <span className="kinds" title={t("怎么看这段对话")}>
+                      <button className={`chip${brief ? " on" : ""}`} onClick={toggleBrief} title={t("只显示你的问题和每一轮最后的回复，不看思考和工具调用")}>{t("只看结论")}</button>
+                      <button className={`chip${kinds.tool ? " on" : ""}`} disabled={brief} onClick={() => flip("tool")} title={t("显示或隐藏工具调用卡片（正在运行的总会显示）")}>{t("工具调用")} <span className="mono muted">{nT}</span></button>
                     </span>
                   );
                 })()}
               </div>
-              {tab === 'timeline' && !atLatest && <button className="follow-latest" onClick={latest}>回到最新 ↓{current?.unread ? ' · 有未读回复' : ''}</button>}
-              <div className="sess-body" tabIndex={0} aria-label="会话内容" ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>
+              {tab === 'timeline' && !atLatest && <button className="follow-latest" onClick={latest}>{t('回到最新 ↓')}{current?.unread ? ` · ${t('有未读回复')}` : ''}</button>}
+              <div className="sess-body" tabIndex={0} aria-label={t("会话内容")} ref={scroller} onScroll={e => { if (tab !== 'timeline') return; const el = e.currentTarget; timelineScroll.current = el.scrollTop; const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; follow.current = bottom; setAtLatest(bottom); }}>
                 {tab === "timeline" && <SessionThread list={shownTurns} name={a?.name ?? m.agent} running={running} cwd={m.cwd} />}
                 {tab === "subagents" && (() => {
                   // Who this conversation handed work to: sub-agents from the transcript, plus the
                   // Agent/Task tool calls that dispatched them, in order.
                   const calls = detail.messages.flatMap((x) => blocksOf(x).filter((b) => b.type === "tool_call" && /^(Agent|Task|agent|task)$/.test(b.name)).map((b) => ({ ts: x.ts, summary: b.type === "tool_call" ? b.summary : "" })));
                   return <div className="subagent-view">
-                    <p className="muted small">这段会话派出的子 Agent。每个子 Agent 是一段独立的对话，只把结果交回来。</p>
-                    {[...m.subagents].sort((x, y) => Number(!!y.running) - Number(!!x.running) || y.last_at - x.last_at).map((s) => <button key={s.agent_id} className={`subagent-row opens${s.running ? " running" : ""}`} onClick={() => setSubView(s)} title={s.running ? "还在跑：两分钟内还在写记录；点开看它做到哪了" : "点开看这个子 Agent 的完整对话"}><span className="sub-type">{s.type}</span><div><div className="t">{s.running && <span className="st sm prog"><span className="pulse" />在跑</span>}{s.description || "（无描述）"}</div><div className="muted small mono">{s.last_at ? fmtTime(new Date(s.last_at * 1000).toISOString()) : ""} · {(s.size / 1e3).toFixed(0)} KB · 深度 {s.depth}</div></div><span className="muted">›</span></button>)}
-                    {calls.length > 0 && <details><summary>派发调用 · {calls.length}</summary>{calls.map((c, i) => <div key={i} className="subagent-call"><span className="mono muted small">{c.ts ? fmtTime(c.ts) : ""}</span><span>{c.summary}</span></div>)}</details>}
+                    <p className="muted small">{t("这段会话派出的子 Agent。每个子 Agent 是一段独立的对话，只把结果交回来。")}</p>
+                    {[...m.subagents].sort((x, y) => Number(!!y.running) - Number(!!x.running) || y.last_at - x.last_at).map((s) => <button key={s.agent_id} className={`subagent-row opens${s.running ? " running" : ""}`} onClick={() => setSubView(s)} title={s.running ? t("还在跑：两分钟内还在写记录；点开看它做到哪了") : t("点开看这个子 Agent 的完整对话")}><span className="sub-type">{s.type}</span><div><div className="t">{s.running && <span className="st sm prog"><span className="pulse" />{t("在跑")}</span>}{s.description || t("（无描述）")}</div><div className="muted small mono">{s.last_at ? fmtTime(new Date(s.last_at * 1000).toISOString()) : ""} · {(s.size / 1e3).toFixed(0)} KB · {t("深度 {n}", { n: s.depth })}</div></div><span className="muted">›</span></button>)}
+                    {calls.length > 0 && <details><summary>{t("派发调用")} · {calls.length}</summary>{calls.map((c, i) => <div key={i} className="subagent-call"><span className="mono muted small">{c.ts ? fmtTime(c.ts) : ""}</span><span>{c.summary}</span></div>)}</details>}
                   </div>;
                 })()}
                 {tab === "attachments" && <AttachmentList items={detail.attachments || []} />}
-                {tab === "files" && <h3 className="recorded-files-title">这段会话改过的文件 <span className="muted">{detail.files.length}</span></h3>}
-                {tab === "files" && detail.files.length === 0 && <p className="muted">没有记录到编辑类工具调用；用终端命令改的文件看下方「目录里现在的 git 改动」。</p>}
+                {tab === "files" && <h3 className="recorded-files-title">{t("这段会话改过的文件")} <span className="muted">{detail.files.length}</span></h3>}
+                {tab === "files" && detail.files.length === 0 && <p className="muted">{t("没有记录到编辑类工具调用；用终端命令改的文件看下方「目录里现在的 git 改动」。")}</p>}
                 {tab === "files" && detail.files.map((f) => (
                   <details key={f.path} className="fdiff" open={detail.files.length <= 3}>
-                    <summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {f.changes.length} 处</span></summary>
+                    <summary><span className="mono">{f.path.replace(/^\/Users\/[^/]+/, "~")}</span><span className="muted"> · {t("{n} 处", { n: f.changes.length })}</span></summary>
                     <FileHunks changes={f.changes} />
                   </details>
                 ))}
-                {tab === "files" && detail.workspace && <details className="workspace-diff sec context-fold"><summary>目录里现在的 git 改动 <span className="muted">{detail.workspace.files.length} 个文件 · 同目录所有会话（不只这一段）</span></summary><p className="muted small">{detail.workspace.root} · 包含暂存和未暂存内容。</p>{detail.workspace.unavailable ? <p className="muted">当前目录无法读取 Git 改动</p> : detail.workspace.files.length === 0 ? <p className="muted">工作区没有未提交改动</p> : (() => {
+                {tab === "files" && detail.workspace && <details className="workspace-diff sec context-fold"><summary>{t("目录里现在的 git 改动")} <span className="muted">{t("{n} 个文件 · 同目录所有会话（不只这一段）", { n: detail.workspace.files.length })}</span></summary><p className="muted small">{detail.workspace.root} · {t("包含暂存和未暂存内容。")}</p>{detail.workspace.unavailable ? <p className="muted">{t("当前目录无法读取 Git 改动")}</p> : detail.workspace.files.length === 0 ? <p className="muted">{t("工作区没有未提交改动")}</p> : (() => {
                   // One unified diff for the whole workspace, split per file so each path opens its own hunk.
                   const byFile = new Map<string, string>();
                   for (const chunk of detail.workspace.patch.split(/^(?=diff --git )/m)) { const m = /^diff --git a\/(.+?) b\//.exec(chunk); if (m) byFile.set(m[1], chunk); }
                   const stat = (t: string) => { let add = 0, del = 0; for (const ln of t.split('\n')) { if (ln.startsWith('+') && !ln.startsWith('+++')) add++; else if (ln.startsWith('-') && !ln.startsWith('---')) del++; } return { add, del }; };
-                  return <><div className="changed-files">{detail.workspace!.files.map(f => { const t = byFile.get(f.path); const s = t ? stat(t) : null; return <details key={f.path} data-menu="file" data-id={f.path} className="fdiff file"><summary><span className={`st sm ${f.untracked ? 'rev' : 'prog'}`}>{f.untracked ? '新增' : '修改'}</span><code>{f.path}</code>{s && <span className="mono small diffstat"><span className="add">+{s.add}</span> <span className="del">−{s.del}</span></span>}</summary>{t ? <PatchDiff text={t} /> : <p className="muted small">{f.untracked ? '新文件，git 还没有它的差异；打开文件查看。' : '这个文件的差异不在当前补丁里。'}</p>}</details>; })}</div>{detail.workspace!.truncated && <p className="muted">差异过长，仅展示前 100 KB</p>}</>;
+                  return <><div className="changed-files">{detail.workspace!.files.map(f => { const patch = byFile.get(f.path); const s = patch ? stat(patch) : null; return <details key={f.path} data-menu="file" data-id={f.path} className="fdiff file"><summary><span className={`st sm ${f.untracked ? 'rev' : 'prog'}`}>{f.untracked ? t('新增') : t('修改')}</span><code>{f.path}</code>{s && <span className="mono small diffstat"><span className="add">+{s.add}</span> <span className="del">−{s.del}</span></span>}</summary>{patch ? <PatchDiff text={patch} /> : <p className="muted small">{f.untracked ? t('新文件，git 还没有它的差异；打开文件查看。') : t('这个文件的差异不在当前补丁里。')}</p>}</details>; })}</div>{detail.workspace!.truncated && <p className="muted">{t('差异过长，仅展示前 100 KB')}</p>}</>;
                 })()}</details>}
                 {tab === "tasks" && <>
-                  <h3 className="recorded-files-title">这个会话关联的任务</h3>
-                  {related.length === 0 && <p className="muted">没有明确关联的任务，可在项目的“待归属任务”中指定</p>}
+                  <h3 className="recorded-files-title">{t("这个会话关联的任务")}</h3>
+                  {related.length === 0 && <p className="muted">{t("没有明确关联的任务，可在项目的“待归属任务”中指定")}</p>}
                   <div className="task-links">{related.map(i => <button key={i.id} className="chip" onClick={() => onSelectTask(i.id)}><span>{i.title}</span><span className="st sm">{statusLabel(i).text}</span></button>)}</div>
-                  {results.map(r=><article className="outcome-card" key={r.id}><h3>成果 · {r.title}</h3><Markdown src={r.description||""}/></article>)}
-                  {mentioned.length > 0 && <details className="mentioned-tasks"><summary>对话中还提及过 {mentioned.length} 个任务</summary><p className="muted small">提及过的任务不代表由这个会话负责。</p><div className="task-links">{mentioned.sort((x,y) => y[1]-x[1]).map(([id,n]) => <button key={id} className="chip" onClick={() => onSelectTask(id)}><span>{issues.find(i => i.id === id)?.title ?? id}</span><span className="muted">{n} 次提及</span></button>)}</div></details>}
+                  {results.map(r=><article className="outcome-card" key={r.id}><h3>{t("成果")} · {r.title}</h3><Markdown src={r.description||""}/></article>)}
+                  {mentioned.length > 0 && <details className="mentioned-tasks"><summary>{t("对话中还提及过 {n} 个任务", { n: mentioned.length })}</summary><p className="muted small">{t("提及过的任务不代表由这个会话负责。")}</p><div className="task-links">{mentioned.sort((x,y) => y[1]-x[1]).map(([id,n]) => <button key={id} className="chip" onClick={() => onSelectTask(id)}><span>{issues.find(i => i.id === id)?.title ?? id}</span><span className="muted">{t("{n} 次提及", { n })}</span></button>)}</div></details>}
                 </>}
               </div>
-              {tab === 'timeline' && (() => { const pq = pendingQuestion(detail.messages); return pq ? <SessionQuestion key={pq.id} api={api} session={m} pending={pq} onAnswered={() => { onDone('答案已提交'); latest(); }} onError={(e) => onError(e)} /> : null; })()}
+              {tab === 'timeline' && (() => { const pq = pendingQuestion(detail.messages); return pq ? <SessionQuestion key={pq.id} api={api} session={m} pending={pq} onAnswered={() => { onDone(t('答案已提交')); latest(); }} onError={(e) => onError(e)} /> : null; })()}
               <SessionReply key={`${m.host || 'local'}:${m.agent}:${m.session_id}`} api={api} session={m} messages={detail.messages} onSent={() => { setTab('timeline'); latest(); }} />
             </>
           );

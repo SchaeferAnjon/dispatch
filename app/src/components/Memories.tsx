@@ -4,6 +4,7 @@ import type { Api } from "../api";
 import type { Host } from "../types";
 import { HostPicker, hostReason } from "./HostPicker";
 import { Markdown } from "./Markdown";
+import { useT, intlLocale } from "../i18n";
 
 interface Props { api: Api; hosts: Host[]; hostId?: string; onDone: (m: string) => void; onError: (m: string) => void }
 interface MemoryEntry {
@@ -34,6 +35,7 @@ const norm = (r: Partial<MemoryEntry>): MemoryEntry => ({
 
 // Each agent keeps its own long-term memory on disk; this page only reads them.
 export function MemoriesView({ api, hosts, onDone, onError, hostId = "" }: Props) {
+  const t = useT();
   const [host, setHost] = useState("local");
   useEffect(() => { setHost(hostId || "local"); }, [hostId]);
   const [files, setFiles] = useState<MemoryEntry[]>([]);
@@ -81,7 +83,7 @@ export function MemoriesView({ api, hosts, onDone, onError, hostId = "" }: Props
       .sort((a, b) => agentRank(a[0]) - agentRank(b[0]))
       .map(([agent, projects]) => [agent, [...projects.entries()].sort((a, b) => {
         const ga = isGeneral(a[0]) ? 1 : 0, gb = isGeneral(b[0]) ? 1 : 0;
-        return ga !== gb ? ga - gb : a[0].localeCompare(b[0], "zh");
+        return ga !== gb ? ga - gb : a[0].localeCompare(b[0], intlLocale());
       })] as [string, [string, MemoryEntry[]][]]);
   }, [files, q]);
 
@@ -105,8 +107,8 @@ export function MemoriesView({ api, hosts, onDone, onError, hostId = "" }: Props
     const label = e.description || cleanName(e.name);
     setBusy(true);
     try {
-      if (!await confirmAction(`归档「${label}」？文件会移到同目录的 archived/ 文件夹，不再出现在这里。`)) return;
-      await api.on(host, ["memories", "archive", "--path", e.path, "--json"]); onDone("已归档"); await loadList();
+      if (!await confirmAction(t("归档「{label}」？文件会移到同目录的 archived/ 文件夹，不再出现在这里。", { label }))) return;
+      await api.on(host, ["memories", "archive", "--path", e.path, "--json"]); onDone(t("已归档")); await loadList();
     }
     catch (err) { onError(String(err)); } finally { setBusy(false); }
   };
@@ -114,7 +116,7 @@ export function MemoriesView({ api, hosts, onDone, onError, hostId = "" }: Props
     const text = (e.description || cleanName(e.name)).trim();
     if (!text) return;
     setBusy(true);
-    try { await api.on(host, ["profile", "add", text]); onDone("已归入「关于我」"); }
+    try { await api.on(host, ["profile", "add", text]); onDone(t("已归入「关于我」")); }
     catch (err) { onError(String(err)); } finally { setBusy(false); }
   };
 
@@ -122,29 +124,29 @@ export function MemoriesView({ api, hosts, onDone, onError, hostId = "" }: Props
     const active = selectedPath === e.path;
     return <div key={e.path} className={`memories-entry${active ? " on" : ""}${e.expired ? " memories-entry-expired" : ""}`}>
       <button className="memories-entry-main" onClick={() => selectEntry(e)} title={e.name} aria-current={active ? "true" : undefined}>
-        <span className="memories-entry-desc">{e.description || cleanName(e.name)}{e.index ? <span className="memories-tag">索引</span> : null}{e.expired ? <span className="memories-tag memories-tag-expired">过期</span> : null}</span>
+        <span className="memories-entry-desc">{e.description || cleanName(e.name)}{e.index ? <span className="memories-tag">{t("索引")}</span> : null}{e.expired ? <span className="memories-tag memories-tag-expired">{t("过期")}</span> : null}</span>
         <small className="memories-entry-meta">{fmtSize(e.size)} · {fmtTime(e.mtime)}</small>
       </button>
-      {e.expired ? <button className="memories-archive" disabled={busy} onClick={() => void archive(e)} title="移到 archived/ 文件夹">归档</button> : null}
+      {e.expired ? <button className="memories-archive" disabled={busy} onClick={() => void archive(e)} title={t("移到 archived/ 文件夹")}>{t("归档")}</button> : null}
     </div>;
   };
 
   const overview = () => {
     const entries = Object.entries(summary?.projects ?? {});
     return <>
-      <header><div><h3>Agent 记忆总览</h3><div className="muted small">{summary ? `${summary.model || "模型"} 总结于 ${summary.at ? fmtTime(summary.at) : "—"}${summary.cached ? "（缓存）" : ""}` : "各 Agent 跨会话自己积累的记忆，按项目分组，只读。"}</div></div><span className="spacer" />
-        <button className="btn sm" disabled={summaryBusy || busy || !!blocked} onClick={() => void loadSummary(true)}>{summaryBusy ? "正在总结…" : "重新总结"}</button>
+      <header><div><h3>{t("Agent 记忆总览")}</h3><div className="muted small">{summary ? t("{model} 总结于 {at}", { model: summary.model || t("模型"), at: summary.at ? fmtTime(summary.at) : "—" }) + (summary.cached ? t("（缓存）") : "") : t("各 Agent 跨会话自己积累的记忆，按项目分组，只读。")}</div></div><span className="spacer" />
+        <button className="btn sm" disabled={summaryBusy || busy || !!blocked} onClick={() => void loadSummary(true)}>{summaryBusy ? t("正在总结…") : t("重新总结")}</button>
       </header>
-      {summaryBusy && !summary ? <p className="muted small">正在总结各项目的记忆，第一次可能要等半分钟…</p> : null}
+      {summaryBusy && !summary ? <p className="muted small">{t("正在总结各项目的记忆，第一次可能要等半分钟…")}</p> : null}
       {summary ? <>
-        <div className="instruction-content memories-summary"><Markdown src={summary.overall || "暂无总览。"} /></div>
+        <div className="instruction-content memories-summary"><Markdown src={summary.overall || t("暂无总览。")} /></div>
         {entries.length > 0 ? <section className="memories-summary-projects">
-          <h4 className="muted small">各项目一句话</h4>
+          <h4 className="muted small">{t("各项目一句话")}</h4>
           {entries.map(([key, sentence]) => { const i = key.indexOf("|"); const a = i < 0 ? "" : key.slice(0, i); const p = i < 0 ? key : key.slice(i + 1); return <article key={key} className="memories-summary-project"><b>{p}{a && a !== "codex" ? <span className="muted"> · {AGENT_LABEL[a] ?? a}</span> : null}</b><p>{sentence}</p></article>; })}
         </section> : null}
       </> : !summaryBusy ? <div className="memories-intro">
-        <p className="small muted">{summaryFailed ? "暂时取不到总览，点「重新总结」再试；左侧的记忆仍然可以直接查看。" : "还没有总览。"}</p>
-        <p className="small muted">左侧按 Agent 和项目列出本机的长期记忆，点开一条就能读正文。</p>
+        <p className="small muted">{summaryFailed ? t("暂时取不到总览，点「重新总结」再试；左侧的记忆仍然可以直接查看。") : t("还没有总览。")}</p>
+        <p className="small muted">{t("左侧按 Agent 和项目列出本机的长期记忆，点开一条就能读正文。")}</p>
       </div> : null}
     </>;
   };
@@ -153,37 +155,37 @@ export function MemoriesView({ api, hosts, onDone, onError, hostId = "" }: Props
     const list = files.filter((f) => f.agent === agent && f.project === project);
     const sentence = summary?.projects?.[projectKey(agent, project)] ?? "";
     return <>
-      <header><div><h3>{project}</h3><div className="muted small">{AGENT_LABEL[agent] ?? agent} · {list.length} 条记忆</div></div></header>
-      {sentence ? <p className="memories-project-summary">{sentence}</p> : <p className="muted small">这个项目还没有一句话总结，点「重新总结」可以生成。</p>}
-      {list.length > 0 ? <div className="memories-project-entries">{list.map(entryRow)}</div> : <p className="muted small">这个项目下没有记忆文件。</p>}
+      <header><div><h3>{project}</h3><div className="muted small">{AGENT_LABEL[agent] ?? agent} · {t("{n} 条记忆", { n: list.length })}</div></div></header>
+      {sentence ? <p className="memories-project-summary">{sentence}</p> : <p className="muted small">{t("这个项目还没有一句话总结，点「重新总结」可以生成。")}</p>}
+      {list.length > 0 ? <div className="memories-project-entries">{list.map(entryRow)}</div> : <p className="muted small">{t("这个项目下没有记忆文件。")}</p>}
     </>;
   };
 
   const entryDetail = (e: MemoryEntry) => {
     const text = (e.description || cleanName(e.name)).trim();
     return <>
-      <header><div><h3>{e.description || cleanName(e.name)}</h3><div className="muted mono small">{e.name}{e.type ? ` · ${e.type}` : ""} · {short(e.path)} · {fmtSize(e.size)} · {fmtTime(e.mtime)}{e.expired ? " · 项目目录已不存在" : ""}</div></div><span className="spacer" />
-        <button className="btn sm" disabled={busy} onClick={() => api.copy(e.path).then(() => onDone("路径已复制")).catch((err) => onError(String(err)))}>复制路径</button>
-        <button className="btn sm" disabled={busy} onClick={() => api.openPath(e.path).catch((err) => onError(String(err)))}>用默认应用打开</button>
-        {text ? <button className="btn sm" disabled={busy} onClick={() => void promote(e)} title="把这句话追加到「关于我」，之后所有 Agent 都会看到">归入关于我</button> : null}
+      <header><div><h3>{e.description || cleanName(e.name)}</h3><div className="muted mono small">{e.name}{e.type ? ` · ${e.type}` : ""} · {short(e.path)} · {fmtSize(e.size)} · {fmtTime(e.mtime)}{e.expired ? ` · ${t("项目目录已不存在")}` : ""}</div></div><span className="spacer" />
+        <button className="btn sm" disabled={busy} onClick={() => api.copy(e.path).then(() => onDone(t("路径已复制"))).catch((err) => onError(String(err)))}>{t("复制路径")}</button>
+        <button className="btn sm" disabled={busy} onClick={() => api.openPath(e.path).catch((err) => onError(String(err)))}>{t("用默认应用打开")}</button>
+        {text ? <button className="btn sm" disabled={busy} onClick={() => void promote(e)} title={t("把这句话追加到「关于我」，之后所有 Agent 都会看到")}>{t("归入关于我")}</button> : null}
       </header>
-      {e.index ? <p className="small muted">这是本项目的索引文件，列出的条目就是下面这些记忆。</p> : null}
-      <div className="instruction-content facts-content memories-content">{e.body ? <Markdown src={e.body} /> : <span className="muted">这个文件是空的。</span>}</div>
+      {e.index ? <p className="small muted">{t("这是本项目的索引文件，列出的条目就是下面这些记忆。")}</p> : null}
+      <div className="instruction-content facts-content memories-content">{e.body ? <Markdown src={e.body} /> : <span className="muted">{t("这个文件是空的。")}</span>}</div>
     </>;
   };
 
   return <div className="instruction-center">
     <div className="instruction-top">
       <HostPicker locked fromSidebar={!!hostId} hosts={hosts} value={host} onChange={(h) => { if (!busy) setHost(h); }} />
-      <input className="memories-search" type="search" placeholder="按项目、描述或文件名筛选" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="筛选记忆文件" />
+      <input className="memories-search" type="search" placeholder={t("按项目、描述或文件名筛选")} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t("筛选记忆文件")} />
       <span className="spacer" />
-      <button className="btn sm" disabled={busy} onClick={() => { void loadList(); void loadSummary(false); }}>重新读取</button>
+      <button className="btn sm" disabled={busy} onClick={() => { void loadList(); void loadSummary(false); }}>{t("重新读取")}</button>
     </div>
-    <p className="memories-lead">每个 Agent 在这里保存自己跨会话积累的长期记忆，按项目分组，页面只读不会改动它们。想让它变成所有 Agent 都知道的事实，打开一条记忆点「归入关于我」。</p>
+    <p className="memories-lead">{t("每个 Agent 在这里保存自己跨会话积累的长期记忆，按项目分组，页面只读不会改动它们。想让它变成所有 Agent 都知道的事实，打开一条记忆点「归入关于我」。")}</p>
     {blocked || error ? <div className="err">{blocked || error}</div> : null}
     <div className="instruction-grid memories-grid">
       <aside className="instruction-docs memories-list">
-        <h3>Agent 记忆 <span className="muted">{files.length || "…"}</span></h3>
+        <h3>{t("Agent 记忆")} <span className="muted">{files.length || "…"}</span></h3>
         {groups.map(([agent, projects]) => <section key={agent} className="memories-agent">
           <h4>{AGENT_LABEL[agent] ?? agent} <span className="muted">{projects.reduce((n, [, l]) => n + l.length, 0)}</span></h4>
           {projects.map(([project, list]) => {
@@ -201,8 +203,8 @@ export function MemoriesView({ api, hosts, onDone, onError, hostId = "" }: Props
             </div>;
           })}
         </section>)}
-        {!busy && files.length === 0 && !error && <p className="muted small">这台机器上没找到任何 Agent 的记忆文件。</p>}
-        {files.length > 0 && groups.length === 0 && <p className="muted small">没有匹配「{query}」的记忆。</p>}
+        {!busy && files.length === 0 && !error && <p className="muted small">{t("这台机器上没找到任何 Agent 的记忆文件。")}</p>}
+        {files.length > 0 && groups.length === 0 && <p className="muted small">{t("没有匹配「{query}」的记忆。", { query })}</p>}
       </aside>
       <div className="instruction-detail">
         {selectedEntry ? entryDetail(selectedEntry) : sel?.kind === "project" ? projectDetail(sel.agent, sel.project) : overview()}
