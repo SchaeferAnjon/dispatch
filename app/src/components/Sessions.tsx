@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "../api";
 import { ago, actorOf, fmtTime, statusLabel, NO_RESUME, projectColor, relTime } from "../derive";
 import { PairDiff, PatchDiff } from "./Diff";
-import { canReadReply, activityLabel, isScriptSession, sessionLifecycle , activityLine } from "../activity";
+import { canReadReply, activityLabel, isScriptSession, sessionLifecycle, activityLine, UNGROUPED_PROJECT } from "../activity";
 import type { Activity, FileChange, Issue, Session, SessionDetail, SessionRef, SessionTail, TimelineMsg } from "../types";
 import { SessionThread } from "./SessionThread";
 import { blocksOf, currentStep, mergeTail, visibleTurns } from "../timeline";
@@ -16,7 +16,7 @@ import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 import { SessionQuestion, pendingQuestion } from "./SessionQuestion";
 
-interface Props { onBack?: { label: string; go: () => void }; localHostName?: string; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string }
+interface Props { onBack?: { label: string; go: () => void }; localHostName?: string; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string; onProject?: (name: string) => void }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code", cron: "定时任务", telegram: "Telegram", weixin: "微信", whatsapp: "WhatsApp", discord: "Discord", slack: "Slack" };
 
@@ -77,7 +77,7 @@ export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?
   r.moved_to_name ? <span className="host-chip moved" title="dispatch move 迁出的原会话；对方接手后可以关掉">已迁往 {r.moved_to_name}</span>
   : r.moved_from_name ? <span className="host-chip moved" title="dispatch move 迁过来接手的会话">从 {r.moved_from_name} 迁来</span> : null;
 
-export function SessionsView({ onBack, localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ onBack, onProject, localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
   const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
@@ -280,6 +280,8 @@ export function SessionsView({ onBack, localHostName, archivedProjects, refs, sc
                   <div className="ttl">{m.title || "（无标题）"}</div>
                   <div className="sub mono">{m.cwd}{m.branch ? ` · ${m.branch}` : ""} · {m.session_id}</div>
                 </div>
+                {(() => { const proj = m.project_override || m.project; return onProject && proj && proj !== UNGROUPED_PROJECT
+                  ? <button className="btn sm" onClick={() => onProject(proj)} title={`回到项目 ${proj}：回顾、任务、文档都在那里`}>项目 · {proj} ›</button> : null; })()}
                 {l && <AdoptButton session={l} compact />}
                 <OpenSessionButton session={m} />
                 {!NO_RESUME.has(m.agent) && <button className="btn sm desktop-session-action" onClick={() => copy(m.resume_cmd)} title={m.resume_cmd}>复制恢复命令</button>}
