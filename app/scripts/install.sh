@@ -16,6 +16,18 @@ done
 SRC="src-tauri/target/release/bundle/macos/Dispatch.app"
 DST="/Applications/Dispatch.app"
 
+# Code signing: the identity is NOT in the repository (anyone must be able to build from source).
+# Tauri reads APPLE_SIGNING_IDENTITY; set it in the environment, or put the identity's name on one
+# line in ~/.config/dispatch/signing-identity. With neither, the build is ad-hoc signed ("-"),
+# which runs fine but makes macOS ask for the privacy grants again after every rebuild.
+if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  if [ -s "$HOME/.config/dispatch/signing-identity" ]; then
+    APPLE_SIGNING_IDENTITY="$(head -1 "$HOME/.config/dispatch/signing-identity")"
+  else
+    APPLE_SIGNING_IDENTITY="-"
+  fi
+fi
+export APPLE_SIGNING_IDENTITY
 if [ "$BUILD" = 1 ]; then
   npm run tauri build
 fi
@@ -26,10 +38,10 @@ sleep 1
 # rsync keeps the bundle identity stable so the Dock icon and permissions survive.
 rsync -a --delete "$SRC/" "$DST/"
 # Privacy grants (Automation, Accessibility, notifications) are keyed to the code signature: a
-# signed bundle keeps them across rebuilds, an ad-hoc one asks again every time. The identity is
-# set in tauri.conf.json (bundle.macOS.signingIdentity); say so if the build fell back to ad-hoc.
+# signed bundle keeps them across rebuilds, an ad-hoc one asks again every time. The identity
+# comes from APPLE_SIGNING_IDENTITY or ~/.config/dispatch/signing-identity; say so if this build is ad-hoc.
 if codesign -dv "$DST" 2>&1 | grep -q 'Signature=adhoc'; then
-  echo "注意：这次是 ad-hoc 签名，系统会再次要权限。检查钥匙串里的开发者证书是否可用。"
+  echo "注意：这次是 ad-hoc 签名，系统会再次要权限。要固定签名：把证书名写进 ~/.config/dispatch/signing-identity（一行），或设 APPLE_SIGNING_IDENTITY。"
 fi
 echo "已更新 ${DST} ($(date '+%H:%M:%S'))"
 # The phone's web UI (launchd daemon) serves from this bundle; restart it so it picks up the new files.

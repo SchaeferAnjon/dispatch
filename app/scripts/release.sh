@@ -19,6 +19,18 @@ open("cli/VERSION", "w").write(v + "\n")
 s = open("src-tauri/Cargo.toml").read()
 open("src-tauri/Cargo.toml", "w").write(re.sub(r'^version = "[^"]+"', f'version = "{v}"', s, count=1, flags=re.M))
 PY
+# Code signing: the identity is NOT in the repository (anyone must be able to build from source).
+# Tauri reads APPLE_SIGNING_IDENTITY; set it in the environment, or put the identity's name on one
+# line in ~/.config/dispatch/signing-identity. With neither, the build is ad-hoc signed ("-"),
+# which runs fine but makes macOS ask for the privacy grants again after every rebuild.
+if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  if [ -s "$HOME/.config/dispatch/signing-identity" ]; then
+    APPLE_SIGNING_IDENTITY="$(head -1 "$HOME/.config/dispatch/signing-identity")"
+  else
+    APPLE_SIGNING_IDENTITY="-"
+  fi
+fi
+export APPLE_SIGNING_IDENTITY
 [ "$BUILD" = 1 ] && npm run tauri build
 APP="src-tauri/target/release/bundle/macos/Dispatch.app"
 [ -d "$APP" ] || { echo "构建产物不存在：$APP"; exit 1; }
@@ -46,6 +58,9 @@ git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Ca
 git commit -q -m "chore: release v${V}" || true
 git tag -f "v${V}"
 git push -q origin main --tags
-gh release create "v${V}" "$OUT" --title "Dispatch v${V}" --notes-file "$NOTES" --latest
+# The in-app updater checks the download against this file before installing.
+SUMS="src-tauri/target/release/bundle/SHA256SUMS"
+( cd "$(dirname "$OUT")" && shasum -a 256 "$(basename "$OUT")" > SHA256SUMS )
+gh release create "v${V}" "$OUT" "$SUMS" --title "Dispatch v${V}" --notes-file "$NOTES" --latest
 rm -f "$NOTES"
 echo "已发布 v${V}：$(gh release view "v${V}" --json url -q .url)"

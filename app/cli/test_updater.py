@@ -93,3 +93,38 @@ class AssetForThisMachine(unittest.TestCase):
         assets = [{"name": "Dispatch-9.9.9-macos-intel.zip", "url": "i", "size": 1}, {"name": "Dispatch-9.9.9-macos-apple-silicon.zip", "url": "u", "size": 1}]
         r = self._check('arm64', assets)
         self.assertEqual(r['asset']['name'], 'Dispatch-9.9.9-macos-apple-silicon.zip'); self.assertTrue(r['newer'])
+
+
+class RateLimitFallbackAndChecksum(unittest.TestCase):
+    """`update check` without the API, a bundle outside /Applications, and the checksum gate (review P1-8)."""
+
+    def test_bundle_path_comes_from_where_the_cli_runs(self):
+        with patch.object(updater, 'HERE', '/Users/x/Applications/Dispatch.app/Contents/Resources/cli'):
+            self.assertEqual(updater.installed_app(), '/Users/x/Applications/Dispatch.app')
+        with patch.object(updater, 'HERE', '/Users/x/Projects/dispatch/app/cli'):
+            self.assertEqual(updater.installed_app(), '/Applications/Dispatch.app')
+
+    def test_api_failure_falls_back_to_the_public_redirect(self):
+        rel = {"tag_name": "v9.9.9", "html_url": "https://example.test/tag/v9.9.9", "body": "",
+               "assets": [{"name": "Dispatch-9.9.9-macos-apple-silicon.zip", "url": "https://dl/zip", "size": 5, "browser_download_url": "https://dl/zip"}]}
+        with patch.object(updater, 'token', return_value=''), patch.object(updater, 'current_version', return_value='0.7.30'), \
+             patch.object(updater.platform, 'machine', return_value='arm64'), patch.object(updater, 'api', side_effect=OSError('HTTP Error 403: rate limit exceeded')), \
+             patch.object(updater, 'latest_without_api', return_value=rel):
+            r = updater.check()
+        self.assertEqual(r['latest'], '9.9.9'); self.assertTrue(r['newer']); self.assertEqual(r['asset']['download'], 'https://dl/zip'); self.assertEqual(r['tag'], 'v9.9.9')
+
+    def test_when_nothing_answers_the_message_does_not_blame_a_private_repo(self):
+        with patch.object(updater, 'token', return_value=''), patch.object(updater, 'current_version', return_value='0.7.30'), \
+             patch.object(updater, 'api', side_effect=OSError('offline')), patch.object(updater, 'latest_without_api', return_value=None):
+            r = updater.check()
+        self.assertNotIn('私有', r['error']); self.assertIn('稍后再试', r['error'])
+
+    def test_checksum_lookup(self):
+        import io
+        class R(io.BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        body = b"abc123  Dispatch-9.9.9-macos-apple-silicon.zip\n"
+        with patch.object(updater.urllib.request, 'urlopen', return_value=R(body)):
+            self.assertEqual(updater.expected_sha256('v9.9.9', 'Dispatch-9.9.9-macos-apple-silicon.zip'), 'abc123')
+            self.assertEqual(updater.expected_sha256('v9.9.9', 'other.zip'), '')

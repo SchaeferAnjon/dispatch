@@ -1,16 +1,25 @@
 """In-app update from GitHub Releases (`dispatch update check|apply`).
 
-The repo is private for now, so the API needs a token: `gh auth token` if the gh CLI is
-logged in, else GITHUB_TOKEN from `dispatch env`. Once the repo is public neither is needed.
-`apply` downloads the zip for this CPU, unpacks it next to the app, swaps it into
-/Applications with rsync (bundle identity stays, so permissions survive), clears the
-quarantine flag and relaunches.
+`check` asks the GitHub API for the latest release; when that is unavailable (the anonymous API
+allows 60 calls an hour per address) it follows the public `releases/latest` redirect instead,
+which has no such limit. `apply` downloads the zip built for this CPU, checks it against the
+release's SHA256SUMS, unpacks it, swaps it into the installed bundle with rsync (bundle identity
+stays, so permissions survive), clears the quarantine flag and relaunches.
 """
-import json, os, platform, plistlib, re, shutil, subprocess, sys, tempfile, time, urllib.request
+import hashlib, json, os, platform, plistlib, re, shutil, subprocess, sys, tempfile, time, urllib.error, urllib.request
 
 REPO = "SchaeferAnjon/dispatch"
 HERE = os.path.dirname(os.path.abspath(__file__))
-APP = "/Applications/Dispatch.app"
+
+
+def installed_app():
+    """The bundle this CLI runs from (…/Dispatch.app/Contents/Resources/cli), wherever the person
+    put it (/Applications, ~/Applications…). From a source checkout: the usual /Applications copy."""
+    m = re.match(r"^(.*?/[^/]+\.app)/Contents/Resources/cli/?$", HERE)
+    return m.group(1) if m else "/Applications/Dispatch.app"
+
+
+APP = installed_app()
 RELEASES_URL = f"https://github.com/{REPO}/releases"
 
 
@@ -42,6 +51,57 @@ def api(url, tok, accept="application/vnd.github+json"):
     return urllib.request.urlopen(req, timeout=30)
 
 
+def latest_without_api():
+    """The latest release without the rate-limited API: github.com/<repo>/releases/latest redirects
+    to …/tag/vX.Y.Z, and assets have predictable download URLs. No release notes this way."""
+    try:
+        req = urllib.request.Request(f"{RELEASES_URL}/latest", headers={"User-Agent": "dispatch-updater"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            final = r.geturl()
+    except Exception:
+        return None
+    m = re.search(r"/tag/(v?[0-9][^/?#]*)$", final)
+    if not m:
+        return None
+    tag = m.group(1)
+    ver = tag.lstrip("v")
+    assets = []
+    for arch in ("apple-silicon", "intel"):
+        name = f"Dispatch-{ver}-macos-{arch}.zip"
+        url = f"{RELEASES_URL}/download/{tag}/{name}"
+        try:
+            req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "dispatch-updater"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                assets.append({"name": name, "url": url, "size": int(r.headers.get("Content-Length") or 0), "browser_download_url": url})
+        except Exception:
+            continue
+    return {"tag_name": tag, "html_url": final, "assets": assets, "body": ""}
+
+
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def expected_sha256(tag, name):
+    """The checksum the release published for `name` (a SHA256SUMS asset), or '' when the release
+    has none (releases before checksums were introduced)."""
+    try:
+        req = urllib.request.Request(f"{RELEASES_URL}/download/{tag}/SHA256SUMS", headers={"User-Agent": "dispatch-updater"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            text = r.read().decode("utf-8", "replace")
+    except Exception:
+        return ""
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[-1].lstrip("*") == name:
+            return parts[0].lower()
+    return ""
+
+
 def vtuple(v):
     return tuple(int(x) for x in re.findall(r"\d+", v)[:3]) or (0,)
 
@@ -53,7 +113,9 @@ def check():
         with api(f"https://api.github.com/repos/{REPO}/releases/latest", tok) as r:
             rel = json.load(r)
     except Exception as e:
-        return {"current": cur, "latest": "", "error": f"读不到发布信息：{e}" + ("" if tok else "（仓库是私有的，需要 gh 登录或在 dispatch env 里放 GITHUB_TOKEN）"), "url": RELEASES_URL, "needs_token": not tok}
+        rel = latest_without_api()
+        if rel is None:
+            return {"current": cur, "latest": "", "error": f"GitHub 暂时读不到发布信息（{e}）：可能是网络不通或接口限流，稍后再试，或直接去发布页下载", "url": RELEASES_URL, "needs_token": False}
     latest = (rel.get("tag_name") or "").lstrip("v")
     arch = "apple-silicon" if platform.machine() == "arm64" else "intel"
     # Only a package built for this machine: an arm64 zip on an Intel Mac would not even launch.
@@ -63,7 +125,7 @@ def check():
                 "error": f"v{latest} 没有 {arch} 的包（目前只发布 Apple 芯片版）；Intel 机器请从源码构建：cd app && npm ci && npm run tauri build",
                 "notes": (rel.get("body") or "")[:2000], "published_at": rel.get("published_at", "")}
     return {"current": cur, "latest": latest, "newer": vtuple(latest) > vtuple(cur) if cur != "dev" else True, "url": rel.get("html_url") or RELEASES_URL,
-            "asset": asset and {"name": asset["name"], "url": asset["url"], "size": asset["size"]}, "notes": (rel.get("body") or "")[:2000], "published_at": rel.get("published_at", "")}
+            "asset": asset and {"name": asset["name"], "url": asset["url"], "size": asset["size"], "download": asset.get("browser_download_url") or asset["url"]}, "tag": rel.get("tag_name") or "", "notes": (rel.get("body") or "")[:2000], "published_at": rel.get("published_at", "")}
 
 
 def apply(relaunch=True):
@@ -75,8 +137,17 @@ def apply(relaunch=True):
     tok = token()
     tmp = tempfile.mkdtemp(prefix="dispatch-update-")
     zip_path = os.path.join(tmp, info["asset"]["name"])
-    with api(info["asset"]["url"], tok, accept="application/octet-stream") as r, open(zip_path, "wb") as f:
-        shutil.copyfileobj(r, f)
+    try:
+        with api(info["asset"]["url"], tok, accept="application/octet-stream") as r, open(zip_path, "wb") as f:
+            shutil.copyfileobj(r, f)
+    except urllib.error.HTTPError:
+        # The API asset URL is rate-limited like the rest of the API; the public download URL is not.
+        with api(info["asset"].get("download") or info["asset"]["url"], "", accept="application/octet-stream") as r, open(zip_path, "wb") as f:
+            shutil.copyfileobj(r, f)
+    want = expected_sha256(info.get("tag") or ("v" + info["latest"]), info["asset"]["name"])
+    if want and sha256_of(zip_path) != want:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise RuntimeError("下载的安装包校验和不对（和发布页的 SHA256SUMS 不一致），没有安装。重试一次；还不对就去发布页手动下载。")
     subprocess.run(["ditto", "-x", "-k", zip_path, tmp], check=True)
     new_app = os.path.join(tmp, "Dispatch.app")
     if not os.path.isdir(new_app):
