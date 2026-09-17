@@ -1681,7 +1681,7 @@ button.review-verdict:hover{filter:brightness(.96)}
 .move-progress.compact{margin:4px 0 0;max-width:none}
 .move-progress.compact .move-text{font-size:11.5px}
 
-.sess-wrap.list-hidden{grid-template-columns:0 minmax(0,1fr)}
+.sess-wrap.list-hidden{grid-template-columns:minmax(0,1fr)}
 .sess-wrap.list-hidden .sess-side{display:none}
 .sess-split{display:flex;flex-direction:column;height:100%;min-height:0}
 .sess-split-bar{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line)}
