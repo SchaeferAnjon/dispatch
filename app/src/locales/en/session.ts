@@ -265,5 +265,16 @@ const session: Dict = {
   "附图": "Attach a picture", "发言": "Say it",
   "停掉 {where} 扩展里的这份，在那台电脑的 Herdr 里接着同一段对话，再发这条；之后回 {where} 要重新 resume": "Stop the copy in the {where} extension, continue the same conversation in Herdr on that Mac, then send this; to go back to {where} later, resume it there again",
   "编辑器": "editor",
+  "等着发言": "waiting to speak",
+  "在想…": "thinking…",
+  "正在说": "speaking",
+  "说完了": "done",
+  "这轮没话说": "nothing to add this round",
+  "讨论现场": "Discussion floor",
+  "已有结论": "Conclusion written",
+  "点一下看 ta 最近说的话": "Click to read what they said last",
+  "领队：每轮最后发言，结论和文档由 ta 写": "Lead: speaks last each round and writes the conclusion and document",
+  "收起现场": "Hide the floor",
+  "看讨论现场": "Show the discussion floor",
 };
 export default session;

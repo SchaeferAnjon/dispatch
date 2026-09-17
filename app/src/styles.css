@@ -1773,3 +1773,36 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 
 .setup-option{display:flex;align-items:baseline;gap:8px;margin:10px 0 4px;font-size:13px}
 .setup-option input{width:auto;margin:0;flex:0 0 auto}
+
+/* Discussion round table */
+.disc-stage{position:relative;height:340px;margin:8px 12px 0;border:1px solid var(--line);border-radius:14px;background:radial-gradient(ellipse at 50% 55%,color-mix(in srgb,var(--accent) 7%,var(--panel)) 0,var(--panel) 62%);overflow:hidden;flex:0 0 auto}
+.stage-table{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);width:44%;min-height:64px;padding:10px 16px;border-radius:999px;background:var(--win);border:1px solid var(--line);box-shadow:0 6px 18px rgba(0,0,0,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:12px;line-height:1.35;color:var(--ink-2)}
+.stage-table small{color:var(--ink-3);font-size:11px;margin-top:2px}
+.seat{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;width:120px;z-index:1}
+.seat-person{position:relative;width:60px;height:60px;border-radius:50%;border:2px solid var(--line);background:var(--win);padding:0;overflow:hidden;cursor:pointer;transition:transform .2s,border-color .2s}
+.seat-person img{width:100%;height:100%;display:block}
+.seat-figure{position:relative;line-height:0}
+.seat-crown{position:absolute;right:-6px;top:-6px;font-style:normal;font-size:14px;line-height:1;color:#c8901a;text-shadow:0 0 2px var(--win)}
+.seat-name{display:flex;flex-direction:column;align-items:center;font-size:11px;line-height:1.25;margin-top:3px;text-align:center}
+.seat-name .muted{font-size:10px;max-width:116px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seat-name em{font-style:normal;font-size:10px;color:var(--ink-3)}
+.seat.s-queued .seat-person{opacity:.55}
+.seat.s-thinking .seat-person{border-color:var(--accent);animation:seat-bob 1.4s ease-in-out infinite}
+.seat.s-typing .seat-person{border-color:var(--s-done,#2e7d5b);animation:seat-talk .5s ease-in-out infinite}
+.seat.s-typing .seat-name em{color:var(--s-done,#2e7d5b)}
+.seat.s-skip .seat-person{opacity:.6}
+.seat.s-error .seat-person{border-color:var(--s-block)}
+.seat.s-error .seat-name em{color:var(--s-block);font-weight:600}
+.seat.you .seat-person{border-style:dashed}
+.seat-bubble{position:absolute;bottom:calc(100% - 2px);left:50%;transform:translateX(-50%);width:max-content;max-width:230px;padding:6px 9px;border-radius:10px;background:var(--win);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:11px;line-height:1.4;color:var(--ink);z-index:3;user-select:text;overflow-wrap:anywhere}
+.seat.edge-l .seat-bubble{left:0;transform:none}
+.seat.edge-r .seat-bubble{left:auto;right:0;transform:none}
+.seat-bubble:not(.full)>span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.seat-bubble.full{max-width:300px;max-height:150px;overflow:auto;z-index:5}
+.seat-bubble.thought{border-style:dashed;color:var(--ink-2)}
+.seat-bubble.err{border-color:var(--s-block);color:var(--s-block)}
+.stage-toggle{align-self:flex-end;margin:2px 14px 0;font-size:11px}
+@keyframes seat-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes seat-talk{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+@media (prefers-reduced-motion:reduce){.seat .seat-person{animation:none!important}}
+@media(max-width:640px){.disc-stage{height:300px;margin:6px 8px 0}.seat{width:92px}.seat-person{width:46px;height:46px}.seat-bubble{max-width:150px;font-size:10px}.stage-table{width:50%;font-size:11px}}

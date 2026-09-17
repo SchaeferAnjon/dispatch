@@ -265,5 +265,16 @@ const session: Dict = {
   "附图": "Bild anhängen", "发言": "Beitragen",
   "停掉 {where} 扩展里的这份，在那台电脑的 Herdr 里接着同一段对话，再发这条；之后回 {where} 要重新 resume": "Die Kopie in der {where}-Erweiterung stoppen, dieselbe Unterhaltung in Herdr auf diesem Mac fortsetzen und dann senden; für {where} später dort erneut fortsetzen",
   "编辑器": "Editor",
+  "等着发言": "wartet",
+  "在想…": "denkt nach…",
+  "正在说": "spricht",
+  "说完了": "fertig",
+  "这轮没话说": "nichts hinzuzufügen",
+  "讨论现场": "Diskussionsrunde",
+  "已有结论": "Ergebnis liegt vor",
+  "点一下看 ta 最近说的话": "Klicken, um die letzte Äußerung zu lesen",
+  "领队：每轮最后发言，结论和文档由 ta 写": "Leitung: spricht in jeder Runde zuletzt und schreibt Ergebnis und Dokument",
+  "收起现场": "Runde ausblenden",
+  "看讨论现场": "Diskussionsrunde zeigen",
 };
 export default session;

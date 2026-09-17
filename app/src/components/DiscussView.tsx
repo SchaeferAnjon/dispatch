@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DiscussStage } from "./DiscussStage";
 import type { Api } from "../api";
 import type { Issue } from "../types";
 import { actorOf, projectOf, relTime } from "../derive";
@@ -29,6 +30,8 @@ export function DiscussView({ api, me, issues, initialTask, onShown, onNew, onOp
   const [showList, setShowList] = useState(!initialTask);
   const [showSummary, setShowSummary] = useState(() => window.innerWidth > 640);
   const [showDoc, setShowDoc] = useState(false);
+  // The round-table view above the transcript; remembered per browser, on by default.
+  const [stage, setStage] = useState(() => { try { return localStorage.getItem("dispatch-discuss-stage") !== "0"; } catch { return true; } });
   const [q, setQ] = useState("");
   const [withArchived, setWithArchived] = useState(false);
   useEffect(() => { if (initialTask && initialTask !== task) { setTask(initialTask); setShowList(false); } }, [initialTask]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -111,6 +114,8 @@ export function DiscussView({ api, me, issues, initialTask, onShown, onNew, onOp
             </div>}
           </aside>
           <section className="disc-chat">
+            {stage && parts.length > 0 && <DiscussStage d={d} parts={parts} leader={leader} me={me} topic={issue.title.replace(/^【讨论】\s*/, "")} />}
+            <button className="link stage-toggle" onClick={() => { const v = !stage; setStage(v); try { localStorage.setItem("dispatch-discuss-stage", v ? "1" : "0"); } catch { /* private mode */ } }}>{stage ? t("收起现场") : t("看讨论现场")}</button>
             <DiscussChat api={api} d={d} me={me} onError={onError} />
           </section>
         </>
