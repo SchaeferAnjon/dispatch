@@ -61,12 +61,12 @@ class AttentionNotification(unittest.TestCase):
     """A session that starts waiting for the user pushes one notification (dedup key per session)."""
 
     def run_hook(self, event, data):
+        """The push runs as a detached `notify.py …` process (a network call must not hold up the
+        agent's hook): collect the argv it would have been started with."""
         import presence
         sent = []
-        fake = types.ModuleType("notify")
-        fake.send = lambda *a, **k: (sent.append((a, k)), {"ok": True})[1]
         with tempfile.TemporaryDirectory() as d, patch.object(presence, "DIR", d), \
-                patch.dict(sys.modules, {"notify": fake}), \
+                patch.object(presence, "spawn_detached", side_effect=lambda argv: sent.append(argv)), \
                 patch.object(sys, "argv", ["presence.py", "claude-code", event]), \
                 patch.object(sys, "stdin", io.StringIO(json.dumps(data))):
             presence.main()
@@ -75,10 +75,28 @@ class AttentionNotification(unittest.TestCase):
     def test_permission_request_notifies(self):
         sent = self.run_hook("PermissionRequest", {"session_id": "abc", "cwd": "/tmp/proj"})
         self.assertEqual(len(sent), 1)
-        self.assertEqual(sent[0][1]["key"], "presence:claude-code:abc")
-        self.assertEqual(sent[0][1]["level"], "high")
-        self.assertIn("proj", sent[0][0][1])
+        argv = sent[0]
+        self.assertTrue(argv[1].endswith("notify.py"))
+        self.assertEqual(argv[argv.index("--key") + 1], "presence:claude-code:abc")
+        self.assertEqual(argv[argv.index("--level") + 1], "high")
+        self.assertIn("proj", argv[3])
 
     def test_tool_use_does_not_notify(self):
         self.assertEqual(self.run_hook("UserPromptSubmit", {"session_id": "abc", "cwd": "/tmp/proj"}), [])
         self.assertEqual(self.run_hook("Stop", {"session_id": "abc", "cwd": "/tmp/proj"}), [])
+
+
+class CheapPerEvent(unittest.TestCase):
+    """Only the first event of a session walks the process table (review P1-4)."""
+
+    def test_later_events_reuse_what_session_start_learned(self):
+        import presence
+        calls = []
+        real = presence.ps_table
+        with tempfile.TemporaryDirectory() as d, patch.object(presence, "DIR", d), patch.object(presence, "ps_table", side_effect=lambda: calls.append(1) or real()), \
+                patch.object(presence, "spawn_detached"):
+            for event in ("SessionStart", "PreToolUse", "PostToolUse", "PreToolUse"):
+                with patch.object(sys, "argv", ["presence.py", "claude-code", event]), patch.object(sys, "stdin", io.StringIO(json.dumps({"session_id": "s1", "cwd": "/tmp/p"}))):
+                    presence.main()
+        # SessionStart: once for the host app, once for the sweep (first ever); later events: none within the minute.
+        self.assertLessEqual(len(calls), 2)

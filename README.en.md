@@ -104,7 +104,7 @@ It runs once on first launch. Every step can be rerun, and "Skip, don't ask agai
 2. **Terminal command**: links `dispatch` to `~/.local/bin/dispatch` so it is available in the terminal. You can also do it by hand: `ln -sf /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py ~/.local/bin/dispatch`.
 3. **Task board**: on the first machine, choose "Only this Mac, or this is the first one" to create a new task board; this Mac becomes the hub. If another Mac already runs Dispatch, choose "Join its task board" and enter that Mac's `user@address` (see the next section).
 4. **Agents**: tick the Agents you use on this Mac (Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes) and confirm Herdr is running.
-5. **Rules and skills**: prepares the shared rules in `~/.agents/rules/GLOBAL.md`, syncs them to every Agent, and mounts the skill pool under each of them.
+5. **Rules and skills**: prepares the shared rules in `~/.agents/rules/GLOBAL.md`, syncs them to every Agent, and mounts the skill pool for Claude Code and Codex (other Agents do not support skill mounting yet).
 6. **Review and optimize** (optional): sends an Agent to review the rules and skills and suggest improvements.
 
 "Finish, go to Workbench" unlocks once the first five steps are ticked.

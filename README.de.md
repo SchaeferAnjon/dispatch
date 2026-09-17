@@ -104,7 +104,7 @@ Beim ersten Öffnen läuft sie einmal durch. Jeder Schritt lässt sich wiederhol
 2. **Terminalbefehl**: verlinkt `dispatch` nach `~/.local/bin/dispatch`, danach ist es im Terminal direkt verfügbar. Auch von Hand möglich: `ln -sf /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py ~/.local/bin/dispatch`.
 3. **Aufgabenboard**: Auf dem ersten Rechner wählen Sie „Nur dieser Mac, oder dies ist der erste“, um ein neues Aufgabenboard anzulegen; dieser Mac wird der Hub. Läuft Dispatch bereits auf einem anderen Mac, wählen Sie „Dessen Aufgabenboard beitreten“ und tragen dessen `Benutzername@Adresse` ein (siehe nächster Abschnitt).
 4. **Agenten**: Haken Sie die Agenten an, die Sie auf diesem Rechner verwenden (Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes), und stellen Sie sicher, dass Herdr läuft.
-5. **Regeln und Skills**: bereitet das gemeinsame Regelwerk `~/.agents/rules/GLOBAL.md` vor, gleicht es mit allen Agenten ab und stellt ihnen den Skill-Pool bereit.
+5. **Regeln und Skills**: bereitet das gemeinsame Regelwerk `~/.agents/rules/GLOBAL.md` vor, gleicht es mit allen Agenten ab und stellt den Skill-Pool für Claude Code und Codex bereit (andere Agenten unterstützen das Einbinden von Skills noch nicht).
 6. **Prüfen und optimieren** (optional): schickt einen Agenten los, der Regeln und Skills prüft und Vorschläge macht.
 
 „Fertig, zum Arbeitsplatz“ wird erst frei, wenn die ersten fünf Schritte abgehakt sind.

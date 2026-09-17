@@ -1770,3 +1770,6 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 .phone-access .settings-inline{margin:6px 0}
 .phone-access label.check{display:flex;align-items:baseline;gap:6px;font-size:13px;margin:6px 0}
 .phone-access label.check input{width:auto;margin:0}
+
+.setup-option{display:flex;align-items:baseline;gap:8px;margin:10px 0 4px;font-size:13px}
+.setup-option input{width:auto;margin:0;flex:0 0 auto}

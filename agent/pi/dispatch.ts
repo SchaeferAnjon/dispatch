@@ -5,12 +5,15 @@
 //   * prime: on the first turn, appends `dispatch prime` (tasks, wiki, neighbours, quota) to the system prompt
 //   * edit-guard: before edit/write, asks ~/tasks/.dispatch/edit-guard.py whether another session is on that file
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, basename } from "node:path";
 
 const HOME = homedir();
 const DISPATCH_DIR = join(HOME, "tasks", ".dispatch");
-const DISPATCH_CLI = join(HOME, "Projects", "kanban", "app", "cli", "dispatch.py");
+// Where the Dispatch CLI lives: the `dispatch` link first-run setup puts on PATH, else the installed
+// app's bundled copy (either Applications folder). Nothing here assumes a source checkout.
+const DISPATCH_CLI = [join(HOME, ".local", "bin", "dispatch"), "/Applications/Dispatch.app/Contents/Resources/cli/dispatch.py", join(HOME, "Applications", "Dispatch.app", "Contents", "Resources", "cli", "dispatch.py")].find((p) => existsSync(p)) ?? "dispatch";
 const PATH = `/opt/homebrew/bin:/usr/local/bin:${join(HOME, ".local/bin")}:${process.env.PATH ?? ""}`;
 process.env.BEADS_ACTOR = "pi";
 process.env.BEADS_DIR ??= join(HOME, "tasks", ".beads");

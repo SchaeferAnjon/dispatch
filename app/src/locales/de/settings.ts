@@ -585,5 +585,10 @@ const settings: Dict = {
   "wiki 语义搜索的 embedding（发任务标题、描述和知识库条目给 OpenAI 或智谱）": "Embeddings für die semantische Wiki-Suche (sendet Aufgabentitel, Beschreibungen und Wissenseinträge an OpenAI oder Zhipu)",
   "不再自动选用的供应商": "Anbieter, die nie automatisch gewählt werden",
   "逗号分隔，如 deepseek：有它的 Key 也不会被自动选中或当作回退；上面显式选它仍然可用。留空表示都可以用。": "Durch Kommas getrennt, z. B. deepseek: Auch mit vorhandenem Schlüssel wird er nie automatisch gewählt oder als Ausweichlösung genutzt; oben ausdrücklich gewählt funktioniert er weiterhin. Leer lassen, um alle zuzulassen.",
+  "也算你的署名": "Signaturen, die ebenfalls Sie sind",
+  "任务板上的署名默认是这台电脑的用户名。换过用户名、两台电脑用户名不一样、或早期记录用了别的名字时，把它们写在这里（逗号分隔），界面就都显示成「你」。": "Auf dem Board unterschreiben Sie standardmäßig mit dem Benutzernamen dieses Macs. Haben Sie ihn geändert, nutzen Ihre beiden Macs verschiedene Namen oder tragen ältere Einträge einen anderen Namen, listen Sie sie hier auf (durch Kommas getrennt), dann zeigt die App sie alle als „Sie“.",
+  "编辑互斥": "Bearbeitungsschutz",
+  "同一个文件半小时内被另一段会话改过时，先拦一下让 Agent 确认。同一个仓库里经常同时跑几个 Agent 才需要；只开一个窗口的话不用勾，否则 /clear 或新开窗口后会被拦一次。": "Wurde dieselbe Datei in der letzten halben Stunde von einer anderen Sitzung geändert, wird die Bearbeitung einmal angehalten, damit der Agent bestätigt. Nur sinnvoll, wenn oft mehrere Agents im selben Repository laufen; bei einem einzelnen Fenster aus lassen, sonst wird nach /clear oder einem neuen Fenster einmal angehalten.",
+  "已有的 Claude Code 状态行会保留：Dispatch 只在它前面记一下额度；settings.json 改动前会备份成 settings.json.dispatch-bak。": "Ihre vorhandene Claude-Code-Statuszeile bleibt erhalten: Dispatch notiert davor nur das Kontingent; settings.json wird vor der Änderung als settings.json.dispatch-bak gesichert.",
 };
 export default settings;

@@ -196,6 +196,10 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
       <section className="settings-card">
         <h3>{t("项目")}</h3>
         <label className="settings-row">
+          <div><b>{t("也算你的署名")}</b><p>{t("任务板上的署名默认是这台电脑的用户名。换过用户名、两台电脑用户名不一样、或早期记录用了别的名字时，把它们写在这里（逗号分隔），界面就都显示成「你」。")}</p></div>
+          <input className="settings-input" type="text" value={draft.human_aliases} placeholder="alice, alice-macbook" onChange={(e) => setDraft({ ...draft, human_aliases: e.target.value })} />
+        </label>
+        <label className="settings-row">
           <div><b>{t("工作区根目录")}</b><p>{t("这些文件夹的直接子文件夹各算一个项目（例如 ~/Projects/kanban 下的会话都归 kanban）。其它位置按 git 仓库根目录归项目，没有仓库就按所在文件夹。一行一个。")}</p></div>
           <textarea className="settings-text" rows={3} value={draft.workspace_roots.join("\n")} onChange={(e) => setDraft({ ...draft, workspace_roots: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} placeholder="~/Projects" />
         </label>

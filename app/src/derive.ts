@@ -30,9 +30,11 @@ const RETIRED_AGENTS = new Set(["qoder", "qoder-ide", "qodercli"]);
 // Desktop-only agents: no CLI to resume from, the app has to be brought up instead.
 export const NO_RESUME = new Set(["zcode"]);
 
-// Old records carry the git user.name; treat every human alias as "me" so the
-// board shows one person, not one per spelling.
-export const HUMAN_ALIASES = new Set(["schaefer", "schaeferanjon", "macbook14", "apple"]);
+// Old records carry the git user.name, and two Macs can have two account names: every alias the
+// person listed (设置 → 「也算你的署名」, shared through the board) counts as "me", so the board shows
+// one person, not one per spelling. Empty until they say so: nobody's name is built in.
+export const HUMAN_ALIASES = new Set<string>();
+export function setHumanAliases(names: string[]) { HUMAN_ALIASES.clear(); for (const n of names) { const x = n.trim().toLowerCase(); if (x) HUMAN_ALIASES.add(x); } }
 export function isMe(raw: string | undefined, me: string): boolean {
   if (!raw) return false;
   return raw === me || HUMAN_ALIASES.has(raw.toLowerCase());

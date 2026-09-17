@@ -66,6 +66,12 @@ RETIRED_AGENTS = frozenset({"qoder", "qoder-ide", "qodercli"})
 PATH_EXTRA = "/opt/homebrew/bin:/usr/local/bin:" + os.path.join(HOME, ".local", "bin")
 
 
+def whoami():
+    """Who this command speaks as on the board: the agent's own name when a hook or a launcher
+    set BEADS_ACTOR, else the person at this Mac (their account name, like the desktop app)."""
+    return os.environ.get("BEADS_ACTOR") or os.environ.get("DISPATCH_ACTOR") or os.path.basename(HOME.rstrip("/")) or "user"
+
+
 def sh(args, timeout=20, env=None):
     e = dict(os.environ)
     e["PATH"] = PATH_EXTRA + ":" + e.get("PATH", "")
@@ -1139,7 +1145,7 @@ def cmd_agent(a):
                 break
             started = herdr_ok(d, "起 Agent").get("agent", {})
             break
-        me = os.environ.get("BEADS_ACTOR", "schaefer")
+        me = whoami()
         if a.task:
             code, o, e = sh(["bd", "update", a.task, "--claim", "--json"], env={"BEADS_ACTOR": actor})
             # who handed the task to whom: labels the views read, a comment for the record
@@ -4232,7 +4238,7 @@ def cmd_need_you(a):
         print("创建失败", file=sys.stderr)
         sys.exit(1)
     if a.task:
-        sh(["bd", "comments", "add", a.task, f"需要你出面：「{title}」（{tid}）"], env={"BEADS_ACTOR": os.environ.get("BEADS_ACTOR", "schaefer")})
+        sh(["bd", "comments", "add", a.task, f"需要你出面：「{title}」（{tid}）"], env={"BEADS_ACTOR": whoami()})
     out({"id": tid, "title": title, "project": a.project}, a.json, lambda o: print(f"「{title}」（{tid}）已记到「只能你做」；用户在项目任务板上做完打勾即可。"))
 
 
@@ -4240,7 +4246,7 @@ def tick_acceptance(tid, issue, match=None, who=None):
     """Mark acceptance items done and sign them: `- [x] text @<who>` — who checked is part of the
     record (the assignee ticking its own work reads as 自审 in the app, someone else as 复核).
     match=None ticks every open item; otherwise items containing one of the substrings."""
-    who = who or os.environ.get("BEADS_ACTOR", "schaefer")
+    who = who or whoami()
     lines = (issue.get("acceptance_criteria") or "").splitlines()
     hit = 0
     for i, line in enumerate(lines):
@@ -4587,7 +4593,9 @@ def quota_zcode():
 
 
 def cmd_quota(a):
-    rows = [quota_claude(), quota_codex(), quota_zcode()]
+    # Only the agents this Mac has: a missing one is not 「没拿到数据」, it is simply not here.
+    have = {aid for aid, (_, home) in _mod("init_wizard").AGENT_HOMES.items() if os.path.isdir(home)}
+    rows = [fn() for aid, fn in (("claude-code", quota_claude), ("codex", quota_codex), ("zcode", quota_zcode)) if aid in have]
     for r in rows:
         r["host"], r["host_name"] = "local", local_host_name()
     if not getattr(a, "local", False):
@@ -5322,11 +5330,11 @@ DISCUSS_RULES_DEFAULT = "闲聊就闲聊，两句以内；正事默认一两段�
 DISCUSS_PERSONA_DEFAULT = {"claude": "偏架构和验收：先问值不值得做、做完怎么验证，习惯把方案拆成可交付的步骤。",
                            "codex": "抠实现细节：关心具体改哪里、边界情况、能不能复用已有代码，不信没验证过的说法。",
                            "pi": "短句直给：一次只说最重要的一点，倾向先做最小可验证的版本，看到过度设计会直说。"}
-SETTING_DEFAULTS = {"session_archive_days": 30, "task_archive_days": 0, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 0, "summary_model": "", "retired_providers": "",
+SETTING_DEFAULTS = {"session_archive_days": 30, "task_archive_days": 0, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 0, "summary_model": "", "retired_providers": "", "human_aliases": "",
                     "notify_reply": 1, "notify_attention": 1, "notify_done": 1, "notify_needs_you": 1, "summary_uses": {},
                     "discuss_rules": DISCUSS_RULES_DEFAULT, **{f"discuss_persona_{k}": v for k, v in DISCUSS_PERSONA_DEFAULT.items()}}
 # free-text settings and their length caps; everything else numeric except workspace_roots
-SETTING_STRINGS = {"summary_model": 80, "retired_providers": 120, "discuss_rules": 600, "discuss_persona_claude": 300, "discuss_persona_codex": 300, "discuss_persona_pi": 300}
+SETTING_STRINGS = {"summary_model": 80, "retired_providers": 120, "human_aliases": 200, "discuss_rules": 600, "discuss_persona_claude": 300, "discuss_persona_codex": 300, "discuss_persona_pi": 300}
 
 
 def settings_parse(raw):
@@ -5396,7 +5404,7 @@ def cmd_settings(a):
         cur[a.key] = val
         wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
     shown = {a.key: cur[a.key]} if a.key else cur
-    notes = {"retired_providers": "逗号分隔的供应商 id（如 deepseek）：不再自动选用，也不作回退；显式选它仍可用", "notify_reply": "1=Agent 回复完成时推到手机", "notify_attention": "1=Agent 等确认时推到手机", "notify_done": "1=任务完成时推到手机", "notify_needs_you": "1=「只能你做」时推到手机", "session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "task_archive_days": "天，已完成任务超过这些天自动打 dispatch:archived 标签；0=不自动", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选", "summary_uses": '各用途的开关，JSON 如 {"session": 0}；键见 `dispatch summarize uses`',
+    notes = {"human_aliases": "逗号分隔：板上这些署名也算「你」（换过用户名、两台电脑用户名不同时用）", "retired_providers": "逗号分隔的供应商 id（如 deepseek）：不再自动选用，也不作回退；显式选它仍可用", "notify_reply": "1=Agent 回复完成时推到手机", "notify_attention": "1=Agent 等确认时推到手机", "notify_done": "1=任务完成时推到手机", "notify_needs_you": "1=「只能你做」时推到手机", "session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "task_archive_days": "天，已完成任务超过这些天自动打 dispatch:archived 标签；0=不自动", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选", "summary_uses": '各用途的开关，JSON 如 {"session": 0}；键见 `dispatch summarize uses`',
              "discuss_rules": "讨论群的规矩（发言长度、什么时候 SKIP），进每个成员的系统提示", "discuss_persona_claude": "讨论里 claude 的一句人设", "discuss_persona_codex": "讨论里 codex 的一句人设", "discuss_persona_pi": "讨论里 pi 的一句人设"}
     out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes.get(k, str())}）") for k, v in x.items()])
 
@@ -6459,6 +6467,12 @@ def phone_push(setting_key, title, body, path, level="normal"):
         N.send(title, body, url=N.serve_link(path), level=level, key=f"{setting_key}:{path}")
     except Exception:
         pass
+
+
+def cmd_agents_installed(a):
+    """Which agents this Mac has (their config folder exists): the app defaults dialogs to one of them."""
+    rows = [{"id": r["id"], "name": r["name"], "found": r["found"]} for r in _mod("init_wizard").agents_status()]
+    out(rows, a.json, lambda rs: [print(("✓ " if r["found"] else "· ") + r["name"]) for r in rs])
 
 
 def cmd_notify(a):
@@ -7579,7 +7593,7 @@ def cmd_discuss(a):
         if (lead_kind, lead_model) not in parts:
             parts.append((lead_kind, lead_model))
     kinds = [k for k, _ in parts]
-    me = os.environ.get("BEADS_ACTOR", "schaefer")
+    me = whoami()
     topic = bool(getattr(a, "topic", ""))
     project = getattr(a, "project", "") or ""
     if topic:
@@ -7821,7 +7835,7 @@ def cmd_split(a):
         raise SystemExit(str(e))
     if not specs:
         raise SystemExit("要给至少一个 --to kind:\"标题|说明\"")
-    me = os.environ.get("BEADS_ACTOR", "schaefer")
+    me = whoami()
     proj = next((l.split(":", 1)[1] for l in parent.get("labels") or [] if l.startswith("project:")), "")
     cwd = a.cwd or task_project_dir(parent)
     hostargs = ["--host", a.host] if a.host else []
@@ -8161,6 +8175,7 @@ def main():
     s = sub.add_parser("insights", help="cross-agent review: signal counts (default) or the model-written report (report/list/show/open/schedule/due)"); s.add_argument("op", nargs="?", choices=["report", "list", "show", "open", "schedule", "due"], help="omit for the signal counts"); s.add_argument("id", nargs="?", default="", help="report id for show/open (default latest)"); s.add_argument("--days", type=int, default=14); s.add_argument("--model", default=None); s.add_argument("--wait", action="store_true", help="report: generate in the foreground"); s.add_argument("--force", action="store_true"); s.add_argument("--every", type=int, default=None, help="schedule: 0 (off) / 7 / 14 / 30 days"); s.add_argument("--copy", action="store_true", help="copy the improvement-task command"); s.add_argument("--alerts", action="store_true", help="only the per-session alerts not yet acknowledged (proactive insights)"); s.add_argument("--ack", action="store_true", help="mark the current alerts as seen"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_insights)
     s = sub.add_parser("catalog", help="capabilities kept off by default: unmounted skills, disabled plugins"); s.add_argument("--query", "-q"); s.add_argument("--kind", choices=["skill", "plugin"]); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_catalog)
     s = sub.add_parser("notify", help="push a message to the phone (ntfy / Bark) or a macOS banner; channels come from dispatch env NTFY_URL / BARK_KEY"); s.add_argument("title"); s.add_argument("body", nargs="?", default=""); s.add_argument("--url", default="", help="link to open when the notification is tapped"); s.add_argument("--level", choices=["normal", "high"], default="normal"); s.add_argument("--key", default="", help="dedup key: the same key inside 5 minutes is sent once"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_notify)
+    s = sub.add_parser("agents-installed", help="which agents exist on this Mac"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_agents_installed)
     s = sub.add_parser("notify-watch", help="one pass of the phone watcher: push unread agent replies and confirmations (the phone server runs this every 20 s)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=lambda a: _mod("notify_watch").main(a))
     s = sub.add_parser("docs", help="项目页「文档」：扫描 design/ docs/ 研究/ 下的 .md/.html，加上登记过的路径/URL"); s.add_argument("op", nargs="?", default="", help="add | rm | read（省略时第一个参数就是项目名，列出它的文档）"); s.add_argument("project", nargs="?"); s.add_argument("extra", nargs="*", help="add/read/rm：路径或 URL、文档 id"); s.add_argument("--title", help="add：显示标题（默认取首个 # 行或文件名）"); s.add_argument("--kind", choices=list(DOC_KINDS), help="add：类型"); s.add_argument("--asset", default="", help="read：读文档同目录下的相对文件（图片），返回 base64"); s.add_argument("--local", action="store_true", help="list：只看这台机器（其他机器问它时用）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_docs)
     s = sub.add_parser("project-summary", help="让模型把一个项目总结成一段：是什么、到哪了、最近做了什么、还差什么"); s.add_argument("name"); s.add_argument("--force", action="store_true", help="已有也重写"); s.add_argument("--if-stale", action="store_true", help="只在没有或超过一天时重写"); s.add_argument("--local", action="store_true", help="只回答这台机器自己的（不问别的机器）——其他机器问它时用，防止跨机递归"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_summary)

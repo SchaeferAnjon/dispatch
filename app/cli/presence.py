@@ -41,6 +41,21 @@ BARE = {"herdr": ("terminal", "Herdr"), "tmux": ("terminal", "tmux"), "zellij": 
 _CLAUDE_CLI_OWN_PATH = "/.local/share/claude/"
 
 
+def spawn_detached(argv):
+    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                     env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+
+
+def _alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except (OSError, ValueError, TypeError):
+        return True  # exists but is someone else's, or unknowable: do not drop what was learned
+
+
 def ps_table():
     out = subprocess.run(["ps", "-axo", "pid=,ppid=,comm="], capture_output=True, text=True, timeout=3).stdout
     t = {}
@@ -91,7 +106,7 @@ def install_claude_hooks(path=None):
         settings = json.load(f)
     hooks = settings.setdefault("hooks", {})
     for event in ("PermissionRequest", "Notification", "PreToolUse", "PostToolUse", "PostToolUseFailure"):
-        command = f'python3 "$HOME/tasks/.dispatch/presence.py" claude-code {event} # dispatch-presence'
+        command = f'PYTHONDONTWRITEBYTECODE=1 "{sys.executable or "python3"}" "$HOME/tasks/.dispatch/presence.py" claude-code {event} # dispatch-presence'
         groups = hooks.setdefault(event, [])
         if not any("dispatch-presence" in h.get("command", "") for g in groups for h in g.get("hooks", [])):
             groups.append({"hooks": [{"type": "command", "command": command}]})
@@ -116,27 +131,41 @@ def main():
     sid = data.get("session_id") or data.get("thread_id") or data.get("thread-id") or os.environ.get("CLAUDE_SESSION_ID") or ""
     cwd = data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 
-    table = ps_table()
-    chain, agent_pid = [], None
-    pid = os.getppid()
-    for _ in range(25):
-        ent = table.get(pid)
-        if not ent or pid <= 1:
-            break
-        ppid, comm = ent
-        base = os.path.basename(comm).lstrip("-")
-        if agent_pid is None and base not in SHELLS and "presence.py" not in comm:
-            agent_pid = pid
-        chain.append(comm)
-        pid = ppid
+    os.makedirs(DIR, exist_ok=True)
+    now = time.time()
+    # This hook runs on every tool call. Who hosts the session (the whole process table, walked
+    # upwards) does not change while it lives: learn it on the first event, reuse it afterwards.
+    known = {}
+    if sid:
+        safe0 = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in sid)
+        try:
+            with open(os.path.join(DIR, f"{agent}__{safe0}.json")) as f:
+                known = json.load(f)
+        except Exception:
+            known = {}
+    table = None
+    if event != "SessionStart" and known.get("agent_pid") and known.get("source_kind") and _alive(known["agent_pid"]):
+        agent_pid, kind, label = known["agent_pid"], known["source_kind"], known.get("source_app", "")
+    else:
+        table = ps_table()
+        chain, agent_pid = [], None
+        pid = os.getppid()
+        for _ in range(25):
+            ent = table.get(pid)
+            if not ent or pid <= 1:
+                break
+            ppid, comm = ent
+            base = os.path.basename(comm).lstrip("-")
+            if agent_pid is None and base not in SHELLS and "presence.py" not in comm:
+                agent_pid = pid
+            chain.append(comm)
+            pid = ppid
+        kind, label = classify(chain)
     if not sid:
         sid = f"pid-{agent_pid or os.getppid()}"
-    kind, label = classify(chain)
 
-    os.makedirs(DIR, exist_ok=True)
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in sid)
     path = os.path.join(DIR, f"{agent}__{safe}.json")
-    now = time.time()
 
     if event == "SessionEnd":
         try:
@@ -178,15 +207,31 @@ def main():
 
     # The session just started waiting for the user: push it once, not on every hook event.
     if attention == "input":
+        # In the background: a push is a network call (up to 10 s) and the agent waits for its hooks.
         try:
-            sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-            import notify
-            notify.send(f"{agent} 在等你回复", f"{rec['project']}（{rec['source_app']}）", level="high", key=f"presence:{agent}:{sid}")
+            here = os.path.dirname(os.path.realpath(__file__))
+            sibling = os.path.join(here, "notify.py")
+            if not os.path.exists(sibling):  # this copy lives in ~/tasks/.dispatch; the CLI is elsewhere
+                sibling = os.path.join(os.path.dirname(os.path.realpath(os.path.expanduser("~/.local/bin/dispatch"))), "notify.py")
+            if os.path.exists(sibling):
+                spawn_detached([sys.executable or "python3", sibling, f"{agent} 在等你回复", f"{rec['project']}（{rec['source_app']}）", "--level", "high", "--key", f"presence:{agent}:{sid}"])
         except Exception:
             pass
 
-    # Sweep records whose process is gone (crashes, closed windows) — SessionEnd
-    # does not always fire.
+    # Sweep records whose process is gone (crashes, closed windows) — SessionEnd does not always
+    # fire. At most once a minute: it reads every record and needs the process table.
+    stamp = os.path.join(DIR, ".swept")
+    try:
+        if now - os.stat(stamp).st_mtime < 60:
+            return
+    except OSError:
+        pass
+    try:
+        with open(stamp, "w"):
+            pass
+    except OSError:
+        pass
+    table = table if table is not None else ps_table()
     for p in glob.glob(os.path.join(DIR, "*.json")):
         try:
             with open(p) as f:

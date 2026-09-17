@@ -185,16 +185,16 @@ def generate(days, model=None, wait=True):
     stamp = _stamp()
     rec = {"id": stamp, "created_at": time.strftime("%Y-%m-%d %H:%M"), "days": days, "model": model or "", "session_count": dig["total_sessions"], "digest_sessions": len(dig["sessions"]),
            "signals": dig["per_agent"], "findings": dig["findings"], "rules": dig["rules"], "stats": chart_stats(dig), "report": None, "error": "", "duration_s": 0}
-    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
-    env["PATH"] = D.PATH_EXTRA + ":" + env.get("PATH", "")
-    cmd = ["claude", "-p", PROMPT.format(days=days), "--output-format", "text", "--tools", "", "--permission-mode", "bypassPermissions"]
-    if model:
-        cmd += ["--model", model]
+    # The model the person chose for summaries writes the report too (设置 → 总结): an API key or the
+    # Claude Code subscription. A bare Claude model name (the app's picker: opus / sonnet / haiku)
+    # still means "on the subscription".
+    import summarize as S
+    pick = (model or "").strip()
+    prov = S.provider(pick if ":" in pick else (f"claude:{pick}" if pick else ""))
     try:
-        r = subprocess.run(cmd, input=json.dumps(dig, ensure_ascii=False), capture_output=True, text=True, timeout=15 * 60, env=env, cwd=D.HOME)
-        text = r.stdout.strip()
-        if r.returncode != 0 and not text:
-            raise RuntimeError((r.stderr or "claude 退出码 %d" % r.returncode).strip()[:400])
+        if prov is None:
+            raise RuntimeError("还没选写总结的模型：设置 → 总结 里选 Claude Code 订阅或填一个 API Key")
+        text = S.chat(prov, PROMPT.format(days=days), json.dumps(dig, ensure_ascii=False), timeout=15 * 60, max_tokens=8000, use="insights")
         m = re.search(r"\{.*\}", text, re.S)
         report = json.loads(m.group(0)) if m else None
         if not report or "sections" not in report:
@@ -205,7 +205,7 @@ def generate(days, model=None, wait=True):
             s.setdefault("title", SECTION_TITLES.get(s.get("key", ""), s.get("key", "")))
             s.setdefault("items", [])
         rec["report"] = report
-        rec["model"] = model or _model_used(r.stderr) or "claude 默认模型"
+        rec["model"] = f"{prov['id']}:{prov['model']}"
     except subprocess.TimeoutExpired:
         rec["error"] = "模型 15 分钟没有返回"
     except Exception as e:

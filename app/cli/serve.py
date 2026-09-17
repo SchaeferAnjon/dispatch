@@ -335,7 +335,7 @@ class H(BaseHTTPRequestHandler):
             fn = CMDS.get(cmd)
             if not fn:
                 return self._send(400, json.dumps({"error": f"未知命令 {cmd}"}))
-            res = fn(args, self.conf.get("actor", "schaefer"))
+            res = fn(args, self.conf.get("actor") or os.path.basename(HOME.rstrip("/")) or "user")
             payload = {"result": res} if isinstance(res, str) else {"value": res}
             return self._send(200, json.dumps(payload, ensure_ascii=False))
         except Exception as e:

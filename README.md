@@ -41,7 +41,7 @@ Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent
 | 等我：只放需要你处理的 | 额度、规则与技能 |
 |:--|:--|
 | ![等我](docs/assets/shot-inbox.png) | ![额度](docs/assets/shot-quota.png) |
-| 未读回复、等待确认、只有你能做的事；正在跑的不算未读。 | 各 Agent 的用量与重置时间；一份共同规则同步到所有 Agent；技能池统一挂载。 |
+| 未读回复、等待确认、只有你能做的事；正在跑的不算未读。 | 各 Agent 的用量与重置时间；一份共同规则同步到所有 Agent；技能池统一挂载到 Claude Code 与 Codex。 |
 
 <p align="center">
   <img src="docs/assets/shot-phone.png" width="260" alt="手机版"><br>
@@ -104,7 +104,7 @@ npm run tauri build
 2. **终端命令**：把 `dispatch` 链接到 `~/.local/bin/dispatch`，之后终端里直接可用。也可以手动：`ln -sf /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py ~/.local/bin/dispatch`。
 3. **任务板**：第一台机器选「只有这一台，或这是第一台」新建任务板，这台成为枢纽；已有一台装了 Dispatch 就选「接入它的任务板」并填那台的 `用户名@地址`（见下一节）。
 4. **Agent**：勾选这台电脑上要用的 Agent（Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes），并确认 Herdr 在跑。
-5. **规则与技能**：准备共同规则 `~/.agents/rules/GLOBAL.md` 并同步到各 Agent，同时把技能池挂到它们下面。
+5. **规则与技能**：准备共同规则 `~/.agents/rules/GLOBAL.md` 并同步到各 Agent，同时把技能池挂到 Claude Code 与 Codex 下面（其它 Agent 暂不支持技能挂载）。
 6. **审查优化**（可选）：派一个 Agent 审查规则与技能并给出建议。
 
 前五步都打勾后才能「完成，进入工作台」。

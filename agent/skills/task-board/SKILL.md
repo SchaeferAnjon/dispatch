@@ -40,4 +40,4 @@ dispatch notify "标题" "正文"          # 想让人知道就推一条：ntfy 
 - [环境变量 / API Key（`dispatch env`）](detail-04.md)
 - [派活给别的 Agent / 模型（`dispatch agent`，底层是 Herdr）](detail-05.md)
 - [讨论后分工（动态工作流，`dispatch discuss` / `dispatch split`）](detail-06.md)
-- [Dispatch 应用](detail-08.md)
+- [Dispatch 应用（运行与同步）、Agent 互审](detail-08.md)

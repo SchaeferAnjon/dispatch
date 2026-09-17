@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
+import { isInstalled } from "../installedAgents";
 import { DiscussChat } from "./DiscussChat";
 import type { Api } from "../api";
 import type { Comment, Issue } from "../types";
@@ -161,7 +162,8 @@ export function DiscussDialog({ api, projects, issues, me, initialProject, initi
   const t = useT();
   const [topic, setTopic] = useState("");
   const [project, setProject] = useState(initialProject ?? "");
-  const [parts, setParts] = useState<Participant[]>([{ kind: "claude", model: "" }, { kind: "codex", model: "" }]);
+  // Default members: the agents this Mac actually has (two voices when there are two).
+  const [parts, setParts] = useState<Participant[]>(() => { const have = ["claude", "codex", "pi"].filter((k) => isInstalled(k)).slice(0, 2); return (have.length ? have : ["claude"]).map((kind) => ({ kind, model: "" })); });
   // The leader: one member (index into parts). Speaks last each round; conclusion and document
   // come from its model; 派 Agent 去做 preselects it. Recorded on the task as 「领队：kind:model」.
   const [leader, setLeader] = useState(0);

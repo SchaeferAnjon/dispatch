@@ -10,4 +10,8 @@ cat > "$tmp"
 # Atomic replace so readers never see a half-written file; the temp file must not linger.
 mv -f "$tmp" "$Q/claude-code.json" 2>/dev/null || cp "$tmp" "$Q/claude-code.json"
 [ -f "$tmp" ] && rm -f "$tmp"
-exec bash -c 'command -v bun >/dev/null 2>&1 || exit 0; plugin_dir=$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '"'"'{ print $(NF-1) "\t" $(0) }'"'"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); [ -n "$plugin_dir" ] && exec bun --env-file /dev/null "${plugin_dir}src/index.ts"' < "$Q/claude-code.json"
+# Hand the same JSON to the status line the person had before Dispatch was set up (saved by
+# `dispatch init` into statusline-orig). None saved: print nothing, Claude Code shows its default.
+ORIG="$HOME/tasks/.dispatch/statusline-orig"
+[ -s "$ORIG" ] || exit 0
+exec bash -c "$(cat "$ORIG")" < "$Q/claude-code.json"

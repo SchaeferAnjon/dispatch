@@ -4,6 +4,7 @@ import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 import type { Host } from '../types';
 import { shrinkImage, withImages } from './SessionReply';
 import { t, useT } from '../i18n';
+import { firstInstalled, isInstalled } from '../installedAgents';
 
 type Target = { session_id: string; agent: string; host?: string; host_name?: string };
 interface Launch { request_id: string; state: string; message: string; session_id?: string; agent: string; cwd: string }
@@ -119,7 +120,7 @@ export function AdoptButton({ session, compact = false, className = 'btn sm' }: 
 export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCreated, onComputer }: { api: Api; hosts: Host[]; initialHost: string; initialCwd?: string; onClose: () => void; onCreated: (sid: string, host: string, agent: string) => void; onComputer: (host: string) => void }) {
   const t = useT();
   const [host, setHost] = useState(initialHost || 'local');
-  const [agent, setAgent] = useState('claude-code');
+  const [agent, setAgent] = useState(() => firstInstalled(['claude-code', 'codex', 'pi', 'opencode', 'hermes']));
   const [path, setPath] = useState('');
   const [folders, setFolders] = useState<Folders | null>(null);
   const [browseBusy, setBrowseBusy] = useState(false);
@@ -221,7 +222,7 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
     <header><div><h3>{t('新建会话')}</h3><p>{t('选择工作目录，直接开始一段新对话。')}</p></div><button className="btn ghost" aria-label={t('关闭新建会话')} onClick={onClose}>✕</button></header>
     {!launch && <><div className="new-session-selects">
       <label>{t('运行电脑')}<select aria-label={t('运行电脑')} value={host} disabled={locked} onChange={e => setHost(e.target.value)}>{hosts.length ? hosts.map(h => <option key={h.id} value={h.local ? 'local' : h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? ` · ${t('离线')}` : ''}</option>) : <option value="local">{t('本机')}</option>}</select></label>
-      <label>Agent<select aria-label="Agent" title={t('能在 Dispatch 里看到对话并回复的 Agent；派活对话框里的 Gemini CLI 只能派，看不到')} value={agent} disabled={locked} onChange={e => setAgent(e.target.value)}>{Object.entries(names).filter(([k]) => k !== 'zcode').map(([k,n]) => <option key={k} value={k}>{n}</option>)}</select></label>
+      <label>Agent<select aria-label="Agent" title={t('能在 Dispatch 里看到对话并回复的 Agent；派活对话框里的 Gemini CLI 只能派，看不到')} value={agent} disabled={locked} onChange={e => setAgent(e.target.value)}>{Object.entries(names).filter(([k]) => k !== 'zcode').map(([k,n]) => <option key={k} value={k} disabled={!isInstalled(k)}>{n}{isInstalled(k) ? '' : ` · ${t('未安装')}`}</option>)}</select></label>
     </div>
     <label>{t('工作文件夹')}<div className="folder-path"><input aria-label={t('工作文件夹')} value={path} disabled={locked} onChange={e => setPath(e.target.value)} placeholder={t('输入完整路径，或从下方选择')} />{finder && <button className="btn sm" type="button" disabled={locked} onClick={() => void pick()} title={t('用 Finder 选一个文件夹')}>{t('从 Finder 选择…')}</button>}<button className="btn sm" type="button" disabled={locked || browseBusy} onClick={() => browse(path)}>{t('前往')}</button></div></label>
     <div className="folder-picker" aria-busy={browseBusy}>

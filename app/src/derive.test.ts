@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needsReview, needsAttention, sessionStatus, actorOf, agentsFrom, columnOf, composePitfall, composeWiki, eventsFrom, parseAcceptance, parsePitfall, projectOf, serializeAcceptance, statusLabel } from "./derive";
+import { needsReview, needsAttention, sessionStatus, setHumanAliases, actorOf, agentsFrom, columnOf, composePitfall, composeWiki, eventsFrom, parseAcceptance, parsePitfall, projectOf, serializeAcceptance, statusLabel } from "./derive";
 import { lineDiff, withContext } from "./diff";
 import type { HistoryEntry, Issue, Session } from "./types";
 
@@ -28,11 +28,16 @@ describe("actors", () => {
     expect(actorOf("codex", "schaefer")?.kind).toBe("codex");
     expect(actorOf("zcode", "schaefer")?.glyph).toBe("Z");
   });
-  it("human aliases collapse into me", () => {
-    expect(actorOf("SchaeferAnjon", "schaefer")?.id).toBe("schaefer");
-    expect(actorOf("schaefer", "schaefer")?.name).toBe("你");
+  it("the aliases the person listed collapse into me; none are built in", () => {
+    setHumanAliases([]);
+    expect(actorOf("Alice-Old", "alice")?.name).toBe("Alice-Old");
+    setHumanAliases(["Alice-Old", " alice-macbook "]);
+    expect(actorOf("Alice-Old", "alice")?.id).toBe("alice");
+    expect(actorOf("alice-macbook", "alice")?.name).toBe("你");
+    expect(actorOf("alice", "alice")?.name).toBe("你");
+    setHumanAliases([]);
   });
-  it("unknown names stay themselves", () => expect(actorOf("bob", "schaefer")?.name).toBe("bob"));
+  it("unknown names stay themselves", () => expect(actorOf("bob", "alice")?.name).toBe("bob"));
 });
 
 describe("acceptance checklist", () => {

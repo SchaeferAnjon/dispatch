@@ -7,6 +7,7 @@ import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { getApi, isTauri, isServed, type Api, type AgentStartInput, type EnvReport } from "./api";
 import { EnvCheck } from "./components/EnvCheck";
+import { firstInstalled, setInstalledAgents } from "./installedAgents";
 import { Detail } from "./components/Detail";
 import { NewSession, SessionActions } from "./components/SessionActions";
 import { NewTask } from "./components/NewTask";
@@ -36,7 +37,7 @@ import { isArchived, isStarred, rankProjects } from "./projectFlags";
 import { GraphView } from "./components/Graph";
 import { OverviewView, Tour } from "./components/Guide";
 import { MobileNav } from "./components/MobileNav";
-import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
+import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue , setHumanAliases } from "./derive";
 import { intlLocale, useLocale, useT , subscribe as subscribeLocale } from "./i18n";
 import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View, MoveJob } from "./types";
 
@@ -118,6 +119,8 @@ export default function App() {
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [api]);
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
+  // Agents installed on this Mac: dialogs default to one of them (see installedAgents.ts).
+  useEffect(() => { if (!api) return; void api.on("local", ["agents-installed", "--json"]).then((s) => { const rows = JSON.parse(s.slice(Math.max(0, s.indexOf("[")))) as { id: string; found: boolean }[]; setInstalledAgents(rows.filter((r) => r.found).map((r) => r.id)); }).catch(() => setInstalledAgents(null)); }, [api]);
   // The first session-index read finished (even if it failed): the sessions page stops saying 「索引中…」.
   const [refsTried, setRefsTried] = useState(false);
   // The CLI itself could not answer `init status` (no Python, one too old, a broken bundle): ask
@@ -540,6 +543,9 @@ export default function App() {
   const hostId = useMemo(() => { if (!hostFilter) return ""; const h = hosts.find((x) => x.name === hostFilter); return h ? (h.local ? "local" : h.id) : ""; }, [hostFilter, hosts]);
   const localName = hosts.find((h) => h.local)?.name ?? "";
   const [settings, setSettings] = useState<DispatchSettings>(DEFAULT_SETTINGS);
+  // Which signatures on the board are the person: the list from settings; re-render once it is known.
+  const [, bumpAliases] = useState(0);
+  useEffect(() => { setHumanAliases(settings.human_aliases.replace(/，/g, ",").split(",")); bumpAliases((n) => n + 1); }, [settings.human_aliases]);
   // Auto summaries: a couple per pass, newest conversations first, so a fresh reply gets its
   // summary within minutes and older sessions fill in over time. The CLI honours the setting.
   useEffect(() => {
@@ -1057,7 +1063,7 @@ export default function App() {
       {migrationCheck && <div className="toast err" role="alert" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
         <div>{t("没有迁移，{host} 那边会丢东西：{list}", { host: migrationCheck.target, list: migrationCheck.conflicts.join(t("；")) })}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><button className="btn" style={{ color: 'var(--ink)' }} onClick={() => {
-          setDelegate({ host: hosts.find(h => (h.local ? 'local' : h.id) === migrationCheck.host)?.id || migrationCheck.host, cwd: migrationCheck.cwd, prompt: migrationCheckPrompt(migrationCheck), label: t("迁移检查 · {project}", { project: migrationCheck.project }), kind: 'pi', model: 'glm-5.3-flash' });
+          setDelegate({ host: hosts.find(h => (h.local ? 'local' : h.id) === migrationCheck.host)?.id || migrationCheck.host, cwd: migrationCheck.cwd, prompt: migrationCheckPrompt(migrationCheck), label: t("迁移检查 · {project}", { project: migrationCheck.project }), ...(() => { const kind = firstInstalled(['pi', 'claude', 'codex']); return { kind, model: kind === 'pi' ? 'glm-5.3-flash' : '' }; })() });
           setMigrationCheck(null);
         }}>{t("启动 Agent 检查")}</button><button className="btn" style={{ color: 'var(--ink)' }} onClick={() => setMigrationCheck(null)}>{t("关闭")}</button></div>
       </div>}

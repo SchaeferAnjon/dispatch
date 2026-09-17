@@ -8,7 +8,7 @@ import { t, useT } from "../i18n";
 // so it never comes back unless asked for from 设置.
 
 interface Dep { name: string; found: boolean; path: string; formula: string | null; why: string; required: boolean; installable: boolean; version?: string }
-interface AgentRow { id: string; name: string; found: boolean; home: string; hooks: boolean | null; rules: boolean }
+interface AgentRow { id: string; name: string; found: boolean; home: string; hooks: boolean | null; rules: boolean; edit_guard?: boolean | null }
 interface ModelRow { id: string; provider: string; label: string; env: string; configured: boolean; model: string; subscription: boolean }
 interface ModelsInfo { catalog: ModelRow[]; uses: { key: string; name: string; desc: string; enabled: boolean }[]; claude_cli: boolean; current: string }
 interface Step { id: string; title: string; ok: boolean; detail: string; optional?: boolean; models?: ModelsInfo; deps?: Dep[]; reviewers?: { id: string; kind: string; name: string }[]; cli?: { link: string; exists: boolean; target: string; in_app: boolean }; board?: { exists: boolean; server_up: boolean; hub?: { name: string; ssh: string } | null; mode: string; reverse_ssh?: Reverse }; agents?: AgentRow[]; rules?: { have_rules: boolean; targets: { agent: string; state: string; path: string }[]; seeded_from: string } }
@@ -59,6 +59,7 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
   const reverse = board?.reverse_ssh;
   const rules = step("rules").rules;
   const m = status.machine;
+  const [editGuard, setEditGuard] = useState<boolean | null>(null);  // null: follow what is installed now
   // 「模型与总结」: nothing is sent to a model until the person picks one of the three here.
   const models = step("models").models;
   const [modelMode, setModelMode] = useState<"off" | "sub" | "key">("off");
@@ -150,7 +151,9 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
         <Card n={4} s={step("agents")} busy={busy === "agents"}>
           <p className="muted">{t("检测到已安装的 Agent。选中的会收到同一份规则；Claude Code 还会装上 hook（会话状态、任务板摘要、编辑互斥、额度）。")} {t("VS Code 里的 Claude Code / Codex 扩展用的是同一份记录和同一套 hook，勾上对应的 Agent 就够了；它们的会话会标成「VS Code」。")}</p>
           <div className="setup-agents">{agents.map((a) => <label key={a.id} className={a.found ? "" : "off"}><input type="checkbox" checked={picked?.includes(a.id) ?? false} onChange={(e) => setPicked((p) => e.target.checked ? [...(p ?? []), a.id] : (p ?? []).filter((x) => x !== a.id))} /><b>{a.name}</b><span className="muted small">{a.found ? (a.hooks ? t("hook 已装") : a.home.replace(/^\/Users\/[^/]+/, "~")) : t("未安装")}</span></label>)}</div>
-          <button className="btn primary" disabled={!!busy || !(picked?.length)} onClick={() => void run("agents", picked ?? [], t("Agent 已配置"))}>{busy === "agents" ? t("配置中…") : t("就用这些")}</button>
+          {picked?.includes("claude-code") && <label className="check setup-option"><input type="checkbox" checked={editGuard ?? !!agents.find((a) => a.id === "claude-code")?.edit_guard} onChange={(e) => setEditGuard(e.target.checked)} /> <span><b>{t("编辑互斥")}</b> <span className="muted small">{t("同一个文件半小时内被另一段会话改过时，先拦一下让 Agent 确认。同一个仓库里经常同时跑几个 Agent 才需要；只开一个窗口的话不用勾，否则 /clear 或新开窗口后会被拦一次。")}</span></span></label>}
+          <p className="muted small">{t("已有的 Claude Code 状态行会保留：Dispatch 只在它前面记一下额度；settings.json 改动前会备份成 settings.json.dispatch-bak。")}</p>
+          <button className="btn primary" disabled={!!busy || !(picked?.length)} onClick={() => void run("agents", [...(picked ?? []), (editGuard ?? !!agents.find((a) => a.id === "claude-code")?.edit_guard) ? "--edit-guard" : "--no-edit-guard"], t("Agent 已配置"))}>{busy === "agents" ? t("配置中…") : t("就用这些")}</button>
           {log.agents && <pre className="setup-log">{log.agents}</pre>}
         </Card>
 

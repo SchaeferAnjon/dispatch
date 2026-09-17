@@ -759,8 +759,8 @@ def rename_self(name):
 # ---------------------------------------------------------------- agents
 
 CLAUDE_SETTINGS = os.path.join(D.HOME, ".claude", "settings.json")
-PRESENCE = 'python3 "$HOME/tasks/.dispatch/presence.py" claude-code {ev} # dispatch-presence'
-GUARD = 'python3 "$HOME/tasks/.dispatch/edit-guard.py" claude-code {when} # dispatch-edit-guard'
+PRESENCE = 'PYTHONDONTWRITEBYTECODE=1 {py} "$HOME/tasks/.dispatch/presence.py" claude-code {ev} # dispatch-presence'
+GUARD = 'PYTHONDONTWRITEBYTECODE=1 {py} "$HOME/tasks/.dispatch/edit-guard.py" claude-code {when} # dispatch-edit-guard'
 EDIT_TOOLS = "Edit|Write|MultiEdit|NotebookEdit"
 
 
@@ -769,6 +769,7 @@ def agents_status():
     for aid, (label, home) in AGENT_HOMES.items():
         found = os.path.isdir(home)
         rows.append({"id": aid, "name": label, "found": found, "home": home, "hooks": claude_hooks_installed() if aid == "claude-code" and found else None,
+                     "edit_guard": edit_guard_installed() if aid == "claude-code" and found else None,
                      "rules": aid in ("claude-code", "codex", "pi", "zcode")})
     return rows
 
@@ -781,17 +782,42 @@ def claude_hooks_installed():
     return "dispatch prime" in s and "dispatch-presence" in s
 
 
-def install_claude_hooks():
-    """Presence (what each session is doing), the SessionStart digest, the edit guard and
-    the statusline tee. Managed entries carry a marker so re-running replaces, not duplicates."""
+STATUSLINE_ORIG = os.path.join(D.DISPATCH_DIR, "statusline-orig")
+TEE_COMMAND = 'bash "$HOME/tasks/.dispatch/statusline-tee.sh"'
+
+
+def hook_python():
+    """The interpreter hooks run on: the one running this wizard (the app probed it for ≥ 3.9).
+    A bare `python3` in a hook is whatever the agent's shell finds first, or nothing."""
+    return sys.executable or "python3"
+
+
+def edit_guard_installed():
     try:
-        d = json.load(open(CLAUDE_SETTINGS))
+        return "dispatch-edit-guard" in open(CLAUDE_SETTINGS).read()
+    except OSError:
+        return False
+
+
+def install_claude_hooks(edit_guard=None):
+    """Presence (what each session is doing), the SessionStart digest, the status line tee and,
+    when asked, the edit guard. Managed entries carry a marker so re-running replaces them and
+    never touches anyone else's hooks. The previous settings.json is kept as *.dispatch-bak, and a
+    status line the person already had keeps working: the tee forwards to it."""
+    try:
+        raw = open(CLAUDE_SETTINGS).read()
+        d = json.loads(raw)
     except (FileNotFoundError, ValueError):
-        d = {}
+        raw, d = "", {}
+    if raw:
+        with open(CLAUDE_SETTINGS + ".dispatch-bak", "w") as f:
+            f.write(raw)
+    if edit_guard is None:
+        edit_guard = edit_guard_installed()  # re-running keeps what the person chose before
     hooks = d.setdefault("hooks", {})
 
     def managed(cmd):
-        return any(t in cmd for t in ("dispatch-presence", "dispatch-edit-guard", "dispatch prime"))
+        return any(t in cmd for t in ("dispatch-presence", "dispatch-edit-guard", "dispatch prime", "dispatch-prime"))
 
     for ev, groups in list(hooks.items()):
         for g in groups:
@@ -809,15 +835,29 @@ def install_claude_hooks():
             group["matcher"] = matcher
         hooks.setdefault(ev, []).append(group)
 
-    add("SessionStart", '"$HOME/.local/bin/dispatch" prime --hook-json', matcher="", timeout=20)
+    py, cli = shlex.quote(hook_python()), shlex.quote(os.path.abspath(D.__file__))
+    # Absolute paths: the hook must work whether or not step 2 linked `dispatch` onto PATH. The
+    # agent speaks as itself on the board (BEADS_ACTOR), not as whoever owns the Mac.
+    add("SessionStart", f"BEADS_ACTOR=claude-code PYTHONDONTWRITEBYTECODE=1 {py} {cli} prime --hook-json # dispatch-prime", matcher="", timeout=45)
     for ev in ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Notification", "PermissionRequest", "Stop", "SessionEnd"):
-        add(ev, PRESENCE.format(ev=ev), matcher="" if ev == "SessionStart" else None)
-    add("PreToolUse", GUARD.format(when="pre"), matcher=EDIT_TOOLS)
-    add("PostToolUse", GUARD.format(when="post"), matcher=EDIT_TOOLS)
-    d["statusLine"] = {"type": "command", "command": 'bash "$HOME/tasks/.dispatch/statusline-tee.sh"', "padding": 0}
+        add(ev, PRESENCE.format(ev=ev, py=py), matcher="" if ev == "SessionStart" else None)
+    if edit_guard:
+        add("PreToolUse", GUARD.format(when="pre", py=py), matcher=EDIT_TOOLS)
+        add("PostToolUse", GUARD.format(when="post", py=py), matcher=EDIT_TOOLS)
+    # The status line: keep the person's own and put the quota tee in front of it.
+    cur = (d.get("statusLine") or {}).get("command", "") if isinstance(d.get("statusLine"), dict) else ""
+    if cur and "statusline-tee.sh" not in cur:
+        os.makedirs(D.DISPATCH_DIR, exist_ok=True)
+        with open(STATUSLINE_ORIG, "w") as f:
+            f.write(cur + "\n")
+    d["statusLine"] = {**(d.get("statusLine") if isinstance(d.get("statusLine"), dict) else {}), "type": "command", "command": TEE_COMMAND, "padding": (d.get("statusLine") or {}).get("padding", 0) if isinstance(d.get("statusLine"), dict) else 0}
     os.makedirs(os.path.dirname(CLAUDE_SETTINGS), exist_ok=True)
-    json.dump(d, open(CLAUDE_SETTINGS, "w"), ensure_ascii=False, indent=2)
-    return {"path": CLAUDE_SETTINGS}
+    tmp = CLAUDE_SETTINGS + ".dispatch-tmp"
+    with open(tmp, "w") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, CLAUDE_SETTINGS)
+    return {"path": CLAUDE_SETTINGS, "backup": CLAUDE_SETTINGS + ".dispatch-bak" if raw else "", "edit_guard": bool(edit_guard), "kept_statusline": bool(cur and "statusline-tee.sh" not in cur)}
 
 
 HERDR_SOCK = os.path.join(D.HOME, ".config", "herdr", "herdr.sock")
@@ -845,11 +885,20 @@ def ensure_herdr():
     return {"mode": "headless", "running": os.path.exists(HERDR_MAIN_SOCK), "note": "Herdr 在后台 tmux 里常驻（session main）"}
 
 
-def agents_setup(selected):
+def agents_setup(selected, edit_guard=None):
+    """`selected` may carry the flags `--edit-guard` / `--no-edit-guard` (from the app's checkbox):
+    the guard refuses an edit when another session touched the same file in the last half hour,
+    which protects people running several agents in one repository and only gets in the way of
+    everyone else, so it is opt-in."""
+    if "--edit-guard" in selected:
+        edit_guard = True
+    elif "--no-edit-guard" in selected:
+        edit_guard = False
+    selected = [x for x in selected if not x.startswith("--")]
     save_state(agents=selected)
     done = {}
     if "claude-code" in selected:
-        done["claude-code"] = install_claude_hooks()
+        done["claude-code"] = install_claude_hooks(edit_guard=edit_guard)
     try:
         done["herdr"] = ensure_herdr()
     except Exception as e:

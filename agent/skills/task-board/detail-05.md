@@ -1,9 +1,9 @@
 # 派活给别的 Agent / 模型（`dispatch agent`，底层是 Herdr）
 
 ```bash
-dispatch agent list [--host mini]                                   # 本机 / Mac mini 的 Herdr 里有哪些 Agent 在跑
+dispatch agent list [--host <机器名>]                               # 本机 / 另一台电脑的 Herdr 里有哪些 Agent 在跑（机器名见 dispatch hosts）
 dispatch agent start codex --cwd ~/Projects/x --task <id> -p "把测试修好，改完 dispatch log"   # 新标签起一个 Agent，认领任务，发首条提示词，等它做完把输出读回来
-dispatch agent start claude --host mini --model claude-sonnet-5 -p "…"                    # 跨机器：在 Mac mini 的无头 Herdr 会话里起
+dispatch agent start claude --host <机器名> --model claude-sonnet-5 -p "…"              # 跨机器：在另一台电脑的无头 Herdr 会话里起
 dispatch agent ask <pane|名字|标题|任务ID> "接着把文档补上"          # 给已有 Agent 发一句，默认等它做完并读回输出
 dispatch agent read <目标> --lines 80 / wait <目标> / keys <目标> enter / close <目标>
 ```

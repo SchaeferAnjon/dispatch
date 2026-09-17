@@ -7,3 +7,4 @@
 - Agent 看到的约定在 `agent/skills/task-board/SKILL.md`（池子里的 `task-board` 是指向它的软链）；改约定改这里。
 - 验证界面：`DISPATCH_VIEW=<view> DISPATCH_TASK=<id> /Applications/Dispatch.app/Contents/MacOS/dispatch` 可指定启动视图/打开任务；截图用 `screencapture -l <窗口号>`（窗口号用 scratchpad 里的 pyobjc venv 查，选最高的那个）。
 - 板本身用 `dispatch begin / log / done` 记录这个项目的工作（见全局 CLAUDE.md §6）。
+- 维护备忘（原在 task-board 技能附录里，随包分发不合适，移到这里）：源码 `app/`（Tauri 2 + React；Rust 只包 `bd --json` 和 `dispatch` CLI，逻辑都在 `app/cli/dispatch.py`）；旧嵌入式任务板数据在 `~/tasks/.beads.embedded`。

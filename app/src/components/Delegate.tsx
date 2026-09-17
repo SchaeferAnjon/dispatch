@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { firstInstalled, isInstalled } from "../installedAgents";
 import type { Api, AgentStartInput, AgentStartResult } from "../api";
 import { control } from "./SessionActions";
 import { actorOf, projectOf } from "../derive";
@@ -33,7 +34,7 @@ export function Delegate({ api, hosts, initialHost, initialCwd, initialTask, ini
   const online = hosts.filter((h) => h.online || h.local);
   const [hostId, setHostId] = useState(initialHost ?? (online.find((h) => h.local)?.id ?? online[0]?.id ?? ""));
   const host = hosts.find((h) => h.id === hostId);
-  const [kind, setKind] = useState(initialKind || "claude");
+  const [kind, setKind] = useState(initialKind || firstInstalled(KINDS.map(([k]) => k)));
   const [model, setModel] = useState(initialModel || "");
   const MODELS: Record<string, [string, string][]> = { pi: [["", t("默认")], ["glm-5.3-flash", "GLM 5.3 Flash"]], claude: [["", t("默认")], ["claude-fable-5-1", t("Fable 5.1（最强）")], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", t("Haiku（快、省）")]], codex: [["", t("默认")], ["gpt-5.5", "gpt-5.5"], ["gpt-5.6-terra", "gpt-5.6-terra"], ["gpt-6-astra", "gpt-6-astra"]] };
   const [taskId, setTaskId] = useState(initialTask ?? "");
@@ -83,7 +84,7 @@ export function Delegate({ api, hosts, initialHost, initialCwd, initialTask, ini
         <p className="muted small">{t("在所选电脑的 Herdr 里起一个 Agent，把任务记到它名下，并发第一句话。它会以自己的身份认领任务，完成后 dispatch done。")}</p>
         <div className="new-session-selects">
           <label>{t("电脑")}<select value={hostId} onChange={(e) => setHostId(e.target.value)}>{hosts.map((h) => <option key={h.id} value={h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? t(" · 离线") : ""}</option>)}</select></label>
-          <label>Agent<select value={kind} onChange={(e) => { setKind(e.target.value); setModel(""); }} title={t("Herdr 能起的 Agent。Gemini CLI / OpenCode 能派活，但它们的对话 Dispatch 还读不到")}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+          <label>Agent<select value={kind} onChange={(e) => { setKind(e.target.value); setModel(""); }} title={t("Herdr 能起的 Agent。Gemini CLI / OpenCode 能派活，但它们的对话 Dispatch 还读不到")}>{KINDS.map(([k, l]) => <option key={k} value={k} disabled={!isInstalled(k)}>{l}{isInstalled(k) ? "" : ` · ${t("未安装")}`}</option>)}</select></label>
           <label>{t("模型")}<select value={model} onChange={(e) => setModel(e.target.value)}>{(MODELS[kind] ?? [["", t("默认")]]).map(([m, l]) => <option key={m} value={m}>{l}</option>)}</select></label>
         </div>
         <label>{t("任务")}<select value={taskId} onChange={(e) => setTaskId(e.target.value)}><option value="">{t("不挂任务，只发一句话")}</option>{groups.filter(([, xs]) => xs.length).map(([label, xs]) => <optgroup key={label} label={label}>{xs.map((i) => <option key={i.id} value={i.id}>{i.id} · {i.title}{i.assignee ? t(" · 现在 {who}", { who: actorOf(i.assignee, me)?.name ?? i.assignee }) : ""}</option>)}</optgroup>)}</select></label>
