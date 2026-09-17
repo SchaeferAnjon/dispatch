@@ -114,7 +114,7 @@ export function SessionsView({ onBack, onProject, solo = false, localHostName, a
   // Live activity uses the transcript tail below: progress, calls and results belong to the
   // same conversation, with results updating their original cards by call id.
   // On a phone the summary starts folded to one line: the conversation gets the screen.
-  const phone = typeof window !== "undefined" && window.innerWidth <= 760;
+  const phone = typeof window !== "undefined" && window.innerWidth <= 640;
   const [summaryOpen, setSummaryOpen] = useState(!phone);
 
   const scroller = useRef<HTMLDivElement>(null);

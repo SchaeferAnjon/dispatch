@@ -25,7 +25,7 @@ export function DiscussView({ api, me, issues, initialTask, onShown, onNew, onOp
   const all = useMemo(() => issues.filter((i) => i.labels?.includes(DISCUSSION_LABEL)).sort((a, b) => b.updated_at.localeCompare(a.updated_at)), [issues]);
   const [task, setTask] = useState<string>(initialTask ?? "");
   const [showList, setShowList] = useState(!initialTask);
-  const [showSummary, setShowSummary] = useState(() => window.innerWidth > 760);
+  const [showSummary, setShowSummary] = useState(() => window.innerWidth > 640);
   const [showDoc, setShowDoc] = useState(false);
   const [q, setQ] = useState("");
   const [withArchived, setWithArchived] = useState(false);

@@ -215,6 +215,13 @@ export default function App() {
     if (p.view === "discuss") { setDiscussFocus(p.discussion ?? null); setDiscussShown(p.discussion ?? null); }
   };
   const backTarget = trail[trail.length - 1];
+  // The left column folds on its own when the window is about half a screen wide, and by hand
+  // with the ☰ button (remembered). Either way the page keeps its desktop layout.
+  const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 1100px)").matches);
+  useEffect(() => { const mq = window.matchMedia("(max-width: 1100px)"); const on = () => setNarrow(mq.matches); mq.addEventListener("change", on); return () => mq.removeEventListener("change", on); }, []);
+  const [sideChoice, setSideChoice] = useState<"open" | "closed" | null>(() => { try { return (localStorage.getItem("dispatch-side") as "open" | "closed" | null) || null; } catch { return null; } });
+  const sideCollapsed = sideChoice ? sideChoice === "closed" : narrow;
+  const toggleSide = () => { const next = sideCollapsed ? "open" : "closed"; setSideChoice(next); try { localStorage.setItem("dispatch-side", next); } catch { /* private mode */ } };
   // ?solo=1: this window shows one conversation and nothing else — the panes of 分屏 and detached
   // conversation windows load the app this way.
   const solo = useMemo(() => new URLSearchParams(window.location.search).has("solo"), []);
@@ -884,9 +891,9 @@ export default function App() {
             others.length ? `这边还有 ${others.length} 个会话在改这个项目` : "", r.owner?.error ? `项目归属更新失败：${r.owner.error}` : ""].filter(Boolean).join("；"), !!r.owner?.error || !!(v?.checked && !(v.head_match && v.dirty_match)));
           api!.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
         } catch (e) { say(String(e), true); }
-      } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectHome(projectRows.filter((a) => conversationProject(a) === n))); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className={`app${solo ? " solo" : ""}`}>
+      } }}><ProjectActions starred={(n) => isStarred(projectFlags, n)} archived={(n) => isArchived(projectFlags, n)} onFlag={setProjectFlag} onProject={openProject} onNew={(n) => { setNewSessionProject(n); setNewSessionContext(projectHome(projectRows.filter((a) => conversationProject(a) === n))); setNewSession(true); }} onTasks={(n) => { setFilters({ ...EMPTY_FILTERS, project: n === UNGROUPED_PROJECT ? "" : n }); setQuery(""); setView("board"); }}><ViewMenu items={viewMenuItems}><ItemMenus><TaskActions api={api} onOpen={setSelected} onDelegate={(id) => setDelegate({ task: id })} onDone={(m,id)=>{say(m);if(id===selected)setSelected(null);void reload();}} onError={m=>say(m,true)}><div className={`app${solo ? " solo" : ""}${sideCollapsed ? " side-collapsed" : ""}`}>
       <div className="titlebar" data-tauri-drag-region>
-        <div className="lead" data-tauri-drag-region><b className="lead-mobile">Dispatch</b></div>
+        <div className="lead" data-tauri-drag-region><button className="btn ghost sm side-toggle" onClick={toggleSide} title={sideCollapsed ? "展开左侧栏" : "收起左侧栏（窗口不到半屏时会自动收起）"} aria-label={sideCollapsed ? "展开左侧栏" : "收起左侧栏"}>{sideCollapsed ? "☰" : "⇤"}</button><b className="lead-mobile">Dispatch</b></div>
         <div className="crumb" data-tauri-drag-region>
           {backTarget ? <button className="btn ghost sm" onClick={goBackPlace} title="返回上一页（按你刚才的路径倒退一步）">‹ 返回{backLabel(backTarget)}</button>
             : backStack.length > 0 && <button className="btn ghost sm" onClick={goBack}>‹ 返回{VIEW_LABEL[backStack[backStack.length - 1].view]}</button>}{hostFilter && <><span>{hostFilter}</span><span className="sep">›</span></>}<b>{VIEW_LABEL[view]}</b>
