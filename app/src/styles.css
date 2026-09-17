@@ -1717,6 +1717,14 @@ button.review-verdict:hover{filter:brightness(.96)}
 .app.side-collapsed .side{display:none}
 .app.side-collapsed .body{grid-template-columns:minmax(0,1fr)}
 .app.side-collapsed .titlebar{grid-template-columns:auto minmax(0,1fr) minmax(0,auto)}
-.side-toggle{margin-left:76px}
-.app.side-collapsed .side-toggle{margin-left:76px}
+.side-toggle{margin-left:0}
+.titlebar .lead .side-toggle{pointer-events:auto}
 @media(max-width:640px){.side-toggle{display:none}}
+/* The web has no traffic lights: the lead column needs no gap for them. */
+html:not(.tauri) .titlebar .lead{padding-left:12px}
+/* Desktop window narrowed into the phone layout: the overlay title bar still has the traffic
+   lights at the top-left, so the lead text and the bar itself must leave room for them. */
+@media(max-width:640px){
+  html.tauri .titlebar{min-height:40px}
+  html.tauri .titlebar .lead{padding-left:82px}
+}

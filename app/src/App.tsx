@@ -217,6 +217,8 @@ export default function App() {
   const backTarget = trail[trail.length - 1];
   // The left column folds on its own when the window is about half a screen wide, and by hand
   // with the ☰ button (remembered). Either way the page keeps its desktop layout.
+  // Styles that only make sense under the desktop's overlay title bar (room for the traffic lights).
+  useEffect(() => { document.documentElement.classList.toggle("tauri", isTauri); }, []);
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 1100px)").matches);
   useEffect(() => { const mq = window.matchMedia("(max-width: 1100px)"); const on = () => setNarrow(mq.matches); mq.addEventListener("change", on); return () => mq.removeEventListener("change", on); }, []);
   const [sideChoice, setSideChoice] = useState<"open" | "closed" | null>(() => { try { return (localStorage.getItem("dispatch-side") as "open" | "closed" | null) || null; } catch { return null; } });
