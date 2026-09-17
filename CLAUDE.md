@@ -5,6 +5,6 @@
 - 测试：`cd app && npm test`（vitest，derive/diff）和 `npm run test:py`（dispatch CLI）。改了 `derive.ts`、`diff.ts`、`cli/dispatch.py` 必跑。
 - 架构一句话：Rust 只包 `bd --json` 和 `dispatch` CLI（`app/cli/dispatch.py`），所有会话/技能/踩坑逻辑在 CLI 里，界面只渲染。新能力先加 CLI 子命令，再加视图。
 - Agent 看到的约定在 `agent/skills/task-board/SKILL.md`（池子里的 `task-board` 是指向它的软链）；改约定改这里。
-- 验证界面：`DISPATCH_VIEW=<view> DISPATCH_TASK=<id> /Applications/Dispatch.app/Contents/MacOS/dispatch` 可指定启动视图/打开任务；截图用 `screencapture -l <窗口号>`（窗口号用 scratchpad 里的 pyobjc venv 查，选最高的那个）。
+- 验证界面：应用是单实例的。`/Applications/Dispatch.app/Contents/MacOS/dispatch --view <view> [--task <id>]`：没在跑就按这个视图启动，已在跑就把现有窗口切过去（环境变量 `DISPATCH_VIEW` / `DISPATCH_TASK` 只对首次启动有效）；截图用 `screencapture -l <窗口号>`（窗口号用 scratchpad 里的 pyobjc venv 查，选最高的那个）。
 - 板本身用 `dispatch begin / log / done` 记录这个项目的工作（见全局 CLAUDE.md §6）。
 - 维护备忘（原在 task-board 技能附录里，随包分发不合适，移到这里）：源码 `app/`（Tauri 2 + React；Rust 只包 `bd --json` 和 `dispatch` CLI，逻辑都在 `app/cli/dispatch.py`）；旧嵌入式任务板数据在 `~/tasks/.beads.embedded`。

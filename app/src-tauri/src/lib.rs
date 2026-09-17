@@ -314,8 +314,8 @@ async fn bd_info() -> Result<Info, String> {
         beads_dir: beads_dir().display().to_string(),
         actor: actor(),
         version: version.trim().to_string(),
-        initial_view: std::env::var("DISPATCH_VIEW").ok(),
-        initial_task: std::env::var("DISPATCH_TASK").ok(),
+        initial_view: std::env::var("DISPATCH_VIEW").ok().or_else(|| cli_arg("--view")),
+        initial_task: std::env::var("DISPATCH_TASK").ok().or_else(|| cli_arg("--task")),
     })
 }
 
@@ -551,10 +551,19 @@ async fn run_dispatch(args: Vec<String>) -> Result<String, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Pause between background runs: the normal pace while it works, doubling (up to half an hour)
+/// while it fails, so a Mac without Python or bd does not fork a doomed process every minute.
+fn backoff_secs(base: u64, failures: u32) -> u64 {
+    if failures == 0 { base } else { (base << failures.min(5)).min(1800) }
+}
+
 fn start_indexer() {
-    std::thread::spawn(|| loop {
-        let _ = run_dispatch_blocking(&args(&["index", "--json"]));
-        std::thread::sleep(Duration::from_secs(60));
+    std::thread::spawn(|| {
+        let mut failures = 0u32;
+        loop {
+            failures = if run_dispatch_blocking(&args(&["index", "--json"])).is_ok() { 0 } else { failures + 1 };
+            std::thread::sleep(Duration::from_secs(backoff_secs(60, failures)));
+        }
     });
 }
 
@@ -573,13 +582,46 @@ async fn task_sessions(id: String) -> Result<String, String> {
 /// releases the assertion the moment the app exits. A desktop (no battery) also keeps its display
 /// awake, so the screen never locks under GUI automation (AppleScript, screen capture); a laptop
 /// only stops idle system sleep and may still dim its screen.
+fn cli_arg(name: &str) -> Option<String> {
+    let argv: Vec<String> = std::env::args().collect();
+    argv.iter().position(|a| a == name).and_then(|i| argv.get(i + 1)).cloned()
+}
+
+fn keep_awake_file() -> PathBuf {
+    home().join("tasks/.dispatch/keep-awake")
+}
+
+/// "off" | "system" | "display": this Mac's choice (设置 → 这台电脑). Default "system": stop idle
+/// system sleep so agents and the phone service keep running, and let the screen sleep and lock as
+/// the person configured it. "display" also keeps the screen on, for a Mac that is driven through
+/// GUI automation or watched remotely.
+fn keep_awake_mode() -> String {
+    std::fs::read_to_string(keep_awake_file()).ok().map(|s| s.trim().to_string()).filter(|s| matches!(s.as_str(), "off" | "system" | "display")).unwrap_or_else(|| "system".into())
+}
+
+static CAFFEINATE: Mutex<Option<std::process::Child>> = Mutex::new(None);
+
 fn keep_awake() {
     if !cfg!(target_os = "macos") { return; }
-    let laptop = Command::new("pmset").args(["-g", "batt"]).output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("InternalBattery")).unwrap_or(true);
-    let flags = if laptop { "-is" } else { "-dis" };
-    let _ = Command::new("caffeinate").args([flags, "-w", &std::process::id().to_string()])
-        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+    if let Ok(mut g) = CAFFEINATE.lock() {
+        if let Some(mut old) = g.take() { let _ = old.kill(); let _ = old.wait(); }
+        let flags = match keep_awake_mode().as_str() { "off" => return, "display" => "-dis", _ => "-is" };
+        *g = Command::new("caffeinate").args([flags, "-w", &std::process::id().to_string()])
+            .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().ok();
+    }
+}
+
+#[tauri::command]
+fn keep_awake_get() -> String { keep_awake_mode() }
+
+#[tauri::command]
+fn keep_awake_set(mode: String) -> Result<String, String> {
+    if !matches!(mode.as_str(), "off" | "system" | "display") { return Err(format!("unknown mode {mode}")); }
+    let f = keep_awake_file();
+    if let Some(d) = f.parent() { let _ = std::fs::create_dir_all(d); }
+    std::fs::write(&f, format!("{mode}\n")).map_err(|e| e.to_string())?;
+    keep_awake();
+    Ok(mode)
 }
 
 /// A second (third…) Dispatch window on the same app state, opened at `hash` (`#/sessions/<id>`,
@@ -627,10 +669,13 @@ async fn focus_session(id: String) -> Result<String, String> {
 
 #[tauri::command]
 fn resume_cmd(agent: String, session_id: String, cwd: String) -> String {
-    let cd = if cwd.is_empty() { String::new() } else { format!("cd '{}' && ", cwd.replace('\'', "'\\''")) };
+    let q = |v: &str| format!("'{}'", v.replace('\'', "'\\''"));
+    let cd = if cwd.is_empty() { String::new() } else { format!("cd {} && ", q(&cwd)) };
+    // Session ids are UUID-like; anything else gets quoted so a pasted command cannot run extra words.
+    let sid = if session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') { session_id.clone() } else { q(&session_id) };
     match agent.as_str() {
-        "codex" => format!("{cd}codex resume {session_id}"),
-        _ => format!("{cd}claude --resume {session_id}"),
+        "codex" => format!("{cd}codex resume {sid}"),
+        _ => format!("{cd}claude --resume {sid}"),
     }
 }
 
@@ -894,9 +939,19 @@ fn server_data_dir() -> Option<PathBuf> {
 
 // bd does not resurrect the shared Dolt server; `bd dolt start` is idempotent.
 fn ensure_dolt_server() {
-    std::thread::spawn(|| loop {
-        let _ = run_bd_blocking(&args(&["dolt", "start"]));
-        std::thread::sleep(Duration::from_secs(120));
+    std::thread::spawn(|| {
+        let mut failures = 0u32;
+        loop {
+            // First-run setup installs a LaunchAgent that keeps the board's Dolt server up (the hub
+            // runs it from its config, a joined Mac runs `bd dolt start` on a timer): when one
+            // exists this loop would only duplicate it, and on the hub `bd dolt start` is wrong.
+            let agents = home().join("Library/LaunchAgents");
+            let managed = ["dev.dispatch", "dev.schaefer"].iter().any(|p| ["dolt-server", "beads-dolt"].iter().any(|n| agents.join(format!("{p}.{n}.plist")).exists()));
+            if !managed && beads_dir().exists() {
+                failures = if run_bd_blocking(&args(&["dolt", "start"])).is_ok() { 0 } else { failures + 1 };
+            }
+            std::thread::sleep(Duration::from_secs(backoff_secs(120, failures)));
+        }
     });
 }
 
@@ -1072,6 +1127,21 @@ fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // One Dispatch per login: a second launch (the Dock, `open -a`, a script passing
+        // `--view <name> [--task <id>]`) brings the running window forward and tells it where to go,
+        // instead of starting a second set of watchers, indexers and keep-awake helpers.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+            let arg = |name: &str| argv.iter().position(|a| a == name).and_then(|i| argv.get(i + 1)).cloned();
+            let (view, task) = (arg("--view"), arg("--task"));
+            if view.is_some() || task.is_some() {
+                let _ = app.emit("dispatch-navigate", serde_json::json!({ "view": view, "task": task }));
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
@@ -1101,7 +1171,7 @@ pub fn run() {
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, open_window, session_activity, session_seen, session_detail, focus_session, memories_list, memory_set, memory_forget,
             skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, dispatch_on, tray_update, set_locale,
-            rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path, env_check
+            rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path, env_check, keep_awake_get, keep_awake_set
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

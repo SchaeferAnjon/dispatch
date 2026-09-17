@@ -121,6 +121,17 @@ export default function App() {
     tick();
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [api]);
+  // A second launch (`open -a Dispatch --args --view sessions`, a script) lands in the running window.
+  useEffect(() => {
+    if (!isTauri) return;
+    let off: (() => void) | undefined;
+    void import("@tauri-apps/api/event").then((m) => m.listen<{ view?: string | null; task?: string | null }>("dispatch-navigate", (e) => {
+      const v = e.payload.view ?? "";
+      if ((VIEWS as string[]).includes(v)) setView(v as View);
+      if (e.payload.task) setSelected(e.payload.task);
+    })).then((un) => { off = un; });
+    return () => off?.();
+  }, []);
   const presenceOnce = useRef(false);  // a hidden window keeps the first presence read and then stops polling
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
   // Agents installed on this Mac: dialogs default to one of them (see installedAgents.ts).

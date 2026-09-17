@@ -41,6 +41,10 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
   const [applying, setApplying] = useState(false);
   const [notifying, setNotifying] = useState(false);
   const [phoneNote, setPhoneNote] = useState("");
+  // This Mac only (a file next to Dispatch's data, read by the desktop shell at launch).
+  const [keepAwake, setKeepAwake] = useState("system");
+  useEffect(() => { if (!isTauri) return; void import("@tauri-apps/api/core").then((m) => m.invoke<string>("keep_awake_get")).then(setKeepAwake).catch(() => {}); }, []);
+  const changeKeepAwake = async (mode: string) => { setKeepAwake(mode); try { await (await import("@tauri-apps/api/core")).invoke("keep_awake_set", { mode }); } catch { /* older shell */ } };
   // Phone channel: the keys live in `dispatch env` (NTFY_URL / BARK_KEY); only whether they are set is shown.
   const [barkKey, setBarkKey] = useState(""); const [ntfyUrl, setNtfyUrl] = useState("");
   const [barkSet, setBarkSet] = useState(false); const [ntfySet, setNtfySet] = useState(false); const [channelBusy, setChannelBusy] = useState(false);
@@ -232,6 +236,10 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
       </section>
       <section className="settings-card">
         <h3>{t("这台电脑")}</h3>
+        {isTauri && <label className="settings-row">
+          <div><b>{t("防止这台电脑休眠")}</b><p>{t("Dispatch 开着的时候生效，只管这台电脑。「只防系统休眠」让 Agent 和手机访问一直能用，屏幕照常息屏、锁屏；「屏幕也常亮」给要被远程看屏幕、或靠界面自动化操作的电脑；「不干预」完全按系统自己的节能设置。")}</p></div>
+          <select value={keepAwake} onChange={(e) => void changeKeepAwake(e.target.value)} aria-label={t("防止这台电脑休眠")}><option value="system">{t("只防系统休眠（默认）")}</option><option value="display">{t("屏幕也常亮")}</option><option value="off">{t("不干预")}</option></select>
+        </label>}
         <label className="settings-row">
           <div><b>{t("外观")}</b><p>{t("只影响这台电脑上的 Dispatch 窗口。")}</p></div>
           <select value={theme} onChange={(e) => onTheme(e.target.value as Theme)} aria-label={t("外观")}><option value="">{t("跟随系统")}</option><option value="light">{t("浅色")}</option><option value="dark">{t("深色")}</option></select>

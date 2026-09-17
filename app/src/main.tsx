@@ -2,6 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { initLocale, t } from "./i18n";
+// Fonts ship with the app (Fontsource, OFL): no request to Google at every cold start, and the
+// first screen does not wait on a network that may be slow or blocked.
+import "@fontsource/ibm-plex-sans/latin-400.css";
+import "@fontsource/ibm-plex-sans/latin-500.css";
+import "@fontsource/ibm-plex-sans/latin-600.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./styles.css";
 
 // A script error in the desktop webview has no console anyone can see: surface it in the page instead

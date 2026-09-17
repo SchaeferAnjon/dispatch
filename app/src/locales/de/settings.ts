@@ -590,5 +590,10 @@ const settings: Dict = {
   "同一个文件半小时内被另一段会话改过时，先拦一下让 Agent 确认。同一个仓库里经常同时跑几个 Agent 才需要；只开一个窗口的话不用勾，否则 /clear 或新开窗口后会被拦一次。": "Wurde dieselbe Datei in der letzten halben Stunde von einer anderen Sitzung geändert, wird die Bearbeitung einmal angehalten, damit der Agent bestätigt. Nur sinnvoll, wenn oft mehrere Agents im selben Repository laufen; bei einem einzelnen Fenster aus lassen, sonst wird nach /clear oder einem neuen Fenster einmal angehalten.",
   "已有的 Claude Code 状态行会保留：Dispatch 只在它前面记一下额度；settings.json 改动前会备份成 settings.json.dispatch-bak。": "Ihre vorhandene Claude-Code-Statuszeile bleibt erhalten: Dispatch notiert davor nur das Kontingent; settings.json wird vor der Änderung als settings.json.dispatch-bak gesichert.",
   "例如：会话总结用的模型 Key": "z. B. der Modell-Schlüssel für Sitzungszusammenfassungen",
+  "防止这台电脑休眠": "Diesen Mac wach halten",
+  "Dispatch 开着的时候生效，只管这台电脑。「只防系统休眠」让 Agent 和手机访问一直能用，屏幕照常息屏、锁屏；「屏幕也常亮」给要被远程看屏幕、或靠界面自动化操作的电脑；「不干预」完全按系统自己的节能设置。": "Gilt, solange Dispatch läuft, und nur für diesen Mac. „Nur System“ hält Agents und Handy-Zugriff verfügbar, der Bildschirm schläft und sperrt wie gewohnt; „Auch Bildschirm“ ist für einen Mac, dessen Bildschirm aus der Ferne betrachtet oder per UI-Automatisierung bedient wird; „Nicht eingreifen“ folgt den Energieeinstellungen des Systems.",
+  "只防系统休眠（默认）": "Nur System (Standard)",
+  "屏幕也常亮": "Auch Bildschirm",
+  "不干预": "Nicht eingreifen",
 };
 export default settings;
