@@ -36,7 +36,7 @@ import { GraphView } from "./components/Graph";
 import { OverviewView, Tour } from "./components/Guide";
 import { MobileNav } from "./components/MobileNav";
 import { needsReview, needsAttention, agentsFrom, columnOf, projectOf, rootsOf, hostOfIssue } from "./derive";
-import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View } from "./types";
+import type { Activity, ActivitySnapshot, Column, Host, Info, Issue, NewIssue, Presence, Quota, SessionRef, View, MoveJob } from "./types";
 
 type Theme = "light" | "dark" | "";
 const VIEW_LABEL: Record<View, string> = { home: "工作台", inbox: "等我", board: "全部任务", table: "全部任务", graph: "脉络", projects: "项目", agents: "Agent 状态", settings: "设置", sessions: "会话", discuss: "讨论", stats: "统计与额度", skills: "技能", rules: "规则与资料", pitfalls: "知识库", env: "环境", quota: "统计与额度", trash: "回收站", archive: "已归档任务", setup: "首次设置", overview: "总览" };
@@ -348,6 +348,38 @@ export default function App() {
   useEffect(() => { if (!api || view !== "overview") return; api.on("local", ["skills", "list", "--json"]).then((s) => setSkillCount((JSON.parse(s.replace(/^[^[]*/, "")) as unknown[]).length)).catch(() => {}); api.memories().then((m) => setWikiCount(m.filter((x) => !x.key.startsWith("dispatch-")).length)).catch(() => {}); }, [api, view]);
 
 
+  // Project moves running in the background (dispatch project-moves): polled while any is running,
+  // so the bar on the project survives page changes and reloads; each ending is announced once.
+  const [moveJobs, setMoveJobs] = useState<MoveJob[]>([]);
+  const moveHost = useRef<string>("local");
+  const announced = useRef(new Set<string>());
+  const pollMoves = useCallback(async () => {
+    if (!api) return;
+    try {
+      const t = await api.on(moveHost.current, ["project-moves", "--json"]);
+      const jobs = JSON.parse(t.slice(Math.max(0, t.indexOf("[")))) as MoveJob[];
+      setMoveJobs(jobs);
+      for (const j of jobs) {
+        if (j.state === "running" || announced.current.has(j.id) || Date.now() / 1000 - j.updated > 600) continue;
+        announced.current.add(j.id);
+        if (j.state === "failed") { say(`迁移 ${j.project} → ${j.to} 失败：${j.error ?? ""}`, true); continue; }
+        const x = j.result;
+        say([`已把 ${j.project} 交给 ${j.to}`, x?.git_checked ? (x.git_ok ? "Git 两边一致" : `Git 没对上，去 ${j.to} 看 git status`) : "",
+          x?.sessions ? `${x.sessions - x.sessions_failed} 个会话已在那边接着跑` : "", x?.sessions_failed ? `${x.sessions_failed} 个会话没迁过去` : "",
+          x?.history ? `${x.history} 段历史会话已搬过去` : "", x?.history_failed ? `${x.history_failed} 段历史没搬成` : "", x?.owner_error ? `项目归属更新失败：${x.owner_error}` : ""].filter(Boolean).join("；"),
+          !!x?.owner_error || !!x?.sessions_failed || !!(x?.git_checked && !x.git_ok));
+        api.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
+        void reload();
+      }
+    } catch { /* next poll */ }
+  }, [api]);
+  useEffect(() => {
+    if (!api) return;
+    let timer = 0, stopped = false;
+    const tick = async () => { await pollMoves(); if (!stopped) timer = window.setTimeout(tick, moveJobs.some((j) => j.state === "running") ? 2000 : 30000); };
+    void tick();
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, [api, pollMoves, moveJobs.some((j) => j.state === "running")]);
   // One snapshot drives the header, overview, and menu bar, including manual refresh.
   const [quota, setQuota] = useState<Quota[]>([]);
   const [quotaBusy, setQuotaBusy] = useState(false);
@@ -889,7 +921,7 @@ export default function App() {
           {err && <div className="err">{err}</div>}
           <section className="view" ref={viewEl} onScroll={(e) => { scrollMemo.current[scrollKeyRef.current] = e.currentTarget.scrollTop; }}>
             {view === "home" && api && <HomeView onDiscuss={() => setDiscuss({})} insight={insight} alertCount={alertCount} me={me} loaded={activity.updated_at>0} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} issues={issuesF} outcomes={outcomesF} inbox={inbox} progress={progress} flags={projectFlags} onFlag={setProjectFlag} archiveDays={archiveDays} expandedDefault={settings.home_expanded} onOpen={openSession} onFocus={focusSession} onTask={setSelected} onProject={openProject} onView={(v)=>{ if (v==="board") allTasks(); else setView(v); }} onNew={a=>{setNewSessionProject(a?conversationProject(a):null);setNewSessionContext(a);setNewSession(true);}} onLocate={locateProject} onPhone={phoneLink} onScreen={screenLink} screenReady={!!hosts.find((x) => x.local)?.novnc_up} />}
-            {view === "projects" && api && <ProjectHub onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} hosts={hosts} owners={projectOwners}
+            {view === "projects" && api && <ProjectHub moveJobs={moveJobs} onDiscuss={(name) => setDiscuss({ project: name })} focusSection={hubSection} onSectionDone={() => setHubSection(null)} archiveDays={archiveDays} flags={projectFlags} onFlag={setProjectFlag} connectionError={activityError} unavailable={activity.unavailable_hosts} rows={projectRows} tasks={issuesF} outcomes={outcomesF} api={api} me={me} selected={projectSelection} onProject={setProjectSelection} onOpen={openSession} onTask={setSelected} onRead={a=>markRead(a,a.reply_id!)} onSummarize={summarizeSession} onReload={reload} onNew={a=>{setNewSessionProject(projectSelection);setNewSessionContext(a);setNewSession(true);}} loaded={activity.updated_at>0} hosts={hosts} owners={projectOwners}
               onMoveProject={async (name, cwd, fromHost, to) => {
                 const run = async (extra: string[]) => { const t = await api.on(fromHost, ["project", cwd, "--move-to", to.name, "--json", ...extra]); return JSON.parse(t.slice(Math.max(0, t.indexOf("{")))); };
                 setMigrationCheck(null);
@@ -907,15 +939,14 @@ export default function App() {
                     p.history?.count ? `其余 ${p.history.count} 段历史会话（${p.history.mb} MB）的记录也搬过去，Dispatch 里都显示在 ${to.name}` : "",
                     "以后这个项目归那台，新建会话默认开在那边。"].filter(Boolean);
                   if (!await confirmAction(lines.join("\n"))) { say("已取消迁移"); return; }
-                  say(`正在把 ${name} 交给 ${to.name}…`);
-                  const r = await run([]);
+                  // The move runs as a background worker on the source Mac: this window can go anywhere
+                  // (or be closed) meanwhile; the project shows the bar until it ends.
+                  const r = await run(["--background"]);
                   if (r.error) { say(String(r.error), true); return; }
-                  const v = r.git?.verify; const failed = (r.moved ?? []).filter((m: { error?: string }) => m.error);
-                  say([`已把 ${name} 交给 ${to.name}`, v?.checked ? (v.head_match && v.dirty_match ? "Git 两边一致" : `Git 没对上，去 ${to.name} 看 git status`) : "",
-                    (r.moved ?? []).length ? `${(r.moved ?? []).length - failed.length} 个会话已在那边接着跑` : "", failed.length ? `${failed.length} 个会话没迁过去：${failed[0].error}` : "",
-                    r.history?.copied ? `${r.history.copied} 段历史会话已搬过去` : "", r.history?.failed?.length ? `${r.history.failed.length} 段历史没搬成` : "", r.owner?.error ? `项目归属更新失败：${r.owner.error}` : ""].filter(Boolean).join("；"), !!r.owner?.error || !!failed.length || !!(v?.checked && !(v.head_match && v.dirty_match)));
-                  api.memories().then((m) => setProjectOwners(parseProjectOwners(m))).catch(() => {});
-                  void reload();
+                  say(`已开始把 ${name} 交给 ${to.name}，进度在项目上显示；切到别的页面也会继续`);
+                  setMoveJobs((jobs) => [r as MoveJob, ...jobs.filter((j) => j.id !== r.id)]);
+                  moveHost.current = fromHost;
+                  void pollMoves();
                 } catch (e) { say(String(e), true); }
               }} />}
             {view === "graph" && api && <GraphView api={api} me={me} version={version} selected={selected} onSelect={setSelected} onOpenSession={openSession} projects={projects} />}

@@ -20,7 +20,15 @@ import base64, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
 import dispatch as D
 
-EXCLUDES = [".DS_Store", "node_modules/.cache", "*.pyc", "__pycache__"]
+# Never copied, at any depth: caches and dependency trees the other Mac rebuilds or reinstalls, and
+# the git worktrees Claude Code's sub-agents leave under .claude/ (relecture had 107k files in there —
+# a 72 s dry run for a project of a few hundred files).
+EXCLUDES = [".DS_Store", "*.pyc", "__pycache__/", "node_modules/", ".venv/", "venv/", ".claude/worktrees/", "DerivedData/",
+            ".turbo/", ".cache/", ".parcel-cache/", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/"]
+# One ssh connection per Mac, reused by every ssh / rsync / git call of a move (ControlMaster): each
+# fresh connection to the other Mac costs ~0.7 s and a move makes dozens of them.
+SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/dispatch-ssh-%C", "-o", "ControlPersist=180"]
+SSH_CMD = "ssh " + " ".join(SSH_OPTS)
 # Tools a conversation used, mapped to what installs them on the other Mac. Anything else
 # that is missing is reported so the agent (and you) know before it trips over it.
 BREW = {"node": "node", "npm": "node", "npx": "node", "pnpm": "pnpm", "yarn": "yarn", "python3": "python", "pip3": "python", "cargo": "rust", "rustc": "rust", "go": "go", "java": "openjdk",
@@ -90,7 +98,7 @@ def bash_line(script):
 
 
 def run_remote(h, script, timeout=60, input=None):
-    return subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", h["ssh"], bash_line(PATH_PREFIX + script)],
+    return subprocess.run(["ssh", *SSH_OPTS, h["ssh"], bash_line(PATH_PREFIX + script)],
                           input=input, capture_output=True, text=True, errors="replace", timeout=timeout)
 
 
@@ -306,7 +314,7 @@ def push_history(h, top, remote_top, local):
     sha, branch = local.get("head") or "", local.get("branch") or "HEAD"
     if not sha:
         return {"pushed": False}
-    env = {**os.environ, "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=8"}
+    env = {**os.environ, "GIT_SSH_COMMAND": SSH_CMD}
     r = subprocess.run(["git", "-C", top, "push", "-q", "--no-verify", "--receive-pack=git receive-pack", f"ssh://{h['ssh']}{remote_top}", f"+{sha}:refs/dispatch/moved"],
                        capture_output=True, text=True, errors="replace", timeout=1800, env=env)
     if r.returncode != 0:
@@ -330,7 +338,7 @@ def protected_paths(remote):
 
 # Ignored directories that are build output or caches: rebuilt or reinstalled on the other Mac, never
 # copied (atrium's build/ is 37 GB). Other ignored paths — .env files, Sources/Private — do travel.
-BUILD_DIRS = re.compile(r"^(build(-.+)?|DerivedData|\.build|dist|target|\.next|\.nuxt|\.turbo|\.cache|\.parcel-cache|coverage|node_modules|Pods|\.gradle|\.venv|venv)$")
+BUILD_DIRS = re.compile(r"^(build(-.+)?|DerivedData|\.build|dist|target|\.next|\.nuxt|\.turbo|\.cache|\.parcel-cache|coverage|node_modules|Pods|\.gradle|\.?venv([-_.].+)?|\.tox|\.mypy_cache|\.pytest_cache)$")
 
 
 def build_excludes(local):
@@ -340,8 +348,10 @@ def build_excludes(local):
 # ---------------------------------------------------------------- files
 
 def rsync_args(cwd, h, remote_cwd, protect, delete, dry, skip=(), history=False):
-    # -c: compare contents, not mtimes — a clone over there has fresh mtimes on identical files.
-    args = ["rsync", "-a", "-c"] + (["-n", "-i"] if dry else [])
+    # Size + mtime (rsync's default) decides what to send: -a keeps mtimes, so after the first move
+    # identical files cost nothing. -c (checksum every file on both Macs) made a 100k-file tree take
+    # over a minute just to plan.
+    args = ["rsync", "-a", "--modify-window=2"] + (["-n", "-i"] if dry else ["-v"])
     if history:
         skip = [*skip, ".git/"]  # Git carries the history (push_history); the stores stay their own
     if delete:
@@ -350,7 +360,7 @@ def rsync_args(cwd, h, remote_cwd, protect, delete, dry, skip=(), history=False)
         args += ["--delete"] + [f"--filter=P /{p.rstrip('/')}{'/' if p.endswith('/') else ''}" for p in protect]
     # Excluded paths are neither sent nor deleted (no --delete-excluded).
     args += [x for e in EXCLUDES for x in ("--exclude", e)] + [f"--exclude=/{p.rstrip('/')}/" for p in skip]
-    return args + ["-e", "ssh -o BatchMode=yes", cwd.rstrip("/") + "/", f"{h['ssh']}:{shlex.quote(remote_cwd.rstrip('/'))}/"]
+    return args + ["-e", SSH_CMD, cwd.rstrip("/") + "/", f"{h['ssh']}:{shlex.quote(remote_cwd.rstrip('/'))}/"]
 
 
 def parse_itemized(text):
@@ -374,14 +384,30 @@ def plan_files(h, cwd, remote_cwd, git):
     return {**parse_itemized(r.stdout), "delete_enabled": delete, "protected": git["protect"][:20], "skipped": (git.get("skip") or [])[:20]}
 
 
-def sync_files(h, cwd, remote_cwd, git):
+def sync_files(h, cwd, remote_cwd, git, on_file=None):
+    """`on_file(n)` is called as rsync reports each file sent (its -v line), for a progress bar."""
     ssh(h, f"mkdir -p {shlex.quote(remote_cwd)}")
     delete = bool(git["local"].get("git")) and not git["conflicts"]
     if git.get("history"):
         git["pushed"] = push_history(h, git.get("_top") or cwd, remote_cwd, git["local"])
-    r = subprocess.run(rsync_args(cwd, h, remote_cwd, git["protect"], delete, dry=False, skip=git.get("skip") or (), history=git.get("history")), capture_output=True, text=True, errors="replace", timeout=3600)
-    if r.returncode != 0:
-        raise RuntimeError(f"同步项目文件失败：{r.stderr.strip()[-300:]}")
+    args = rsync_args(cwd, h, remote_cwd, git["protect"], delete, dry=False, skip=git.get("skip") or (), history=git.get("history"))
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
+    n = 0
+    for line in proc.stdout:
+        line = line.rstrip("\n")
+        if not line or line.startswith(("sending ", "sent ", "total ", "building ", "delta-transmission", "created directory", "./")) or line.endswith("/"):
+            continue
+        n += 1
+        if on_file and (n % 20 == 0 or n < 20):
+            try:
+                on_file(n)
+            except Exception:
+                pass
+    err = proc.stderr.read()
+    if proc.wait() != 0:
+        raise RuntimeError(f"同步项目文件失败：{err.strip()[-300:]}")
+    if on_file:
+        on_file(n)
 
 
 def verify_git(h, cwd, remote_cwd):
@@ -441,7 +467,7 @@ def sync_memory(h, cwd, remote_home, remote_cwd, dry=False):
         return {"files": len(files), "synced": False}
     dst = memory_dir(remote_home, remote_cwd)
     ssh(h, f"mkdir -p {shlex.quote(dst)}")
-    r = subprocess.run(["rsync", "-a", "--update", "-e", "ssh -o BatchMode=yes", src + "/", f"{h['ssh']}:{shlex.quote(dst)}/"], capture_output=True, text=True, errors="replace", timeout=600)
+    r = subprocess.run(["rsync", "-a", "--update", "-e", SSH_CMD, src + "/", f"{h['ssh']}:{shlex.quote(dst)}/"], capture_output=True, text=True, errors="replace", timeout=600)
     return {"files": len(files), "synced": r.returncode == 0, **({"error": r.stderr.strip()[-200:]} if r.returncode else {})}
 
 
@@ -542,7 +568,47 @@ def copy_transcript(h, agent, path, sid, target, rewrite, remote_home):
         raise RuntimeError(f"复制会话记录失败：{r.stderr.strip()[-300:]}")
     subdir = os.path.join(os.path.dirname(path), sid)
     if agent == "claude-code" and os.path.isdir(subdir):
-        subprocess.run(["rsync", "-a", "-e", "ssh -o BatchMode=yes", subdir + "/", f"{h['ssh']}:{shlex.quote(os.path.dirname(target) + '/' + sid)}/"], capture_output=True, text=True, errors="replace", timeout=600)
+        subprocess.run(["rsync", "-a", "-e", SSH_CMD, subdir + "/", f"{h['ssh']}:{shlex.quote(os.path.dirname(target) + '/' + sid)}/"], capture_output=True, text=True, errors="replace", timeout=600)
+
+
+def copy_transcripts(h, rows, remote_home, on_each=None):
+    """Every transcript of `rows` into the other Mac's agent history in one rsync: the rewritten copies
+    are laid out under a temp dir exactly as they land under that Mac's home. One connection instead
+    of two ssh round trips per conversation (191 MB / 8 transcripts took minutes that way)."""
+    import shutil, tempfile
+    copied, failed = [], []
+    tmp = tempfile.mkdtemp(prefix="dispatch-move-")
+    try:
+        for i, r in enumerate(rows):
+            try:
+                remote_cwd = remote_path(r["cwd"], remote_home)
+                target, rewrite = transcript_target(r["agent"], r["path"], r["cwd"], remote_home, remote_cwd)
+                rel = os.path.relpath(target, remote_home)
+                if rel.startswith(".."):
+                    raise RuntimeError("目标不在对方主目录下：" + target)
+                dst = os.path.join(tmp, rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                text = open(r["path"], encoding="utf-8", errors="replace").read()
+                if rewrite and D.HOME != remote_home:
+                    text = text.replace(D.HOME, remote_home)
+                with open(dst, "w", encoding="utf-8") as f:
+                    f.write(text)
+                subdir = os.path.join(os.path.dirname(r["path"]), r["session_id"])
+                if r["agent"] == "claude-code" and os.path.isdir(subdir):
+                    shutil.copytree(subdir, os.path.join(os.path.dirname(dst), r["session_id"]), dirs_exist_ok=True, symlinks=True)
+                copied.append((r["agent"], r["session_id"]))
+            except Exception as e:
+                failed.append({"session_id": r["session_id"], "error": str(e)[:200]})
+            if on_each:
+                on_each(i + 1)
+        if copied:
+            res = subprocess.run(["rsync", "-a", "-e", SSH_CMD, tmp + "/", f"{h['ssh']}:{shlex.quote(remote_home.rstrip('/'))}/"], capture_output=True, text=True, errors="replace", timeout=3600)
+            if res.returncode != 0:
+                failed += [{"session_id": sid, "error": "rsync：" + res.stderr.strip()[-200:]} for _, sid in copied]
+                copied = []
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return copied, failed
 
 
 def mark_moved(h, keys):
@@ -714,14 +780,18 @@ def project_dir(name):
     return max(counts, key=counts.get)
 
 
-def move_project(name, to, dry=False, force=False, keep_original=False, prompt_extra=""):
+def move_project(name, to, dry=False, force=False, keep_original=False, prompt_extra="", progress=None):
     """Hand a whole project over: sync its folder once, move every conversation still running in it
-    here (they resume over there), record the new owner."""
+    here (they resume over there), record the new owner. `progress(step, label, percent, detail)`
+    hears every stage — the app draws it as a bar on the project."""
+    p = progress or (lambda *a, **k: None)
     h = host_by(to)
     top = project_dir(name)
+    p("preflight", f"连接 {h['name']}，预检 Git 与文件差异", 3)
     remote_home = ssh(h, "echo $HOME").strip()
     remote_top = remote_path(top, remote_home)
     git = git_preflight(h, top, remote_top)
+    p("plan", "统计要同步的文件", 8)
     plan = {"project": project_name(top), "to": h["name"], "cwd": top, "remote_cwd": remote_top,
             "git": {k: v for k, v in git.items() if not k.startswith("_")}, "files": plan_files(h, top, remote_top, git)}
     live = [s for s in D.live_sessions(local_only=True) if s.get("agent") in ("claude-code", "codex") and not str(s.get("session_id", "")).startswith("pid-")
@@ -733,29 +803,30 @@ def move_project(name, to, dry=False, force=False, keep_original=False, prompt_e
         return plan
     if git["conflicts"] and not force:
         raise RuntimeError("没有迁移，对方那边会丢东西：\n- " + "\n- ".join(git["conflicts"]) + "\n处理完再迁，确认可以覆盖就加 --force")
-    sync_files(h, top, remote_top, git)
+    total = max(1, plan["files"]["send"])
+    p("files", ("推送 Git 历史，" if git.get("history") else "") + f"同步 {plan['files']['send']} 个文件", 12)
+    sync_files(h, top, remote_top, git, on_file=lambda n: p("files", f"同步文件 {min(n, total)}/{total}", 12 + int(55 * min(n, total) / total)))
     plan["git"]["pushed"] = git.get("pushed")
+    p("verify", "核对对方的 Git 状态", 70)
     plan["git"]["verify"] = verify_git(h, top, remote_top)
     moved = []
-    for s in live:
+    for i, s in enumerate(live):
+        p("sessions", f"搬会话 {i + 1}/{len(live)}：{s.get('title') or s['session_id'][:8]}", 73 + int(12 * i / len(live)))
         try:
             r = move(s["session_id"], to, prompt_extra=prompt_extra, sync=True, force=True, keep_original=keep_original, git_info=git)
             moved.append({"session_id": s["session_id"], "original": r.get("original"), "started": bool(r.get("started"))})
         except Exception as e:
             moved.append({"session_id": s["session_id"], "error": str(e)[:300]})
     plan["moved"] = moved
-    copied, failed = [], []
-    for r in history:
-        try:
-            remote_cwd = remote_path(r["cwd"], remote_home)
-            target, rewrite = transcript_target(r["agent"], r["path"], r["cwd"], remote_home, remote_cwd)
-            copy_transcript(h, r["agent"], r["path"], r["session_id"], target, rewrite, remote_home)
-            copied.append((r["agent"], r["session_id"]))
-        except Exception as e:
-            failed.append({"session_id": r["session_id"], "error": str(e)[:200]})
+    hist_n = max(1, len(history))
+    p("history", f"搬 {len(history)} 段历史会话记录（{plan['history']['mb']} MB）", 86)
+    copied, failed = copy_transcripts(h, history, remote_home, on_each=lambda n: p("history", f"整理历史记录 {n}/{len(history)}", 86 + int(8 * n / hist_n))) if history else ([], [])
+    p("history", "记录已搬，标记两边的副本", 96)
     mark_moved(h, copied)
     plan["history"].update(copied=len(copied), failed=failed[:10])
+    p("owner", f"记录项目归属：{h['name']}", 98)
     plan["owner"] = set_owner(plan["project"], h)
+    p("done", "完成", 100)
     return plan
 
 
@@ -827,10 +898,106 @@ def main(a):
         print(f"项目 {res['project']} 现在归 {res['owner']['host']}：新建会话默认开在那台")
 
 
+JOBS_DIR = os.path.join(D.DISPATCH_DIR, "moves")
+
+
+class Job:
+    """One project move running in the background: a JSON file the worker updates at every stage
+    and the app polls (`dispatch project-moves`), so the bar survives page changes and reloads."""
+    def __init__(self, jid):
+        self.id = jid
+        self.path = os.path.join(JOBS_DIR, jid + ".json")
+
+    @classmethod
+    def create(cls, project, to, cwd):
+        import uuid
+        os.makedirs(JOBS_DIR, exist_ok=True)
+        job = cls(str(uuid.uuid4()))
+        job._write({"id": job.id, "project": project, "to": to, "cwd": cwd, "state": "running", "step": "start", "label": "正在启动…", "percent": 0, "detail": "",
+                    "started": time.time(), "updated": time.time(), "pid": None})
+        return job
+
+    def read(self):
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    def _write(self, data):
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, self.path)
+
+    def update(self, **fields):
+        data = self.read() or {"id": self.id}
+        data.update(fields, updated=time.time())
+        self._write(data)
+        return data
+
+    def progress(self, step, label, percent, detail=""):
+        self.update(step=step, label=label, percent=max(0, min(100, int(percent))), detail=detail)
+
+    def finish(self, result):
+        v = (result.get("git") or {}).get("verify") or {}
+        moved = result.get("moved") or []
+        summary = {"to": result.get("to"), "remote_cwd": result.get("remote_cwd"), "git_ok": bool(v.get("checked") and v.get("head_match") and v.get("dirty_match")), "git_checked": bool(v.get("checked")),
+                   "sessions": len(moved), "sessions_failed": sum(1 for m in moved if m.get("error")), "history": (result.get("history") or {}).get("copied", 0),
+                   "history_failed": len((result.get("history") or {}).get("failed") or []), "owner_error": (result.get("owner") or {}).get("error", "")}
+        self.update(state="done", step="done", label="完成", percent=100, result=summary)
+
+    def fail(self, error):
+        self.update(state="failed", label="失败", error=str(error)[:600])
+
+
+def list_jobs(hours=24):
+    """Running moves and the ones that ended within `hours`, newest first. A worker that died
+    without saying so (no update for 20 minutes and no such process) is reported as failed."""
+    out = []
+    now = time.time()
+    for name in (os.listdir(JOBS_DIR) if os.path.isdir(JOBS_DIR) else []):
+        if not name.endswith(".json"):
+            continue
+        job = Job(name[:-5]); data = job.read()
+        if not data:
+            continue
+        if data.get("state") == "running":
+            pid = data.get("pid")
+            alive = True
+            if pid:
+                try:
+                    os.kill(int(pid), 0)
+                except OSError:
+                    alive = False
+            if not alive or now - (data.get("updated") or 0) > 1200:
+                data = job.update(state="failed", label="失败", error="迁移进程没有结束就消失了，看一下两边的目录状态再重试。")
+        if data.get("state") == "running" or now - (data.get("updated") or 0) < hours * 3600:
+            out.append(data)
+    out.sort(key=lambda d: -(d.get("started") or 0))
+    return out
+
+
 def main_project(a):
+    if getattr(a, "background", False) and not a.dry_run:
+        top = project_dir(a.name)
+        job = Job.create(project_name(top), host_by(a.move_to)["name"], top)
+        log = open(os.path.join(JOBS_DIR, job.id + ".log"), "w")
+        args = [sys.executable, D.__file__, "project", a.name, "--move-to", a.move_to, "--json", "--job", job.id] + (["--force"] if a.force else []) + (["--keep-original"] if a.keep_original else [])
+        proc = subprocess.Popen(args, cwd=D.HOME, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True, env={**os.environ, "BEADS_DIR": D.BEADS_DIR})
+        data = job.update(pid=proc.pid)
+        print(json.dumps(data, ensure_ascii=False) if a.json else f"已在后台开始迁移 {data['project']} → {data['to']}（任务 {job.id[:8]}）：dispatch project-moves 看进度")
+        return
+    job = Job(a.job) if getattr(a, "job", None) else None
+    if job:
+        job.update(pid=os.getpid())
     try:
-        res = move_project(a.name, a.move_to, dry=a.dry_run, force=a.force, keep_original=a.keep_original)
+        res = move_project(a.name, a.move_to, dry=a.dry_run, force=a.force, keep_original=a.keep_original, progress=job.progress if job else None)
+        if job:
+            job.finish(res)
     except Exception as e:
+        if job:
+            job.fail(e)
         print(json.dumps({"error": str(e)}, ensure_ascii=False) if a.json else f"✗ {e}")
         if a.json:
             print(f"✗ {e}", file=sys.stderr)  # the desktop app shows stderr when a command fails

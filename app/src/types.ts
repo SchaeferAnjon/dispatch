@@ -206,3 +206,6 @@ export interface Activity {
   host?: string; host_name?: string; remote?: boolean; moved_to?: string; moved_to_name?: string; moved_from?: string; moved_from_name?: string;
 }
 export interface ActivitySnapshot { sessions: Activity[]; updated_at: number; unavailable_hosts: string[] }
+
+/** A project move running in the background (`dispatch project-moves`): the app draws it on the project. */
+export interface MoveJob { id: string; project: string; to: string; cwd: string; state: "running" | "done" | "failed"; step: string; label: string; percent: number; detail?: string; started: number; updated: number; error?: string; result?: { to: string; remote_cwd: string; git_ok: boolean; git_checked: boolean; sessions: number; sessions_failed: number; history: number; history_failed: number; owner_error: string } }

@@ -5213,6 +5213,18 @@ def cmd_settings(a):
     out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes[k]}）") for k, v in x.items()])
 
 
+def cmd_project_moves(a):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import move
+    jobs = move.list_jobs()
+    def text(rows):
+        for j in rows:
+            print(f"{j['state']:<8} {j['project']} → {j['to']}  {j.get('percent', 0):>3}%  {j.get('label', '')}" + (f"  ✗ {j['error']}" if j.get('error') else ""))
+        if not rows:
+            print("没有进行中或最近的项目迁移")
+    out(jobs, a.json, text)
+
+
 def cmd_project(a):
     if a.move_to:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -7808,8 +7820,9 @@ def main():
     s = sub.add_parser("editing", help="files each active session changed in the last 30 min, aggregated per file, with conflicts"); s.add_argument("--dir", help="only sessions working in this directory (default: every directory)"); s.add_argument("--window", type=int, default=30, help="minutes back to look (default 30)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_editing)
     s = sub.add_parser("settings", help="shared settings (bd memory dispatch-settings): session_archive_days / task_archive_days"); s.add_argument("key", nargs="?"); s.add_argument("value", nargs="?"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_settings)
     s = sub.add_parser("task-archive", help="archive closed tasks older than task_archive_days (default: the setting)"); s.add_argument("--days", type=int); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_task_archive)
-    s = sub.add_parser("project", help="star / archive a project, or hand it to another Mac (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true")
+    s = sub.add_parser("project", help="star / archive a project, or hand it to another Mac (shared across machines)"); s.add_argument("name"); s.add_argument("--star", action="store_true"); s.add_argument("--unstar", action="store_true"); s.add_argument("--archive", action="store_true"); s.add_argument("--unarchive", action="store_true"); s.add_argument("--background", action="store_true", help="--move-to：后台跑，立刻返回任务 id，用 project-moves 看进度"); s.add_argument("--job", help=argparse.SUPPRESS)
     s.add_argument("--move-to", help="把整个项目（目录、Git、在跑的会话）交给这台 Mac"); s.add_argument("--owner", help="只记录项目归哪台 Mac（名字；local = 本机；none = 清除）"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--force", action="store_true"); s.add_argument("--keep-original", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project)
+    s = sub.add_parser("project-moves", help="后台项目迁移的进度（正在跑的和 24 小时内结束的）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_project_moves)
     s = sub.add_parser("projects", help="list starred / archived projects"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_projects)
     s = sub.add_parser("session-preferences", help="classify a conversation without changing its transcript"); s.add_argument("key"); s.add_argument("changes"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session_preferences)
     s = sub.add_parser("seen", help="acknowledge exactly one observed reply; reply=unread drops the receipt"); s.add_argument("key"); s.add_argument("reply", help="reply id, or `unread` to mark the session unread again"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_seen)

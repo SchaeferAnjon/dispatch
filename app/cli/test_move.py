@@ -51,7 +51,7 @@ class GitConflicts(unittest.TestCase):
         # History travels by git push and .git is never mirrored, so Mini's own stash survives.
         self.assertEqual(M.git_conflicts({**self.local, "stashes": ["s1"]}, self.remote(stashes=["s1", "s2"]), lambda c: True, lambda p: None), [])
         args = M.rsync_args("/a", {"ssh": "u@h"}, "/b", [".git/"], delete=True, dry=False, history=True)
-        self.assertIn("--exclude=/.git/", args); self.assertIn("-c", args)
+        self.assertIn("--exclude=/.git/", args); self.assertIn("--modify-window=2", args); self.assertNotIn("-c", args)
 
     def test_same_remote_spellings(self):
         for u in ("git@github.com:Me/Atrium.git", "https://github.com/me/atrium/", "ssh://git@github.com/me/atrium.git", "https://token@github.com/me/atrium"):
@@ -122,3 +122,41 @@ class HandOver(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MoveJobs(unittest.TestCase):
+    def test_job_file_lifecycle_and_listing(self):
+        import json, os, tempfile, time
+        with tempfile.TemporaryDirectory() as tmp, patch.object(M, "JOBS_DIR", tmp):
+            job = M.Job.create("relecture", "大哥", "/x/relecture")
+            job.update(pid=os.getpid())
+            job.progress("files", "同步文件 3/10", 30)
+            rows = M.list_jobs()
+            self.assertEqual([(r["project"], r["state"], r["percent"], r["label"]) for r in rows], [("relecture", "running", 30, "同步文件 3/10")])
+            job.finish({"to": "大哥", "remote_cwd": "/y", "git": {"verify": {"checked": True, "head_match": True, "dirty_match": True}}, "moved": [{"session_id": "a"}, {"session_id": "b", "error": "x"}], "history": {"copied": 5, "failed": []}, "owner": {}})
+            done = M.list_jobs()[0]
+            self.assertEqual((done["state"], done["percent"], done["result"]["sessions"], done["result"]["sessions_failed"], done["result"]["history"], done["result"]["git_ok"]), ("done", 100, 2, 1, 5, True))
+            # A worker that vanished is reported, not shown as running for ever.
+            dead = M.Job.create("atrium", "大哥", "/x/atrium"); dead.update(pid=999999)
+            self.assertEqual(next(r for r in M.list_jobs() if r["id"] == dead.id)["state"], "failed")
+            other = M.Job.create("k", "大哥", "/x/k"); other.fail(RuntimeError("boom"))
+            self.assertEqual(next(r for r in M.list_jobs() if r["id"] == other.id)["error"], "boom")
+
+    def test_nested_caches_and_worktrees_are_never_copied(self):
+        args = M.rsync_args("/a", {"ssh": "u@h"}, "/b", [], False, dry=True)
+        for pat in ("node_modules/", ".venv/", ".claude/worktrees/", "__pycache__/"):
+            self.assertIn(pat, args)
+        self.assertIn("ControlMaster=auto", args[args.index("-e") + 1])
+
+    def test_progress_reports_every_stage_in_order(self):
+        steps = []
+        h = {"name": "大哥", "ssh": "u@h", "id": "hub"}
+        with patch.object(M, "host_by", return_value=h), patch.object(M, "project_dir", return_value="/x/p"), patch.object(M, "ssh", return_value="/Users/u\n"), \
+             patch.object(M, "git_preflight", return_value={"local": {"git": True}, "remote": {}, "conflicts": [], "protect": [], "skip": [], "history": False}), \
+             patch.object(M, "plan_files", return_value={"send": 2, "delete": 0}), patch.object(M.D, "live_sessions", return_value=[]), patch.object(M, "project_history", return_value=[]), \
+             patch.object(M, "sync_files", side_effect=lambda h, c, r, g, on_file=None: on_file and on_file(2)), patch.object(M, "verify_git", return_value={"checked": False}), \
+             patch.object(M, "mark_moved"), patch.object(M, "set_owner", return_value={"host": "大哥"}), patch.object(M, "project_name", return_value="p"):
+            res = M.move_project("p", "大哥", progress=lambda step, label, pct, detail="": steps.append((step, pct)))
+        self.assertEqual([s for s, _ in steps], ["preflight", "plan", "files", "files", "verify", "history", "history", "owner", "done"])
+        self.assertEqual([p for _, p in steps], sorted(p for _, p in steps))
+        self.assertEqual(res["owner"], {"host": "大哥"})
