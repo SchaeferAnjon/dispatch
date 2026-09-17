@@ -45,7 +45,7 @@ if codesign -dv "$DST" 2>&1 | grep -q 'Signature=adhoc'; then
 fi
 echo "已更新 ${DST} ($(date '+%H:%M:%S'))"
 # The phone's web UI (launchd daemon) serves from this bundle; restart it so it picks up the new files.
-python3 - "$DST/Contents/Resources/cli" <<'PY'
+python3 -B - "$DST/Contents/Resources/cli" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[1])
 from updater import restart_serve
