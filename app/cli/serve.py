@@ -483,6 +483,15 @@ def main():
     except OSError:
         pass
     print(f"Dispatch 网页版：{url(conf, ip)}", flush=True)
+    # Phone pushes (ntfy / Bark) for finished replies and confirmations, so the phone hears
+    # about them without the desktop app being open. No-op until a channel is configured.
+    try:
+        import threading
+        sys.path.insert(0, HERE)
+        import notify_watch
+        threading.Thread(target=notify_watch.loop, kwargs={"interval": 20, "log": lambda m: print(m, file=sys.stderr, flush=True)}, daemon=True).start()
+    except Exception as e:
+        print(f"phone push watcher not started: {e}", file=sys.stderr, flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

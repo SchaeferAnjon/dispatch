@@ -118,3 +118,45 @@ class ServeLink(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PhoneWatcher(unittest.TestCase):
+    """notify_watch.tick: one push per unread reply / confirmation, none on the first pass."""
+
+    def _tick(self, rows, live=(), st=None, first=False, settings=None):
+        import notify_watch as W
+        sent = []
+        send = lambda title, body="", url="", level="normal", key="": sent.append((title, body, url, level, key)) or {"ok": True}
+        st = st if st is not None else {}
+        W.tick(rows, settings or {}, st, send, lambda p: "http://phone" + p, now=1000.0, first=first, live=live)
+        return sent, st
+
+    def test_unread_reply_pushed_once(self):
+        row = {"key": "claude-code:s1", "agent": "claude-code", "session_id": "s1", "project": "sprout", "title": "预算提醒", "unread": True, "reply_id": "990:abc", "reply_at": 990, "reply_preview": "两档提醒做完了"}
+        sent, st = self._tick([row])
+        self.assertEqual(len(sent), 1)
+        self.assertIn("Claude Code 回复了", sent[0][0]); self.assertIn("两档提醒做完了", sent[0][1]); self.assertEqual(sent[0][2], "http://phone/#/sessions/s1")
+        sent2, _ = self._tick([row], st=st)
+        self.assertEqual(sent2, [])  # remembered
+        row2 = dict(row, reply_id="995:def", reply_at=995)
+        sent3, _ = self._tick([row2], st=st)
+        self.assertEqual(len(sent3), 1)  # a new answer rings again
+
+    def test_first_pass_only_remembers(self):
+        row = {"key": "codex:s2", "agent": "codex", "session_id": "s2", "project": "p", "title": "t", "unread": True, "reply_id": "1:x", "reply_at": 999}
+        sent, st = self._tick([row], first=True)
+        self.assertEqual(sent, []); self.assertEqual(st["replies"], ["codex:s2|1:x"])
+
+    def test_read_scheduled_and_old_replies_are_quiet(self):
+        base = {"key": "claude-code:s3", "agent": "claude-code", "session_id": "s3", "project": "p", "title": "t", "reply_id": "1:y", "reply_at": 999}
+        self.assertEqual(self._tick([dict(base, unread=False)])[0], [])
+        self.assertEqual(self._tick([dict(base, unread=True, scheduled=True)])[0], [])
+        self.assertEqual(self._tick([dict(base, unread=True, reply_at=1000 - 7 * 3600)])[0], [])
+        self.assertEqual(self._tick([dict(base, unread=True)], settings={"notify_reply": 0})[0], [])
+
+    def test_confirmation_from_live_rows(self):
+        live = [{"agent": "codex", "session_id": "s4", "state": "idle", "attention": "input", "project": "harbor-api", "title": "限流", "last_at": 900}]
+        sent, st = self._tick([], live=live)
+        self.assertEqual(len(sent), 1); self.assertEqual(sent[0][3], "high"); self.assertEqual(sent[0][4], "presence:codex:s4")
+        self.assertEqual(self._tick([], live=live, st=st)[0], [])
+        self.assertEqual(self._tick([], live=[dict(live[0], state="working")])[0], [])

@@ -39,6 +39,13 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
   useEffect(() => { if (!update && onCheckUpdate) { setChecking(true); void Promise.resolve(onCheckUpdate()).finally(() => setChecking(false)); } }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   const [applying, setApplying] = useState(false);
   const [notifying, setNotifying] = useState(false);
+  // Phone channel: the keys live in `dispatch env` (NTFY_URL / BARK_KEY); only whether they are set is shown.
+  const [barkKey, setBarkKey] = useState(""); const [ntfyUrl, setNtfyUrl] = useState("");
+  const [barkSet, setBarkSet] = useState(false); const [ntfySet, setNtfySet] = useState(false); const [channelBusy, setChannelBusy] = useState(false);
+  const loadChannel = useCallback(async () => { if (!api) return; try { const raw = await api.on("local", ["env", "list", "--json"]); const list = JSON.parse(raw.slice(Math.max(0, raw.indexOf("[")))) as { name: string }[]; setBarkSet(list.some((e) => e.name === "BARK_KEY")); setNtfySet(list.some((e) => e.name === "NTFY_URL")); } catch { /* env unavailable */ } }, [api]);
+  useEffect(() => { void loadChannel(); }, [loadChannel]);
+  const saveChannel = async (name: "BARK_KEY" | "NTFY_URL", value: string) => { if (!api) return; setChannelBusy(true); try { await api.on("local", ["env", "set", name, "--stdin", "--note", name === "BARK_KEY" ? "手机通知：Bark" : "手机通知：ntfy"], value.trim()); if (name === "BARK_KEY") setBarkKey(""); else setNtfyUrl(""); await loadChannel(); } finally { setChannelBusy(false); } };
+  const clearChannel = async (name: "BARK_KEY" | "NTFY_URL") => { if (!api) return; setChannelBusy(true); try { await api.on("local", ["env", "unset", name]); await loadChannel(); } finally { setChannelBusy(false); } };
   const [draft, setDraft] = useState<DispatchSettings>(settings);
   const [busy, setBusy] = useState(false);
   const [screenBusy, setScreenBusy] = useState(false);
@@ -156,8 +163,27 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
           <div><b>{t("脚本或其他 Agent 通过 SDK 启动的会话，自动当作定时会话")}</b><p>{t("定时会话不进「等我」、不发通知、不出现在工作台；会话页「定时」筛选里能看到。对单条会话手动标记过的，以手动为准。")}</p></div>
           <input type="checkbox" checked={draft.sdk_sessions_scheduled} onChange={(e) => setDraft({ ...draft, sdk_sessions_scheduled: e.target.checked })} />
         </label>
+      </section>
+      <section className="settings-card">
+        <h3>{t("手机通知")}</h3>
+        <p className="muted small" style={{ margin: "0 0 8px" }}>{t("网页版弹不出系统通知，所以推送走手机上的 Bark（iOS，App Store 免费）或 ntfy（iOS / Android，免费开源）：装好 App，把它给你的 key 或主题地址填在这里，Dispatch 就会把事件推到手机，点通知直接打开对应页面。两个都没配就只发这台 Mac 的系统通知。")}</p>
+        <div className="settings-row">
+          <div><b>Bark</b><p>{t("Bark App 首页那串 key（或整条 https://api.day.app/… 地址）")}</p></div>
+          <span className="settings-inline"><input className="settings-input" type="text" value={barkKey} placeholder={barkSet ? t("已配置，留空表示不改") : "xxxxxxxxxxxxxxxxxxxx"} onChange={(e) => setBarkKey(e.target.value)} /><button className="btn sm" disabled={!barkKey.trim() || channelBusy} onClick={() => void saveChannel("BARK_KEY", barkKey)}>{t("保存")}</button>{barkSet && <button className="btn sm" disabled={channelBusy} onClick={() => void clearChannel("BARK_KEY")}>{t("清除")}</button>}</span>
+        </div>
+        <div className="settings-row">
+          <div><b>ntfy</b><p>{t("ntfy 的主题地址，例如 https://ntfy.sh/你的主题（自建服务器也行）；Bark 和 ntfy 都配了以 ntfy 为准")}</p></div>
+          <span className="settings-inline"><input className="settings-input" type="text" value={ntfyUrl} placeholder={ntfySet ? t("已配置，留空表示不改") : "https://ntfy.sh/your-topic"} onChange={(e) => setNtfyUrl(e.target.value)} /><button className="btn sm" disabled={!ntfyUrl.trim() || channelBusy} onClick={() => void saveChannel("NTFY_URL", ntfyUrl)}>{t("保存")}</button>{ntfySet && <button className="btn sm" disabled={channelBusy} onClick={() => void clearChannel("NTFY_URL")}>{t("清除")}</button>}</span>
+        </div>
+        <p className="muted small" style={{ margin: "0 0 8px" }}>{barkSet || ntfySet ? t("当前渠道：{ch}。推送由网页版服务（dispatch serve）每 20 秒检查一次，桌面应用不用开着。", { ch: ntfySet ? "ntfy" : "Bark" }) : t("还没配手机渠道：下面的事件只会以这台 Mac 的系统通知出现。")}</p>
+        {([["notify_reply", t("Agent 回复了（本轮结束、还没看）"), t("正文带回复的开头，点开直接进会话")], ["notify_attention", t("Agent 等你确认 / 提问"), t("停在权限确认或问题上，高优先级")], ["notify_done", t("任务完成（dispatch done）"), t("Agent 关掉一个任务时")], ["notify_needs_you", t("只有你能做（dispatch need-you）"), t("Agent 记下一件要你亲自做的事，高优先级")]] as const).map(([k, label, hint]) => (
+          <label key={k} className="settings-row">
+            <div><b>{label}</b><p>{hint}</p></div>
+            <input type="checkbox" checked={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.checked })} />
+          </label>
+        ))}
         {onTestNotify && <div className="settings-row">
-          <div><b>{t("手机通知")}</b><p>{t("报告生成完、讨论结束、会话变成「等你」时推一条。渠道在「环境」页配：NTFY_URL（ntfy 主题地址）或 BARK_KEY（Bark 的 key）；两个都没配就发这台 Mac 的系统通知。命令行 dispatch notify \"标题\" \"正文\"。")}</p></div>
+          <div><b>{t("试一下")}</b><p>{t("发一条测试通知到当前渠道。命令行：dispatch notify \"标题\" \"正文\"")}</p></div>
           <button className="btn sm" disabled={notifying} onClick={async () => { setNotifying(true); try { await onTestNotify(); } finally { setNotifying(false); } }}>{notifying ? t("发送中…") : t("发一条测试通知")}</button>
         </div>}
       </section>
