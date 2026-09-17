@@ -98,11 +98,14 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .titlebar .lead{padding-left:80px;display:flex;align-items:center;gap:6px;color:var(--ink-2);white-space:nowrap;height:100%}
 .titlebar .lead b{color:var(--ink);font-weight:600}
 .crumb{display:flex;align-items:center;gap:6px;color:var(--ink-2);padding-left:6px;white-space:nowrap;min-width:0;overflow:hidden}
+/* When the bar is tight (English labels are longer), the sync note is the part that gets cut, with an ellipsis. */
+.crumb>.sync{min-width:0;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+.crumb>b,.crumb>button{flex:0 0 auto}
 .titlebar .crumb .link{pointer-events:auto}
 .crumb b{color:var(--ink);font-weight:500}
 .crumb .sep{color:var(--ink-3)}
 .crumb .sync{margin-left:10px;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
-.tb-right{display:flex;align-items:center;gap:8px;padding-right:12px;min-width:0;justify-content:flex-end}
+.tb-right{display:flex;align-items:center;gap:8px;padding:0 12px 0 10px;min-width:0;justify-content:flex-end}
 .tb-right>*{flex-shrink:0}
 /* The right cluster (search, quotas, status, new session) must never push the window wider: drop the least useful pieces first. */
 @media(max-width:1440px){.tb-right .home-quota .ql{display:none}.tb-right .home-quota .qbar{width:26px}.tb-right .home-quota{gap:6px}}
