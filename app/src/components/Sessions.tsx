@@ -110,6 +110,10 @@ export function SessionsView({ onBack, onProject, localHostName, archivedProject
   // A row is a session on one Mac: after `dispatch move` the same id runs on two, so another Mac's copy is selected as id@host.
   const selSid = sel ? sel.split("@")[0] : null; const selHost = sel && sel.includes("@") ? sel.slice(sel.indexOf("@") + 1) : null;
   const refsRef = useRef(refs); refsRef.current = refs;
+  // The row that stands for what is open: its exact key, or — when the list carries only the other
+  // Mac's copy of the same conversation (after `dispatch move`) — the row with the same id.
+  const exactSelRow = sel ? refs.some((x) => rowKey(x) === sel) : false;
+  const isSel = (r: { session_id: string; host?: string; remote?: boolean }) => !!sel && (rowKey(r) === sel || (!exactSelRow && r.session_id === selSid));
   const current = activities.find(a => a.session_id === selSid && (selHost ? a.host === selHost : !a.remote)) ?? (selHost ? undefined : activities.find(a => a.session_id === selSid));
   useEffect(() => {
     const changed = () => setIsVisible(document.visibilityState === 'visible');
@@ -249,7 +253,7 @@ export function SessionsView({ onBack, onProject, localHostName, archivedProject
             const l = liveOf(r.session_id, r.host ?? "local");
             const active = activities.find(a => a.session_id === r.session_id && (a.host ?? "local") === (r.host ?? "local"));
             return (
-              <div key={rowKey(r)} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${sel === rowKey(r) ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(rowKey(r)); setTab("timeline"); }}>
+              <div key={rowKey(r)} data-session={`${r.host ?? "local"}:${r.agent}:${r.session_id}`} className={`sess-item${isSel(r) ? " sel" : ""}`}><button className="sess-item-main" onClick={() => { setSel(rowKey(r)); setTab("timeline"); }}>
                 <div className="l1"><Avatar actor={a} />{r.starred && <span className="star on" title="追踪中">★</span>}<span className="t">{r.title || "（无标题）"}</span>{active?.unread && <span className="unread-dot" title="未读回复" />}{l && !active && <span className={`st sm ${l.state === "working" ? "prog" : "done"}`}>{l.state === "working" ? "在跑" : "开着"}</span>}</div>
                 <div className="l2"><span className="proj" style={{ background: projectColor(r.project) }} />{r.project || "?"}<span className={`host-chip${r.remote ? "" : " local"}`} title={r.remote ? `在 ${r.host_name} 上` : "在这台电脑上"}>{r.remote ? r.host_name : (localHostName || "本机")}</span><MovedChip r={r} /><span className="muted">{(ENTRY[r.entrypoint] ?? r.entrypoint) ? `· ${ENTRY[r.entrypoint] ?? r.entrypoint} ` : ""}· {r.user_msgs} 轮{r.subagents.length ? ` · ${r.subagents.length} 子` : ""}</span><span className="ago mono">{relTime(new Date(r.last_at * 1000).toISOString())}</span></div>
                 {active && activityLine(active) && <div className="l3 activity-text">{activityLine(active)}</div>}

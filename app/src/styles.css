@@ -254,7 +254,7 @@ td .t{font-weight:500}
 .sess-items{overflow:auto;padding:6px;display:flex;flex-direction:column;gap:4px}
 .sess-item{text-align:left;padding:8px 10px;border-radius:8px;display:flex;flex-direction:column;gap:3px;border:1px solid transparent}
 .sess-item:hover{background:var(--panel-2)}
-.sess-item.sel{background:var(--win);border-color:var(--line);box-shadow:var(--card-shadow)}
+.sess-item.sel{background:var(--accent-soft);border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .sess-item .l1{display:flex;align-items:center;gap:6px;min-width:0}
 .sess-item .l1 .av{width:16px;height:16px;font-size:8px}
 .sess-item .l1 .t{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
