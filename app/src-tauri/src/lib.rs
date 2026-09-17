@@ -25,6 +25,12 @@ fn tr(key: &'static str) -> &'static str {
         ("en", "no_python") => "No usable Python found (needs 3.9 or newer). Install one with `brew install python@3.12`, or run `xcode-select --install`, then reopen Dispatch. To pick a specific interpreter set DISPATCH_PYTHON.",
         ("de", "no_python") => "Kein nutzbares Python gefunden (3.9 oder neuer nötig). Installieren Sie es mit `brew install python@3.12` oder führen Sie `xcode-select --install` aus und öffnen Sie Dispatch erneut. Einen bestimmten Interpreter wählen Sie mit DISPATCH_PYTHON.",
         (_, "no_python") => "没找到可用的 Python（需要 3.9 或更新）。用 `brew install python@3.12` 装一个，或运行 `xcode-select --install`，然后重新打开 Dispatch。要指定解释器可设环境变量 DISPATCH_PYTHON。",
+        ("en", "timed_out") => "{what} did not finish within {secs} s and was stopped. If this keeps happening, the task board's database may be stuck: try again, or restart Dispatch.",
+        ("de", "timed_out") => "{what} wurde nach {secs} s ohne Ergebnis beendet. Passiert das wiederholt, hängt vielleicht die Datenbank des Aufgabenboards: erneut versuchen oder Dispatch neu starten.",
+        (_, "timed_out") => "{what} 超过 {secs} 秒没有结束，已停止。反复出现的话，可能是任务板的数据库卡住了：重试，或重启 Dispatch。",
+        ("en", "board_busy") => "The task board is busy with another operation; try again in a moment.",
+        ("de", "board_busy") => "Das Aufgabenboard ist gerade mit einem anderen Vorgang beschäftigt; gleich noch einmal versuchen.",
+        (_, "board_busy") => "任务板正在处理另一个操作，稍后再试。",
         ("en", "memories_parse") => "Could not parse memories: {err}", ("de", "memories_parse") => "Memories konnten nicht gelesen werden: {err}", (_, "memories_parse") => "memories 解析失败：{err}",
         _ => key,
     }
@@ -65,6 +71,63 @@ fn bd_bin() -> PathBuf {
 // The GUI is always driven by the human, so it never inherits an agent's BEADS_ACTOR.
 fn actor() -> String {
     std::env::var("DISPATCH_ACTOR").unwrap_or_else(|_| home().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "user".into()))
+}
+
+struct Finished {
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+/// Run a child with a deadline. `Command::output()` waits for ever, and everything the UI shows
+/// goes through one: a wedged Dolt server or a stalled ssh used to freeze the whole board with
+/// no way out. Output is drained on threads, so a chatty child never blocks on a full pipe.
+fn run_timed(mut cmd: Command, stdin: Option<String>, secs: u64, what: &str, bin: &Path) -> Result<Finished, String> {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+    cmd.stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| cannot_start(what, bin, e))?;
+    if let (Some(text), Some(mut si)) = (stdin, child.stdin.take()) {
+        std::thread::spawn(move || { let _ = si.write_all(text.as_bytes()); });
+    }
+    let mut so = child.stdout.take();
+    let mut se = child.stderr.take();
+    let t_out = std::thread::spawn(move || { let mut b = Vec::new(); if let Some(r) = so.as_mut() { let _ = r.read_to_end(&mut b); } b });
+    let t_err = std::thread::spawn(move || { let mut b = Vec::new(); if let Some(r) = se.as_mut() { let _ = r.read_to_end(&mut b); } b });
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break st,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(tr("timed_out").replace("{what}", what).replace("{secs}", &secs.to_string()));
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    };
+    Ok(Finished { status, stdout: t_out.join().unwrap_or_default(), stderr: t_err.join().unwrap_or_default() })
+}
+
+/// How long a `dispatch` subcommand may run. Most answer within seconds; a few do real work
+/// (brew installs, an update download, a model writing a report, agents discussing).
+fn dispatch_timeout(args: &[String]) -> u64 {
+    let mut it = args.iter();
+    let mut first = "";
+    while let Some(a) = it.next() {
+        if a == "--host" { it.next(); continue; }
+        if a.starts_with('-') { continue; }
+        first = a.as_str();
+        break;
+    }
+    match first {
+        "init" | "update" | "discuss" | "discuss-doc" | "discuss-conclude" | "split" | "agent" | "insights" | "screen" | "project" | "move"
+        | "summarize" | "session-summary" | "project-summary" | "rules" | "profile" | "skills" | "memories" | "here" | "session-control" => 1800,
+        _ => 180,
+    }
 }
 
 /// PATH for every child process: GUI apps launched from the Dock do not inherit the shell's.
@@ -176,17 +239,29 @@ fn run_bd_blocking(args: &[String]) -> Result<String, String> {
     let mut last_err = String::new();
     for attempt in 0..3 {
         let out = {
-            let _g = BD_LOCK.lock().map_err(|e| e.to_string())?;
-            Command::new(&bin)
-                .args(args)
+            // Wait for the board lock, but not for ever: whoever holds it has a deadline too.
+            let waited = Instant::now();
+            let _g = loop {
+                match BD_LOCK.try_lock() {
+                    Ok(g) => break g,
+                    Err(std::sync::TryLockError::Poisoned(p)) => break p.into_inner(),
+                    Err(std::sync::TryLockError::WouldBlock) => {
+                        if waited.elapsed() > Duration::from_secs(45) {
+                            return Err(tr("board_busy").to_string());
+                        }
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                }
+            };
+            let mut cmd = Command::new(&bin);
+            cmd.args(args)
                 .current_dir(&workdir)
                 .env("BEADS_DIR", &dir)
                 .env("BEADS_ACTOR", actor())
                 .env("BD_NON_INTERACTIVE", "1")
                 .env("NO_COLOR", "1")
-                .env("PATH", &path)
-                .output()
-                .map_err(|e| cannot_start("bd", &bin, e))?
+                .env("PATH", &path);
+            run_timed(cmd, None, 30, "bd", &bin)?
         };
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         let stderr = String::from_utf8_lossy(&out.stderr).to_string();
@@ -422,15 +497,14 @@ fn dispatch_bin() -> PathBuf {
 fn run_dispatch_blocking(args: &[String]) -> Result<String, String> {
     let bin = dispatch_bin();
     let path = tool_path();
-    let out = Command::new(python_bin()?)
-        .arg(&bin)
+    let mut cmd = Command::new(python_bin()?);
+    cmd.arg(&bin)
         .args(args)
         .env("BEADS_DIR", beads_dir())
         .env("BEADS_ACTOR", actor()) // the GUI speaks as the human, whatever shell launched it
         .env("PYTHONDONTWRITEBYTECODE", "1") // a __pycache__ inside the .app breaks its code signature
-        .env("PATH", path)
-        .output()
-        .map_err(|e| cannot_start("dispatch", &bin, e))?;
+        .env("PATH", path);
+    let out = run_timed(cmd, None, dispatch_timeout(args), "dispatch", &bin)?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
@@ -439,28 +513,16 @@ fn run_dispatch_blocking(args: &[String]) -> Result<String, String> {
 }
 
 fn run_dispatch_stdin_blocking(args: &[String], stdin: Option<String>) -> Result<String, String> {
-    use std::io::Write;
-    use std::process::Stdio;
     let bin = dispatch_bin();
     let path = tool_path();
-    let mut child = Command::new(python_bin()?)
-        .arg(&bin)
+    let mut cmd = Command::new(python_bin()?);
+    cmd.arg(&bin)
         .args(args)
         .env("BEADS_DIR", beads_dir())
         .env("BEADS_ACTOR", actor())
         .env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("PATH", path)
-        .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| cannot_start("dispatch", &bin, e))?;
-    if let Some(text) = stdin {
-        if let Some(mut si) = child.stdin.take() {
-            let _ = si.write_all(text.as_bytes());
-        }
-    }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+        .env("PATH", path);
+    let out = run_timed(cmd, stdin, dispatch_timeout(args), "dispatch", &bin)?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {

@@ -181,5 +181,6 @@ const app: Dict = {
   "操作": "Actions",
   "{n} 项": (p) => `${p.n} ${Number(p.n) === 1 ? "task" : "tasks"}`,
   "任务板还没建好，任务相关的页面是空的；会话、技能、规则照常可用。": "The task board is not set up yet, so task pages are empty; sessions, skills and rules work as usual.",
+  "电脑太久没有回应，已放弃这次请求；稍后会自动重试。": "The Mac took too long to answer, so this request was dropped; it will retry shortly.",
 };
 export default app;

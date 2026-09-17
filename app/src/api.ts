@@ -212,8 +212,14 @@ async function tauriApi(): Promise<Api> {
 // Served by cli/serve.py: one POST per command, the cookie set by /?token=… carries auth.
 function httpApi(): Api {
   const post = async (cmd: string, args?: Record<string, unknown>) => {
-    const r = await fetch("/api/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd, args: args ?? {} }), credentials: "same-origin" })
-      .catch(() => { throw new Error(t("与电脑的连接暂时中断，请检查网络或电脑是否在线。")); });
+    // A request that never answers (the Mac went to sleep mid-call, a dead Tailscale route) must end:
+    // polls are 20 s, commands that do real work on the Mac get the same 30 minutes the desktop allows.
+    const slow = cmd === "dispatch_on" || cmd === "agent_start" || cmd === "skills_improve" || cmd === "insights" || cmd === "rules_sync";
+    const ctl = new AbortController();
+    const timer = window.setTimeout(() => ctl.abort(), slow ? 30 * 60_000 : 20_000);
+    const r = await fetch("/api/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd, args: args ?? {} }), credentials: "same-origin", signal: ctl.signal })
+      .catch(() => { throw new Error(ctl.signal.aborted ? t("电脑太久没有回应，已放弃这次请求；稍后会自动重试。") : t("与电脑的连接暂时中断，请检查网络或电脑是否在线。")); })
+      .finally(() => window.clearTimeout(timer));
     const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
     if (!r.ok || body.error) throw new Error(body.error ?? `HTTP ${r.status}`);
     return body as { result?: string; value?: unknown };

@@ -105,19 +105,23 @@ export default function App() {
   }, [api]);
   useEffect(() => {
     if (!api) return;
-    let stopped = false; let timer = 0;
+    let stopped = false; let timer = 0; let failures = 0;
     const tick = async () => {
       if (document.visibilityState === 'visible') {
         try {
           const snapshot = await api.sessionActivity();
+          failures = 0;
           if (!stopped) { setActivity({ ...snapshot, sessions: snapshot.sessions.map(a => acknowledged.current.get(activityKey(a)) === a.reply_id ? { ...a, unread: false } : a) }); setActivityError(false); }
-        } catch (e) { if (!stopped) { setActivityError(true); console.warn("activity poll failed:", e); } }
+        } catch (e) { failures++; if (!stopped) { setActivityError(true); console.warn("activity poll failed:", e); } }
       }
-      if (!stopped) timer = window.setTimeout(tick, 3000);
+      // Back off while the Mac does not answer (3 s → 6 → 12 → 24 → 30): a phone on a bad link
+      // should not hammer it, and the first success returns to the normal pace.
+      if (!stopped) timer = window.setTimeout(tick, Math.min(30_000, 3000 * 2 ** Math.min(failures, 4)));
     };
     tick();
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [api]);
+  const presenceOnce = useRef(false);  // a hidden window keeps the first presence read and then stops polling
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
   // Agents installed on this Mac: dialogs default to one of them (see installedAgents.ts).
   useEffect(() => { if (!api) return; void api.on("local", ["agents-installed", "--json"]).then((s) => { const rows = JSON.parse(s.slice(Math.max(0, s.indexOf("[")))) as { id: string; found: boolean }[]; setInstalledAgents(rows.filter((r) => r.found).map((r) => r.id)); }).catch(() => setInstalledAgents(null)); }, [api]);
@@ -348,7 +352,7 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     // Backstop for the file watcher; cheap now that bd runs against the shared server.
-    const tm = window.setInterval(() => reload(), 10_000);
+    const tm = window.setInterval(() => { if (document.visibilityState === "visible") void reload(); }, 10_000);
     return () => window.clearInterval(tm);
   }, [api, reload]);
 
@@ -356,7 +360,7 @@ export default function App() {
   useEffect(() => {
     if (!api) return;
     let alive = true;
-    const tick = async () => { try { const p = await api.presence(); if (alive) { setPresence(p); setPresenceLoaded(true); } } catch { /* keep last */ } };
+    const tick = async () => { if (document.visibilityState !== "visible" && presenceOnce.current) return; presenceOnce.current = true; try { const p = await api.presence(); if (alive) { setPresence(p); setPresenceLoaded(true); } } catch { /* keep last */ } };
     tick();
     const tm = window.setInterval(tick, 5_000);
     return () => { alive = false; window.clearInterval(tm); };

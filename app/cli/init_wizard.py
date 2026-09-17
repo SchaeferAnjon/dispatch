@@ -499,8 +499,23 @@ def ssh_key_setup(target, password):
 
 
 def ssh_target_ok(target):
-    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=accept-new", target, "echo ok"], capture_output=True, text=True)
+    # ConnectTimeout covers the TCP connect only; a host that accepts and then stalls during key
+    # exchange or authentication would hang the wizard for ever without the outer timeout.
+    try:
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=accept-new", target, "echo ok"], capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        return False, "15 秒内没有回应：对方开着吗？「远程登录」打开了吗？地址对吗？"
     return r.returncode == 0 and "ok" in r.stdout, (r.stderr or r.stdout).strip()[-300:]
+
+
+def rsync_from(target, src, dst, what, timeout=600):
+    """Copy a folder from the hub; a stalled link ends with a readable error, not a spinner for ever."""
+    try:
+        r = subprocess.run(["rsync", "-a", "--timeout=60", "-e", "ssh -o BatchMode=yes -o ConnectTimeout=8", f"{target}:{src}/", dst + "/"], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"从枢纽复制{what}超过 {timeout // 60} 分钟没完成：网络太慢或断了，稍后重试这一步")
+    if r.returncode != 0:
+        raise RuntimeError(f"从枢纽复制{what}失败：{r.stderr.strip()[-300:]}")
 
 
 REMOTE_LOGIN_STEP = "系统设置 → 通用 → 共享 → 打开「远程登录」"
@@ -968,13 +983,9 @@ def rules_setup(mode=None, target=None):
         if not target:
             raise RuntimeError("不知道枢纽是哪台电脑，先做「任务板」那一步")
         rdir = os.path.dirname(D.RULES_FILE)
-        r = subprocess.run(["rsync", "-a", "-e", "ssh -o BatchMode=yes", f"{target}:{rdir}/", rdir + "/"], capture_output=True, text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"从枢纽复制规则失败：{r.stderr.strip()[-300:]}")
+        rsync_from(target, rdir, rdir, "规则")
         os.makedirs(D.POOL, exist_ok=True)
-        r = subprocess.run(["rsync", "-a", "-e", "ssh -o BatchMode=yes", f"{target}:{D.POOL}/", D.POOL + "/"], capture_output=True, text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"从枢纽复制技能池失败：{r.stderr.strip()[-300:]}")
+        rsync_from(target, D.POOL, D.POOL, "技能池")
         seed = f"copied:{target}"
     elif os.path.exists(D.RULES_FILE):
         seed = "existing"
@@ -1287,6 +1298,11 @@ def main(a):
                 raise RuntimeError(f"未知步骤 {step}")
         else:
             raise RuntimeError(f"未知操作 {op}")
+    except subprocess.TimeoutExpired as e:
+        msg = f"这一步超过 {int(e.timeout)} 秒没完成（{os.path.basename(str(e.cmd[0] if isinstance(e.cmd, (list, tuple)) else e.cmd))}）：对方电脑或网络没有回应，稍后重试"
+        if a.json:
+            print(json.dumps({"error": msg}, ensure_ascii=False)); sys.exit(1)
+        print(f"✗ {msg}"); sys.exit(1)
     except Exception as e:
         if a.json:
             print(json.dumps({"error": str(e)}, ensure_ascii=False)); sys.exit(1)
