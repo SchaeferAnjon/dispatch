@@ -276,5 +276,8 @@ const session: Dict = {
   "领队：每轮最后发言，结论和文档由 ta 写": "Lead: speaks last each round and writes the conclusion and document",
   "收起现场": "Hide the floor",
   "看讨论现场": "Show the discussion floor",
+  "展开讨论列表": "Show the discussion list",
+  "收起讨论列表": "Hide the discussion list",
+  "全部讨论": "All discussions",
 };
 export default session;

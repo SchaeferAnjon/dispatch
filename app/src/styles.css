@@ -1419,7 +1419,17 @@ pre.diff.dv-pre .ln{width:max-content;min-width:100%}pre.diff.dv-pre .ln .tx{fle
 a.task-link{color:var(--accent-ink);font-family:var(--mono);font-size:.95em;text-decoration:none;border-bottom:1px dotted var(--accent-ink);cursor:pointer}a.task-link:hover{background:var(--accent-soft)}
 
 /* 讨论 page: list | summary | chat; on a phone one column (list, or summary folded above the chat). */
-.discuss-view{display:grid;grid-template-columns:260px 360px minmax(0,1fr);height:100%;min-height:0;min-width:0}
+.discuss-view{display:grid;grid-template-columns:var(--disc-list-w,260px) var(--disc-sum-w,360px) minmax(0,1fr);height:100%;min-height:0;min-width:0}
+/* Each side column folds on its own into a narrow rail that says what it is and opens it again. */
+.disc-rail{display:none;flex-direction:column;align-items:center;gap:10px;width:100%;height:100%;padding:10px 0;background:none;border:0;color:var(--ink-2);cursor:pointer}
+.disc-rail:hover{background:var(--panel-2);color:var(--ink)}.disc-rail .arrow{font-size:15px;line-height:1}
+.disc-rail .label{writing-mode:vertical-rl;font-size:12px;letter-spacing:.04em;max-height:calc(100% - 40px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(min-width:641px){
+  .discuss-view.list-folded{--disc-list-w:36px}.discuss-view.summary-folded.has-task{--disc-sum-w:36px}
+  .discuss-view.list-folded .disc-list{padding:0;overflow:hidden}.discuss-view.list-folded .disc-list>:not(.disc-rail){display:none}.discuss-view.list-folded .disc-list>.disc-rail{display:flex}
+  .discuss-view.summary-folded .disc-summary{overflow:hidden}.discuss-view.summary-folded .disc-summary>:not(.disc-rail){display:none}.discuss-view.summary-folded .disc-summary>.disc-rail{display:flex}
+}
+@media(max-width:640px){.disc-fold-btn{display:none}}
 .disc-list{display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--line);overflow:auto;padding:8px;min-width:0}
 .disc-list-head{display:flex;gap:6px;align-items:center;margin-bottom:4px}.disc-list-head .search-in{flex:1;min-width:0}.disc-list-opt{display:flex;align-items:center;gap:6px;padding:2px 6px 6px}
 .disc-row{display:flex;flex-direction:column;gap:4px;text-align:left;padding:8px 10px;border-radius:8px;border:1px solid transparent;background:none;width:100%}
@@ -1786,6 +1796,7 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 .seat-name{display:flex;flex-direction:column;align-items:center;font-size:11px;line-height:1.25;margin-top:3px;text-align:center}
 .seat-name .muted{font-size:10px;max-width:116px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .seat-name em{font-style:normal;font-size:10px;color:var(--ink-3)}
+.seat.open{z-index:4}
 .seat.s-queued .seat-person{opacity:.55}
 .seat.s-thinking .seat-person{border-color:var(--accent);animation:seat-bob 1.4s ease-in-out infinite}
 .seat.s-typing .seat-person{border-color:var(--s-done,#2e7d5b);animation:seat-talk .5s ease-in-out infinite}
@@ -1794,7 +1805,7 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 .seat.s-error .seat-person{border-color:var(--s-block)}
 .seat.s-error .seat-name em{color:var(--s-block);font-weight:600}
 .seat.you .seat-person{border-style:dashed}
-.seat-bubble{position:absolute;bottom:calc(100% - 2px);left:50%;transform:translateX(-50%);width:max-content;max-width:230px;padding:6px 9px;border-radius:10px;background:var(--win);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:11px;line-height:1.4;color:var(--ink);z-index:3;user-select:text;overflow-wrap:anywhere}
+.seat-bubble{position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);width:max-content;max-width:230px;padding:6px 9px;border-radius:10px;background:var(--win);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:11px;line-height:1.4;color:var(--ink);z-index:3;user-select:text;overflow-wrap:anywhere}
 .seat.edge-l .seat-bubble{left:0;transform:none}
 .seat.edge-r .seat-bubble{left:auto;right:0;transform:none}
 .seat-bubble:not(.full)>span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -1802,6 +1813,24 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 .seat-bubble.thought{border-style:dashed;color:var(--ink-2)}
 .seat-bubble.err{border-color:var(--s-block);color:var(--s-block)}
 .stage-toggle{align-self:flex-end;margin:2px 14px 0;font-size:11px}
+.seat.upper .seat-bubble.full{bottom:auto;top:0;left:calc(100% - 18px);right:auto;transform:none}
+.seat.upper.edge-r .seat-bubble.full{left:auto;right:calc(100% - 18px)}
+.disc-stage-col{display:flex;flex-direction:column;flex:0 0 auto;min-width:0}
+.disc-chat-col{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+/* Side by side: conversation left, the round table right and larger. */
+.disc-chat.side{flex-direction:row;gap:6px}
+.disc-chat.side .disc-chat-col{order:1;flex:1 1 0}
+.disc-chat.side .disc-stage-col{order:2;flex:1 1 0;min-height:0}
+.disc-chat.side .disc-stage{flex:1;height:auto;min-height:420px;margin:0 0 0 8px;container-type:inline-size}
+.disc-chat.side .seat{width:190px}
+.disc-chat.side .seat-person{width:108px;height:108px;border-width:3px}
+.disc-chat.side .seat-crown{font-size:20px;right:-2px;top:-2px}
+.disc-chat.side .seat-name{font-size:13.5px;margin-top:6px}.disc-chat.side .seat-name .muted,.disc-chat.side .seat-name em{font-size:12px;max-width:180px}
+.disc-chat.side .seat-bubble{bottom:calc(100% + 8px);max-width:min(340px,46cqw);font-size:13px;line-height:1.5;padding:9px 12px;border-radius:12px}
+.disc-chat.side .seat-bubble:not(.full)>span{-webkit-line-clamp:6}
+.disc-chat.side .seat-bubble.full{max-width:min(420px,60cqw);max-height:320px}
+.disc-chat.side .seat.upper .seat-bubble.full{left:calc(100% - 30px)}.disc-chat.side .seat.upper.edge-r .seat-bubble.full{left:auto;right:calc(100% - 30px)}
+.disc-chat.side .stage-table{min-height:96px;font-size:15px;padding:16px 24px}.disc-chat.side .stage-table small{font-size:12.5px}
 @keyframes seat-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes seat-talk{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @media (prefers-reduced-motion:reduce){.seat .seat-person{animation:none!important}}
