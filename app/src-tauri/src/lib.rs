@@ -392,6 +392,20 @@ async fn task_sessions(id: String) -> Result<String, String> {
     run_dispatch(args(&["find", &id, "--json"])).await
 }
 
+/// Hold the Mac awake for as long as Dispatch runs: phone replies, Herdr panes and the board sync
+/// all live on this machine, and an idle-sleeping Mac mini drops them all. `caffeinate -w <pid>`
+/// releases the assertion the moment the app exits. A desktop (no battery) also keeps its display
+/// awake, so the screen never locks under GUI automation (AppleScript, screen capture); a laptop
+/// only stops idle system sleep and may still dim its screen.
+fn keep_awake() {
+    if !cfg!(target_os = "macos") { return; }
+    let laptop = Command::new("pmset").args(["-g", "batt"]).output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("InternalBattery")).unwrap_or(true);
+    let flags = if laptop { "-is" } else { "-dis" };
+    let _ = Command::new("caffeinate").args([flags, "-w", &std::process::id().to_string()])
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+}
+
 #[tauri::command]
 async fn session_list() -> Result<String, String> {
     run_dispatch(args(&["list", "--cached", "--limit", "500", "--json"])).await
@@ -853,6 +867,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if let Ok(resources) = app.path().resource_dir() { let _ = BUNDLED_CLI.set(resources.join("cli/dispatch.py")); }
+            keep_awake();
             ensure_dolt_server();
             start_watcher(app.handle().clone());
             start_indexer();

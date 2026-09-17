@@ -476,6 +476,12 @@ def main():
     H.conf = conf
     srv = ThreadingHTTPServer((ip, int(conf.get("port", 7799))), H)
     srv.daemon_threads = True
+    # The phone only reaches an awake Mac: hold off idle sleep for as long as this daemon lives
+    # (caffeinate exits with us). The display may still sleep — the desktop app handles that.
+    try:
+        subprocess.Popen(["caffeinate", "-is", "-w", str(os.getpid())], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
     print(f"Dispatch 网页版：{url(conf, ip)}", flush=True)
     try:
         srv.serve_forever()
