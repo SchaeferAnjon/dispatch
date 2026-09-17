@@ -1694,8 +1694,8 @@ button.review-verdict:hover{filter:brightness(.96)}
 .sess-pane-head{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12px;border-bottom:1px solid var(--line);background:var(--panel)}
 .sess-pane-head .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sess-pane iframe{flex:1;width:100%;border:0;min-height:0}
-.app.solo .sidebar,.app.solo .tb,.app.solo .topbar,.app.solo .toolbar{display:none!important}
-.app.solo .body{grid-template-columns:1fr}
+.app.solo .side,.app.solo .toolbar{display:none!important}
+.app.solo .body{grid-template-columns:minmax(0,1fr)}
 .app.solo{grid-template-rows:1fr}
 .app.solo .titlebar{display:none}
 .app.solo .sess-head .session-back{display:none}
