@@ -1713,3 +1713,18 @@ class CatalogWindow(unittest.TestCase):
         self.assertEqual(ids, sorted(ids, key=lambda i: -next(r["last_at"] for r in refs if r["session_id"] == i)))
         self.assertIs(D.catalog_window(refs, 0), refs)
         self.assertEqual(D.catalog_window(refs[:5], 12), refs[:5])
+
+
+class SaveFile(unittest.TestCase):
+    def test_keeps_extension_and_sanitises_name(self):
+        import base64, io, json, os, tempfile
+        import dispatch as D
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp, patch.object(D, "DISPATCH_DIR", tmp), patch("sys.stdin", io.StringIO(json.dumps({"name": "../weird name.tar.gz", "data": "data:application/gzip;base64," + base64.b64encode(b"x" * 10).decode()}))):
+            printed = []
+            with patch("builtins.print", lambda *a, **k: printed.append(a[0])):
+                D.cmd_save_file(type("A", (), {"json": False})())
+            path = printed[-1]
+            self.assertTrue(path.startswith(os.path.join(tmp, "files")))
+            self.assertTrue(path.endswith("-weird_name.tar.gz"))
+            self.assertEqual(os.path.getsize(path), 10)

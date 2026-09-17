@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { isTauri, type Api } from '../api';
 import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 import type { Host } from '../types';
+import { shrinkImage, withImages } from './SessionReply';
 
 type Target = { session_id: string; agent: string; host?: string; host_name?: string };
 interface Launch { request_id: string; state: string; message: string; session_id?: string; agent: string; cwd: string }
@@ -124,6 +125,34 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
   const [launch, setLaunch] = useState<Launch | null>(null);
   const request = useRef<string | null>(null);
   const generation = useRef(0);
+  // Pictures and files for the first message: stored on the Mac the session will run on, so its
+  // Read tool can open them; the message carries the paths (same note the reply box uses).
+  type Attached = { path: string; name: string; image: boolean; preview?: string };
+  const [files, setFiles] = useState<Attached[]>([]);
+  const [saving, setSaving] = useState(0);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const readAsDataUrl = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
+  const addFiles = async (list: File[]) => {
+    for (const f of list) {
+      setSaving((n) => n + 1);
+      try {
+        const image = f.type.startsWith('image/');
+        const data = image ? await shrinkImage(f) : await readAsDataUrl(f);
+        const t = await api.on(host, [image ? 'save-image' : 'save-file', '--json'], JSON.stringify({ name: f.name || (image ? 'photo' : 'file'), data }));
+        const saved = JSON.parse(t.slice(t.indexOf('{'))) as { path: string };
+        setFiles((xs) => [...xs, { path: saved.path, name: f.name || (image ? '图片' : '文件'), image, preview: image ? data : undefined }]);
+      } catch (e) { setError(/usage:|invalid choice/.test(String(e)) ? '那台电脑的 Dispatch 太旧，还不会存附件；更新后再试。' : `附件没传上去：${String(e)}`); }
+      finally { setSaving((n) => n - 1); }
+    }
+  };
+  const onPaste = (e: React.ClipboardEvent) => { const list = Array.from(e.clipboardData.files); if (list.length) { e.preventDefault(); void addFiles(list); } };
+  const messageWithFiles = (text: string) => {
+    const images = files.filter((f) => f.image).map((f) => f.path);
+    const others = files.filter((f) => !f.image).map((f) => f.path);
+    const base = withImages(text, images) || (others.length ? '看一下这几个文件' : text.trim());
+    return others.length ? `${base} 附件（用 Read 看）：${others.join(' ')}` : base;
+  };
   const browse = async (next: string) => {
     const seq = ++generation.current;
     setBrowseBusy(true); setError('');
@@ -154,11 +183,11 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
     try { const saved = JSON.parse(sessionStorage.getItem('dispatch-new-session') || 'null'); if (saved) { setHost(saved.host); request.current = saved.request_id; setLaunch(saved); } } catch { /* storage unavailable */ }
   }, []);
   const submit = async () => {
-    if (busy || launch || !prompt.trim() || !path) return;
+    if (busy || launch || saving || (!prompt.trim() && !files.length) || !path) return;
     setBusy(true); setError(''); request.current ??= id();
     const pending = { request_id: request.current, state: 'starting', host, agent, cwd: path, message: '正在连接电脑…' };
     try { sessionStorage.setItem('dispatch-new-session', JSON.stringify(pending)); } catch { /* private mode */ }
-    try { const r = await control<Launch>(api, host, 'start', {request_id: request.current, agent, cwd: path, prompt, focus: finder}); setLaunch(r); }
+    try { const r = await control<Launch>(api, host, 'start', {request_id: request.current, agent, cwd: path, prompt: messageWithFiles(prompt), focus: finder}); setLaunch(r); }
     catch (e) {
       setError(String(e));
       // Distinguish rejected input from an accepted launch with a lost response.
@@ -197,10 +226,18 @@ export function NewSession({ api, hosts, initialHost, initialCwd, onClose, onCre
       {folders?.truncated && <small>子文件夹较多，可输入完整路径前往。</small>}
     </div>
     {!!folders?.recent.length && <label>最近使用<select aria-label="最近使用的文件夹" value="" disabled={locked || browseBusy} onChange={e => browse(e.target.value)}><option value="">选择最近使用的文件夹…</option>{folders.recent.map(p => <option key={p} value={p}>{p}</option>)}</select></label>}
-    <label>第一条消息<textarea aria-label="第一条消息" value={prompt} disabled={locked} maxLength={16000} onChange={e => setPrompt(e.target.value)} placeholder="告诉 Agent 这次想做什么…" /></label>
+    <label>第一条消息<textarea aria-label="第一条消息" value={prompt} disabled={locked} maxLength={16000} onChange={e => setPrompt(e.target.value)} onPaste={onPaste} placeholder={files.length ? '说说这些图片/文件要干什么（可不填）' : '告诉 Agent 这次想做什么…（可粘贴图片）'} /></label>
+    <div className="new-session-attach">
+      <button className="btn sm" type="button" disabled={locked} onClick={() => imageInput.current?.click()} title="加图片：手机可拍照或选相册，电脑也可以直接粘贴到上面">📷 图片</button>
+      <button className="btn sm" type="button" disabled={locked} onClick={() => fileInput.current?.click()} title="加文件：存到运行那台电脑上，Agent 用 Read 看">📎 文件</button>
+      {saving > 0 && <span className="muted small">正在上传 {saving} 个…</span>}
+      <input ref={imageInput} type="file" accept="image/*" multiple hidden onChange={e => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+      <input ref={fileInput} type="file" multiple hidden onChange={e => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+      {files.map((f) => <span key={f.path} className="new-session-file" title={f.path}>{f.preview ? <img src={f.preview} alt="" /> : '📄'}<span className="n">{f.name}</span><button type="button" className="link" aria-label={`移除 ${f.name}`} disabled={locked} onClick={() => setFiles((xs) => xs.filter((x) => x.path !== f.path))}>✕</button></span>)}
+    </div>
     <p className="new-session-note">Agent 在所选电脑的终端中运行，沿用已有登录和权限设置。{finder ? '创建好后会直接切到 Herdr 所在的终端；也可以回到 Dispatch 查看进展并继续回复。' : '你可以留在 Dispatch 查看进展并继续回复。'}</p></>}
     {launch && <div className="launch-progress" role="status"><b>{launch.state === 'ready' ? '会话已就绪' : launch.state === 'attention' || launch.state === 'failed' ? '需要查看电脑' : '正在新建会话…'}</b><p>{launch.message}</p><code>{launch.cwd}</code>{['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => onComputer(host)}>查看电脑与连接</button>}{launch.session_id && <button className="btn primary" onClick={() => onCreated(launch.session_id!, host, agent)}>进入会话</button>}</div>}
     {error && <p className="new-session-error" role="alert">{error}</p>}
-    <div className="foot"><button className="btn" onClick={onClose}>{launch ? '收起' : '取消'}</button>{!launch && <button className="btn primary" disabled={busy || browseBusy || !path || !prompt.trim()} onClick={submit}>{busy ? '正在创建…' : '创建并发送'}</button>}{launch && ['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onClose(); }}>已了解</button>}</div>
+    <div className="foot"><button className="btn" onClick={onClose}>{launch ? '收起' : '取消'}</button>{!launch && <button className="btn primary" disabled={busy || browseBusy || !path || saving > 0 || (!prompt.trim() && !files.length)} onClick={submit}>{busy ? '正在创建…' : '创建并发送'}</button>}{launch && ['attention','failed'].includes(launch.state) && <button className="btn" onClick={() => { try { sessionStorage.removeItem('dispatch-new-session'); } catch { /* private mode */ } onClose(); }}>已了解</button>}</div>
   </div></div>;
 }

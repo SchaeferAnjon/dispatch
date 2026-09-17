@@ -3083,6 +3083,29 @@ def cmd_save_image(a):
     out({"path": path, "size": len(raw)}, a.json, lambda x: print(x["path"]))
 
 
+def cmd_save_file(a):
+    """Store any attachment (base64 JSON on stdin: {name, data}) under ~/tasks/.dispatch/files/ and
+    print its path — the words 「附件（用 Read 看）：<path>」 then travel with the message. Keeps the
+    original extension so the Agent's Read tool knows what it is; 50 MB cap."""
+    import base64
+    d = json.loads(sys.stdin.read() or "{}")
+    data = d.get("data", "")
+    if data.startswith("data:"):
+        data = data.split(",", 1)[1]
+    raw = base64.b64decode(data)
+    if len(raw) > 50 * 1024 * 1024:
+        raise SystemExit("附件超过 50 MB")
+    folder = os.path.join(DISPATCH_DIR, "files")
+    os.makedirs(folder, exist_ok=True)
+    orig = os.path.basename(d.get("name") or "file")
+    stem, ext = (orig.rsplit(".", 1) + [""])[:2] if "." in orig else (orig, "")
+    stem = re.sub(r"[^\w.-]", "_", stem)[:60] or "file"
+    ext = re.sub(r"[^A-Za-z0-9]", "", ext)[:12]
+    path = os.path.join(folder, f"{time.strftime('%Y%m%d-%H%M%S')}-{stem}" + (f".{ext}" if ext else ""))
+    open(path, "wb").write(raw)
+    out({"path": path, "size": len(raw)}, a.json, lambda x: print(x["path"]))
+
+
 def cmd_commits(a):
     r = task_commits(a.task)
 
@@ -7830,6 +7853,7 @@ def main():
     s = sub.add_parser("adopt", help="take a session running in another terminal (Warp/iTerm/Terminal/VS Code) into Herdr: stop it when idle, resume it in a new Herdr tab"); s.add_argument("key", help="session id, prefix, or pid-<n>"); s.add_argument("--keep", action="store_true", help="leave the old process running (the two will interleave writes)"); s.add_argument("--force", action="store_true", help="adopt even while it is working"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_adopt)
     s = sub.add_parser("reply", help="reply to an exact Agent session; `commands` lists the slash commands it accepts"); s.add_argument("op", choices=["status", "send", "commands", "answer", "control", "revive"]); s.add_argument("key"); s.add_argument("--agent", required=True); s.add_argument("--request"); s.add_argument("--mode", choices=["queue", "interrupt"], default="queue", help="while the agent works: queue for its next turn, or Esc first (steer it now)"); s.add_argument("--image", action="append", default=[], help="send: a picture to attach (repeat for several); Claude Code gets them as attachments, others as paths in the text"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_reply)
     s = sub.add_parser("save-image", help="store a pasted image (base64 JSON on stdin: {name, data}) and print its path"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_save_image)
+    s = sub.add_parser("save-file", help="store an attachment (base64 JSON on stdin: {name, data}) under ~/tasks/.dispatch/files and print its path"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_save_file)
     s = sub.add_parser("commits", help="git commits that belong to a task (id in the message, or hashes in its close reason / comments)"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_commits)
     s = sub.add_parser("find", help="sessions that mention a task"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_find)
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)

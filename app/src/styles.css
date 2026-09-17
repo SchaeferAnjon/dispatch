@@ -1700,3 +1700,8 @@ button.review-verdict:hover{filter:brightness(.96)}
 .app.solo{grid-template-rows:1fr}
 .app.solo .titlebar{display:none}
 .app.solo .sess-head .session-back{display:none}
+
+.new-session-attach{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-6px 0 8px}
+.new-session-file{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;max-width:260px}
+.new-session-file img{width:28px;height:28px;object-fit:cover;border-radius:4px}
+.new-session-file .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
