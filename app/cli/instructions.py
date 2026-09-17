@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Local, explainable instruction audit. No LLM requests or credentials are sent."""
 import difflib
 import hashlib

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """各 Agent 自己的长期记忆（Claude Code / Codex / ZCode）—— `dispatch memories list|show|archive|summary`.
 
 Each agent keeps its own long-term memory; Dispatch lists and shows them, can archive one file,

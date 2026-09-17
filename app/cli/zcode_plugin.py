@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """ZCode plugin for Dispatch — `dispatch zcode-plugin install|status|remove`.
 
 ZCode (the OpenCode-based desktop app) reads the same plugin layout as Claude Code: a manifest,

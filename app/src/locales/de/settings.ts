@@ -597,5 +597,6 @@ const settings: Dict = {
   "不干预": "Nicht eingreifen",
   "新开的终端里还找不到 dispatch：把 ~/.local/bin 加进 PATH，或直接用上面的完整路径。": "Ein neues Terminal findet dispatch noch nicht: ~/.local/bin zum PATH hinzufügen oder den vollständigen Pfad oben verwenden.",
   "新开的终端里能直接用 dispatch 了。": "In einem neuen Terminal lässt sich dispatch jetzt direkt ausführen.",
+  "Python 和命令行文件都在，但命令行没跑起来：上面是它报的错。把这段发到项目的 Issues，或换一个 Python 试试（启动前设 DISPATCH_PYTHON）。": "Python und die Kommandozeilendatei sind vorhanden, die Kommandozeile lief aber nicht: Der Fehler steht oben. Melden Sie ihn in den Issues des Projekts oder versuchen Sie ein anderes Python (vor dem Start DISPATCH_PYTHON setzen).",
 };
 export default settings;

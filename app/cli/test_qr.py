@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Tests for the QR encoder. The golden matrices come from the independent `qrcode` package
 (same input, version, level L, mask 0, byte mode) and were decoded back with macOS Vision."""
 import unittest

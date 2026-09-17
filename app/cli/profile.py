@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """关于我（~/.agents/rules/PROFILE.md）：Agent 自动维护的用户档案 —— `dispatch profile show|add|upcoming|done|inventory`.
 
 会变的用户现状、处境与时间线，和 FACTS 的分工见文件头。`##` 节：我是谁 / 设备与服务现状 / 将来会发生的事 / 已发生。

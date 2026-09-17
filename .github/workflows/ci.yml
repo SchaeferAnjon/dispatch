@@ -18,6 +18,14 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Every CLI module compiles on this Python
         run: python -m py_compile app/cli/*.py
+      # Compiling is not running: Python 3.9 reads a *script* through a different decoder, which once
+      # rejected a long non-ASCII line that py_compile and import accepted. The app, the hooks and the
+      # phone service all run these files as scripts.
+      - name: The entry points run as scripts
+        run: |
+          python app/cli/dispatch.py --help > /dev/null
+          BEADS_DIR="$RUNNER_TEMP/board/.beads" python app/cli/dispatch.py prime > /dev/null
+          python -c "import runpy; [runpy.run_path(f'app/cli/{f}', run_name='ci') for f in ('serve.py','presence.py','notify.py','updater.py','edit-guard.py')]"
       - name: Every CLI module ships in the app bundle
         run: cd app/cli && python -m unittest -q test_bundle
 

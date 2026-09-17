@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch

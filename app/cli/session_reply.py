@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Exact-session reply adapters and durable, idempotent delivery receipts.
 
 Codex Desktop: local IPC owner discovery + follower API (versioned; fail closed).

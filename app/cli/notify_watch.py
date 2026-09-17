@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Push what changed to the phone (ntfy / Bark) without the desktop app being open.
 
 The phone web server runs `loop()` in a thread; `dispatch notify watch --once` runs one pass by
@@ -14,6 +15,7 @@ Nothing is sent while only the macOS banner channel is configured: the desktop a
 shows those, and a headless Mac would just pile up banners nobody sees.
 """
 import json, os, sys, time
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)

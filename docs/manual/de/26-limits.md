@@ -22,11 +22,12 @@
 ## Zwei Macs
 
 - **Der Sync-Port des Hubs (3309) lauscht auf allen Schnittstellen.** Dolts remotesapi lässt sich nicht an eine Adresse binden; geschützt wird er durch das Passwort des Sync-Benutzers. Leiten Sie diesen Port nicht ins Internet weiter.
+- **Der Abgleich zwischen den beiden Macs ist nicht verschlüsselt.** Über Tailscale verschlüsselt Tailscale. Mit „gleiches WLAN“ gehen Aufgabeninhalte und das Sync-Passwort im Klartext durchs lokale Netz: nur zu Hause oder in einem vertrauenswürdigen Netz verwenden, in öffentlichen, Wohnheim- oder Firmennetzen Tailscale nehmen. Dasselbe gilt für die Handy-Seiten auf Port 7799, sie laufen über HTTP.
 - Laufen auf den beiden Macs verschiedene Versionen, gehen beim Speichern der Einstellungen auf dem älteren die neueren Einstellungen verloren, die er nicht kennt (etwa die Schalter für Handy-Benachrichtigungen). Beide gemeinsam zu aktualisieren vermeidet das.
 
 ## Handy
 
-- QR-Code und Link zum Koppeln tragen ein dauerhaft gültiges Token (gespeichert in `~/tasks/.dispatch/serve.json`; nach einmaligem Scannen merkt es sich das Handy per Cookie): Es wird nur auf der Einstellungsseite gezeigt, posten Sie es nicht öffentlich. Links in Benachrichtigungen verwenden einen Einmal-Code, der 24 Stunden gilt.
+- QR-Code und Link zum Koppeln tragen ein dauerhaft gültiges Token (gespeichert in `~/tasks/.dispatch/serve.json`; nach einmaligem Scannen merkt es sich das Handy per Cookie): Es wird nur auf der Einstellungsseite gezeigt, posten Sie es nicht öffentlich. Links in Benachrichtigungen verwenden einen Einmal-Code: über Bark 24 Stunden gültig, über ntfy 15 Minuten (wer den Namen eines ntfy-Themas errät, kann dessen Benachrichtigungen lesen).
 - Ohne Tailscale lauscht der Dienst standardmäßig nur auf diesem Mac; mit „LAN zulassen“ erreicht jedes Gerät im selben WLAN Port 7799 (das Token bleibt nötig). In öffentlichen WLANs ausschalten.
 - Die Web-Version kann keine Systembenachrichtigungen zeigen; für Pushes braucht es Bark oder ntfy.
 

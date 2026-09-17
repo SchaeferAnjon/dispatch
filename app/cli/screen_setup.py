@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """One-click phone screen sharing (`dispatch screen`).
 
 novnc-setup.sh used to be a shell script people ran by hand on the Mac whose screen

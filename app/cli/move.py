@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Move a conversation — or a whole project — to another Mac and carry on there (`dispatch move`,
 `dispatch project <名> --move-to <主机>`).
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """edit-guard — file-level "who is editing what" for agents that share a machine.
 
 Hooked into Claude Code / Codex before and after file edits. Registry lives in
@@ -11,8 +12,9 @@ Hooked into Claude Code / Codex before and after file edits. Registry lives in
 Usage: edit-guard.py <agent> pre|post   (hook JSON on stdin; exit 0 always)
 """
 import hashlib, json, os, re, sys, time
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 
-DIR = os.path.join(os.path.expanduser("~"), "tasks", ".dispatch", "edits")
+DIR = os.path.join(os.environ.get("DISPATCH_DIR") or os.path.join(os.path.expanduser("~"), "tasks", ".dispatch"), "edits")
 WINDOW = 30 * 60
 WARN_TTL = 15 * 60
 

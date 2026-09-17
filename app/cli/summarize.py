@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """One-paragraph summary of a conversation, written by a model (`dispatch session-summary`).
 
 Uses whatever chat API key `dispatch env` already holds — DeepSeek, 智谱 GLM, Kimi,

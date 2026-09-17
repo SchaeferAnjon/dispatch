@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Session presence hook for Dispatch.
 
 Usage:  presence.py <agent> <event>     (hook JSON on stdin)
@@ -7,8 +8,9 @@ show every live session, where it was launched from, and whether it is busy.
 Never fails the hook: any error is swallowed and exit code is 0.
 """
 import json, os, sys, time, subprocess, glob
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 
-DIR = os.path.expanduser("~/tasks/.dispatch/sessions")
+DIR = os.path.join(os.environ.get("DISPATCH_DIR") or os.path.expanduser("~/tasks/.dispatch"), "sessions")
 
 SHELLS = {"sh", "bash", "zsh", "fish", "-fish", "-zsh", "-bash", "login", "python3", "python", "env", "node"}
 # comm/app name → (kind, label). Matched with a leading "/" so a real bundle path

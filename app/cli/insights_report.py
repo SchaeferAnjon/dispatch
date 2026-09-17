@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """The cross-agent /insights report: a model reads a digest of the recent sessions of every
 agent (Claude Code, Codex, pi, ZCode) and writes a structured review — what you worked on,
 how the agents behaved, where they failed, what went well, what to change in rules/skills.
@@ -13,6 +14,7 @@ browser tab). The signal counts from `dispatch insights` (regex cues) go into th
 the model interprets them instead of the reader guessing.
 """
 import json, os, re, subprocess, sys, time
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 from html import escape
 
 import dispatch as D

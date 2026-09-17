@@ -33,7 +33,8 @@ export function EnvCheck({ api, report, error, onRetry }: { api: Api; report: En
       {!r.ok && r.fix && <button className="btn sm" onClick={() => void copy(r.fix!)} title={r.fix}>{copied === r.fix ? t("已复制") : t("复制安装命令")}</button>}
     </li>)}</ul>}
     {report && !report.cli_exists && <p className="setup-bad">{t("应用包里没找到命令行文件：{path}。重新下载 Dispatch 再试。", { path: report.cli })}</p>}
-    {error && <details className="env-error"><summary>{t("原始错误")}</summary><pre className="setup-log">{error}</pre></details>}
+    {error && <details className="env-error" open={!!report && report.python.ok && report.cli_exists}><summary>{t("原始错误")}</summary><pre className="setup-log">{error}</pre></details>}
+    {report && report.python.ok && report.cli_exists && <p className="setup-bad">{t("Python 和命令行文件都在，但命令行没跑起来：上面是它报的错。把这段发到项目的 Issues，或换一个 Python 试试（启动前设 DISPATCH_PYTHON）。")}</p>}
     <p className="muted small">{t("装命令：打开「终端」粘贴并回车。Homebrew 会问管理员密码；xcode-select 会弹一个系统安装窗口，装完再回来。")}</p>
     <button className="btn primary" disabled={busy} onClick={() => void retry()}>{busy ? t("检查中…") : t("重新检查")}</button>
   </div>;

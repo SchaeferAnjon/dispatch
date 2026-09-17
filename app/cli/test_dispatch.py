@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import importlib
 import importlib.util
 import contextlib
@@ -1883,4 +1884,7 @@ class BoardReadsAreRememberedUntilAWrite(unittest.TestCase):
             self.assertEqual(len(calls), 3)
             dispatch.sh(["git", "status"]); dispatch.sh(["bd", "memories", "--json"])  # other tools do not matter
             self.assertEqual(len(calls), 4)
+            with patch.object(dispatch, "_BD_READ_TTL", 0):                           # a resident process re-reads
+                dispatch.sh(["bd", "memories", "--json"])
+            self.assertEqual(len(calls), 5)
         dispatch._bd_read_cache.clear()

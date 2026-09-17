@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """One project on one screen —— `dispatch here` (现状 / 时间线 / 未完成 / 活会话能不能关) and
 `dispatch lineage` (项目→任务→会话→进展, what the 脉络 page draws)."""
 import json, os, re, sys, time

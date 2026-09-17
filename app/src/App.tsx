@@ -143,7 +143,9 @@ export default function App() {
   // The CLI itself could not answer `init status` (no Python, one too old, a broken bundle): ask
   // Rust what this Mac has and show that, instead of an empty workbench with a stack trace.
   const [envProblem, setEnvProblem] = useState<{ report: EnvReport | null; error: string } | null>(null);
-  const checkEnv = async (a: Api, error: string) => { const report = await a.envCheck(); if (!report || !report.python.ok || !report.cli_exists) setEnvProblem({ report, error }); else setEnvProblem(null); };
+  // `init status` failing means the CLI itself did not run, whatever the reason: always say so. (A
+  // Python that exists and is new enough can still fail to run the script, as 3.9 once did.)
+  const checkEnv = async (a: Api, error: string) => { const report = await a.envCheck(); setEnvProblem({ report, error }); };
   // New releases: checked once a day after start-up; the title bar shows a chip when one exists.
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const checkUpdate = useCallback(async () => { if (!api) return; try { const r = JSON.parse((await api.on("local", ["update", "check", "--json"])).replace(/^[^{]*/, "")) as UpdateInfo; setUpdate(r); } catch (e) { setUpdate({ current: "?", latest: "", url: "", error: String(e) }); } }, [api]);

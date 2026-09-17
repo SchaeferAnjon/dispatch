@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Shared machine-wide rule files (~/.agents/rules/{GLOBAL,FACTS,PROFILE,artifact}.md) — kept as
 one copy across every Mac that runs Dispatch. `dispatch rules push|pull|peers|auto`.
 

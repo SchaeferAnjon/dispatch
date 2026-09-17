@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import json, os, tempfile, unittest
 
 import zcode_plugin as Z

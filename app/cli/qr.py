@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Minimal QR encoder: byte mode, error correction level L, versions 1-10. Standard library only.
 
 Only what `dispatch serve qr` needs: a URL is short, so byte mode up to version 10 (271 bytes)

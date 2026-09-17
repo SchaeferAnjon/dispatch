@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """In-app update from GitHub Releases (`dispatch update check|apply`).
 
 `check` asks the GitHub API for the latest release; when that is unavailable (the anonymous API
@@ -7,6 +8,7 @@ release's SHA256SUMS, unpacks it, swaps it into the installed bundle with rsync 
 stays, so permissions survive), clears the quarantine flag and relaunches.
 """
 import hashlib, json, os, platform, plistlib, re, shutil, subprocess, sys, tempfile, time, urllib.error, urllib.request
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 
 REPO = "SchaeferAnjon/dispatch"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -128,6 +130,19 @@ def check():
             "asset": asset and {"name": asset["name"], "url": asset["url"], "size": asset["size"], "download": asset.get("browser_download_url") or asset["url"]}, "tag": rel.get("tag_name") or "", "notes": (rel.get("body") or "")[:2000], "published_at": rel.get("published_at", "")}
 
 
+def signature_problem(app):
+    """'' when the bundle's code signature is intact (ad-hoc counts: release builds without a
+    developer certificate are signed that way). A zip that was cut short or tampered with after
+    SHA256SUMS could not be fetched shows up here as a broken seal."""
+    try:
+        r = subprocess.run(["codesign", "--verify", "--deep", "--strict", app], capture_output=True, text=True, timeout=120)
+    except FileNotFoundError:
+        return ""  # no codesign on this Mac: nothing to check with
+    except subprocess.TimeoutExpired:
+        return "codesign 超时"
+    return "" if r.returncode == 0 else (r.stderr.strip().splitlines() or ["codesign 失败"])[-1][:200]
+
+
 def apply(relaunch=True):
     info = check()
     if info.get("error"):
@@ -153,6 +168,10 @@ def apply(relaunch=True):
     if not os.path.isdir(new_app):
         raise RuntimeError("安装包里没有 Dispatch.app")
     subprocess.run(["xattr", "-dr", "com.apple.quarantine", new_app], capture_output=True)
+    problem = signature_problem(new_app)
+    if problem:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise RuntimeError(f"下载的 Dispatch.app 签名校验没过，没有安装（{problem}）。去发布页手动下载，或稍后再试。")
     subprocess.run(["rsync", "-a", "--delete", new_app + "/", APP + "/"], check=True)
     shutil.rmtree(tmp, ignore_errors=True)
     restart_serve()

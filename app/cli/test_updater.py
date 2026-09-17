@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import plistlib
 import tempfile
@@ -118,6 +119,15 @@ class RateLimitFallbackAndChecksum(unittest.TestCase):
              patch.object(updater, 'api', side_effect=OSError('offline')), patch.object(updater, 'latest_without_api', return_value=None):
             r = updater.check()
         self.assertNotIn('私有', r['error']); self.assertIn('稍后再试', r['error'])
+
+    def test_a_broken_or_unsigned_bundle_is_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            app = os.path.join(d, "Dispatch.app"); os.makedirs(os.path.join(app, "Contents"))
+            self.assertTrue(updater.signature_problem(app))
+
+    def test_no_codesign_tool_means_nothing_to_check(self):
+        with patch.object(updater.subprocess, "run", side_effect=FileNotFoundError):
+            self.assertEqual(updater.signature_problem("/x/Dispatch.app"), "")
 
     def test_checksum_lookup(self):
         import io

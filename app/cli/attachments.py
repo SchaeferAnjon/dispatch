@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Serve only files actually attached/linked in a conversation, through either RPC transport."""
 import base64
 import hashlib

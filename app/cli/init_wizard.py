@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """First-run setup for Dispatch (`dispatch init`).
 
 One machine at a time, in this order, each step idempotent so the wizard can be
@@ -19,6 +20,7 @@ calls `dispatch init run <step> ...` for each button. The terminal wizard
 (`dispatch init`) walks the same steps with prompts.
 """
 import glob, json, os, plistlib, re, secrets, shlex, shutil, socket, subprocess, sys, time
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 
 import dispatch as D
 import launchd_labels as L
@@ -705,7 +707,8 @@ def board_join(target, replace=False):
         if hub["pubkey"] not in cur:
             open(ak, "a").write(("\n" if cur and not cur.endswith("\n") else "") + hub["pubkey"] + "\n")
             os.chmod(ak, 0o600)
-    save_state(board_mode="join", hub={"name": hub["name"], "ssh": hub_entry["ssh"], "remote": hub["remote"]}, me=my_entry)
+    save_state(board_mode="join", hub={"name": hub["name"], "ssh": hub_entry["ssh"], "remote": hub["remote"],
+                                       "rules_dir": hub.get("rules_dir", ""), "pool": hub.get("pool", "")}, me=my_entry)
     # The hub can only merge this Mac's sessions if it can ssh back here.
     reverse = check_reverse_ssh(target=hub_entry["ssh"], addr=my_entry["ssh"])
     return {"hub": hub_entry, "me": my_entry, "remote": hub["remote"], "retired": retired, "reverse_ssh": reverse}
@@ -1004,10 +1007,13 @@ def rules_setup(mode=None, target=None):
         target = target or (st.get("hub") or {}).get("ssh")
         if not target:
             raise RuntimeError("不知道枢纽是哪台电脑，先做「任务板」那一步")
+        # Source paths are the HUB's (it told us in hub-info), destination paths are ours: the two
+        # Macs can have different account names, and their skill pools can live in different places.
+        hub = st.get("hub") or {}
         rdir = os.path.dirname(D.RULES_FILE)
-        rsync_from(target, rdir, rdir, "规则")
+        rsync_from(target, hub.get("rules_dir") or "~/.agents/rules", rdir, "规则")
         os.makedirs(D.POOL, exist_ok=True)
-        rsync_from(target, D.POOL, D.POOL, "技能池")
+        rsync_from(target, hub.get("pool") or "~/.cc-switch/skills", D.POOL, "技能池")
         seed = f"copied:{target}"
     elif os.path.exists(D.RULES_FILE):
         seed = "existing"

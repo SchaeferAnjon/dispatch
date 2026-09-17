@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """dispatch — the Agent-facing CLI for the global task board.
 
 Everything Dispatch.app shows, an Agent can ask for here (JSON with --json):
@@ -30,9 +31,12 @@ Data lives in ~/tasks/.dispatch (session registry, transcript index) and the
 Beads board at $BEADS_DIR. bd remains the tool for tasks themselves.
 """
 import argparse, datetime, glob, hashlib, json, os, re, shutil, subprocess, sys, tarfile, tempfile, time
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 
 HOME = os.path.expanduser("~")
-DISPATCH_DIR = os.path.join(HOME, "tasks", ".dispatch")
+# DISPATCH_DIR (env) moves this Mac's Dispatch data: tests and a source checkout can then run without
+# touching what the installed app and the phone service are using.
+DISPATCH_DIR = os.environ.get("DISPATCH_DIR") or os.path.join(HOME, "tasks", ".dispatch")
 SESS_DIR = os.path.join(DISPATCH_DIR, "sessions")
 INDEX_FILE = os.path.join(DISPATCH_DIR, "transcript-index.json")
 BEADS_DIR = os.environ.get("BEADS_DIR", os.path.join(HOME, "tasks", ".beads"))
@@ -123,17 +127,21 @@ def whoami():
 # the process, and forgotten the moment anything else talks to bd, so a write is never hidden.
 _BD_READS = {("bd", "memories", "--json"), ("bd", "list", "--all", "--json")}
 _bd_read_cache = {}
+_BD_READ_TTL = 5.0
 
 
 def sh(args, timeout=20, env=None):
     key = tuple(args) if env is None else None
-    if key in _BD_READS and key in _bd_read_cache:
-        return _bd_read_cache[key]
+    hit = _bd_read_cache.get(key) if key in _BD_READS else None
+    # A few seconds only: one command finishes well within that, while a resident process (the
+    # phone service and its push watcher) must notice a setting changed in the app or on the other Mac.
+    if hit and time.time() - hit[0] < _BD_READ_TTL:
+        return hit[1]
     if args and os.path.basename(str(args[0])) == "bd" and key not in _BD_READS:
         _bd_read_cache.clear()
     res = _sh(args, timeout, env)
     if key in _BD_READS and res[0] == 0:
-        _bd_read_cache[key] = res
+        _bd_read_cache[key] = (time.time(), res)
     return res
 
 
@@ -455,7 +463,7 @@ _LOCAL_NAME = None
 
 
 def local_host_name():
-    """The system ComputerName (e.g. "Apple的Mac mini"), unless renamed from Settings —
+    """The system ComputerName (e.g. "书房的 Mac mini"), unless renamed from Settings —
     that override lives in SELF_NAME_FILE, separate from the system name so it survives
     across reinstalls and doesn't touch macOS's own ComputerName."""
     global _LOCAL_NAME
@@ -694,17 +702,20 @@ def remote_dispatch(h, args, ttl, timeout=12, background=False):
         if r.returncode == 255:
             raise ConnectionError(r.stderr.strip()[:200])  # ssh itself failed: host unreachable
         if r.returncode != 0:
+            debug(f"remote_dispatch {h.get('id')} {' '.join(args[:2])}", RuntimeError(f"exit {r.returncode}: {(r.stderr or r.stdout).strip()[:200]}"))
             return stale()  # the command failed there (old checkout, bad args): host is fine, don't mark it down
         s = r.stdout
         start = min(i for i in (s.find("["), s.find("{")) if i >= 0)
         data = json.loads(s[start:])
-    except (ConnectionError, subprocess.TimeoutExpired):
+    except (ConnectionError, subprocess.TimeoutExpired) as e:
+        debug(f"remote_dispatch {h.get('id')} unreachable", e)
         try:
             open(down, "w").close()
         except OSError:
             pass
         return stale()
-    except Exception:
+    except Exception as e:
+        debug(f"remote_dispatch {h.get('id')} {' '.join(args[:2])}", e)
         return stale()
     try:
         tmp = cache + ".tmp"
@@ -1468,7 +1479,8 @@ def codex_desktop_overlay(sessions):
                     ipc = ipc or R.DesktopIPC(HOME)
                     st = ipc.state(s["session_id"])
                     json.dump(st, open(cache, "w"), ensure_ascii=False)
-                except Exception:
+                except Exception as e:
+                    debug(f"codex_desktop_overlay {s['session_id'][:8]}", e)
                     continue
             s["state"] = "working" if st["running"] else "idle"
             if st["requests"]:
@@ -1479,7 +1491,8 @@ def codex_desktop_overlay(sessions):
             s["desktop"] = {"running": st["running"], "requests": st["requests"], "model": st["model"]}
         if ipc:
             ipc.close()
-    except Exception:
+    except Exception as e:
+        debug("codex_desktop_overlay", e)
         return
 
 
@@ -3439,6 +3452,10 @@ def cmd_session(a):
     if not d:
         print(f"找不到 {a.key}", file=sys.stderr)
         sys.exit(1)
+    if getattr(a, "brief", False):
+        # The task page only lists what a linked conversation changed and produced; the whole
+        # timeline would cross the bridge and be parsed by the window for nothing.
+        d = {"meta": d["meta"], "files": d.get("files", []), "attachments": d.get("attachments", []), "messages": []}
 
     def text(d):
         m = d["meta"]
@@ -6710,6 +6727,10 @@ def cmd_env(a):
             sys.exit(2)
         # No value and something piped in: read it, so `pbpaste | dispatch env set NAME` just works.
         value = sys.stdin.read().strip() if (a.stdin or (a.value is None and not sys.stdin.isatty())) else a.value
+        if a.value is not None and value == a.value and sys.stdin.isatty():
+            # Still accepted (scripts rely on it), but a key typed on the command line stays in the
+            # shell history and is visible in `ps` while this runs.
+            print("提示：值写在命令行里会留在 shell 历史里。下次用 `dispatch env set NAME --stdin`，或 `pbpaste | dispatch env set NAME`。", file=sys.stderr)
         if value is None or value == "":
             print("需要值：`dispatch env set NAME --stdin` 后粘贴（推荐，值不会进 shell 历史和进程列表），或作为位置参数给出", file=sys.stderr)
             sys.exit(2)
@@ -8333,7 +8354,7 @@ def main():
     s = sub.add_parser("index", help="refresh the transcript index"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_index)
     s = sub.add_parser("folders", help="directories agents have worked in"); s.add_argument("--query", "-q"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_folders)
     s = sub.add_parser("list", help="browse all sessions"); s.add_argument("--local", action="store_true", help="this Mac only, skip other hosts"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode | hermes"); s.add_argument("--project"); s.add_argument("--cwd", help="only sessions in this directory"); s.add_argument("--query", "-q"); s.add_argument("--limit", type=int, default=200); s.add_argument("--cached", action="store_true", help="use the cached index without rescanning"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_list)
-    s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--since", type=int, help="只读上次返回的 offset 之后新增的记录（实时 tail）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
+    s = sub.add_parser("session", help="timeline + file changes of one session"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--since", type=int, help="只读上次返回的 offset 之后新增的记录（实时 tail）"); s.add_argument("--brief", action="store_true", help="只要改动文件和产物，不带时间线"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_session)
     s = sub.add_parser("resume", help="print the resume command"); s.add_argument("key", help="session id (prefix ok) or task id"); s.add_argument("--copy", action="store_true"); s.add_argument("--on", default="", help="same id on several Macs (after dispatch move): which one — host id, name or local"); s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("focus", help="jump to the Herdr tab of a session"); s.add_argument("key"); s.add_argument("--on", default="", help="host id, name or local when the session runs on several Macs"); s.set_defaults(fn=cmd_focus)
     s = sub.add_parser("skills", help="skill pool + per-agent mounts"); s.add_argument("op", choices=["list", "show", "path", "open", "enable", "disable", "improve", "write", "trash", "new", "import", "roots"]); s.add_argument("name", nargs="?", help="技能名；import 时是仓库地址（owner/repo 或 GitHub URL）"); s.add_argument("--file", help="技能目录里的某个文件（默认 SKILL.md）"); s.add_argument("--reveal", action="store_true", help="open: 在访达里显示"); s.add_argument("--agent", action="append", choices=["claude", "codex", "all"], help="可重复；不传 = enable/disable 两个都动、new/import 不挂载"); s.add_argument("--query", "-q"); s.add_argument("--days", type=int, default=14, help="improve: 回看最近 N 天"); s.add_argument("--copy", action="store_true", help="improve: 启动命令复制到剪贴板"); s.add_argument("--description", help="new/import: 一句话触发描述（写进 frontmatter）"); s.add_argument("--trigger", help="new: 触发条件"); s.add_argument("--constraint", help="new: 关键约束"); s.add_argument("--path", help="import: 仓库里的子目录"); s.add_argument("--as", dest="as_name", help="import: 落进技能池的名字"); s.add_argument("--force", action="store_true", help="import: 覆盖同名技能（旧的改名 .bak-时间戳）"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_skills)

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Dispatch over HTTP: the same React UI as the desktop app, served from this Mac so a
 phone (or any browser) on the tailnet can use it. Every desktop command maps 1:1 to a
 CLI call here (`bd … --json` / `dispatch … --json`), exactly like the Tauri layer does.
@@ -17,11 +18,12 @@ phone_host: a hosts.json id/name — `serve url` / `serve qr` then hand out THAT
 travels; the local daemon keeps running as a fallback.
 """
 import json, os, re, secrets, subprocess, sys, time, urllib.parse
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOME = os.path.expanduser("~")
-DISPATCH_DIR = os.path.join(HOME, "tasks", ".dispatch")
+DISPATCH_DIR = os.environ.get("DISPATCH_DIR") or os.path.join(HOME, "tasks", ".dispatch")
 CONF = os.path.join(DISPATCH_DIR, "serve.json")
 BEADS_DIR = os.environ.get("BEADS_DIR", os.path.join(HOME, "tasks", ".beads"))
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -198,7 +200,7 @@ def commands():
         "session_list": lambda a, _: run_dispatch(["list", "--cached", "--limit", "500", "--json"]),
         "session_activity": lambda a, _: run_dispatch(["activity", "--json"]),
         "session_seen": lambda a, _: run_dispatch(["--host", a.get("host") or "local", "seen", a["key"], a["reply"], "--json"]),
-        "session_detail": lambda a, _: run_dispatch(["session", a["id"], "--json"]),
+        "session_detail": lambda a, _: run_dispatch(["session", a["id"], "--json"] + (["--brief"] if a.get("brief") else [])),
         "focus_session": lambda a, _: run_dispatch(["focus", a["id"]]),
         "resume_cmd": resume_cmd,
         "skills_list": lambda a, _: run_dispatch(["skills", "list", "--json"]),
@@ -399,12 +401,13 @@ def _logins_save(d):
     os.replace(tmp, LOGINS)
 
 
-def login_issue(now=None):
-    """A single-use code, good for a day, that `?login=` trades for the session cookie."""
+def login_issue(now=None, ttl=None):
+    """A single-use code that `?login=` trades for the session cookie. Good for a day unless the
+    caller asks for less (a link that travels through a public ntfy topic gets minutes, not a day)."""
     now = now or time.time()
     d = {k: v for k, v in _logins_load().items() if v > now}
     code = secrets.token_urlsafe(18)
-    d[code] = now + LOGIN_TTL
+    d[code] = now + min(LOGIN_TTL, ttl or LOGIN_TTL)
     if len(d) > 400:  # a phone that never opens its notifications must not grow this forever
         d = dict(sorted(d.items(), key=lambda kv: kv[1])[-400:])
     _logins_save(d)
@@ -575,6 +578,9 @@ def cmd_host(conf, argv):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help", "help"):
+        print("用法：dispatch serve [install [--lan|--no-lan] | uninstall | status | url | qr | host …] [--json]\n不带子命令：在前台启动手机服务。")
+        return
     conf = load_conf()
     if len(sys.argv) > 1 and sys.argv[1] == "host":
         return cmd_host(conf, sys.argv[2:])
@@ -613,7 +619,13 @@ def main():
     if not os.path.isfile(os.path.join(DIST, "index.html")):
         sys.exit(f"没有构建产物 {DIST}/index.html：先在 app/ 里 npm run build")
     H.conf = conf
-    srv = ThreadingHTTPServer((ip, int(conf.get("port", 7799))), H)
+    try:
+        srv = ThreadingHTTPServer((ip, int(conf.get("port", 7799))), H)
+    except OSError as e:
+        if e.errno == 48:  # EADDRINUSE: the launchd service (or another copy) already serves this port
+            print(f"端口 {conf.get('port', 7799)} 已经有一个手机服务在跑（多半是常驻服务）。看状态：`dispatch serve status`；要换端口改 ~/tasks/.dispatch/serve.json 的 port。", file=sys.stderr)
+            sys.exit(1)
+        raise
     srv.daemon_threads = True
     # The phone only reaches an awake Mac: hold off idle sleep for as long as this daemon lives
     # (caffeinate exits with us). The display may still sleep — the desktop app handles that.

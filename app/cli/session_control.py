@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Session launch jobs: exact identity, local folders and retry-safe creation.
 
 Transport routing stays in dispatch --host. Workers use the same installed CLI
@@ -9,6 +10,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 import time
 import uuid
 from contextlib import closing

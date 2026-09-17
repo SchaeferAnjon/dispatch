@@ -27,7 +27,7 @@ export interface Api {
   sessionActivity(): Promise<ActivitySnapshot>;
   sessionSeen(host: string, key: string, reply: string): Promise<void>;
   sessionList(): Promise<SessionRef[]>;
-  sessionDetail(id: string): Promise<SessionDetail>;
+  sessionDetail(id: string, brief?: boolean): Promise<SessionDetail>;
   focusSession(id: string): Promise<string>;
   resumeCmd(agent: string, sessionId: string, cwd: string): Promise<string>;
   skills(): Promise<Skill[]>;
@@ -136,7 +136,7 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "openWindow" | 
     sessionActivity: async () => { const r = parse<ActivitySnapshot | null>(await call("session_activity"), null); if (!r?.sessions) throw new Error(t("活动更新不可用")); return r; },
     sessionSeen: async (host, key, reply) => void (await call("session_seen", { host, key, reply })),
     sessionList: async () => parse<SessionRef[]>(await call("session_list"), []),
-    sessionDetail: async (id) => { const d = parse<SessionDetail | null>(await call("session_detail", { id }), null); if (!d) throw new Error(t("读不到这个会话")); return d; },
+    sessionDetail: async (id, brief) => { const d = parse<SessionDetail | null>(await call("session_detail", brief ? { id, brief: true } : { id }), null); if (!d) throw new Error(t("读不到这个会话")); return d; },
     focusSession: (id) => call("focus_session", { id }),
     resumeCmd: (agent, sessionId, cwd) => invoke<string>("resume_cmd", { agent, sessionId, cwd }),
     skills: async () => parse<Skill[]>(await call("skills_list"), []),

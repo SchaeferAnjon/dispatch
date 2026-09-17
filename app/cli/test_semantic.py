@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import argparse
 import contextlib
 import importlib.util
@@ -31,6 +32,23 @@ def fake_embed(texts, key=None, timeout=60):
         vec[3] = 0.05
         out.append(vec)
     return out
+
+
+
+# The person switched semantic search on (it is off until they do). Patched for the whole module so
+# no test depends on what the real task board's settings happen to say.
+_module_patches = []
+
+
+def setUpModule():
+    import summarize
+    p = patch.object(summarize, "use_enabled", return_value=True)
+    p.start(); _module_patches.append(p)
+
+
+def tearDownModule():
+    for p in _module_patches:
+        p.stop()
 
 
 class HashAndMath(unittest.TestCase):

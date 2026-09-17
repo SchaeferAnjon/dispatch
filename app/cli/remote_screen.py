@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Discover noVNC's HTTPS endpoint from the local Tailscale Serve configuration."""
 import json
 import shutil

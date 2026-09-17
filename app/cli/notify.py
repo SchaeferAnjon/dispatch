@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Push a short message to the phone, or fall back to a macOS banner.
 
     dispatch notify "<title>" "<body>" [--url LINK] [--level normal|high] [--key KEY]
@@ -16,6 +17,7 @@ Callers that must never fail (hooks, report generation) import `send` directly; 
 returns a dict and swallows network errors into `error` instead of raising.
 """
 import argparse, json, os, subprocess, sys, time, urllib.parse, urllib.request
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import dispatch as D
@@ -75,11 +77,16 @@ def dedup_hit(key, window=DEDUP_WINDOW, path=None):
     return False
 
 
+LINK_TTL = {"ntfy": 15 * 60}  # seconds; channels not listed keep serve's default of a day
+
+
 def serve_link(path):
     """A page on `dispatch serve` for the phone to open from a notification; '' if the phone
     service is not set up. The link never carries the permanent token (notification text passes
     through Bark / ntfy servers, and ntfy topics are public by default): it carries a single-use
-    login code good for a day. An already-paired phone does not even need that, it has its cookie."""
+    login code. Through Bark (end to end to one device) the code lasts a day; through ntfy, whose
+    topics anyone who guesses the name can read, it lasts 15 minutes. An already-paired phone does
+    not need the code at all, it has its cookie."""
     try:
         conf = json.load(open(os.path.join(D.DISPATCH_DIR, "serve.json")))
     except Exception:
@@ -91,7 +98,7 @@ def serve_link(path):
         return ""
     try:
         import serve
-        code = serve.login_issue()
+        code = serve.login_issue(ttl=LINK_TTL.get(channel()[0]))
     except Exception:
         code = ""
     dest = path[1:] if path.startswith("/#/") else path  # "/#/sessions/x" → "#/sessions/x"

@@ -22,11 +22,12 @@
 ## Two Macs
 
 - **The hub's sync port (3309) listens on every interface.** Dolt's remotesapi cannot be bound to one address; it is protected by the sync user's password. Do not forward this port to the internet.
+- **Sync between the two Macs is not encrypted.** Over Tailscale, Tailscale encrypts it. With "same Wi‑Fi" chosen, task contents and the sync password cross the local network in plain text: use that only at home or on a network you trust, and use Tailscale on public, dorm or office networks. The same goes for the phone pages on port 7799, which are plain HTTP.
 - When the two Macs run different versions, saving settings on the older one drops the newer settings it does not know (for example the phone notification switches). Updating both together avoids this.
 
 ## Phone
 
-- The pairing QR code and link carry a long-lived token (kept in `~/tasks/.dispatch/serve.json`; after one scan the phone remembers it in a cookie): it is only shown on the settings page, do not post it anywhere public. Links inside notifications use a single-use login code valid for 24 hours.
+- The pairing QR code and link carry a long-lived token (kept in `~/tasks/.dispatch/serve.json`; after one scan the phone remembers it in a cookie): it is only shown on the settings page, do not post it anywhere public. Links inside notifications use a single-use login code: valid for 24 hours through Bark, and for 15 minutes through ntfy (anyone who guesses an ntfy topic name can read its notifications).
 - Without Tailscale the service listens on this Mac only by default; with "allow LAN" ticked, every device on the same Wi‑Fi can reach port 7799 (the token is still required). Turn it off on public Wi‑Fi.
 - The web version cannot show system notifications; pushes need Bark or ntfy.
 

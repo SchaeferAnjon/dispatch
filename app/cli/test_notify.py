@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import json
 import os
 import tempfile
@@ -113,6 +114,18 @@ class ServeLink(unittest.TestCase):
             self.assertTrue(link.startswith("http://100.1.2.3:7799/?login="))
             self.assertIn("to=%2Finsights%2F2026-09-09_1200.html", link)
             self.assertNotIn("token=", link)
+
+    def test_ntfy_link_expires_in_minutes_bark_in_a_day(self):
+        import serve, time
+        for chan, lo, hi in (("ntfy", 60, 15 * 60 + 5), ("bark", 3600, 24 * 3600 + 5)):
+            with tempfile.TemporaryDirectory() as d:
+                json.dump({"token": "tok", "port": 7799, "bind": "100.1.2.3"}, open(os.path.join(d, "serve.json"), "w"))
+                logins = os.path.join(d, "serve-logins.json")
+                with patch.object(notify.D, "DISPATCH_DIR", d), patch.multiple(serve, DISPATCH_DIR=d, LOGINS=logins), \
+                     patch.object(notify, "channel", return_value=(chan, "x")):
+                    notify.serve_link("/x")
+                left = list(json.load(open(logins)).values())[0] - time.time()
+                self.assertTrue(lo < left <= hi, (chan, left))
 
     def test_no_conf_is_empty(self):
         with tempfile.TemporaryDirectory() as d, patch.object(notify.D, "DISPATCH_DIR", d):

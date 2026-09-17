@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Semantic search over the knowledge base (`dispatch wiki search --semantic`, `wiki related`).
 
 Every wiki entry (pit / win / retro / howto) is embedded (OpenAI `text-embedding-3-small`

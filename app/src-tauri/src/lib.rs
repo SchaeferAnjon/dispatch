@@ -658,7 +658,11 @@ async fn session_seen(host: String, key: String, reply: String) -> Result<String
 }
 
 #[tauri::command]
-async fn session_detail(id: String) -> Result<String, String> {
+async fn session_detail(id: String, brief: Option<bool>) -> Result<String, String> {
+    // `brief`: the task page wants changed files and artifacts only, not the whole timeline.
+    if brief.unwrap_or(false) {
+        return run_dispatch(args(&["session", &id, "--json", "--brief"])).await;
+    }
     run_dispatch(args(&["session", &id, "--json"])).await
 }
 

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Incremental, local transcript activity and shared read receipts.
 
 Stores only recent visible events. Reasoning/system content is never surfaced.

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Names of Dispatch's LaunchAgents.
 
 New installs use `dev.dispatch.<name>`. Macs set up before the rename carry `dev.schaefer.<name>`

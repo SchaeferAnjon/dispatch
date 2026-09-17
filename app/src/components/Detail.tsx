@@ -39,7 +39,7 @@ export function Detail({ onOpenSession, onDiscuss, initialWf, id, api, me, initi
     const ids = linkedSessions(issue);
     if (!ids.length) { setWork([]); return; }
     let alive = true;
-    Promise.all(ids.map(async (sid) => { try { const d = await api.sessionDetail(sid); return { sid, agent: d.meta.agent, host: d.meta.host, title: d.meta.title || sid.slice(0, 8), files: d.files.map((f) => ({ path: f.path, changes: f.changes })), attachments: (d.attachments || []).map((a) => ({ id: a.id, name: a.name, path: a.path, mime: a.mime })) }; } catch { return null; } }))
+    Promise.all(ids.map(async (sid) => { try { const d = await api.sessionDetail(sid, true); return { sid, agent: d.meta.agent, host: d.meta.host, title: d.meta.title || sid.slice(0, 8), files: d.files.map((f) => ({ path: f.path, changes: f.changes })), attachments: (d.attachments || []).map((a) => ({ id: a.id, name: a.name, path: a.path, mime: a.mime })) }; } catch { return null; } }))
       .then((rows) => { if (alive) setWork(rows.filter((r): r is NonNullable<typeof r> => !!r && (r.files.length > 0 || r.attachments.length > 0))); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
