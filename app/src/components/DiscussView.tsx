@@ -45,7 +45,8 @@ export function DiscussView({ api, me, issues, initialTask, onShown, onNew, onOp
   useEffect(() => {
     const el = chatRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver((es) => setChatWidth(es[0]?.contentRect.width ?? 0));
+    // A hidden section reports 0: keep the last real width, or the layout would flip back and forth.
+    const ro = new ResizeObserver((es) => { const w = es[0]?.contentRect.width ?? 0; if (w > 0) setChatWidth(w); });
     ro.observe(el);
     return () => ro.disconnect();
   }, [task, issues.length]);
@@ -134,7 +135,7 @@ export function DiscussView({ api, me, issues, initialTask, onShown, onNew, onOp
               </div>
             </div>}
           </aside>
-          <section className={`disc-chat${side && stage && parts.length > 0 ? " side" : ""}`} ref={chatRef}>
+          <section className={`disc-chat${side && stage && parts.length > 0 ? " stage-beside" : ""}`} ref={chatRef}>
             {stage && parts.length > 0 && <div className="disc-stage-col"><DiscussStage d={d} parts={parts} leader={leader} me={me} topic={issue.title.replace(/^【讨论】\s*/, "")} big={side} /></div>}
             <div className="disc-chat-col">
             <button className="link stage-toggle" onClick={() => { const v = !stage; setStage(v); try { localStorage.setItem("dispatch-discuss-stage", v ? "1" : "0"); } catch { /* private mode */ } }}>{stage ? t("收起现场") : t("看讨论现场")}</button>

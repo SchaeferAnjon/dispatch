@@ -1818,19 +1818,19 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 .disc-stage-col{display:flex;flex-direction:column;flex:0 0 auto;min-width:0}
 .disc-chat-col{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 /* Side by side: conversation left, the round table right and larger. */
-.disc-chat.side{flex-direction:row;gap:6px}
-.disc-chat.side .disc-chat-col{order:1;flex:1 1 0}
-.disc-chat.side .disc-stage-col{order:2;flex:1 1 0;min-height:0}
-.disc-chat.side .disc-stage{flex:1;height:auto;min-height:420px;margin:0 0 0 8px;container-type:inline-size}
-.disc-chat.side .seat{width:190px}
-.disc-chat.side .seat-person{width:108px;height:108px;border-width:3px}
-.disc-chat.side .seat-crown{font-size:20px;right:-2px;top:-2px}
-.disc-chat.side .seat-name{font-size:13.5px;margin-top:6px}.disc-chat.side .seat-name .muted,.disc-chat.side .seat-name em{font-size:12px;max-width:180px}
-.disc-chat.side .seat-bubble{bottom:calc(100% + 8px);max-width:min(340px,46cqw);font-size:13px;line-height:1.5;padding:9px 12px;border-radius:12px}
-.disc-chat.side .seat-bubble:not(.full)>span{-webkit-line-clamp:6}
-.disc-chat.side .seat-bubble.full{max-width:min(420px,60cqw);max-height:320px}
-.disc-chat.side .seat.upper .seat-bubble.full{left:calc(100% - 30px)}.disc-chat.side .seat.upper.edge-r .seat-bubble.full{left:auto;right:calc(100% - 30px)}
-.disc-chat.side .stage-table{min-height:96px;font-size:15px;padding:16px 24px}.disc-chat.side .stage-table small{font-size:12.5px}
+.disc-chat.stage-beside{flex-direction:row;gap:6px}
+.disc-chat.stage-beside .disc-chat-col{order:1;flex:1 1 0}
+.disc-chat.stage-beside .disc-stage-col{order:2;flex:1 1 0;min-height:0}
+.disc-chat.stage-beside .disc-stage{flex:1;height:auto;min-height:420px;margin:0 0 0 8px;container-type:inline-size}
+.disc-chat.stage-beside .seat{width:190px}
+.disc-chat.stage-beside .seat-person{width:108px;height:108px;border-width:3px}
+.disc-chat.stage-beside .seat-crown{font-size:20px;right:-2px;top:-2px}
+.disc-chat.stage-beside .seat-name{font-size:13.5px;margin-top:6px}.disc-chat.stage-beside .seat-name .muted,.disc-chat.stage-beside .seat-name em{font-size:12px;max-width:180px}
+.disc-chat.stage-beside .seat-bubble{bottom:calc(100% + 8px);max-width:min(340px,46cqw);font-size:13px;line-height:1.5;padding:9px 12px;border-radius:12px}
+.disc-chat.stage-beside .seat-bubble:not(.full)>span{-webkit-line-clamp:6}
+.disc-chat.stage-beside .seat-bubble.full{max-width:min(420px,60cqw);max-height:320px}
+.disc-chat.stage-beside .seat.upper .seat-bubble.full{left:calc(100% - 30px)}.disc-chat.stage-beside .seat.upper.edge-r .seat-bubble.full{left:auto;right:calc(100% - 30px)}
+.disc-chat.stage-beside .stage-table{min-height:96px;font-size:15px;padding:16px 24px}.disc-chat.stage-beside .stage-table small{font-size:12.5px}
 @keyframes seat-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes seat-talk{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @media (prefers-reduced-motion:reduce){.seat .seat-person{animation:none!important}}
