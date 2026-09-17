@@ -128,6 +128,15 @@ export function fixtureApi(): Api {
     openPath: async () => {},
     hosts: async () => [],
     on: async (_h, args) => {
+      if (args[0] === 'wiki' && args[1] === 'list') {
+        // The knowledge base of the sample project, as `dispatch wiki list -P kanban --json` prints it.
+        return JSON.stringify([
+          { key: "pit-tauri-sync-command", kind: "pit", project: "kanban", task: "task-9lo", text: "Tauri 命令写成同步 fn 会在主线程跑，每次 bd 调用 300ms 直接冻住 UI。", fields: { "【解法】": "全部 async fn + spawn_blocking。" } },
+          { key: "pit-eza-symlink-rm", kind: "pit", project: "kanban", task: "", text: "for s in $(ls ~/.claude/skills) 里 ls 是 eza 别名，软链渲染成箭头，rm -rf 打到技能池本体，误删 25 个技能。", fields: { "【解法】": "要解析输出一律 command ls -1；批量删除先导出清单并核对条数。" } },
+          { key: "win-verify-on-device", kind: "win", project: "kanban", task: "task-e1q", text: "改完先按用户的操作路径真机复测，汇报时附日志路径。", fields: { "【为什么】": "用户凭「没反应」定位不了问题；有日志路径下一轮直接拿证据。" } },
+          { key: "retro-task-a1c", kind: "retro", project: "kanban", task: "task-a1c", text: "全局板初始化：三处 BEADS_DIR 要一致，Claude/Codex 钩子各自登记。", fields: { "【做对】": "先在临时目录试一遍再动真实配置。", "【做错】": "第一版把 hook 写进了项目级 settings，换目录就失效。" } },
+        ]);
+      }
       if (args[0] === 'session' && args[2] === '--since') {
         // The live tail, scripted: the running test finishes, the agent thinks, then answers.
         const since = Number(args[3]); const t = (ts: number) => new Date(now + ts * 1000).toISOString();

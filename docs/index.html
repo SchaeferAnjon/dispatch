@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dispatch 调度台 — 把所有 AI 编程 Agent 的会话、任务和进展放进一个台子</title>
+<meta name="description" content="Dispatch 是一个本地的 Agent 工作台：Claude Code、Codex、pi、ZCode、Gemini CLI、OpenCode、Hermes 的会话、任务、成果、额度、规则与技能，按项目组织；电脑和手机都能看进展、直接回复原会话。macOS，开源。">
+<meta property="og:title" content="Dispatch 调度台">
+<meta property="og:description" content="所有 AI 编程 Agent 的会话、任务和进展，按项目放进一个台子；手机也能回复。">
+<meta property="og:image" content="https://schaeferanjon.github.io/dispatch/assets/poster.jpg">
+<link rel="icon" href="assets/icon.png">
+<style>
+:root{--ink:#1d1c1a;--ink-2:#5c5850;--ink-3:#8f8a80;--line:#e6e2da;--bg:#f7f5f1;--panel:#fff;--accent:#1d5fd1;--accent-soft:#e7eefb;--green:#2e8b57;--radius:14px}
+@media(prefers-color-scheme:dark){:root{--ink:#ecebe7;--ink-2:#b5b1a8;--ink-3:#807b72;--line:#2c2b28;--bg:#141413;--panel:#1d1d1b;--accent:#6d9bff;--accent-soft:#22314f;--green:#4fb27c}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--accent-soft);padding:1px 6px;border-radius:5px}
+pre{background:#1c1c1a;color:#e8e6e0;padding:14px 16px;border-radius:10px;overflow:auto;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}
+pre code{background:none;padding:0;color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+header.top{position:sticky;top:0;z-index:5;backdrop-filter:saturate(1.4) blur(10px);background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;gap:18px;height:58px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--ink)}
+.brand img{width:28px;height:28px;border-radius:7px}
+nav.links{margin-left:auto;display:flex;gap:18px;font-size:14px}
+nav.links a{color:var(--ink-2)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-weight:600;font-size:15px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:hover{text-decoration:none;filter:brightness(1.03)}
+.hero{padding:72px 0 36px;text-align:center}
+.hero h1{font-size:clamp(30px,5vw,52px);line-height:1.15;margin:0 0 14px;letter-spacing:-.01em}
+.hero p.lead{font-size:clamp(17px,2.2vw,21px);color:var(--ink-2);max-width:760px;margin:0 auto 26px}
+.hero .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.hero .sub{margin-top:14px;color:var(--ink-3);font-size:13.5px}
+.video{margin:34px auto 0;max-width:1120px;border-radius:var(--radius);overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.18);border:1px solid var(--line);background:#000}
+.video video{display:block;width:100%;height:auto}
+.agents{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:28px 0 0}
+.agents span{padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:13.5px;background:var(--panel);color:var(--ink-2)}
+section{padding:56px 0}
+section h2{font-size:clamp(24px,3.4vw,34px);margin:0 0 8px;letter-spacing:-.01em}
+section p.intro{color:var(--ink-2);max-width:760px;margin:0 0 28px;font-size:17px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px}
+.card h3{margin:0 0 6px;font-size:17px}
+.card p{margin:0;color:var(--ink-2);font-size:14.5px}
+.feature{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:36px;align-items:center;padding:36px 0;border-top:1px solid var(--line)}
+.feature:first-of-type{border-top:0}
+.feature.flip{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+.feature.flip .txt{order:2}
+.feature h3{font-size:22px;margin:0 0 8px}
+.feature .kicker{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.feature p{color:var(--ink-2);margin:0 0 10px}
+.feature ul{margin:8px 0 0;padding-left:18px;color:var(--ink-2)}
+.feature li{margin:4px 0}
+.shot{border-radius:12px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.14);overflow:hidden;background:var(--panel)}
+.shot img{display:block;width:100%;height:auto}
+.shot.phone{max-width:300px;margin:0 auto;border-radius:28px;border-width:6px;border-color:#222;box-shadow:0 26px 60px rgba(0,0,0,.28)}
+.steps{counter-reset:s;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;position:relative}
+.step::before{counter-increment:s;content:counter(s);display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;margin-bottom:10px}
+.step h3{margin:0 0 6px;font-size:16px}
+.step p{margin:0;color:var(--ink-2);font-size:14.5px}
+.faq details{border-top:1px solid var(--line);padding:14px 0}
+.faq summary{cursor:pointer;font-weight:600;list-style:none}
+.faq summary::-webkit-details-marker{display:none}
+.faq details p{color:var(--ink-2);margin:8px 0 0}
+footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--ink-3);font-size:13.5px}
+footer .wrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:12.5px;font-weight:600;margin-left:8px;vertical-align:middle}
+@media(max-width:860px){.grid3,.steps{grid-template-columns:1fr}.feature,.feature.flip{grid-template-columns:1fr;gap:18px}.feature.flip .txt{order:0}.hero{padding:44px 0 24px}nav.links{display:none}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#"><img src="assets/icon.png" alt="">Dispatch 调度台</a>
+  <nav class="links"><a href="#features">功能</a><a href="#phone">手机</a><a href="#howto">怎么用</a><a href="#faq">常见问题</a><a href="https://github.com/SchaeferAnjon/dispatch">GitHub</a></nav>
+  <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest">下载 macOS 版</a>
+</div></header>
+
+<section class="hero"><div class="wrap">
+  <h1>你的 AI 编程 Agent 越来越多，<br>它们的会话、任务和进展应该放进一个台子</h1>
+  <p class="lead">Dispatch 读取本机已有的 Agent 记录，按<b>项目</b>组织每一段会话、每个任务和每项成果：谁在等你、谁在跑、做到哪了，一眼看清；在电脑或手机上直接回复原会话，不另开模型进程。</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest">下载 macOS 版</a>
+    <a class="btn" href="demo/#/home" target="_blank">在线试用（示例数据）</a>
+    <a class="btn" href="https://github.com/SchaeferAnjon/dispatch">查看源码</a>
+  </div>
+  <p class="sub">macOS 14+ · 开源 MIT · 本地运行，默认不向任何模型发送你的文档或对话</p>
+  <div class="video"><video src="assets/demo.mp4" poster="assets/poster.jpg" controls playsinline muted autoplay loop></video></div>
+  <div class="agents"><span>Claude Code</span><span>Codex</span><span>pi</span><span>ZCode</span><span>Gemini CLI</span><span>OpenCode</span><span>Hermes</span></div>
+</div></section>
+
+<section id="why"><div class="wrap">
+  <h2>它解决什么问题</h2>
+  <p class="intro">用了几个编程 Agent 之后，麻烦不在写代码，而在「记住」：这个项目上一次做到哪了？哪个终端里的 Agent 在等我确认？它改了哪些文件、交付了什么？出门了还能不能回它一句？Dispatch 把这些都收回一个台子。</p>
+  <div class="grid3">
+    <div class="card"><h3>不用改你的习惯</h3><p>Agent 还是在你的终端里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录，OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。</p></div>
+    <div class="card"><h3>项目是起点</h3><p>会话按目录归到项目，任务和成果挂在会话上。项目页就是这个项目的全部记录：回顾、会话、任务、成果、文档、知识库。</p></div>
+    <div class="card"><h3>回复回到原会话</h3><p>在工作台或手机上看到 Agent 在等你，直接回，消息投递到那个终端里的原会话；正在跑就排队，排错了能撤回。</p></div>
+  </div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <h2>特色功能</h2>
+  <p class="intro">下面每一项都是软件里实际能用的，截图来自示例数据。</p>
+
+  <div class="feature">
+    <div class="txt"><div class="kicker">工作台</div><h3>每个项目此刻的情况</h3><p>按项目排列，每张卡片是这个项目现在的样子：未读回复、等待确认的会话，正在跑的会话和它当前在做的动作，进行中的任务和验收进度，最新成果。三天没动静的项目折叠成一行。</p><ul><li>顶部是需要你处理的计数，和各 Agent 的额度</li><li>项目可收藏置顶、归档隐藏，两台电脑一致</li></ul></div>
+    <div class="shot"><img src="assets/shot-home.png" alt="工作台"></div>
+  </div>
+
+  <div class="feature flip">
+    <div class="txt"><div class="kicker">项目页</div><h3>一个项目的全部记录</h3><p>回顾页用模型写一段「现状」，下面是最近 14 天的时间线：任务进展与完成、git 提交、会话总结按天分组；还有没做完的任务和验收进度、本目录每个活会话在做什么、能不能关。</p><ul><li>会话、任务、成果、待归属任务、目录、文档各一页</li><li><b>知识库</b>按项目分：这个项目踩过的坑、做对的事、复盘</li><li>双击标题改显示名，可排序、可在新窗口打开</li></ul></div>
+    <div class="shot"><img src="assets/shot-project.png" alt="项目页"></div>
+  </div>
+
+  <div class="feature">
+    <div class="txt"><div class="kicker">会话</div><h3>看 Agent 的每一步，直接回复</h3><p>思考、工具调用、改动的文件、图片和产物都在一页里，正在跑的会话实时跟读。回复框就在下面：排队发送、打断并发送、发图片，排错了「撤回并编辑」。列表里正在跑的会话绿色高亮，答完等你看的才有蓝点。</p><ul><li>看过的会话再打开秒显，之后只拉新增的部分</li><li>Claude Code 的权限模式和模型可以在这里切</li></ul></div>
+    <div class="shot"><img src="assets/shot-session.png" alt="会话页"></div>
+  </div>
+
+  <div class="feature flip">
+    <div class="txt"><div class="kicker">多窗口 · 分屏</div><h3>几段会话并排看</h3><p>会话页一键分成 2 格或 4 格，每格是独立的会话，各自回复、各自实时更新；顶栏 ⧉ 把当前页面分离成独立窗口；⌘+点击项目、会话、任务直接开新窗口。一边看项目文档一边盯着 Agent 干活。</p></div>
+    <div class="shot"><img src="assets/shot-split.png" alt="分屏"></div>
+  </div>
+
+  <div class="feature">
+    <div class="txt"><div class="kicker">任务板 · 等我</div><h3>任务由 Agent 自己记</h3><p>每个新会话开头会收到注入的身份、本项目任务和相关知识；Agent 用 <code>dispatch begin / log / done</code> 记任务，用 <code>dispatch wiki</code> 记坑。你不需要在界面里逐个点完成。「等我」只放需要你处理的：未读回复、等待确认、只有你能做的事。</p><ul><li>看板 / 表格、右键菜单、回收站可恢复</li><li>⌘K 搜项目、会话、任务；⌘N 新建会话（可带图片和附件）</li></ul></div>
+    <div class="shot"><img src="assets/shot-inbox.png" alt="等我"></div>
+  </div>
+
+  <div class="feature flip">
+    <div class="txt"><div class="kicker">两台电脑</div><h3>把项目连同会话搬到另一台 Mac</h3><p>任务板、规则、技能两台同步一份；项目页一键「迁移到另一台」：先预检 Git 与文件差异，再把目录（含未提交改动）、Git 历史、正在跑的会话和全部历史记录搬过去，那边直接续上。迁移在后台跑，项目上有带呼吸效果的进度条，切页面、刷新都不丢。</p></div>
+    <div class="shot"><img src="assets/shot-quota.png" alt="统计与额度"></div>
+  </div>
+
+  <div class="feature">
+    <div class="txt"><div class="kicker">额度 · 规则 · 技能</div><h3>各 Agent 的用量、共同规则和技能池</h3><p>额度页显示每个 Agent 的已用比例和重置时间，数据来源写明，缺失就说缺失。规则与资料页把所有 Agent 的全局指令收成一份源文件，同步到各自的位置并检查冲突；技能池统一挂载到各 Agent。</p></div>
+    <div class="shot"><img src="assets/shot-wiki.png" alt="知识库"></div>
+  </div>
+</div></section>
+
+<section id="phone"><div class="wrap">
+  <div class="feature" style="border-top:0">
+    <div class="txt"><div class="kicker">手机</div><h2 style="font-size:26px">出门也能看进展、回它一句</h2><p>手机通过 Tailscale 访问运行 Dispatch 的电脑，同一套界面按手机宽度排版，可「添加到主屏幕」。会话在电脑上没在跑？一键在电脑上恢复它再发；Agent 停在权限或信任确认框？手机上能看到那块屏幕、直接按键回答。报告生成完、会话变成「等你」时推通知（ntfy / Bark / 系统通知）。</p><ul><li>设置里扫二维码即可，链接带一次性登录令牌</li><li>需要时还能通过 noVNC 看并操作电脑屏幕</li></ul></div>
+    <div class="shot phone"><img src="assets/shot-phone.png" alt="手机版"></div>
+  </div>
+</div></section>
+
+<section id="howto"><div class="wrap">
+  <h2>怎么用</h2>
+  <p class="intro">从下载到看见第一个项目，大约十分钟。需要 <a href="https://brew.sh">Homebrew</a>。</p>
+  <div class="steps">
+    <div class="step"><h3>下载并放行</h3><p>从 <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest">Releases</a> 下载 Apple 芯片或 Intel 的 zip，拖进「应用程序」。包没有 Apple 签名，第一次打开被拦时在终端跑 <code>xattr -dr com.apple.quarantine /Applications/Dispatch.app</code>，或在 系统设置 → 隐私与安全性 点「仍要打开」。</p></div>
+    <div class="step"><h3>首次设置（六步）</h3><p>装依赖（Dolt、Beads、Herdr）→ 建立终端命令 <code>dispatch</code> → 新建或接入任务板 → 勾选你用的 Agent → 同步共同规则与技能 → 可选派一个 Agent 审查。每一步都能重跑。</p></div>
+    <div class="step"><h3>照常开工</h3><p>在终端里像平时一样开 Claude Code / Codex。Dispatch 会读到它们，新会话开头自动收到项目任务和知识；回到 Dispatch 看进展、回复、看成果。第二台电脑在首次设置里选「接入」。</p></div>
+  </div>
+  <div style="margin-top:22px"><pre><code># 之后终端里也能用，所有界面能看到的，Agent 都能用 --json 问到
+dispatch here                 # 当前项目此刻：现状、14 天时间线、没做完的任务
+dispatch begin "标题" -P 项目   # Agent 记任务；log 记进展；done 完成
+dispatch wiki add --kind pit "现象" --fix "解法"   # 记坑，下次开工自动注入
+dispatch serve qr             # 手机扫码访问
+dispatch project 名 --move-to 另一台   # 把项目搬到另一台 Mac</code></pre></div>
+</div></section>
+
+<section id="faq"><div class="wrap faq">
+  <h2>常见问题</h2>
+  <details open><summary>我的对话和代码会被上传吗？</summary><p>不会。Dispatch 在本机读取 Agent 已有的记录，默认不向任何模型发送文档或聊天内容。只有你在设置里打开「自动总结」，它才会把会话摘录交给你自己配置的模型（可以是 Claude 订阅或你的 API Key）写一段总结。手机访问走 Tailscale，不暴露到公网。</p></details>
+  <details><summary>支持哪些 Agent？</summary><p>Claude Code、Codex（终端和桌面端）、pi、ZCode、Gemini CLI、OpenCode、Hermes。回复原会话支持 Claude Code、Codex、pi；其余能看会话、任务和额度。</p></details>
+  <details><summary>一定要两台电脑吗？</summary><p>不用。一台就是完整的。有第二台时，任务板、规则、技能自动同步，会话和项目可以互相迁移。</p></details>
+  <details><summary>Windows / Linux？</summary><p>现在只有 macOS 14+。界面层是 Tauri + React，逻辑在 Python CLI 里，移植是可能的，但还没做。</p></details>
+  <details><summary>在线试用里看到的是谁的数据？</summary><p>示例数据，写在代码里的几段假会话和任务，只为让你看看界面长什么样。</p></details>
+</div></section>
+
+<footer><div class="wrap"><span>Dispatch · MIT License · <a href="https://github.com/SchaeferAnjon/dispatch">github.com/SchaeferAnjon/dispatch</a></span><span>由一个人和几个 Agent 一起做的。</span></div></footer>
+</body>
+</html>
