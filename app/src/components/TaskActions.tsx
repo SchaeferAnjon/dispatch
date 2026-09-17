@@ -21,6 +21,7 @@ export function TaskActions({ api, children, onOpen, onDelegate, onDone, onError
   return <Context.Provider value={open}>{children}{menu&&i&&api&&<div className="task-menu-shade" onMouseDown={e=>e.target===e.currentTarget&&!busy&&close()} onContextMenu={e=>{e.preventDefault();if(!busy)close();}}><div className="task-menu" ref={panel} role="menu" aria-label="任务操作" onKeyDown={e=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;e.preventDefault();const buttons=Array.from(panel.current!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));const n=buttons.indexOf(document.activeElement as HTMLButtonElement);buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(n+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}}>
     <div className="task-menu-title">{i.title}</div>
     <button role="menuitem" disabled={busy} onClick={()=>{onOpen(i.id);close();}}>打开任务详情</button>
+    <button role="menuitem" disabled={busy} onClick={()=>{void api.openWindow(`#/board/task/${encodeURIComponent(i.id)}`);close();}}>在新窗口打开</button>
     <button role="menuitem" disabled={busy} onClick={()=>void act('任务 ID 已复制',()=>api.copy(i.id))}>复制任务 ID</button>
     <button role="menuitem" disabled={busy} onClick={()=>void act('任务内容已复制',()=>api.copy(`${i.title}\n${i.id}\n\n${i.description||''}`))}>复制任务内容</button>
     {!isTrashed(i)&&i.status!=='closed'&&<button role="menuitem" disabled={busy} onClick={()=>{onDelegate(i.id);close();}}>派给 Agent…</button>}

@@ -63,6 +63,8 @@ export interface Api {
   forget(key: string): Promise<void>;
   agentStart(input: AgentStartInput): Promise<AgentStartResult | null>;
   copy(text: string): Promise<void>;
+  /** Another Dispatch window (or browser tab) opened at a hash route, e.g. `#/sessions/<id>`. */
+  openWindow(hash: string): Promise<void>;
   notify(title: string, body: string): Promise<void>;
   tray(title: string, tooltip: string, lines?: string[]): Promise<void>;
   onChange(cb: () => void): Promise<() => void>;
@@ -106,7 +108,7 @@ type Call = (cmd: string, args?: Record<string, unknown>) => Promise<string>;
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 // Everything that is "run a command, parse its JSON" is the same on every transport.
-function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "notify" | "tray" | "onChange"> {
+function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "openWindow" | "notify" | "tray" | "onChange"> {
   return {
     info: () => invoke<Info>("bd_info"),
     list: async () => parse<Issue[]>(await call("bd_list"), []),
@@ -182,6 +184,7 @@ async function tauriApi(): Promise<Api> {
   const call: Call = (cmd, args) => invoke<string>(cmd, args);
   return {
     ...coreApi(call, invoke),
+    openWindow: async (hash) => { await invoke("open_window", { hash }); },
     copy: async (text) => {
       try {
         const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
@@ -215,6 +218,7 @@ function httpApi(): Api {
   return {
     ...coreApi(call, invoke),
     copy: copyFallback,
+    openWindow: async (hash) => { window.open(location.pathname + location.search + hash, "_blank"); },
     notify: async (title, body) => {
       if (!("Notification" in window)) return;
       if (Notification.permission === "default") await Notification.requestPermission().catch(() => {});

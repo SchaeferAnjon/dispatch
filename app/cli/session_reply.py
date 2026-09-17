@@ -1130,6 +1130,44 @@ def press_keys(d, ref, keys):
                 screen='\n'.join(line.rstrip() for line in screen.splitlines() if line.strip())[-1600:])
 
 
+QUEUE_HINT = 'Press up to edit queued messages'
+
+
+def withdraw(d, ref, receipt_id):
+    """Take back a message still waiting in Claude Code's queue (sent while it was working).
+    The TUI's own affordance: ↑ moves the newest queued message into the input box; backspaces
+    empty it. Only the newest queued receipt can go — that is the one ↑ returns. Each step is
+    checked on screen before the next; a half-done state is reported, never papered over."""
+    if ref['agent'] != 'claude-code':
+        raise Rejected('只有 Claude Code 的排队消息能撤回。')
+    with closing(connect(d)) as db:
+        row = db.execute('SELECT id,text,state,created FROM replies WHERE id=? AND sid=? AND agent=?', (receipt_id, ref['session_id'], ref['agent'])).fetchone()
+        newest = db.execute("SELECT id FROM replies WHERE sid=? AND agent=? AND state='accepted' ORDER BY created DESC LIMIT 1", (ref['session_id'], ref['agent'])).fetchone()
+    if not row or row['state'] != 'accepted':
+        raise Rejected('这条不在排队中了。')
+    if not newest or newest['id'] != receipt_id:
+        raise Rejected('只能撤回最后排队的那条（Claude Code 的 ↑ 只取最后一条）。')
+    text = row['text']
+    pane = herdr_target(d, ref, require_idle=False, allow_blocked=True)
+    pid = pane['pane_id']
+    screen = lambda: (d.herdr(None, ['agent', 'read', pid, '--source', 'visible'], raw=True) or '')
+    if QUEUE_HINT not in screen():
+        raise Rejected('原终端上没有排队中的消息（可能已经开始处理了），刷新看看。')
+    d.herdr(None, ['agent', 'send-keys', pid, 'up'])
+    time.sleep(1.2)
+    probe = re.sub(r'\s+', '', text)[:12]
+    if probe not in re.sub(r'\s+', '', screen()):
+        raise Rejected('按了 ↑ 但输入框里不是这条，没有动它；看一下原终端。')
+    for _ in range(len(text) + 4):
+        d.herdr(None, ['agent', 'send-keys', pid, 'backspace'])
+    time.sleep(1.0)
+    if probe in re.sub(r'\s+', '', screen()):
+        raise Rejected('这条已经回到原终端的输入框，但没能清空；去电脑上删掉它。')
+    with closing(connect(d)) as db, db:
+        db.execute("UPDATE replies SET state='failed', note='已撤回' WHERE id=?", (receipt_id,))
+    return dict(state='accepted', note='已撤回', text=text)
+
+
 def control(d, ref, payload):
     """Switch the permission mode (Shift+Tab cycles: default → acceptEdits → plan → bypass) or
     the model (/model <alias>, confirming the cache warning) of a Claude Code terminal session.
@@ -1138,6 +1176,8 @@ def control(d, ref, payload):
         return desktop_control(d, ref, payload)
     if payload.get('keys'):
         return press_keys(d, ref, payload['keys'])
+    if payload.get('withdraw'):
+        return withdraw(d, ref, payload['withdraw'])
     if ref['agent'] != 'claude-code':
         raise Rejected('只有 Claude Code 的会话能在这里切模式和模型。')
     pane = herdr_target(d, ref, require_idle=False)

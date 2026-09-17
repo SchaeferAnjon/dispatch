@@ -53,3 +53,15 @@ it('the header lists this machine first, whatever the host names sort like', () 
   expect(selectQuotas([shared, mine, other], '', 'Apple').map(q => `${q.agent}:${q.host_name}`)).toEqual(['codex:大哥', 'claude-code:大哥']);
   expect(selectQuotas([shared, mine, other], '', 'Apple')[0].also).toEqual(['Apple']);
 });
+
+it('the same reset hour with usage that could not be one account is two accounts', () => {
+  // Newer reading (Apple) shows 8% weekly; the older one (大哥) already had 71%: usage never shrinks.
+  const mine = row('Apple', 30, 200, 10000); mine.windows.push({ label: '每周', used_percent: 8, resets_at: 20000 });
+  const other = row('大哥', 1, 190, 10000); other.windows.push({ label: '每周', used_percent: 71, resets_at: 20000 }); other.remote = true;
+  const out = selectQuotas([mine, other], '', 'Apple');
+  expect(out).toHaveLength(2);
+  expect(out[0].conflict).toEqual(['大哥']);
+  // Same numbers within a point at the same reset: one subscription read from two Macs.
+  const twin = row('大哥', 29, 190, 10000); twin.windows.push({ label: '每周', used_percent: 8, resets_at: 20000 }); twin.remote = true;
+  expect(selectQuotas([mine, twin], '', 'Apple')).toHaveLength(1);
+});

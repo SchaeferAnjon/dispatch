@@ -55,7 +55,7 @@ export function SearchPalette({ archiveDays, projects, rows, issues, me, onProje
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog palette" role="dialog" aria-label="搜索" onKeyDown={onKey}>
-        <label className="search palette-input">🔍<input ref={input} placeholder="搜项目、会话、任务…" value={q} onChange={(e) => setQ(e.target.value)} /><kbd>esc</kbd></label>
+        <label className="search palette-input">🔍<input ref={input} placeholder="搜项目、会话、任务…" value={q} onChange={(e) => setQ(e.target.value)} autoCorrect="off" autoCapitalize="off" autoComplete="off" spellCheck={false} /><kbd>esc</kbd></label>
         {q.trim() && hits.length === 0 && <div className="empty">没有匹配的项目、会话或任务</div>}
         {!q.trim() && <div className="palette-hint muted small">输入关键词；↑↓ 选择，⏎ 打开。项目名、会话标题或目录、任务标题或 ID 都能搜。</div>}
         <div className="palette-list">

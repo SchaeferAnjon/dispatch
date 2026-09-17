@@ -8,6 +8,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 
 import session_control
@@ -186,6 +187,36 @@ class Replies(unittest.TestCase):
             with self.assertRaises(reply.Rejected): reply.control(self.d, self.ref, {'keys': ['ctrl-c']})
             pane['agent_status'] = 'idle'
             with self.assertRaises(reply.Rejected): reply.control(self.d, self.ref, {'keys': ['enter']})
+
+    def test_withdraw_takes_the_newest_queued_message_back_by_the_tuis_own_keys(self):
+        pane = dict(agent='claude', pane_id='p1', tab_id='t1', agent_status='working', agent_session={'value': self.ref['session_id']})
+        state = {'queue': ['第一条', '第二条排队'], 'box': ''}
+        keys = []
+        def herdr(host, args, timeout=30, raw=False):
+            if args[:2] == ['agent', 'read']:
+                return ('❯ ' + state['box'] + '\n') if state['box'] else ('❯ Press up to edit queued messages\n' if state['queue'] else '❯ \n')
+            if args[:2] == ['agent', 'send-keys']:
+                k = args[3]; keys.append(k)
+                if k == 'up' and state['queue']: state['box'] = state['queue'].pop()
+                if k == 'backspace': state['box'] = state['box'][:-1]
+                return {'result': {}}
+            if args[:2] == ['agent', 'prompt']: return {'result': {'agent': {}}}
+            return {'result': {}}
+        self.d.herdr = herdr; self.d.herdr_agents = lambda: [pane]
+        first, second = str(uuid.uuid4()), str(uuid.uuid4())
+        with patch.object(reply, 'target', return_value={'kind': 'herdr', 'pane': dict(pane, busy=True), 'label': 'x'}), patch.object(reply, 'herdr_target', return_value=dict(pane, busy=True)), patch.object(reply.time, 'sleep'):
+            reply.submit(self.d, self.ref, '第一条', first)
+            reply.submit(self.d, self.ref, '第二条排队', second)
+            with self.assertRaises(reply.Rejected): reply.control(self.d, self.ref, {'withdraw': first})  # not the newest
+            r = reply.control(self.d, self.ref, {'withdraw': second})
+        self.assertEqual((r['state'], r['text'], state['box'], state['queue']), ('accepted', '第二条排队', '', ['第一条']))
+        self.assertEqual(keys[0], 'up'); self.assertTrue(all(k == 'backspace' for k in keys[1:]))
+        with closing(reply.connect(self.d)) as db:
+            self.assertEqual(db.execute('SELECT state FROM replies WHERE id=?', (second,)).fetchone()[0], 'failed')
+        with patch.object(reply, 'herdr_target', return_value=dict(pane, busy=True)), patch.object(reply.time, 'sleep'):
+            with self.assertRaises(reply.Rejected): reply.control(self.d, self.ref, {'withdraw': second})  # gone already
+        with patch.object(reply, 'herdr_target', return_value=dict(pane, busy=True)), patch.object(reply.time, 'sleep'):
+            with self.assertRaises(reply.Rejected): reply.control(self.d, dict(self.ref, agent='codex'), {'withdraw': first})
 
     def test_working_codex_with_desktop_open_can_queue_into_exact_herdr_pane(self):
         self.codex_pane()

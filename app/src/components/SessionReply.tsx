@@ -184,6 +184,22 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
     } catch (e) { setError(String(e)); }
     finally { setReviving(false); }
   };
+  // A message still in Claude Code's queue can come back: ↑ in the TUI returns the newest one to
+  // its input box, and we empty that. 「撤回并编辑」 puts the words back into this draft.
+  const [withdrawing, setWithdrawing] = useState('');
+  const withdraw = async (r: Receipt, edit: boolean) => {
+    if (withdrawing || locked.current) return;
+    setWithdrawing(r.id); setError('');
+    try {
+      const res = readJson<{ state: string; note: string; text?: string }>(await api.on(host, ['reply', 'control', session.session_id, '--agent', session.agent, '--json'], JSON.stringify({ withdraw: r.id })));
+      if (res.state !== 'accepted') { setError(res.note); return; }
+      if (attempt.current?.id === r.id) forgetAttempt();
+      if (edit) { setDraft(old => old.trim() ? old : (res.text ?? r.text)); textarea.current?.focus(); }
+      setNotice(edit ? '已撤回，改好再发' : '已撤回');
+      await load();
+    } catch (e) { setError(String(e)); }
+    finally { setWithdrawing(''); }
+  };
   const control = async (payload: { mode?: string; model?: string; interrupt?: boolean; request_id?: string; decision?: string; answers?: Record<string, unknown>; keys?: string[] }) => {
     if (switching) return;
     setSwitching(true); setError('');
@@ -261,7 +277,11 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
   const pending = (connection?.receipts ?? []).filter(r => r.state === 'accepted' && r.id !== dismissed && !r.delivered && !shownInTranscript(r) && Date.now() / 1000 - r.created < 6 * 3600).sort((a, b) => a.created - b.created);
   const unknown = last && (last.state === 'unknown' || last.state === 'sending');
   return <section className={`session-reply${big ? " big" : ""}`} aria-label="回复当前会话">
-    {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map(r => <div key={r.id} className="reply-queued"><span>你 · {r.note}</span><p>{r.text}</p></div>)}</div>}
+    {pending.length > 0 && <div className="reply-receipt" role="status">{pending.length > 1 && <span>已排队 {pending.length} 条，本轮结束后按顺序处理</span>}{pending.map((r, i) => <div key={r.id} className="reply-queued"><span>你 · {r.note}</span><p>{r.text}</p>
+      {session.agent === 'claude-code' && i === pending.length - 1 && connection?.working && <div className="reply-request-actions">
+        <button className="btn sm" type="button" disabled={!!withdrawing || busy} onClick={() => void withdraw(r, false)} title="从 Claude Code 的队列里拿回来，不发了">{withdrawing === r.id ? '正在撤回…' : '撤回'}</button>
+        <button className="btn sm" type="button" disabled={!!withdrawing || busy} onClick={() => void withdraw(r, true)} title="拿回来放进输入框，改好再发">撤回并编辑</button>
+      </div>}</div>)}</div>}
     {desktopBlock}
     {connection?.blocked && <div className="reply-desktop reply-blocked" role="status">
       <div className="reply-request-head"><b>它在电脑上等确认</b><span className="reply-request-text">下面是那块屏幕；按键直接发到原终端</span></div>

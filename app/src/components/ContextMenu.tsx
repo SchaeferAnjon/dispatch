@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { getApi } from '../api';
 import type { Activity, Issue } from '../types';
 import { useTaskMenu } from './TaskActions';
 import { useConversationMenu } from './ConversationActions';
@@ -40,6 +41,7 @@ export function ProjectActions({ children, ...act }: ProjectMenuActions & { chil
   const run = (fn: () => void) => { fn(); close(); };
   return <ProjectContext.Provider value={open}>{children}{menu && <MenuPanel x={menu.x} y={menu.y} title={menu.name} label="项目操作" onClose={close} returnTo={menu.from}>
     <MenuItem onClick={() => run(() => act.onProject(menu.name))}>进入项目</MenuItem>
+    <MenuItem onClick={() => run(() => void getApi().then(x => x.openWindow(`#/projects/${encodeURIComponent(menu.name)}`)))}>在新窗口打开</MenuItem>
     <MenuItem onClick={() => run(() => act.onNew(menu.name))}>在这个项目新建会话</MenuItem>
     <MenuItem onClick={() => run(() => act.onTasks(menu.name))}>只看它的任务</MenuItem>
     <hr />

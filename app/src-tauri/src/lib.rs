@@ -406,6 +406,24 @@ fn keep_awake() {
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
 }
 
+/// A second (third…) Dispatch window on the same app state, opened at `hash` (`#/sessions/<id>`,
+/// `#/projects/<name>`…): two conversations side by side, a project's documents next to a chat.
+/// Each window is a full copy of the UI with its own place; closing it does not touch the others.
+#[tauri::command]
+async fn open_window(app: tauri::AppHandle, hash: String) -> Result<(), String> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    let n = WINDOW_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let label = format!("view-{n}");
+    let url = format!("index.html{}", if hash.starts_with('#') { hash } else { format!("#{hash}") });
+    let mut b = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+        .title("Dispatch").inner_size(1180.0, 800.0).min_inner_size(760.0, 520.0);
+    #[cfg(target_os = "macos")]
+    { b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true); }
+    b.build().map_err(|e| e.to_string())?;
+    Ok(())
+}
+static WINDOW_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 #[tauri::command]
 async fn session_list() -> Result<String, String> {
     run_dispatch(args(&["list", "--cached", "--limit", "500", "--json"])).await
@@ -888,7 +906,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             bd_info, bd_list, bd_show, bd_comments, bd_history, bd_interactions, bd_claim, bd_set_status,
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
-            task_sessions, resume_cmd, session_list, session_activity, session_seen, session_detail, focus_session, memories_list, memory_set, memory_forget,
+            task_sessions, resume_cmd, session_list, open_window, session_activity, session_seen, session_detail, focus_session, memories_list, memory_set, memory_forget,
             skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, dispatch_on, tray_update,
             rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path
         ])
