@@ -5605,6 +5605,9 @@ def docs_project_dirs(project):
     return out
 
 
+DOC_SKIP_DIRS = {"node_modules", "manual", "demo", "dist", "build", "assets", "_site", "site", "public", "static", "vendor"}
+
+
 def docs_scan(dirs, max_depth=2):
     """Every .md/.html under design/, docs/ and 研究/ of the given roots, at most two folders deep."""
     rows, seen = [], set()
@@ -5616,7 +5619,9 @@ def docs_scan(dirs, max_depth=2):
             for cur, dnames, fnames in os.walk(root):
                 rel = os.path.relpath(cur, root)
                 depth = 0 if rel == "." else rel.count(os.sep) + 1
-                dnames[:] = [d for d in dnames if d != "node_modules" and not d.startswith(".")]
+                # Published-site folders (the manual's translations, the demo build, screenshots) are not
+                # this project's working documents; a two-letter folder is a translation directory.
+                dnames[:] = [d for d in dnames if d not in DOC_SKIP_DIRS and not d.startswith(".") and not (len(d) == 2 and d.isalpha() and d.islower())]
                 if depth >= max_depth:
                     dnames[:] = []
                 for fname in fnames:

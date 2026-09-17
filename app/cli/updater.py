@@ -56,7 +56,12 @@ def check():
         return {"current": cur, "latest": "", "error": f"读不到发布信息：{e}" + ("" if tok else "（仓库是私有的，需要 gh 登录或在 dispatch env 里放 GITHUB_TOKEN）"), "url": RELEASES_URL, "needs_token": not tok}
     latest = (rel.get("tag_name") or "").lstrip("v")
     arch = "apple-silicon" if platform.machine() == "arm64" else "intel"
-    asset = next((a for a in rel.get("assets", []) if a["name"].endswith(".zip") and arch in a["name"]), None) or next((a for a in rel.get("assets", []) if a["name"].endswith(".zip")), None)
+    # Only a package built for this machine: an arm64 zip on an Intel Mac would not even launch.
+    asset = next((a for a in rel.get("assets", []) if a["name"].endswith(".zip") and arch in a["name"]), None)
+    if asset is None and any(a["name"].endswith(".zip") for a in rel.get("assets", [])):
+        return {"current": cur, "latest": latest, "newer": False, "url": rel.get("html_url") or RELEASES_URL, "asset": None,
+                "error": f"v{latest} 没有 {arch} 的包（目前只发布 Apple 芯片版）；Intel 机器请从源码构建：cd app && npm ci && npm run tauri build",
+                "notes": (rel.get("body") or "")[:2000], "published_at": rel.get("published_at", "")}
     return {"current": cur, "latest": latest, "newer": vtuple(latest) > vtuple(cur) if cur != "dev" else True, "url": rel.get("html_url") or RELEASES_URL,
             "asset": asset and {"name": asset["name"], "url": asset["url"], "size": asset["size"]}, "notes": (rel.get("body") or "")[:2000], "published_at": rel.get("published_at", "")}
 

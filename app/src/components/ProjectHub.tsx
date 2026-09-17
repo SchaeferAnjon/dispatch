@@ -86,6 +86,15 @@ export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: str
     try { const d = parse(await api.on(doc.host || 'local', ['docs', 'read', name, doc.id, '--json'])); setOpened({ doc, text: String(d.text || ''), dir: d.dir as string | undefined }); } catch (e) { setErr(String(e)); }
   };
   const add = async () => { setBusy(true); setErr(''); try { parse(await api.on('local', ['docs', 'add', name, path.trim(), '--kind', kind, '--json'])); setPath(''); onReload(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
+  // Registered documents (调研 / 复审 / 设计 written for the person) first, then the scan, newest first;
+  // the search box matches title, file name, folder and kind.
+  const [docQuery, setDocQuery] = useState('');
+  const shownDocs = useMemo(() => {
+    const q = docQuery.trim().toLowerCase();
+    const list = (docs ?? []).filter((d) => !q || `${d.title} ${d.path} ${d.kind} ${t(d.kind)}`.toLowerCase().includes(q));
+    const rank = (d: Doc) => (d.source === 'registered' ? 0 : 1);
+    return [...list].sort((a, b) => rank(a) - rank(b) || (b.mtime || 0) - (a.mtime || 0));
+  }, [docs, docQuery]);
   const remove = async (doc: Doc) => { setBusy(true); setErr(''); try { parse(await api.on('local', ['docs', 'rm', name, doc.id, '--json'])); onReload(); } catch (e) { setErr(String(e)); } finally { setBusy(false); } };
   const actions = (d: Doc) => <>{d.url ? <button className="btn sm" onClick={() => void openExternal(d.path)}>{t('打开链接')}</button>
     : d.host ? <span className="muted small" title={d.path}>{t('在 {host}', { host: d.host_name || d.host })}</span>
@@ -97,7 +106,8 @@ export function ProjectDocs({ api, name, docs, onReload }: { api: Api; name: str
   return <div className="docs-tab">
     <form className="doc-add" onSubmit={(e) => { e.preventDefault(); void add(); }}><input aria-label={t('文档路径或 URL')} placeholder={t('路径或 URL，例如 design/research-2026-09-09.md')} value={path} onChange={(e) => setPath(e.target.value)} /><select aria-label={t('文档类型')} value={kind} onChange={(e) => setKind(e.target.value)}>{['调研', '复审', '设计', '文档', '其他'].map((k) => <option key={k} value={k}>{t(k)}</option>)}</select><button className="btn primary sm" disabled={busy || !path.trim()}>{t('登记文档…')}</button></form>
     {err && <p className="err">{err}</p>}
-    {docs === null ? <p className="empty">{t('正在扫描这个项目的 design/、docs/、研究/…')}</p> : docs.length === 0 ? <p className="empty">{t('还没有文档。调研、复审产出写到项目的 design/ 目录，或在这里登记一个路径 / URL。')}</p> : <div className="doc-list">{docs.map((d) => <div className="hub-task doc-row" key={d.id}><button className="link doc-title" onClick={() => void open(d)}>{d.title}</button><span className="chip">{t(d.kind)}</span>{d.host && <span className="chip" title={d.path}>{d.host_name || d.host}</span>}<span className="muted small">{d.mtime ? new Date(d.mtime * 1000).toLocaleDateString(intlLocale()) : ''}{d.size ? ` · ${d.size >= 1048576 ? `${(d.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(d.size / 1024))} KB`}` : ''}</span><code className="muted small doc-path" title={d.path}>{shortPath(d.path)}</code><span className="spacer" />{actions(d)}</div>)}</div>}
+    {docs !== null && docs.length > 0 && <label className="search doc-search"><input aria-label={t('搜索文档')} placeholder={t('搜索文档：标题、文件名、类型…')} value={docQuery} onChange={(e) => setDocQuery(e.target.value)} /></label>}
+    {docs === null ? <p className="empty">{t('正在扫描这个项目的 design/、docs/、研究/…')}</p> : docs.length === 0 ? <p className="empty">{t('还没有文档。调研、复审产出写到项目的 design/ 目录，或在这里登记一个路径 / URL。')}</p> : shownDocs.length === 0 ? <p className="empty">{t('没有匹配的文档。')}</p> : <div className="doc-list">{shownDocs.map((d) => <div className="hub-task doc-row" key={d.id}><button className="link doc-title" onClick={() => void open(d)}>{d.title}</button><span className="chip">{t(d.kind)}</span>{d.host && <span className="chip" title={d.path}>{d.host_name || d.host}</span>}<span className="muted small">{d.mtime ? new Date(d.mtime * 1000).toLocaleDateString(intlLocale()) : ''}{d.size ? ` · ${d.size >= 1048576 ? `${(d.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(d.size / 1024))} KB`}` : ''}</span><code className="muted small doc-path" title={d.path}>{shortPath(d.path)}</code><span className="spacer" />{actions(d)}</div>)}</div>}
   </div>;
 }
 

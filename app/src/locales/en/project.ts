@@ -514,5 +514,8 @@ const project: Dict = {
   "创建项目": "Create project",
   "先建项目再开会话：选文件夹或新建文件夹": "Create a project before its first session: pick or make a folder",
   "取消": "Cancel",
+  "搜索文档": "Search documents",
+  "搜索文档：标题、文件名、类型…": "Search documents: title, file name, kind…",
+  "没有匹配的文档。": "No matching documents.",
 };
 export default project;

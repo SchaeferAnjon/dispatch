@@ -54,3 +54,28 @@ class PhoneServiceUpdate(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(saved, config)
         self.assertEqual(len(calls), 1)
+
+
+class AssetForThisMachine(unittest.TestCase):
+    """The updater never hands an Intel Mac the Apple-silicon zip (task-46xj)."""
+
+    def _check(self, machine, assets):
+        import io, json
+        body = json.dumps({"tag_name": "v9.9.9", "html_url": "https://example.test/rel", "assets": assets, "body": ""}).encode()
+
+        class R(io.BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        with patch.object(updater, 'token', return_value=''), patch.object(updater, 'current_version', return_value='0.7.30'), \
+             patch.object(updater.platform, 'machine', return_value=machine), patch.object(updater, 'api', return_value=R(body)):
+            return updater.check()
+
+    def test_intel_mac_gets_a_clear_error_not_the_arm_zip(self):
+        assets = [{"name": "Dispatch-9.9.9-macos-apple-silicon.zip", "url": "u", "size": 1}]
+        r = self._check('x86_64', assets)
+        self.assertIsNone(r['asset']); self.assertIn('Intel', r['error']); self.assertFalse(r['newer'])
+
+    def test_apple_silicon_picks_its_own_zip(self):
+        assets = [{"name": "Dispatch-9.9.9-macos-intel.zip", "url": "i", "size": 1}, {"name": "Dispatch-9.9.9-macos-apple-silicon.zip", "url": "u", "size": 1}]
+        r = self._check('arm64', assets)
+        self.assertEqual(r['asset']['name'], 'Dispatch-9.9.9-macos-apple-silicon.zip'); self.assertTrue(r['newer'])

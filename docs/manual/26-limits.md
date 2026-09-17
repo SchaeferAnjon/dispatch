@@ -5,7 +5,7 @@
 ## 会挡住新用户的
 
 - **Python 3.12+ 是硬要求，但应用不检查也不安装。** 应用调用 PATH 里的 `python3`；macOS 自带的 3.9 会在 CLI 的两处语法上直接报错，首次设置向导也不出现，看到的是空工作台。解决：`brew install python@3.12` 或更新，见 [排错](24-troubleshooting.md)。
-- **只有 Apple 芯片的包。** README 和官网提到 Intel 包，但 Release 里目前只有 `macos-apple-silicon.zip`；Intel 机器需要从源码构建（`cd app && npm ci && npm run tauri build`，需要 Node 20.19+ / 22.12+、Rust、Xcode 命令行工具、Python 3.12+）。应用内更新在找不到匹配架构时可能推错包。
+- **只有 Apple 芯片的包。** 目前 Release 里只有 `macos-apple-silicon.zip`；Intel 机器需要从源码构建（`cd app && npm ci && npm run tauri build`，需要 Node.js、Rust、Xcode Command Line Tools）。应用内更新器在 Intel 机器上会明确提示没有对应包，不会装错架构的包。
 - **依赖缺失时是裸的 traceback，不是可读提示。** bd、git、herdr 不在 PATH 时，某些命令直接抛 Python 异常；没有任务板时 `dispatch prime` 会失败并在每个 Claude Code 会话开头显示一条英文 bd 错误。跑完首次设置第 1 步和第 3 步即可避免。
 - **手机访问需要 `dispatch serve` 在跑，而安装常驻任务的脚本没有打进 .app。** 设置页照样画二维码。临时办法：终端里 `dispatch serve` 前台跑，或从源码目录跑 `app/scripts/serve-setup.sh`。
 
