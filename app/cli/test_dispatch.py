@@ -1285,7 +1285,9 @@ class SummaryUses(unittest.TestCase):
         self._ddir = self.sd.DISPATCH_DIR
         self._env = (self.sd.ENV_DIR, self.sd.ENV_FILE, self.sd.ENV_FISH)
         self.sd.DISPATCH_DIR = self.ddir
-        self.patch_settings = patch.object(self.sd, "settings_load", return_value={})
+        # The person switched the summaries on (first-run 「模型与总结」); out of the box they are off.
+        self.ALL_ON = {"summary_auto": 1, "summary_uses": {k: 1 for k, _, _, _ in summarize.SUMMARY_USES}}
+        self.patch_settings = patch.object(self.sd, "settings_load", return_value=dict(self.ALL_ON))
         self.patch_settings.start()
 
     def tearDown(self):
@@ -1298,14 +1300,15 @@ class SummaryUses(unittest.TestCase):
         with patch.object(self.sd, "settings_load", return_value={"summary_uses": {"session": 0, "project": 1}}):
             self.assertFalse(self.summarize.use_enabled("session"))
             self.assertTrue(self.summarize.use_enabled("project"))
-            self.assertTrue(self.summarize.use_enabled("here"))
-        with patch.object(self.sd, "settings_load", return_value={"summary_auto": 0}):
-            self.assertFalse(self.summarize.use_enabled("session"))
-            self.assertTrue(self.summarize.use_enabled("memories"))
+            self.assertFalse(self.summarize.use_enabled("here"))      # never chosen: off, nothing leaves the Mac
+        with patch.object(self.sd, "settings_load", return_value={"summary_auto": 1}):
+            self.assertTrue(self.summarize.use_enabled("session"))   # the old single switch still counts for sessions
+            self.assertFalse(self.summarize.use_enabled("memories"))
         with patch.object(self.sd, "settings_load", return_value={"summary_uses": {"session": 1}, "summary_auto": 0}):
             self.assertTrue(self.summarize.use_enabled("session"))
         with patch.object(self.sd, "settings_load", return_value={}):
-            self.assertTrue(self.summarize.use_enabled("session"))
+            self.assertFalse(self.summarize.use_enabled("session"))
+            self.assertTrue(self.summarize.use_enabled("discuss"))   # a discussion only exists because the person started it
 
     def test_settings_parse_keeps_known_use_keys_as_zero_or_one(self):
         parsed = dispatch.settings_parse(json.dumps({"summary_uses": {"session": 0, "project": 2, "bogus": 1, "here": "x"}}))
@@ -1324,7 +1327,7 @@ class SummaryUses(unittest.TestCase):
              patch.object(self.summarize, "provider") as prov, patch.object(self.summarize, "chat") as chat:
             with self.assertRaises(RuntimeError) as cm:
                 memories.memory_summary()
-        self.assertIn("总结已在设置里关闭", str(cm.exception))
+        self.assertIn("没开", str(cm.exception))
         prov.assert_not_called()
         chat.assert_not_called()
 
@@ -1335,7 +1338,7 @@ class SummaryUses(unittest.TestCase):
                 dispatch.cmd_project_summary(types.SimpleNamespace(name="x", force=False, if_stale=False, json=True))
         res = json.loads(buf.getvalue())
         self.assertTrue(res["skipped"])
-        self.assertIn("总结已在设置里关闭", res["reason"])
+        self.assertIn("没开", res["reason"])
 
     def test_providers_catalog_has_env_and_configured(self):
         with patch.object(self.sd, "settings_load", return_value={}), \
@@ -1377,7 +1380,7 @@ class SummaryUses(unittest.TestCase):
     def test_uses_json_reflects_the_usage_log(self):
         with open(os.path.join(self.ddir, "summary-usage.json"), "w", encoding="utf-8") as f:
             json.dump({"session": {"at": 1700000000, "tokens": 42, "model": "zhipu:glm-5.3-flash"}}, f)
-        with patch.object(self.sd, "settings_load", return_value={}):
+        with patch.object(self.sd, "settings_load", return_value=dict(self.ALL_ON)):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 dispatch.cmd_summarize(types.SimpleNamespace(op="uses", provider=None, json=True))

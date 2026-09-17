@@ -81,3 +81,34 @@ class ReverseSsh(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+W = init_wizard
+
+
+class ModelsStep(unittest.TestCase):
+    """「模型与总结」: nothing automatic until the person picks (review P1-1)."""
+
+    def _run(self, choice, uses=None, catalog=None):
+        import summarize as S
+        saved, state = {}, {}
+        catalog = catalog or [{"id": "claude:haiku", "label": "Claude Haiku", "configured": True, "subscription": True, "env": ""},
+                              {"id": "openai:gpt-4.1-mini", "label": "gpt", "configured": False, "subscription": False, "env": "OPENAI_API_KEY"}]
+        with patch.object(W.D, "settings_load", return_value={"summary_auto": 0, "summary_uses": {}}), patch.object(W.D, "settings_save", side_effect=lambda cur: saved.update(cur)), \
+             patch.object(W, "save_state", side_effect=lambda **k: state.update(k)), patch.object(S, "model_catalog", return_value=catalog):
+            res = W.models_setup(choice, uses)
+        return res, saved, state
+
+    def test_off_switches_every_automatic_use_off(self):
+        res, saved, state = self._run("off")
+        self.assertEqual(state, {"models": "off"}); self.assertEqual(saved["summary_auto"], 0)
+        self.assertTrue(all(v == 0 for k, v in saved["summary_uses"].items() if k != "discuss")); self.assertEqual(saved["summary_uses"]["discuss"], 1)
+
+    def test_subscription_with_picked_uses(self):
+        res, saved, state = self._run("claude:haiku", ["session", "project"])
+        self.assertEqual(saved["summary_model"], "claude:haiku"); self.assertEqual(saved["summary_auto"], 1)
+        self.assertEqual({k for k, v in saved["summary_uses"].items() if v}, {"session", "project", "discuss"})
+
+    def test_a_model_without_its_key_is_refused(self):
+        with self.assertRaises(RuntimeError):
+            self._run("openai:gpt-4.1-mini")

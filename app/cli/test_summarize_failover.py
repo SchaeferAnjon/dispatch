@@ -20,6 +20,8 @@ class Reply:
 
 class FailoverTest(unittest.TestCase):
     def setUp(self):
+        # The person retired DeepSeek in settings (the default is an empty list).
+        p_ret = patch.object(S, "retired_providers", return_value={"deepseek"}); p_ret.start(); self.addCleanup(p_ret.stop)
         self.env = [{"name": "ZHIPU_API_KEY", "value": "z"}, {"name": "DEEPSEEK_API_KEY", "value": "d"}, {"name": "KIMI_API_KEY", "value": "k"}]
         patcher = patch.object(S.D, "env_read", lambda: self.env); patcher.start(); self.addCleanup(patcher.stop)
         patcher = patch.object(S, "record_use", lambda *a, **k: None); patcher.start(); self.addCleanup(patcher.stop)
@@ -55,9 +57,28 @@ if __name__ == "__main__":
 
 
 class CodingPlanTest(unittest.TestCase):
+    def setUp(self):
+        p_ret = patch.object(S, "retired_providers", return_value={"deepseek"}); p_ret.start(); self.addCleanup(p_ret.stop)
+
     def test_zhipu_uses_the_coding_plan_endpoint_and_deepseek_is_never_auto_picked(self):
         self.assertEqual(next(b for _, pid, b, _ in S.PROVIDERS if pid == "zhipu"), "https://open.bigmodel.cn/api/coding/paas/v4")
         env = [{"name": "DEEPSEEK_API_KEY", "value": "d"}, {"name": "KIMI_API_KEY", "value": "k"}]
         with patch.object(S.D, "env_read", lambda: env), patch.object(S.D, "settings_load", lambda: {}):
             self.assertEqual(S.provider()["id"], "kimi")
             self.assertEqual(S.provider("deepseek:deepseek-chat")["id"], "deepseek")  # explicit choice still honoured
+
+
+class RetiredIsASetting(unittest.TestCase):
+    def test_nothing_is_retired_until_the_person_says_so(self):
+        with patch.object(S.D, "settings_load", return_value={}):
+            self.assertEqual(S.retired_providers(), set())
+        with patch.object(S.D, "settings_load", return_value={"retired_providers": "DeepSeek， kimi"}):
+            self.assertEqual(S.retired_providers(), {"deepseek", "kimi"})
+
+    def test_automatic_uses_default_to_off(self):
+        with patch.object(S.D, "settings_load", return_value={"summary_auto": 0, "summary_uses": {}}):
+            for key in ("session", "project", "here", "insights", "memories", "profile_inventory", "semantic"):
+                self.assertFalse(S.use_enabled(key), key)
+            self.assertTrue(S.use_enabled("discuss"))  # only exists when the person started a discussion
+        with patch.object(S.D, "settings_load", return_value={"summary_uses": {"memories": 1}}):
+            self.assertTrue(S.use_enabled("memories"))

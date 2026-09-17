@@ -1055,6 +1055,8 @@ def status():
         {"id": "board", "title": "任务板", "ok": board["exists"] and board["server_up"], "detail": ("已接入 " + board["hub"]["name"]) if board.get("hub") else ("已建立，这台是枢纽" if board["exists"] else "还没有任务板"), "board": board},
         {"id": "agents", "title": "Agent", "ok": bool(st.get("agents")) and herdr_running(), "detail": ("、".join(AGENT_HOMES[a][0] for a in st.get("agents", []) if a in AGENT_HOMES) or "还没选") + ("" if herdr_running() else " · Herdr 没在跑"), "agents": agents, "herdr": herdr_running()},
         {"id": "rules", "title": "规则与技能", "ok": rules["have_rules"] and all(t["state"] == "synced" for t in rules["targets"] if os.path.isdir(os.path.dirname(t["path"]))), "detail": ("已同步" if rules["have_rules"] else "还没有共同规则"), "rules": rules},
+        {"id": "models", "title": "模型与总结", "ok": bool(st.get("models")), "detail": models_detail(st.get("models", "")), "optional": True, "models": models_status()},
+        {"id": "phone", "title": "手机与通知", "ok": bool(st.get("phone")), "detail": "已看过" if st.get("phone") else "可选：手机访问、推送到手机", "optional": True},
         {"id": "review", "title": "审查优化", "ok": bool(st.get("reviewed")), "detail": "已派 Agent 审查" if st.get("reviewed") else "可选：派一个 Agent 审查规则和技能", "optional": True, "agents": review_agents()},
     ]
     return {"done": bool(st.get("done")), "skipped": bool(st.get("skipped")), "machine": machine(), "steps": steps, "state": st,
@@ -1133,6 +1135,50 @@ def wizard():
     finish(); print("\n完成。打开 Dispatch.app，或在终端 `dispatch prime` 看看 Agent 会读到什么。")
 
 
+# ---------------------------------------------------------------- models (opt-in)
+
+def models_detail(choice):
+    return "还没选：在你选之前，Dispatch 不会把任何内容发给模型" if not choice else "已关闭：不向任何模型发送内容" if choice == "off" else f"用 {choice} 写总结"
+
+
+def models_status():
+    """What the 「模型与总结」 step shows: every model that could write summaries (subscription or
+    API key, configured or not) and the uses that would run on their own once switched on."""
+    import summarize as S
+    try:
+        uses = [{"key": k, "name": n, "desc": d, "enabled": S.use_enabled(k)} for k, n, d, _ in S.SUMMARY_USES]
+    except Exception:
+        uses = []
+    return {"catalog": S.model_catalog(), "uses": uses, "claude_cli": bool(S.CLAUDE_BIN), "current": (D.settings_load().get("summary_model") or "")}
+
+
+def models_setup(choice, uses=None):
+    """Record the person's answer. `off` switches every automatic use off; a model id
+    (`claude:haiku`, `zhipu:glm-5.3-flash`…) makes it the summary model and switches on the uses
+    they ticked (all of them when none are named). API keys are stored separately, through
+    `dispatch summarize set-key <provider>` with the key on stdin."""
+    import summarize as S
+    keys = [k for k, _, _, _ in S.SUMMARY_USES]
+    cur = D.settings_load()
+    if choice in ("", "off"):
+        choice = "off"
+        cur["summary_auto"] = 0
+        cur["summary_uses"] = {k: (1 if k == "discuss" else 0) for k in keys}
+    else:
+        row = next((r for r in S.model_catalog() if r["id"] == choice), None)
+        if row is None:
+            raise RuntimeError(f"没有这个模型：{choice}")
+        if not row["configured"]:
+            raise RuntimeError(f"{row['label']} 还不能用：" + ("没找到 claude 命令" if row["subscription"] else f"先填 {row['env']}"))
+        wanted = set(uses or keys) | {"discuss"}
+        cur["summary_model"] = choice
+        cur["summary_auto"] = 1 if "session" in wanted else 0
+        cur["summary_uses"] = {k: int(k in wanted) for k in keys}
+    D.settings_save(cur)
+    save_state(models=choice)
+    return {"choice": choice, "uses": cur["summary_uses"]}
+
+
 # ---------------------------------------------------------------- CLI entry
 
 def main(a):
@@ -1172,6 +1218,10 @@ def main(a):
                 res = agents_setup(args)
             elif step == "rules":
                 res = rules_setup()
+            elif step == "models":
+                res = models_setup(args[0] if args else "off", args[1:])
+            elif step == "phone":
+                save_state(phone=True); res = {"phone": True}
             elif step == "review":
                 res = review_start(args[0] if args else (review_agents() or [{"kind": "claude"}])[0]["kind"]); save_state(reviewed=True)
             elif step == "reverse-ssh":

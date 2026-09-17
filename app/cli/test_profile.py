@@ -173,7 +173,7 @@ class ProfileDoc(unittest.TestCase):
                 self.assertFalse(profile.profile_inventory_due(now=5000 + 3600)["due"])
             with patch.object(summarize, "use_enabled", return_value=False):
                 r = profile.profile_inventory_due(now=99999999)
-                self.assertFalse(r["due"]); self.assertIn("关闭", r["reason"]); self.assertEqual(spawn.call_count, 2)
+                self.assertFalse(r["due"]); self.assertIn("没开", r["reason"]); self.assertEqual(spawn.call_count, 2)
 
     def test_inventory_requires_refresh_or_due(self):
         with self.assertRaises(SystemExit) as e:

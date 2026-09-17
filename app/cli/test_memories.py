@@ -32,6 +32,8 @@ class MemoriesPage(unittest.TestCase):
         self.mem = os.path.join(self.projects, "-Users-me-Projects-demo", "memory")
         os.makedirs(self.mem)
         self.real_demo = os.path.join(self.tmp, "Projects", "demo")
+        import summarize
+        p_use = patch.object(summarize, "use_enabled", return_value=True); p_use.start(); self.addCleanup(p_use.stop)  # the person turned 记忆总结 on
         os.makedirs(self.real_demo)
         memories.MEMORY_STORES = [("claude-code", os.path.join(self.projects, "*", "memory", "*.md"))]
         self._patches = [

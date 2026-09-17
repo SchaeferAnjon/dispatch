@@ -1759,3 +1759,14 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 .err[role="alert"].soft{background:var(--panel);color:var(--ink-2);border:1px solid var(--line)}
 .err details{flex-basis:100%}.err details pre{white-space:pre-wrap;font-size:11px;max-height:180px;overflow:auto;margin:6px 0 0}
 .err .err-close{position:absolute;top:6px;right:8px;background:transparent;border:0;color:inherit;cursor:pointer;font-size:14px;padding:2px 6px}
+
+/* First-run 「模型与总结」 */
+.models-mode{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.models-mode label{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
+.models-mode label.off{opacity:.55}
+.setup-uses{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 16px;margin:8px 0 12px}
+.setup-uses label.check{display:flex;align-items:baseline;gap:6px;font-size:13px;flex-wrap:wrap}
+.setup-uses label.check input{width:auto;margin:0}
+.phone-access .settings-inline{margin:6px 0}
+.phone-access label.check{display:flex;align-items:baseline;gap:6px;font-size:13px;margin:6px 0}
+.phone-access label.check input{width:auto;margin:0}

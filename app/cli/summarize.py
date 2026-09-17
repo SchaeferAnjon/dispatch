@@ -25,20 +25,30 @@ PROVIDERS = [
 PROMPT = ("你是会话记录的总结者。下面是用户和一个编程 Agent 的对话摘录。用简体中文写一段不超过 120 字的总结，三层意思按顺序连成一段话：用户想要什么；Agent 实际做了什么、结果如何；还没做完或在等用户的事（没有就不写）。"
           "只写事实，不评价，不用「用户」「Agent」之外的称呼，不加标题、不用列表、不用引号。")
 
+# Nothing is sent to a model until the person says so (first-run setup → 「模型与总结」, or 设置 →
+# 总结): every use that runs on its own defaults to off. 「讨论结论」 stays on because a discussion
+# only exists when the person started one, and its text already went to the agents in it.
 SUMMARY_USES = [
-    ("session", "会话总结", "一轮结束后给会话写一段摘要，显示在工作台/会话列表/项目页", 1),
-    ("project", "项目现状", "项目页「现状」那段话", 1),
-    ("here", "dispatch here", "在终端跑 dispatch here 时的现状与结论", 1),
+    ("session", "会话总结", "一轮结束后给会话写一段摘要，显示在工作台/会话列表/项目页", 0),
+    ("project", "项目现状", "项目页「现状」那段话", 0),
+    ("here", "dispatch here", "在终端跑 dispatch here 时的现状与结论", 0),
     ("discuss", "讨论结论", "多 Agent 讨论后由 leader 写的结论与文档", 1),
-    ("insights", "洞察报告", "跨 Agent 的 /insights 复盘报告", 1),
-    ("memories", "记忆总结", "Agent 记忆页的总体与项目总结", 1),
-    ("profile_inventory", "设备盘点", "把各机器实测写成人话", 1),
-    ("semantic", "语义搜索索引", "wiki 语义搜索的 embedding（只认 ZHIPU_API_KEY）", 1),
+    ("insights", "洞察报告", "跨 Agent 的 /insights 复盘报告", 0),
+    ("memories", "记忆总结", "Agent 记忆页的总体与项目总结", 0),
+    ("profile_inventory", "设备盘点", "把各机器实测写成人话", 0),
+    ("semantic", "语义搜索索引", "wiki 语义搜索的 embedding（发任务标题、描述和知识库条目给 OpenAI 或智谱）", 0),
 ]
 DEFAULT_USES = {k: d for k, _, _, d in SUMMARY_USES}
-# Keys the person told us to stop using (dispatch facts: DeepSeek 2026-09-14 起停用): never picked
-# automatically, neither as the default nor as a fallback; an explicit summary_model still works.
-RETIRED_PROVIDERS = {"deepseek"}
+
+
+def retired_providers():
+    """Providers the person told Dispatch to stop picking on its own (设置 → 总结, a comma list):
+    never the default nor a fallback; an explicit summary_model still works. Empty by default."""
+    try:
+        raw = D.settings_load().get("retired_providers") or ""
+    except Exception:
+        raw = ""
+    return {x.strip().lower() for x in str(raw).replace("，", ",").split(",") if x.strip()}
 
 
 def use_name(key):
@@ -46,7 +56,7 @@ def use_name(key):
 
 
 def gate_message(key):
-    return f"总结已在设置里关闭（{use_name(key)}）"
+    return f"「{use_name(key)}」没开：它要把内容发给模型，所以默认关着；在 设置 → 总结 里打开"
 
 
 def use_enabled(key):
@@ -114,7 +124,7 @@ def provider(model=""):
             if p == pid and env.get(key):
                 return {"id": p, "base": base, "model": model, "key": env[key]}
     for key, p, base, model in PROVIDERS:
-        if env.get(key) and p not in RETIRED_PROVIDERS:
+        if env.get(key) and p not in retired_providers():
             return {"id": p, "base": base, "model": model, "key": env[key]}
     if CLAUDE_BIN:
         return {"id": "claude", "base": "", "model": "haiku", "key": ""}
@@ -317,7 +327,7 @@ def fallback_providers(p):
     The Claude subscription is never picked up silently — it is only used when chosen."""
     env = {i["name"]: i["value"] for i in D.env_read()}
     return [{"id": pid, "base": base, "model": model, "key": env[key]}
-            for key, pid, base, model in PROVIDERS if env.get(key) and pid != p.get("id") and pid not in RETIRED_PROVIDERS]
+            for key, pid, base, model in PROVIDERS if env.get(key) and pid != p.get("id") and pid not in retired_providers()]
 
 
 def chat(p, system, user, timeout=90, max_tokens=None, use=None):

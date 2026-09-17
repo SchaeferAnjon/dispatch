@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PhoneAccess } from "./PhoneAccess";
 import type { Api } from "../api";
 import { t, useT } from "../i18n";
 
@@ -8,7 +9,9 @@ import { t, useT } from "../i18n";
 
 interface Dep { name: string; found: boolean; path: string; formula: string | null; why: string; required: boolean; installable: boolean; version?: string }
 interface AgentRow { id: string; name: string; found: boolean; home: string; hooks: boolean | null; rules: boolean }
-interface Step { id: string; title: string; ok: boolean; detail: string; optional?: boolean; deps?: Dep[]; reviewers?: { id: string; kind: string; name: string }[]; cli?: { link: string; exists: boolean; target: string; in_app: boolean }; board?: { exists: boolean; server_up: boolean; hub?: { name: string; ssh: string } | null; mode: string; reverse_ssh?: Reverse }; agents?: AgentRow[]; rules?: { have_rules: boolean; targets: { agent: string; state: string; path: string }[]; seeded_from: string } }
+interface ModelRow { id: string; provider: string; label: string; env: string; configured: boolean; model: string; subscription: boolean }
+interface ModelsInfo { catalog: ModelRow[]; uses: { key: string; name: string; desc: string; enabled: boolean }[]; claude_cli: boolean; current: string }
+interface Step { id: string; title: string; ok: boolean; detail: string; optional?: boolean; models?: ModelsInfo; deps?: Dep[]; reviewers?: { id: string; kind: string; name: string }[]; cli?: { link: string; exists: boolean; target: string; in_app: boolean }; board?: { exists: boolean; server_up: boolean; hub?: { name: string; ssh: string } | null; mode: string; reverse_ssh?: Reverse }; agents?: AgentRow[]; rules?: { have_rules: boolean; targets: { agent: string; state: string; path: string }[]; seeded_from: string } }
 // Can the hub ssh back here? Needed for the hub to merge this Mac's sessions; 远程登录
 // is a GUI toggle, so a failed check must say where to flip it.
 interface Reverse { checked: boolean; ok: boolean; ssh?: string; hub?: string; hint?: string; detail?: string; local_remote_login?: boolean; note?: string }
@@ -31,7 +34,9 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
   const [picked, setPicked] = useState<string[] | null>(null);
   const [log, setLog] = useState<Record<string, string>>({});
   const [reviewer, setReviewer] = useState<string>("");
-  const step = (id: string) => status.steps.find((s) => s.id === id)!;
+  // An older CLI does not know the newer optional steps: they get an empty placeholder and their cards stay hidden.
+  const has = (id: string) => status.steps.some((s) => s.id === id);
+  const step = (id: string): Step => status.steps.find((s) => s.id === id) ?? ({ id, title: id, ok: false, detail: "", optional: true } as Step);
   const refresh = async () => { try { onStatus(parse<InitStatus>(await api.on("local", ["init", "status", "--json"]))); } catch (e) { onError(String(e)); } };
   const run = async (id: string, args: string[], label: string) => {
     setBusy(id);
@@ -54,6 +59,28 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
   const reverse = board?.reverse_ssh;
   const rules = step("rules").rules;
   const m = status.machine;
+  // 「模型与总结」: nothing is sent to a model until the person picks one of the three here.
+  const models = step("models").models;
+  const [modelMode, setModelMode] = useState<"off" | "sub" | "key">("off");
+  const [subModel, setSubModel] = useState("claude:haiku");
+  const [keyModel, setKeyModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [pickedUses, setPickedUses] = useState<string[]>([]);
+  useEffect(() => {
+    if (!models) return;
+    if (!keyModel) setKeyModel((models.catalog.find((r) => !r.subscription && r.configured) ?? models.catalog.find((r) => !r.subscription))?.id ?? "");
+    if (pickedUses.length === 0) setPickedUses(models.uses.filter((u) => u.key !== "discuss").map((u) => u.key));
+  }, [models]);
+  const saveModels = async () => {
+    if (modelMode === "off") { await run("models", ["off"], t("已记下：不向模型发送内容")); return; }
+    const id = modelMode === "sub" ? subModel : keyModel;
+    const row = models?.catalog.find((r) => r.id === id);
+    if (modelMode === "key" && row && !row.configured) {
+      try { await api.on("local", ["summarize", "set-key", row.provider], apiKey.trim()); setApiKey(""); }
+      catch (e) { onError(String(e).replace(/^Error: /, "")); return; }
+    }
+    await run("models", [id, ...pickedUses], t("已记下：用 {model} 写总结", { model: row?.label ?? id }));
+  };
 
   return (
     <div className="setup">
@@ -134,7 +161,30 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
           {log.rules && <pre className="setup-log">{log.rules}</pre>}
         </Card>
 
-        <Card n={6} s={step("review")} busy={busy === "review"}>
+        {has("models") && <Card n={6} s={step("models")} busy={busy === "models"}>
+          <p className="muted">{t("Dispatch 自己不带模型。会话总结、项目现状、记忆总结、洞察报告、语义搜索这些功能，要把对话摘录或文档片段发给一个模型才写得出来：在你选之前一律不发。三种选法，之后都能在 设置 → 总结 里改。")}</p>
+          <div className="setup-mode models-mode">
+            <label><input type="radio" name="models-mode" checked={modelMode === "off"} onChange={() => setModelMode("off")} /> <b>{t("先不用")}</b> <span className="muted small">{t("什么都不发；界面照常可用，只是没有自动写的总结")}</span></label>
+            <label className={models?.claude_cli ? "" : "off"}><input type="radio" name="models-mode" disabled={!models?.claude_cli} checked={modelMode === "sub"} onChange={() => setModelMode("sub")} /> <b>{t("用 Claude Code 订阅")}</b> <span className="muted small">{models?.claude_cli ? t("在这台电脑上跑 claude -p，不需要 API Key，算在你的订阅额度里") : t("这台电脑上没找到 claude 命令")}</span></label>
+            <label><input type="radio" name="models-mode" checked={modelMode === "key"} onChange={() => setModelMode("key")} /> <b>{t("用 API Key")}</b> <span className="muted small">{t("发给你选的那家供应商，按它的价格计费；Key 只存在这台电脑的 dispatch env 里")}</span></label>
+          </div>
+          {modelMode === "sub" && <div className="setup-row"><select value={subModel} onChange={(e) => setSubModel(e.target.value)} aria-label={t("订阅模型")}>{(models?.catalog ?? []).filter((r) => r.subscription).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></div>}
+          {modelMode === "key" && <div className="setup-row">
+            <select value={keyModel} onChange={(e) => { setKeyModel(e.target.value); setApiKey(""); }} aria-label={t("供应商")}>{(models?.catalog ?? []).filter((r) => !r.subscription).map((r) => <option key={r.id} value={r.id}>{r.label}{r.configured ? ` · ${t("已有 Key")}` : ""}</option>)}</select>
+            {(() => { const row = (models?.catalog ?? []).find((r) => r.id === keyModel); return row && !row.configured ? <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={row.env} aria-label={row.env} autoComplete="off" /> : null; })()}
+          </div>}
+          {modelMode !== "off" && <div className="setup-uses">{(models?.uses ?? []).filter((u) => u.key !== "discuss").map((u) => <label key={u.key} className="check" title={t(u.desc)}><input type="checkbox" checked={pickedUses.includes(u.key)} onChange={(e) => setPickedUses((p) => e.target.checked ? [...p, u.key] : p.filter((x) => x !== u.key))} /> {t(u.name)} <span className="muted small">{t(u.desc)}</span></label>)}</div>}
+          <button className="btn primary" disabled={!!busy || (modelMode === "key" && !(models?.catalog ?? []).find((r) => r.id === keyModel)?.configured && !apiKey.trim())} onClick={() => void saveModels()}>{busy === "models" ? t("保存中…") : t("就这样")}</button>
+          {log.models && <pre className="setup-log">{log.models}</pre>}
+        </Card>}
+
+        {has("phone") && <Card n={7} s={step("phone")} busy={busy === "phone"}>
+          <p className="muted">{t("想在手机上看进展、回复会话，就在这里开启；不需要可以直接跳过。推送到手机的通知（Bark / ntfy）在 设置 → 手机通知 里配。")}</p>
+          <PhoneAccess api={api} onDone={onNotify} onError={onError} compact />
+          <button className="btn" disabled={!!busy} onClick={() => void run("phone", [], t("好的"))}>{t("这一步看过了")}</button>
+        </Card>}
+
+        <Card n={8} s={step("review")} busy={busy === "review"}>
           <p className="muted">{t("派一个 Agent 审查这台电脑上所有 Agent 共用的规则和技能：先做减法（删掉为老模型补的行为规则、逐步菜谱、和全局重复的内容），保留架构约束、安全边界和项目知识，然后直接改好并同步。一台电脑也值得做一次。")}</p>
           <div className="setup-row">
             {(() => { const list = ((step("review") as unknown as { agents?: { id: string; kind: string; name: string }[] }).agents) ?? []; const cur = reviewer || list[0]?.kind || ""; return list.length > 0 ? <select className="sess-agent" value={cur} onChange={(e) => setReviewer(e.target.value)} aria-label={t("用哪个 Agent 审查")}>{list.map((a) => <option key={a.kind} value={a.kind}>{a.name}</option>)}</select> : <span className="muted small">{t("没有检测到带命令行的 Agent（Claude Code / Codex / pi / Gemini CLI / OpenCode）")}</span>; })()}
@@ -156,7 +206,7 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
 function Card({ n, s, busy, children }: { n: number; s: Step; busy: boolean; children: React.ReactNode }) {
   const t = useT();
   return <li className={`setup-card${s.ok ? " ok" : ""}${busy ? " busy" : ""}`}>
-    <header><span className={`setup-n${s.ok ? " ok" : ""}`}>{s.ok ? "✓" : n}</span><h3>{s.title}{s.optional && <span className="muted small"> · {t("可选")}</span>}</h3><span className="muted small">{s.detail}</span></header>
+    <header><span className={`setup-n${s.ok ? " ok" : ""}`}>{s.ok ? "✓" : n}</span><h3>{t(s.title)}{s.optional && <span className="muted small"> · {t("可选")}</span>}</h3><span className="muted small">{s.detail}</span></header>
     <div className="setup-body">{children}</div>
   </li>;
 }

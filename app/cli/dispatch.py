@@ -5320,11 +5320,11 @@ DISCUSS_RULES_DEFAULT = "闲聊就闲聊，两句以内；正事默认一两段�
 DISCUSS_PERSONA_DEFAULT = {"claude": "偏架构和验收：先问值不值得做、做完怎么验证，习惯把方案拆成可交付的步骤。",
                            "codex": "抠实现细节：关心具体改哪里、边界情况、能不能复用已有代码，不信没验证过的说法。",
                            "pi": "短句直给：一次只说最重要的一点，倾向先做最小可验证的版本，看到过度设计会直说。"}
-SETTING_DEFAULTS = {"session_archive_days": 30, "task_archive_days": 0, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 1, "summary_model": "",
+SETTING_DEFAULTS = {"session_archive_days": 30, "task_archive_days": 0, "home_expanded": 2, "sdk_sessions_scheduled": 1, "workspace_roots": ["~/Projects"], "summary_auto": 0, "summary_model": "", "retired_providers": "",
                     "notify_reply": 1, "notify_attention": 1, "notify_done": 1, "notify_needs_you": 1, "summary_uses": {},
                     "discuss_rules": DISCUSS_RULES_DEFAULT, **{f"discuss_persona_{k}": v for k, v in DISCUSS_PERSONA_DEFAULT.items()}}
 # free-text settings and their length caps; everything else numeric except workspace_roots
-SETTING_STRINGS = {"summary_model": 80, "discuss_rules": 600, "discuss_persona_claude": 300, "discuss_persona_codex": 300, "discuss_persona_pi": 300}
+SETTING_STRINGS = {"summary_model": 80, "retired_providers": 120, "discuss_rules": 600, "discuss_persona_claude": 300, "discuss_persona_codex": 300, "discuss_persona_pi": 300}
 
 
 def settings_parse(raw):
@@ -5360,6 +5360,10 @@ def settings_load():
     return {**SETTING_DEFAULTS, **settings_parse(d.get(SETTINGS_KEY, ""))}
 
 
+def settings_save(cur):
+    wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS or k == "summary_uses"}, ensure_ascii=False, sort_keys=True))
+
+
 def cmd_settings(a):
     cur = settings_load()
     if a.key and a.key not in SETTING_DEFAULTS:
@@ -5390,9 +5394,9 @@ def cmd_settings(a):
         cur[a.key] = val
         wiki_store(SETTINGS_KEY, json.dumps({k: v for k, v in cur.items() if k in SETTING_DEFAULTS}, ensure_ascii=False, sort_keys=True))
     shown = {a.key: cur[a.key]} if a.key else cur
-    notes = {"session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "task_archive_days": "天，已完成任务超过这些天自动打 dispatch:archived 标签；0=不自动", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选", "summary_uses": '各用途的开关，JSON 如 {"session": 0}；键见 `dispatch summarize uses`',
+    notes = {"retired_providers": "逗号分隔的供应商 id（如 deepseek）：不再自动选用，也不作回退；显式选它仍可用", "notify_reply": "1=Agent 回复完成时推到手机", "notify_attention": "1=Agent 等确认时推到手机", "notify_done": "1=任务完成时推到手机", "notify_needs_you": "1=「只能你做」时推到手机", "session_archive_days": "天，普通会话无活动后自动归档；收藏的不归档", "task_archive_days": "天，已完成任务超过这些天自动打 dispatch:archived 标签；0=不自动", "home_expanded": "工作台默认展开前几个项目", "sdk_sessions_scheduled": "1=SDK 启动的会话自动当作定时会话", "workspace_roots": "工作区根目录，其直接子文件夹各算一个项目", "summary_auto": "1 = 一轮结束后自动给会话写总结（含以前的会话，逐步补齐）", "summary_model": "总结用的模型，如 claude:haiku（订阅）或 zhipu:glm-5.3-flash（API Key）；空 = 自动选", "summary_uses": '各用途的开关，JSON 如 {"session": 0}；键见 `dispatch summarize uses`',
              "discuss_rules": "讨论群的规矩（发言长度、什么时候 SKIP），进每个成员的系统提示", "discuss_persona_claude": "讨论里 claude 的一句人设", "discuss_persona_codex": "讨论里 codex 的一句人设", "discuss_persona_pi": "讨论里 pi 的一句人设"}
-    out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes[k]}）") for k, v in x.items()])
+    out(shown, a.json, lambda x: [print(f"{k} = {v}（{notes.get(k, str())}）") for k, v in x.items()])
 
 
 def cmd_project_moves(a):

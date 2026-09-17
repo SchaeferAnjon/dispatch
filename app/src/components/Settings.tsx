@@ -162,6 +162,10 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
         </div>}
         {!keyTarget && summaryError && <p className="setup-bad" style={{ margin: "0 0 8px" }}>{summaryError}</p>}
         <label className="settings-row">
+          <div><b>{t("不再自动选用的供应商")}</b><p>{t("逗号分隔，如 deepseek：有它的 Key 也不会被自动选中或当作回退；上面显式选它仍然可用。留空表示都可以用。")}</p></div>
+          <input className="settings-input" type="text" value={draft.retired_providers} placeholder="deepseek, kimi" onChange={(e) => setDraft({ ...draft, retired_providers: e.target.value })} />
+        </label>
+        <label className="settings-row">
           <div><b>{t("脚本或其他 Agent 通过 SDK 启动的会话，自动当作定时会话")}</b><p>{t("定时会话不进「等我」、不发通知、不出现在工作台；会话页「定时」筛选里能看到。对单条会话手动标记过的，以手动为准。")}</p></div>
           <input type="checkbox" checked={draft.sdk_sessions_scheduled} onChange={(e) => setDraft({ ...draft, sdk_sessions_scheduled: e.target.checked })} />
         </label>

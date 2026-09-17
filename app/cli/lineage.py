@@ -377,7 +377,7 @@ def cmd_here(a):
         s = o["summary"]
         print("\n## 现状")
         if s.get("skipped"):
-            print(s.get("reason") or "总结已在设置里关闭")
+            print(s.get("reason") or "总结没开：设置 → 总结 里打开")
         else:
             print(s.get("text") or ("（还没有项目总结：" + (s.get("error") or f"`dispatch project-summary {o['project']}` 生成") + "）"))
         print(f"\n## 最近 {o['timeline_days']} 天")
