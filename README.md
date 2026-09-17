@@ -74,7 +74,7 @@ Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent
    - 或者先双击一次被拦，去 系统设置 → 隐私与安全性 → 最下面点「仍要打开」。
 4. 打开后自动进入**首次设置**（见下一节）。没装 Homebrew 的话，第 1 步会给出安装命令。
 
-需要 [Homebrew](https://brew.sh)；首次设置会用它装 Dolt、Beads、Herdr。
+需要 [Homebrew](https://brew.sh)；首次设置会用它装 Dolt、Beads、Herdr、tmux，缺 Python（3.9 或更新）或 git 时也一并装。打开应用时会先检查环境：命令行起不来的话，界面会列出缺什么、怎么装。
 
 ### 更新
 
@@ -84,7 +84,7 @@ Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent
 
 ### 从源码构建（开发者）
 
-需要 Node.js 20.19+ 或 22.12+、Rust、Xcode Command Line Tools、Python 3.11+。
+需要 Node.js 20.19+ 或 22.12+、Rust、Xcode Command Line Tools、Python 3.9+。
 
 ```sh
 cd app
@@ -136,7 +136,7 @@ dispatch move <会话 id 前缀> --to <机器 id 或名字> [--prompt "额外交
 
 手机需能访问运行 Dispatch 的电脑（推荐 Tailscale），不能把服务暴露到公网。
 
-- 电脑上运行 `dispatch serve url` 拿到地址，或 `dispatch serve qr` 在终端显示二维码。
+- 电脑上在 设置 → 手机访问 点「开启手机访问」（命令行：`dispatch serve install`），出现二维码后用手机扫；`dispatch serve url` / `dispatch serve qr` 也能拿到配对链接和二维码。没有 Tailscale 时默认只监听本机，要勾选「允许局域网」才会让同一 Wi‑Fi 的设备访问。
 - 设置 → 手机访问：内嵌同一个二维码（链接里带登录令牌，扫一次就记住），也可以复制链接发到手机；浏览器里可「添加到主屏幕」，界面按手机宽度排版。
 - **通知**：报告生成完、讨论结束、会话变成「等你」时推一条。渠道在「环境」页配 `NTFY_URL`（ntfy 主题地址）或 `BARK_KEY`（Bark 的 key），两个都没配就发这台 Mac 的系统通知；命令行 `dispatch notify "标题" "正文"`。
 - **看屏幕**：设置 → 屏幕访问 点一次「配置」（等价命令 `dispatch screen setup`），它装好 noVNC 与常驻服务并开通 Tailscale HTTPS；剩下只需在系统设置 → 通用 → 共享 打开「屏幕共享」。之后手机浏览器里用这台 Mac 的用户名和登录密码看并操作屏幕（noVNC，走 Tailscale HTTPS）。
@@ -148,7 +148,7 @@ dispatch move <会话 id 前缀> --to <机器 id 或名字> [--prompt "额外交
 - **右键**：任务、会话、项目、技能、文件、机器都有各自的操作菜单；空白处右键是本页的操作。不方便右键时点 `⋯`（任务、会话）或页头菜单。
 - **快捷键**：`⌘K` 搜项目 / 会话 / 任务，`⌘N` 新建会话，`⌘T` 新任务，`⌘R` 刷新。
 - **任务由 Agent 记**：每个新会话开头会收到 `dispatch prime` 注入的身份、本项目任务和相关知识；它用 `dispatch begin / log / done` 记任务，用 `dispatch wiki` 记坑。你不需要在界面里逐个点完成。
-- **会话总结**：设置里默认开启「自动总结」，每隔几分钟总结一两段会话（新的优先），历史会话逐步补齐；也可以在会话上右键「用模型总结这段会话」/「用模型重新总结」。模型取 `SUMMARY_MODEL` 指定的 `provider:model`，没配就用 `dispatch env` 里已有的 API Key（智谱、DeepSeek、Kimi、MiniMax、OpenAI），或用 Claude Code 订阅（`SUMMARY_MODEL=claude:haiku`）。命令行：`dispatch session-summary run <key>` / `auto` / `providers`。
+- **会话总结**：默认关闭。在首次设置的「模型与总结」里选了模型（Claude Code 订阅或某家 API Key）并勾上「会话总结」之后，每隔几分钟总结一两段会话（新的优先），历史会话逐步补齐；也可以在会话上右键「用模型总结这段会话」/「用模型重新总结」。模型取 `SUMMARY_MODEL` 指定的 `provider:model`，没配就用 `dispatch env` 里已有的 API Key（智谱、DeepSeek、Kimi、MiniMax、OpenAI），或用 Claude Code 订阅（`SUMMARY_MODEL=claude:haiku`）。命令行：`dispatch session-summary run <key>` / `auto` / `providers`。
 
 ### 命令行
 

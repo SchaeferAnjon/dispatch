@@ -74,7 +74,7 @@ Zu viele Funktionen und unklar, wo Sie anfangen sollen? Lesen Sie das **[Benutze
    - oder lassen Sie sich einmal per Doppelklick blockieren, gehen Sie dann in Systemeinstellungen → Datenschutz & Sicherheit, ganz nach unten, und klicken Sie auf „Dennoch öffnen“.
 4. Nach dem Öffnen startet automatisch die **Ersteinrichtung** (siehe nächster Abschnitt). Fehlt Homebrew, zeigt Schritt 1 den Installationsbefehl an.
 
-Erfordert [Homebrew](https://brew.sh); die Ersteinrichtung installiert damit Dolt, Beads und Herdr.
+Erfordert [Homebrew](https://brew.sh); die Ersteinrichtung installiert damit Dolt, Beads, Herdr und tmux, außerdem Python (3.9 oder neuer) oder git, falls sie fehlen. Beim Start prüft die App zuerst die Umgebung: Startet ihre Kommandozeile nicht, zeigt das Fenster, was fehlt und wie Sie es installieren.
 
 ### Aktualisieren
 
@@ -84,7 +84,7 @@ Erfordert [Homebrew](https://brew.sh); die Ersteinrichtung installiert damit Dol
 
 ### Aus dem Quellcode bauen (für Entwickler)
 
-Erfordert Node.js 20.19+ oder 22.12+, Rust, Xcode Command Line Tools und Python 3.11+.
+Erfordert Node.js 20.19+ oder 22.12+, Rust, Xcode Command Line Tools und Python 3.9+.
 
 ```sh
 cd app
@@ -136,7 +136,7 @@ Unterstützt Claude Code und Codex; pi hält seine Sitzungen in einem eigenen Sp
 
 Das Handy muss den Rechner mit Dispatch erreichen können (Tailscale empfohlen); der Dienst darf nicht ins offene Internet gestellt werden.
 
-- Führen Sie auf dem Rechner `dispatch serve url` aus, um die Adresse zu erhalten, oder `dispatch serve qr`, um im Terminal einen QR-Code anzuzeigen.
+- Öffnen Sie auf dem Mac Einstellungen → Handy-Zugriff und klicken Sie auf „Handy-Zugriff einschalten“ (Kommandozeile: `dispatch serve install`), dann scannen Sie den angezeigten QR-Code; `dispatch serve url` / `dispatch serve qr` liefern ebenfalls Kopplungslink und QR-Code. Ohne Tailscale lauscht der Dienst standardmäßig nur auf diesem Mac; mit „LAN zulassen“ können sich Geräte im selben WLAN verbinden.
 - Einstellungen → Zugriff vom Handy: zeigt denselben QR-Code (der Link enthält ein Anmeldetoken, einmal scannen genügt); alternativ kopieren Sie den Link und schicken ihn ans Handy. Im Browser können Sie „Zum Home-Bildschirm“ wählen; die Oberfläche ist auf Handybreite ausgelegt.
 - **Mitteilungen**: eine Nachricht, wenn ein Bericht fertig ist, eine Diskussion endet oder eine Sitzung in „wartet auf Sie“ wechselt. Den Kanal legen Sie auf der Seite „Umgebung“ mit `NTFY_URL` (Adresse eines ntfy-Themas) oder `BARK_KEY` (Bark-Schlüssel) fest; ist keines gesetzt, sendet dieser Mac eine Systembenachrichtigung. Befehlszeile: `dispatch notify "Titel" "Text"`.
 - **Bildschirm ansehen**: Einstellungen → Bildschirmzugriff, einmal „Einrichten“ klicken (entspricht `dispatch screen setup`); das installiert noVNC samt Hintergrunddienst und schaltet Tailscale-HTTPS frei. Danach müssen Sie nur noch in Systemeinstellungen → Allgemein → Freigaben die „Bildschirmfreigabe“ einschalten. Anschließend sehen und bedienen Sie den Bildschirm im Browser des Handys mit Benutzername und Anmeldekennwort dieses Macs (noVNC über Tailscale-HTTPS).
@@ -148,7 +148,7 @@ Webversion und Desktop nutzen dieselbe CLI; Updates erfolgen in Dispatch.app auf
 - **Rechtsklick**: Aufgaben, Sitzungen, Projekte, Skills, Dateien und Rechner haben jeweils ein eigenes Aktionsmenü; ein Rechtsklick auf leere Fläche zeigt die Aktionen der aktuellen Seite. Wo Rechtsklick unpraktisch ist, nutzen Sie `⋯` (Aufgaben, Sitzungen) oder das Menü im Seitenkopf.
 - **Tastenkürzel**: `⌘K` sucht Projekte / Sitzungen / Aufgaben, `⌘N` startet eine neue Sitzung, `⌘T` legt eine Aufgabe an, `⌘R` aktualisiert.
 - **Aufgaben führt der Agent**: Jede neue Sitzung erhält zu Beginn die von `dispatch prime` eingespeiste Identität, die Aufgaben des Projekts und das passende Wissen; der Agent führt Aufgaben mit `dispatch begin / log / done` und trägt Stolperfallen mit `dispatch wiki` ein. Sie müssen nichts einzeln in der Oberfläche abhaken.
-- **Sitzungszusammenfassungen**: In den Einstellungen ist „Automatisch zusammenfassen“ standardmäßig aktiv; alle paar Minuten werden ein bis zwei Sitzungen zusammengefasst (neue zuerst), ältere Sitzungen werden nach und nach ergänzt. Alternativ per Rechtsklick auf eine Sitzung → „Diese Sitzung mit dem Modell zusammenfassen“ / „Erneut mit dem Modell zusammenfassen“. Das Modell kommt aus dem in `SUMMARY_MODEL` gesetzten `provider:model`; ohne Angabe wird ein in `dispatch env` vorhandener API-Schlüssel verwendet (Zhipu, DeepSeek, Kimi, MiniMax, OpenAI) oder das Claude-Code-Abo (`SUMMARY_MODEL=claude:haiku`). Befehlszeile: `dispatch session-summary run <key>` / `auto` / `providers`.
+- **Sitzungszusammenfassungen**: standardmäßig aus. Sobald Sie in der Ersteinrichtung unter „Modelle & Zusammenfassungen“ ein Modell gewählt (das Claude-Code-Abo oder den API-Schlüssel eines Anbieters) und „Sitzungszusammenfassungen“ angehakt haben, werden alle paar Minuten ein bis zwei Sitzungen zusammengefasst (neue zuerst), ältere Sitzungen werden nach und nach ergänzt. Alternativ per Rechtsklick auf eine Sitzung → „Diese Sitzung mit dem Modell zusammenfassen“ / „Erneut mit dem Modell zusammenfassen“. Das Modell kommt aus dem in `SUMMARY_MODEL` gesetzten `provider:model`; ohne Angabe wird ein in `dispatch env` vorhandener API-Schlüssel verwendet (Zhipu, DeepSeek, Kimi, MiniMax, OpenAI) oder das Claude-Code-Abo (`SUMMARY_MODEL=claude:haiku`). Befehlszeile: `dispatch session-summary run <key>` / `auto` / `providers`.
 
 ### Befehlszeile
 

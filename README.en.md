@@ -74,7 +74,7 @@ Too many features and not sure where to begin? Read the **[user manual](https://
    - Or double-click once, let it be blocked, then go to System Settings → Privacy & Security → scroll to the bottom and click "Open Anyway".
 4. Once open, the app goes straight into **first-run setup** (see the next section). If Homebrew is missing, step 1 shows the install command.
 
-Requires [Homebrew](https://brew.sh); first-run setup uses it to install Dolt, Beads, and Herdr.
+Requires [Homebrew](https://brew.sh); first-run setup uses it to install Dolt, Beads, Herdr and tmux, plus Python (3.9 or newer) or git when they are missing. On launch the app checks the environment first: if its command line cannot start, the window lists what is missing and how to install it.
 
 ### Updating
 
@@ -84,7 +84,7 @@ Requires [Homebrew](https://brew.sh); first-run setup uses it to install Dolt, B
 
 ### Build from source (developers)
 
-Requires Node.js 20.19+ or 22.12+, Rust, Xcode Command Line Tools, and Python 3.11+.
+Requires Node.js 20.19+ or 22.12+, Rust, Xcode Command Line Tools, and Python 3.9+.
 
 ```sh
 cd app
@@ -136,7 +136,7 @@ Supports Claude Code and Codex; pi keeps its sessions in its own store and canno
 
 Your phone must be able to reach the Mac running Dispatch (Tailscale recommended); do not expose the service to the public internet.
 
-- On the Mac, run `dispatch serve url` to get the address, or `dispatch serve qr` to show a QR code in the terminal.
+- On the Mac, open Settings → Phone access and click "Turn on phone access" (command line: `dispatch serve install`), then scan the QR code that appears; `dispatch serve url` / `dispatch serve qr` also give you the pairing link and QR code. Without Tailscale it listens on this Mac only by default; tick "allow LAN" to let devices on the same Wi‑Fi connect.
 - Settings → Phone access: shows the same QR code (the link carries a login token, so one scan is remembered), or copy the link and send it to your phone; in the browser you can "Add to Home Screen", and the interface is laid out for phone width.
 - **Notifications**: one push when a report is ready, a discussion ends, or a session turns into "waiting for you". Set the channel on the "Environment" page with `NTFY_URL` (an ntfy topic URL) or `BARK_KEY` (a Bark key); with neither set, this Mac sends a system notification. Command line: `dispatch notify "title" "body"`.
 - **Screen access**: Settings → Screen access, click "Set up" once (equivalent to `dispatch screen setup`); it installs noVNC with a background service and enables Tailscale HTTPS. All that is left is to turn on "Screen Sharing" in System Settings → General → Sharing. After that, view and control the screen from your phone's browser using this Mac's username and login password (noVNC over Tailscale HTTPS).
@@ -148,7 +148,7 @@ The web version and the desktop share the same CLI; updates are done in Dispatch
 - **Right-click**: tasks, sessions, projects, skills, files, and machines each have their own action menu; right-clicking empty space shows the actions for the current page. When right-clicking is awkward, use `⋯` (tasks, sessions) or the page header menu.
 - **Shortcuts**: `⌘K` searches projects / sessions / tasks, `⌘N` starts a new session, `⌘T` creates a task, `⌘R` refreshes.
 - **Agents keep the tasks**: every new session starts with the identity, project tasks, and relevant knowledge injected by `dispatch prime`; it records tasks with `dispatch begin / log / done` and pitfalls with `dispatch wiki`. You never need to tick things off in the interface one by one.
-- **Session summaries**: "Auto-summarize" is on by default in Settings; every few minutes it summarizes one or two sessions (newest first) and gradually fills in older ones. You can also right-click a session → "Summarize this session with the model" / "Summarize again with the model". The model comes from the `provider:model` set in `SUMMARY_MODEL`; if unset, it uses an API key already in `dispatch env` (Zhipu, DeepSeek, Kimi, MiniMax, OpenAI) or your Claude Code subscription (`SUMMARY_MODEL=claude:haiku`). Command line: `dispatch session-summary run <key>` / `auto` / `providers`.
+- **Session summaries**: off by default. Once you pick a model in first-run setup under "Models & summaries" (the Claude Code subscription or a provider's API key) and tick "Session summaries", every few minutes it summarizes one or two sessions (newest first) and gradually fills in older ones. You can also right-click a session → "Summarize this session with the model" / "Summarize again with the model". The model comes from the `provider:model` set in `SUMMARY_MODEL`; if unset, it uses an API key already in `dispatch env` (Zhipu, DeepSeek, Kimi, MiniMax, OpenAI) or your Claude Code subscription (`SUMMARY_MODEL=claude:haiku`). Command line: `dispatch session-summary run <key>` / `auto` / `providers`.
 
 ### Command line
 
