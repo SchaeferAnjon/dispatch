@@ -7,6 +7,8 @@ export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"
 V="${1:?版本号，如 0.6.0}"; shift || true
 BUILD=1; for a in "$@"; do [ "$a" = "--no-build" ] && BUILD=0; done
 ARCH="$(uname -m)"; [ "$ARCH" = "arm64" ] && ARCH_LABEL="apple-silicon" || ARCH_LABEL="intel"
+# Every CLI module the app imports must be in the bundle list (a forgotten one only fails on users' Macs).
+(cd cli && python3 -m unittest -q test_bundle >/dev/null 2>&1) || { echo "cli/test_bundle 没过：有 CLI 模块没写进 src-tauri/tauri.conf.json 的 resources，不发布" >&2; exit 1; }
 # Version lives in three files; keep them equal.
 python3 - "$V" <<'PY'
 import json, re, sys
