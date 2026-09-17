@@ -11,6 +11,7 @@ import tempfile
 import time
 import types
 import unittest
+from unittest import mock
 from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1824,6 +1825,67 @@ class MissingToolsAndBoard(unittest.TestCase):
             r = dispatch.herdr(None, ["agent", "list"])
             self.assertEqual(r["error"]["code"], "herdr_missing")
             self.assertEqual(dispatch.herdr(None, ["agent", "read", "x"], raw=True), "")
+
+
+class DiscussAside(unittest.TestCase):
+    """顺便问: answered on the side, kept out of the task so the discussion is not affected."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.issue = {"id": "task-as01", "title": "【讨论】要不要做共享账本", "description": "室友一起记账"}
+        self.comments = [{"author": "codex", "text": "【讨论】用 CKShare 把账本分享给另一个 Apple ID"}]
+        self.prompts = []
+
+        def chat(system, user):
+            self.prompts.append((system, user))
+            return "CKShare 就像把一个文件夹共享给朋友。"
+        self.writes = []
+        self.patches = [
+            mock.patch.object(dispatch, "DISCUSSIONS_DIR", self.dir),
+            mock.patch.object(dispatch, "bd_json", side_effect=lambda args: self.issue if args[0] == "show" else {}),
+            mock.patch.object(dispatch, "bd_comments", return_value=self.comments),
+            mock.patch.object(dispatch, "aside_chat", return_value=(chat, "zhipu:glm")),
+            mock.patch.object(dispatch, "sh", side_effect=lambda *a, **k: self.writes.append(a) or ""),
+        ]
+        for p in self.patches:
+            p.start(); self.addCleanup(p.stop)
+
+    def ask(self, **kw):
+        a = types.SimpleNamespace(task="task-as01", question=[], stdin=False, quote="", clear=False, json=True)
+        a.__dict__.update(kw)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            dispatch.cmd_discuss_aside(a)
+        return json.loads(buf.getvalue())
+
+    def test_answer_is_stored_beside_the_discussion_and_nothing_is_written_to_the_task(self):
+        r = self.ask(question=["CKShare", "是什么"], quote="用 CKShare 把账本分享")
+        self.assertEqual(len(r["items"]), 1)
+        self.assertIn("文件夹", r["items"][0]["a"])
+        self.assertEqual(self.writes, [])  # no bd comment, no bd update
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "task-as01.aside.json")))
+        system, user = self.prompts[0]
+        self.assertIn("同学", system)
+        self.assertIn("CKShare 把账本分享给另一个", user)   # the thread is the context
+        self.assertIn("【ta 划出来的原话】", user)
+
+    def test_follow_up_sees_the_earlier_answer_and_list_and_clear_work(self):
+        self.ask(question=["CKShare 是什么"])
+        self.ask(question=["那冲突怎么办"])
+        self.assertIn("你答：CKShare 就像", self.prompts[1][1])
+        self.assertEqual(len(self.ask()["items"]), 2)      # no question: just the list, no model call
+        self.assertEqual(len(self.prompts), 2)
+        self.assertEqual(self.ask(clear=True)["items"], [])
+        self.assertEqual(self.ask()["items"], [])
+
+    def test_a_model_failure_is_kept_as_an_error_not_a_crash(self):
+        def boom(system, user):
+            raise OSError("offline")
+        with mock.patch.object(dispatch, "aside_chat", return_value=(boom, "x")):
+            r = self.ask(question=["?"])
+        self.assertEqual(r["items"][0]["a"], "")
+        self.assertIn("offline", r["items"][0]["error"])
 
 
 class DiscussMembersCanSpeak(unittest.TestCase):

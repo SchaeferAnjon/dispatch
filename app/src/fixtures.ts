@@ -336,7 +336,7 @@ export function fixtureApi(): Api {
     openPath: async () => {},
     envCheck: async () => null,
     hosts: async () => [HOST],
-    on: async (_h, args) => {
+    on: async (_h, args, stdin) => {
       const [cmd, sub] = args;
       const pOf = () => { const i = args.indexOf("-P"); return i >= 0 ? String(args[i + 1]) : ""; };
       if (cmd === "wiki" && sub === "list") { const p = pOf(); return JSON.stringify(wiki.filter((w) => !p || w.project === p)); }
@@ -418,6 +418,20 @@ export function fixtureApi(): Api {
         "pi（glm-5.3-flash）": { kind: "pi", status: "thinking", at: Date.now() / 1000, text: "", step: L("想：退出共享后的那一份，金额要不要按人拆开", "Thinking: after leaving the share, should the copy split amounts per person", "Überlegt: Soll die Kopie nach dem Verlassen die Beträge pro Person trennen") },
         "claude": { kind: "claude", status: "queued", at: Date.now() / 1000, text: "" },
       } } : {});
+      if (cmd === "discuss-aside") {
+        // 顺便问: the demo classmate knows one answer and keeps what was asked for the session.
+        const store = ((window as unknown as { __aside?: Record<string, unknown[]> }).__aside ??= {});
+        const key = String(sub);
+        const rows = (store[key] ??= key === "task-ds01" ? [{ id: "a1", q: L("CKShare 是什么？", "What is CKShare?", "Was ist CKShare?"), quote: "", at: now / 1000 - 600, by: "demo",
+          a: L("大白话：CKShare 是 iCloud 里「把一份数据共享给另一个人」的开关，像把一个相册共享给朋友，两边看到的是同一份。\n\n在这场讨论里，Codex 提它是因为不用自己搭服务器：账本放在你的 iCloud 里，室友用自己的 Apple ID 加入，谁改了一笔两边都会同步。", "In plain words: CKShare is iCloud's switch for sharing one piece of data with another person, like sharing a photo album: both sides see the same copy.\n\nCodex brings it up here because it needs no server of our own: the ledger stays in your iCloud, your flatmate joins with their Apple ID, and an edit on either side syncs to both.", "Einfach gesagt: CKShare ist der iCloud-Schalter, um einen Datensatz mit einer weiteren Person zu teilen, wie ein geteiltes Fotoalbum: Beide sehen dieselbe Kopie.\n\nCodex bringt es hier ins Spiel, weil kein eigener Server nötig ist: Das Kassenbuch bleibt in Ihrer iCloud, die Mitbewohnerin tritt mit ihrer Apple-ID bei, und jede Änderung wird auf beiden Seiten abgeglichen.") }] : []);
+        if (args.includes("--clear")) { store[key] = []; return JSON.stringify({ task: key, items: [] }); }
+        if (args.includes("--stdin") && stdin) {
+          await new Promise((r) => setTimeout(r, 1400));
+          const qi = args.indexOf("--quote");
+          rows.push({ id: String(Date.now()), q: stdin, quote: qi >= 0 ? args[qi + 1] : "", at: Date.now() / 1000, by: "demo", a: L("这是示例数据，同学在这里不会真的去问模型。装好 Dispatch 之后，他会读着这场讨论的上下文，用大白话加一个小例子给你讲，再告诉你这个词在讨论里指什么。", "This is sample data, so the classmate does not really ask a model here. In the installed app they read the discussion and explain in plain words with a small example, then say what the term means in this discussion.", "Das sind Beispieldaten, hier fragt der Kommilitone kein echtes Modell. In der installierten App liest er die Diskussion mit und erklärt in einfachen Worten mit einem kleinen Beispiel, was der Begriff hier bedeutet.") });
+        }
+        return JSON.stringify({ task: key, items: rows });
+      }
       if (cmd === "lineage") return JSON.stringify(lineageOf(String(sub)));
       if (cmd === "commits") { const id = String(sub); const proj = issues.find((i) => i.id === id)?.labels?.find((l) => l.startsWith("project:"))?.slice(8) ?? ""; const rows = (commits[proj] ?? []).filter(([, , subject]) => subject.includes(`(${id})`)); return JSON.stringify({ root: P(proj), remote: `https://github.com/mia/${proj}`, commits: rows.map(([ts, sha, subject]) => ({ hash: sha + "0".repeat(33), short: sha, date: new Date(ts * 1000).toISOString(), author: "mia", subject, files: ["src/index.ts"], file_count: 1, add: 12, del: 3 })) }); }
       if (cmd === "attachment" || cmd === "memories" || cmd === "docs-list") return "[]";

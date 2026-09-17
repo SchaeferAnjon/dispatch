@@ -87,6 +87,7 @@ Für die Nutzung im Terminal muss Schritt 2 der Ersteinrichtung abgeschlossen se
 | `agent list\|start\|ask\|read\|wait\|keys\|close` | Aufgaben über Herdr vergeben | `--host`, `--cwd`, `--label`, `--name`, `--model`, `--task`, `-p`, `--no-wait`, `--timeout`, `--lines`, `--extra`, `--auto`, `--focus` | `dispatch agent start codex --cwd ~/Projects/x --task task-abc -p "Tests reparieren"` |
 | `discuss [task]` | mehrere Agenten sagen je einmal etwas | `--topic`, `-P`, `--with`, `--leader`, `--rounds`, `-q`, `--conclude`, `--image`, `--everyone`, `--fresh`, `--tui` | `dispatch discuss --topic "Framework wechseln?" --with claude:opus,codex` |
 | `discuss-judge`, `discuss-conclude`, `discuss-doc`, `discuss-live` | Probelauf der Bewertung, Ergebnis schreiben, Dokument aufbereiten, Zustand in Echtzeit | | `dispatch discuss-doc task-abc` |
+| `discuss-aside <task> [Frage]` | Nebenbei gefragt: Fragen Sie den „Kommilitonen“, wenn in einer Diskussion etwas unklar ist. Die Antwort liegt neben der Diskussion, steht nie in der Aufgabe, die Teilnehmer sehen sie nicht | `--stdin`, `--quote`, `--clear` | `dispatch discuss-aside task-abc "Was ist CKShare"` |
 | `split <id>` | legt nach der Diskussion Teilaufgaben an und vergibt sie | `--to kind:"标题\|说明"` | `dispatch split task-abc --to codex:"Schnittstelle\|…"` |
 
 ## Rechner, Handy, System

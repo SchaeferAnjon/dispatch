@@ -1835,3 +1835,38 @@ html:not(.tauri) .titlebar .lead{padding-left:12px}
 @keyframes seat-talk{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @media (prefers-reduced-motion:reduce){.seat .seat-person{animation:none!important}}
 @media(max-width:640px){.disc-stage{height:300px;margin:6px 8px 0}.seat{width:92px}.seat-person{width:46px;height:46px}.seat-bubble{max-width:150px;font-size:10px}.stage-table{width:50%;font-size:11px}}
+/* 顺便问: the classmate at the edge of the discussion, the Q&A panel, and the ask-about-selection pill. */
+.disc-chat{position:relative}
+.aside-mate{position:absolute;z-index:6;right:118px;top:2px;display:flex;flex-direction:row;align-items:center;gap:6px}
+.aside-mate .seat-person{width:26px;height:26px;border-width:1.5px;border-style:dotted}
+.aside-mate .seat-name{flex-direction:row;gap:4px;margin:0;font-size:11px}.aside-mate .seat-name em{display:none}
+.aside-mate.on .seat-person,.aside-mate .seat-person:hover{border-color:var(--accent);border-style:solid}
+.aside-mate.thinking .seat-person{border-color:var(--accent);animation:seat-bob 1.4s ease-in-out infinite}
+.aside-mate .aside-bubble{bottom:auto;top:calc(100% + 4px);left:auto;right:0;transform:none;text-align:left;cursor:pointer;font-family:inherit}
+.disc-chat.has-stage .aside-mate{flex-direction:column;gap:0;width:84px;right:30px;top:258px}
+.disc-chat.has-stage .aside-mate .seat-person{width:52px;height:52px;border-width:2px}
+.disc-chat.has-stage .aside-mate .seat-name{flex-direction:column;gap:0;margin-top:3px}.disc-chat.has-stage .aside-mate .seat-name em{display:block}
+.disc-chat.has-stage .aside-mate .aside-bubble{top:auto;bottom:calc(100% + 2px)}
+.disc-chat.stage-beside .aside-mate{width:120px;top:auto;bottom:34px;right:34px}
+.disc-chat.stage-beside .aside-mate .seat-person{width:84px;height:84px;border-width:3px}
+.disc-chat.stage-beside .aside-mate .seat-name{font-size:13px;margin-top:5px}.disc-chat.stage-beside .aside-mate .seat-name em{font-size:11.5px}
+.disc-chat.stage-beside .aside-mate .aside-bubble{bottom:calc(100% + 8px);max-width:300px;font-size:13px;padding:9px 12px}
+.disc-aside-panel{position:absolute;z-index:7;right:22px;bottom:86px;width:min(420px,calc(100% - 28px));max-height:min(600px,calc(100% - 110px));display:flex;flex-direction:column;background:var(--win);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.16);overflow:hidden}
+.disc-chat.stage-beside .disc-aside-panel{bottom:176px;right:34px;max-height:min(640px,calc(100% - 200px))}
+.aside-head{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+.aside-list{flex:1;min-height:80px;overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:14px}
+.aside-empty{margin:6px 0;line-height:1.6}
+.aside-item{display:flex;flex-direction:column;gap:5px}
+.aside-q{align-self:flex-end;max-width:88%;padding:6px 10px;border-radius:12px 12px 2px 12px;background:color-mix(in srgb,var(--accent) 12%,var(--win));font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.aside-a{font-size:13px;line-height:1.65;user-select:text}.aside-a.err{color:var(--s-block)}
+.aside-quote{margin:0;padding:2px 0 2px 8px;border-left:2px solid var(--line);color:var(--ink-3);font-size:11.5px;line-height:1.45;align-self:flex-end;max-width:88%}
+.aside-quoting{display:flex;align-items:flex-start;gap:6px;padding:6px 14px 0}.aside-quoting .aside-quote{align-self:auto;max-width:none;flex:1}
+.aside-compose{display:flex;gap:6px;align-items:stretch;padding:8px 10px 10px 14px}
+.aside-compose textarea{flex:1;min-width:0;resize:none;border:1px solid var(--line);border-radius:10px;padding:7px 9px;font:inherit;font-size:13px;line-height:1.45;background:var(--win);color:var(--ink)}
+.aside-compose textarea:focus{outline:none;border-color:var(--accent)}
+.disc-aside-pick{position:fixed;z-index:60;padding:4px 10px;border-radius:999px;border:0;background:var(--accent);color:#fff;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer}
+@media(max-width:640px){
+  .disc-chat.has-stage .aside-mate{right:12px;top:226px;width:70px}.disc-chat.has-stage .aside-mate .seat-person{width:42px;height:42px}
+  .aside-mate{right:96px}
+  .disc-aside-panel{left:8px;right:8px;width:auto;bottom:74px;max-height:70%}
+}

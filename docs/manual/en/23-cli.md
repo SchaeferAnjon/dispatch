@@ -87,6 +87,7 @@ To use it in a terminal you first have to finish step 2 of first-run setup (or l
 | `agent list\|start\|ask\|read\|wait\|keys\|close` | Delegate through Herdr | `--host`, `--cwd`, `--label`, `--name`, `--model`, `--task`, `-p`, `--no-wait`, `--timeout`, `--lines`, `--extra`, `--auto`, `--focus` | `dispatch agent start codex --cwd ~/Projects/x --task task-abc -p "fix the tests"` |
 | `discuss [task]` | Several Agents each say their piece once | `--topic`, `-P`, `--with`, `--leader`, `--rounds`, `-q`, `--conclude`, `--image`, `--everyone`, `--fresh`, `--tui` | `dispatch discuss --topic "should we switch frameworks" --with claude:opus,codex` |
 | `discuss-judge`, `discuss-conclude`, `discuss-doc`, `discuss-live` | Judge dry run, write the conclusion, wrap up the document, live state | | `dispatch discuss-doc task-abc` |
+| `discuss-aside <task> [question]` | By the way: ask the "classmate" about something you did not follow in a discussion. The answer is kept beside the discussion, never written into the task, and the members cannot see it | `--stdin`, `--quote`, `--clear` | `dispatch discuss-aside task-abc "What is CKShare"` |
 | `split <id>` | Create subtasks from a discussion and hand them out | `--to kind:"title\|description"` | `dispatch split task-abc --to codex:"the endpoint\|…"` |
 
 ## Machines, phone, system

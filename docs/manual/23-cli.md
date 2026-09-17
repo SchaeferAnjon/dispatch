@@ -87,6 +87,7 @@
 | `agent list\|start\|ask\|read\|wait\|keys\|close` | 通过 Herdr 派活 | `--host`、`--cwd`、`--label`、`--name`、`--model`、`--task`、`-p`、`--no-wait`、`--timeout`、`--lines`、`--extra`、`--auto`、`--focus` | `dispatch agent start codex --cwd ~/Projects/x --task task-abc -p "修测试"` |
 | `discuss [task]` | 几个 Agent 各说一次 | `--topic`、`-P`、`--with`、`--leader`、`--rounds`、`-q`、`--conclude`、`--image`、`--everyone`、`--fresh`、`--tui` | `dispatch discuss --topic "要不要换框架" --with claude:opus,codex` |
 | `discuss-judge`、`discuss-conclude`、`discuss-doc`、`discuss-live` | 裁判试算、写结论、整理文档、实时状态 | | `dispatch discuss-doc task-abc` |
+| `discuss-aside <task> [问题]` | 顺便问：看讨论时有没听懂的，问旁边的「同学」。回答存在讨论旁边，不写进任务，参加者看不到 | `--stdin`、`--quote`、`--clear` | `dispatch discuss-aside task-abc "CKShare 是什么"` |
 | `split <id>` | 按讨论建子任务并派出 | `--to kind:"标题\|说明"` | `dispatch split task-abc --to codex:"接口\|…"` |
 
 ## 机器、手机、系统

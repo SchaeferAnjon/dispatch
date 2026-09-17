@@ -13,7 +13,7 @@ import { useT } from "../i18n";
 // from the member's name, so the same member always looks the same.
 
 const whoOf = (p: Participant) => `${p.kind}${p.model ? `（${p.model}）` : ""}`;
-const avatar = (seed: string) => `data:image/svg+xml;utf8,${encodeURIComponent(createAvatar(openPeeps, { seed, size: 96, backgroundColor: ["transparent"] }).toString())}`;
+export const avatar = (seed: string) => `data:image/svg+xml;utf8,${encodeURIComponent(createAvatar(openPeeps, { seed, size: 96, backgroundColor: ["transparent"] }).toString())}`;
 const clip = (s: string, n: number) => { const x = s.replace(/\s+/g, " ").trim(); return x.length > n ? "…" + x.slice(-n) : x; };
 const head = (s: string, n: number) => { const x = s.replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n) + "…" : x; };
 

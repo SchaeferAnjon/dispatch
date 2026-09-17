@@ -7775,6 +7775,92 @@ def discussion_doc(tid):
     return {"task": tid, "path": path, "doc": doc, "conclusion": conclusion, "by": by, "leader": {"kind": kind, "model": model} if kind else None}
 
 
+ASIDE_SYSTEM = (
+    "你是用户的同学，坐在旁边小声给 ta 讲。ta 正在看一场多个 AI Agent 的讨论，有个地方没听懂，来问你。"
+    "先用大白话给直觉，配一个具体的小例子；再说这个东西在这场讨论里指什么、为什么有人提它。"
+    "不超过 220 字，不用小标题，不评价讨论谁对谁错，不替 ta 做决定。"
+    "不确定就直说「我猜是…」。用 ta 提问的语言回答。"
+)
+
+
+def aside_path(tid):
+    return os.path.join(DISCUSSIONS_DIR, f"{tid}.aside.json")
+
+
+def aside_load(tid):
+    try:
+        rows = json.load(open(aside_path(tid)))
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+
+def aside_save(tid, rows):
+    os.makedirs(DISCUSSIONS_DIR, exist_ok=True)
+    tmp = aside_path(tid) + ".tmp"
+    json.dump(rows[-60:], open(tmp, "w"), ensure_ascii=False)
+    os.replace(tmp, aside_path(tid))
+
+
+def aside_chat(issue):
+    """Who answers a by-the-way question: the summary model (fast and cheap) when one is set,
+    else the discussion leader's own CLI. Returns (chat(system, user) -> text, label)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import summarize
+    if not summarize.use_enabled("discuss"):
+        return None, ""
+    p = summarize.provider()
+    if p:
+        return (lambda system, user: summarize.chat(p, system, user, timeout=90, max_tokens=900, use="discuss")), f"{p['id']}:{p['model']}"
+    kind, model = discussion_leader(issue)
+    if kind in HEADLESS_KINDS:
+        cwd = task_project_dir(issue) if issue.get("id") else HOME
+        return (lambda system, user: leader_chat(kind, model, system, user, cwd, 150)), f"{kind}:{model or 'default'}"
+    return None, ""
+
+
+def aside_prompt(issue, comments, earlier, question, quote=""):
+    thread = discussion_thread(issue, comments)
+    if len(thread) > 9000:  # the idea and the most recent statements matter most
+        thread = thread[:2500] + "\n……\n" + thread[-6500:]
+    before = "\n\n".join(f"ta 问：{r.get('q', '')}\n你答：{r.get('a', '')}" for r in earlier[-3:] if r.get("a"))
+    return (f"【讨论内容】\n{thread}\n\n" + (f"【你们刚才聊过】\n{before}\n\n" if before else "")
+            + (f"【ta 划出来的原话】\n{quote.strip()[:600]}\n\n" if quote.strip() else "") + f"【ta 现在问】\n{question.strip()}")
+
+
+def cmd_discuss_aside(a):
+    """顺便问：a question about the discussion answered on the side. Nothing is written to the
+    task, so the members never see it and the discussion is not affected."""
+    if a.clear:
+        try:
+            os.remove(aside_path(a.task))
+        except OSError:
+            pass
+        return out({"task": a.task, "items": []}, a.json, lambda _: print("已清空"))
+    rows = aside_load(a.task)
+    question = (sys.stdin.read() if a.stdin else " ".join(a.question or [])).strip()
+    if not question:
+        return out({"task": a.task, "items": rows}, a.json, lambda d: print("\n\n".join(f"问：{r['q']}\n答：{r.get('a') or r.get('error') or ''}" for r in d["items"]) or "还没问过"))
+    issue = bd_json(["show", a.task, "--json"])
+    if not issue.get("id"):
+        raise SystemExit(f"没有任务 {a.task}")
+    chat, by = aside_chat(issue)
+    if not chat:
+        raise SystemExit(summary_off("discuss") or "没有可用的模型：设置里选一个总结模型，或给讨论指定领队")
+    row = {"id": f"{int(time.time() * 1000):x}", "q": question[:2000], "quote": (a.quote or "").strip()[:600], "at": time.time(), "by": by}
+    try:
+        row["a"] = (chat(ASIDE_SYSTEM, aside_prompt(issue, bd_comments(a.task), rows, question, a.quote or "")) or "").strip()
+    except Exception as e:
+        debug("discuss-aside", e)
+        row["a"] = ""
+        row["error"] = str(e)[:300]
+    if not row["a"] and not row.get("error"):
+        row["error"] = "模型没有回答"
+    rows = aside_load(a.task) + [row]  # reload: another window may have asked meanwhile
+    aside_save(a.task, rows)
+    out({"task": a.task, "items": rows, "asked": row["id"]}, a.json, lambda d: print(row["a"] or row["error"]))
+
+
 def cmd_discuss_doc(a):
     r = discussion_doc(a.task)
     out(r, a.json, lambda x: print(x["doc"] + f"\n\n已写进 {x['task']} 的描述（{x['by']}），文件 {x['path']}；派人：dispatch agent start {(x.get('leader') or {}).get('kind') or 'claude'}" + (f" --model {x['leader']['model']}" if (x.get("leader") or {}).get("model") else "") + f" --task {x['task']}"))
@@ -8368,6 +8454,7 @@ def main():
     s = sub.add_parser("stats", help="tokens, activity heatmap, tools/skills across all agents"); s.add_argument("--agent", help="claude-code | codex | pi | zcode | opencode | hermes"); s.add_argument("--days", type=int, default=0, help="only the last N days (0 = all)"); s.add_argument("--local", action="store_true", help="this Mac only (other Macs are merged in by default)"); s.add_argument("--cached", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("discuss-live", help="what each discussion member is doing right now (the typing bubbles): discussions/<task>.live.json"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_live)
     s = sub.add_parser("discuss-conclude", help="write (replace) the discussion's conclusion — one block in the task's description"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_conclude)
+    s = sub.add_parser("discuss-aside", help="顺便问：看讨论时有不懂的，问旁边的同学；不写进任务，不影响讨论"); s.add_argument("task"); s.add_argument("question", nargs="*"); s.add_argument("--stdin", action="store_true", help="问题从 stdin 读"); s.add_argument("--quote", default="", help="划出来的那句原话"); s.add_argument("--clear", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_aside)
     s = sub.add_parser("discuss-doc", help="turn a discussion into a document (背景/结论/方案/步骤/风险/验收) written into the task, ready for an agent to start from"); s.add_argument("task"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_doc)
     s = sub.add_parser("discuss", help="several agents each leave one 【讨论】 comment on a task, or on a topic/idea (--topic, optionally under a project); a 【结论】 is written by the summary model"); s.add_argument("task", nargs="?", default="", help="task id; omit with --topic"); s.add_argument("--topic", default="", help="discuss an idea instead of a task: creates a 【讨论】 task to hold it"); s.add_argument("--project", "-P", default="", help="with --topic: the project the idea belongs to (context for the agents)"); s.add_argument("--conclude", action="store_true", help="after the rounds, write (replace) the model's conclusion in the task's description"); s.add_argument("--no-conclude", action="store_true", help=argparse.SUPPRESS); s.add_argument("--create-only", action="store_true", help="with --topic: create the 【讨论】 task and stop"); s.add_argument("--image", action="append", help="with --topic: a picture the agents should look at (path; repeatable)"); s.add_argument("--with", dest="with_", required=True, help="participants: kind or kind:model, repeatable — claude:opus,claude:haiku,codex"); s.add_argument("--leader", default="", help="the leader, kind[:model] (added to the members if missing): speaks last each round, writes the conclusion and the document, gets the hand-off by default"); s.add_argument("--rounds", type=int, default=1); s.add_argument("--question", "-q", default="", help="what you want them to decide"); s.add_argument("--cwd"); s.add_argument("--host"); s.add_argument("--timeout", type=int, default=600000, help="每个成员每轮最多等多久：毫秒；小于 10000 的数按秒算（1200 = 20 分钟）；不会少于 60 秒"); s.add_argument("--close", action="store_true", help="close the discussion agents afterwards (Herdr path)"); s.add_argument("--tui", action="store_true", help="run each member in a Herdr tab (the old way) instead of headless claude -p / codex exec / pi -p"); s.add_argument("--fresh", action="store_true", help="forget the members' saved sessions: everyone reads the whole thread again"); s.add_argument("--everyone", action="store_true", help="skip the referee: every member speaks this round (by default, once the members have spoken, a round only wakes who was @'d or named-and-questioned since the last round)"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss)
     s = sub.add_parser("discuss-judge", help="dry run of the discussion referee: who the next round would wake, and why"); s.add_argument("task"); s.add_argument("--with", dest="with_", required=True, help="the members, as for discuss"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_discuss_judge)

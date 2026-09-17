@@ -5,6 +5,7 @@ import type { Issue } from "../types";
 import { actorOf, projectOf, relTime } from "../derive";
 import { Avatar } from "./ui";
 import { Markdown } from "./Markdown";
+import { DiscussAside } from "./DiscussAside";
 import { KIND_ACTOR } from "./Delegate";
 import { DiscussChat } from "./DiscussChat";
 import { DISCUSSION_LABEL, delegatePrompt, ideaText, imagePaths, partName, partsFromDescription, useDiscussion } from "./Discuss";
@@ -135,12 +136,13 @@ export function DiscussView({ api, me, issues, initialTask, onShown, onNew, onOp
               </div>
             </div>}
           </aside>
-          <section className={`disc-chat${side && stage && parts.length > 0 ? " stage-beside" : ""}`} ref={chatRef}>
+          <section className={`disc-chat${side && stage && parts.length > 0 ? " stage-beside" : ""}${stage && parts.length > 0 ? " has-stage" : ""}`} ref={chatRef}>
             {stage && parts.length > 0 && <div className="disc-stage-col"><DiscussStage d={d} parts={parts} leader={leader} me={me} topic={issue.title.replace(/^【讨论】\s*/, "")} big={side} /></div>}
             <div className="disc-chat-col">
             <button className="link stage-toggle" onClick={() => { const v = !stage; setStage(v); try { localStorage.setItem("dispatch-discuss-stage", v ? "1" : "0"); } catch { /* private mode */ } }}>{stage ? t("收起现场") : t("看讨论现场")}</button>
             <DiscussChat api={api} d={d} me={me} onError={onError} />
             </div>
+            <DiscussAside api={api} task={task} scope={chatRef} onError={onError} />
           </section>
         </>
       )}
