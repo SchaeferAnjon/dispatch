@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Dispatch 调度台 — 把所有 AI 编程 Agent 的会话、任务和进展放进一个台子</title>
-<meta name="description" content="Dispatch 是一个本地的 Agent 工作台：Claude Code、Codex、pi、ZCode、Gemini CLI、OpenCode、Hermes 的会话、任务、成果、额度、规则与技能，按项目组织；电脑和手机都能看进展、直接回复原会话。macOS，开源。">
-<meta property="og:title" content="Dispatch 调度台">
-<meta property="og:description" content="所有 AI 编程 Agent 的会话、任务和进展，按项目放进一个台子；手机也能回复。">
+<title data-i18n="meta.title">Dispatch 调度台：把所有 AI 编程 Agent 的会话、任务和进展放进一个台子</title>
+<meta name="description" data-i18n-content="meta.desc" content="Dispatch 是一个本地的 Agent 工作台：Claude Code、Codex、pi、ZCode、Gemini CLI、OpenCode、Hermes 的会话、任务、成果、额度、规则与技能，按项目组织；电脑和手机都能看进展、直接回复原会话。macOS，开源。">
+<meta property="og:title" content="Dispatch">
+<meta property="og:description" content="All your coding agents' sessions, tasks and progress in one place. Reply from your Mac or your phone.">
 <meta property="og:image" content="https://schaeferanjon.github.io/dispatch/assets/poster.jpg">
 <link rel="icon" href="assets/icon.png">
 <style>
@@ -26,6 +26,9 @@ header.top .wrap{display:flex;align-items:center;gap:18px;height:58px}
 .brand img{width:28px;height:28px;border-radius:7px}
 nav.links{margin-left:auto;display:flex;gap:18px;font-size:14px}
 nav.links a{color:var(--ink-2)}
+.lang{display:flex;gap:2px;border:1px solid var(--line);border-radius:8px;padding:2px;background:var(--panel)}
+.lang button{border:0;background:none;color:var(--ink-2);font:600 12.5px/1 inherit;padding:6px 9px;border-radius:6px;cursor:pointer}
+.lang button.on{background:var(--accent);color:#fff}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-weight:600;font-size:15px}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn:hover{text-decoration:none;filter:brightness(1.03)}
@@ -68,96 +71,96 @@ section p.intro{color:var(--ink-2);max-width:760px;margin:0 0 28px;font-size:17p
 .faq details p{color:var(--ink-2);margin:8px 0 0}
 footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--ink-3);font-size:13.5px}
 footer .wrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
-.pill{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:12.5px;font-weight:600;margin-left:8px;vertical-align:middle}
 @media(max-width:860px){.grid3,.steps{grid-template-columns:1fr}.feature,.feature.flip{grid-template-columns:1fr;gap:18px}.feature.flip .txt{order:0}.hero{padding:44px 0 24px}nav.links{display:none}}
 </style>
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <a class="brand" href="#"><img src="assets/icon.png" alt="">Dispatch 调度台</a>
-  <nav class="links"><a href="#features">功能</a><a href="#phone">手机</a><a href="#howto">怎么用</a><a href="#faq">常见问题</a><a href="https://github.com/SchaeferAnjon/dispatch">GitHub</a></nav>
-  <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest">下载 macOS 版</a>
+  <a class="brand" href="#"><img src="assets/icon.png" alt=""><span data-i18n="brand">Dispatch 调度台</span></a>
+  <nav class="links"><a href="#features" data-i18n="nav.features">功能</a><a href="#phone" data-i18n="nav.phone">手机</a><a href="#howto" data-i18n="nav.howto">怎么用</a><a href="#faq" data-i18n="nav.faq">常见问题</a><a href="https://github.com/SchaeferAnjon/dispatch">GitHub</a></nav>
+  <div class="lang" role="group" aria-label="Language"><button data-lang="zh">中文</button><button data-lang="en">EN</button><button data-lang="de">DE</button></div>
+  <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-i18n="cta.download">下载 macOS 版</a>
 </div></header>
 
 <section class="hero"><div class="wrap">
-  <h1>你的 AI 编程 Agent 越来越多，<br>它们的会话、任务和进展应该放进一个台子</h1>
-  <p class="lead">Dispatch 读取本机已有的 Agent 记录，按<b>项目</b>组织每一段会话、每个任务和每项成果：谁在等你、谁在跑、做到哪了，一眼看清；在电脑或手机上直接回复原会话，不另开模型进程。</p>
+  <h1 data-i18n-html="hero.h1">你的 AI 编程 Agent 越来越多，<br>它们的会话、任务和进展应该放进一个台子</h1>
+  <p class="lead" data-i18n-html="hero.lead">Dispatch 读取本机已有的 Agent 记录，按<b>项目</b>组织每一段会话、每个任务和每项成果：谁在等你、谁在跑、做到哪了，一眼看清；在电脑或手机上直接回复原会话，不另开模型进程。</p>
   <div class="cta">
-    <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest">下载 macOS 版</a>
-    <a class="btn" href="demo/#/home" target="_blank">在线试用（示例数据）</a>
-    <a class="btn" href="https://github.com/SchaeferAnjon/dispatch">查看源码</a>
+    <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-i18n="cta.download">下载 macOS 版</a>
+    <a class="btn" href="demo/#/home" target="_blank" data-i18n="cta.demo">在线试用（示例数据）</a>
+    <a class="btn" href="https://github.com/SchaeferAnjon/dispatch" data-i18n="cta.source">查看源码</a>
   </div>
-  <p class="sub">macOS 14+ · 开源 MIT · 本地运行，默认不向任何模型发送你的文档或对话</p>
+  <p class="sub" data-i18n="hero.sub">macOS 14+ · 开源 MIT · 本地运行，默认不向任何模型发送你的文档或对话</p>
   <div class="video"><video src="assets/demo.mp4" poster="assets/poster.jpg" controls playsinline muted autoplay loop></video></div>
   <div class="agents"><span>Claude Code</span><span>Codex</span><span>pi</span><span>ZCode</span><span>Gemini CLI</span><span>OpenCode</span><span>Hermes</span></div>
 </div></section>
 
 <section id="why"><div class="wrap">
-  <h2>它解决什么问题</h2>
-  <p class="intro">用了几个编程 Agent 之后，麻烦不在写代码，而在「记住」：这个项目上一次做到哪了？哪个终端里的 Agent 在等我确认？它改了哪些文件、交付了什么？出门了还能不能回它一句？Dispatch 把这些都收回一个台子。</p>
+  <h2 data-i18n="why.h2">它解决什么问题</h2>
+  <p class="intro" data-i18n="why.intro">用了几个编程 Agent 之后，麻烦不在写代码，而在「记住」：这个项目上一次做到哪了？哪个终端里的 Agent 在等我确认？它改了哪些文件、交付了什么？出门了还能不能回它一句？Dispatch 把这些都收回一个台子。</p>
   <div class="grid3">
-    <div class="card"><h3>不用改你的习惯</h3><p>Agent 还是在你的终端里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录，OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。</p></div>
-    <div class="card"><h3>项目是起点</h3><p>会话按目录归到项目，任务和成果挂在会话上。项目页就是这个项目的全部记录：回顾、会话、任务、成果、文档、知识库。</p></div>
-    <div class="card"><h3>回复回到原会话</h3><p>在工作台或手机上看到 Agent 在等你，直接回，消息投递到那个终端里的原会话；正在跑就排队，排错了能撤回。</p></div>
+    <div class="card"><h3 data-i18n="why.c1.h">不用改你的习惯</h3><p data-i18n="why.c1.p">Agent 还是在你的终端里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录，OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。</p></div>
+    <div class="card"><h3 data-i18n="why.c2.h">项目是起点</h3><p data-i18n="why.c2.p">会话按目录归到项目，任务和成果挂在会话上。项目页就是这个项目的全部记录：回顾、会话、任务、成果、文档、知识库。</p></div>
+    <div class="card"><h3 data-i18n="why.c3.h">回复回到原会话</h3><p data-i18n="why.c3.p">在工作台或手机上看到 Agent 在等你，直接回，消息投递到那个终端里的原会话；正在跑就排队，排错了能撤回。</p></div>
   </div>
 </div></section>
 
 <section id="features"><div class="wrap">
-  <h2>特色功能</h2>
-  <p class="intro">下面每一项都是软件里实际能用的，截图来自示例数据。</p>
+  <h2 data-i18n="features.h2">特色功能</h2>
+  <p class="intro" data-i18n="features.intro">下面每一项都是软件里实际能用的，截图来自示例数据。</p>
 
   <div class="feature">
-    <div class="txt"><div class="kicker">工作台</div><h3>每个项目此刻的情况</h3><p>按项目排列，每张卡片是这个项目现在的样子：未读回复、等待确认的会话，正在跑的会话和它当前在做的动作，进行中的任务和验收进度，最新成果。三天没动静的项目折叠成一行。</p><ul><li>顶部是需要你处理的计数，和各 Agent 的额度</li><li>项目可收藏置顶、归档隐藏，两台电脑一致</li></ul></div>
-    <div class="shot"><img src="assets/shot-home.png" alt="工作台"></div>
+    <div class="txt"><div class="kicker" data-i18n="f1.k">工作台</div><h3 data-i18n="f1.h">每个项目此刻的情况</h3><p data-i18n="f1.p">按项目排列，每张卡片是这个项目现在的样子：未读回复、等待确认的会话，正在跑的会话和它当前在做的动作，进行中的任务和验收进度，最新成果。三天没动静的项目折叠成一行。</p><ul><li data-i18n="f1.l1">顶部是需要你处理的计数，和各 Agent 的额度</li><li data-i18n="f1.l2">项目可收藏置顶、归档隐藏，两台电脑一致</li></ul></div>
+    <div class="shot"><img src="assets/shot-home.png" alt=""></div>
   </div>
 
   <div class="feature flip">
-    <div class="txt"><div class="kicker">项目页</div><h3>一个项目的全部记录</h3><p>回顾页用模型写一段「现状」，下面是最近 14 天的时间线：任务进展与完成、git 提交、会话总结按天分组；还有没做完的任务和验收进度、本目录每个活会话在做什么、能不能关。</p><ul><li>会话、任务、成果、待归属任务、目录、文档各一页</li><li><b>知识库</b>按项目分：这个项目踩过的坑、做对的事、复盘</li><li>双击标题改显示名，可排序、可在新窗口打开</li></ul></div>
-    <div class="shot"><img src="assets/shot-project.png" alt="项目页"></div>
+    <div class="txt"><div class="kicker" data-i18n="f2.k">项目页</div><h3 data-i18n="f2.h">一个项目的全部记录</h3><p data-i18n="f2.p">回顾页用模型写一段「现状」，下面是最近 14 天的时间线：任务进展与完成、git 提交、会话总结按天分组；还有没做完的任务和验收进度、本目录每个活会话在做什么、能不能关。</p><ul><li data-i18n="f2.l1">会话、任务、成果、待归属任务、目录、文档各一页</li><li data-i18n-html="f2.l2"><b>知识库</b>按项目分：这个项目踩过的坑、做对的事、复盘</li><li data-i18n="f2.l3">双击标题改显示名，可排序、可在新窗口打开</li></ul></div>
+    <div class="shot"><img src="assets/shot-project.png" alt=""></div>
   </div>
 
   <div class="feature">
-    <div class="txt"><div class="kicker">会话</div><h3>看 Agent 的每一步，直接回复</h3><p>思考、工具调用、改动的文件、图片和产物都在一页里，正在跑的会话实时跟读。回复框就在下面：排队发送、打断并发送、发图片，排错了「撤回并编辑」。列表里正在跑的会话绿色高亮，答完等你看的才有蓝点。</p><ul><li>看过的会话再打开秒显，之后只拉新增的部分</li><li>Claude Code 的权限模式和模型可以在这里切</li></ul></div>
-    <div class="shot"><img src="assets/shot-session.png" alt="会话页"></div>
+    <div class="txt"><div class="kicker" data-i18n="f3.k">会话</div><h3 data-i18n="f3.h">看 Agent 的每一步，直接回复</h3><p data-i18n="f3.p">思考、工具调用、改动的文件、图片和产物都在一页里，正在跑的会话实时跟读。回复框就在下面：排队发送、打断并发送、发图片，排错了「撤回并编辑」。列表里正在跑的会话绿色高亮，答完等你看的才有蓝点。</p><ul><li data-i18n="f3.l1">看过的会话再打开秒显，之后只拉新增的部分</li><li data-i18n="f3.l2">Claude Code 的权限模式和模型可以在这里切</li></ul></div>
+    <div class="shot"><img src="assets/shot-session.png" alt=""></div>
   </div>
 
   <div class="feature flip">
-    <div class="txt"><div class="kicker">多窗口 · 分屏</div><h3>几段会话并排看</h3><p>会话页一键分成 2 格或 4 格，每格是独立的会话，各自回复、各自实时更新；顶栏 ⧉ 把当前页面分离成独立窗口；⌘+点击项目、会话、任务直接开新窗口。一边看项目文档一边盯着 Agent 干活。</p></div>
-    <div class="shot"><img src="assets/shot-split.png" alt="分屏"></div>
+    <div class="txt"><div class="kicker" data-i18n="f4.k">多窗口 · 分屏</div><h3 data-i18n="f4.h">几段会话并排看</h3><p data-i18n="f4.p">会话页一键分成 2 格或 4 格，每格是独立的会话，各自回复、各自实时更新；顶栏 ⧉ 把当前页面分离成独立窗口；⌘+点击项目、会话、任务直接开新窗口。一边看项目文档一边盯着 Agent 干活。</p></div>
+    <div class="shot"><img src="assets/shot-split.png" alt=""></div>
   </div>
 
   <div class="feature">
-    <div class="txt"><div class="kicker">任务板 · 等我</div><h3>任务由 Agent 自己记</h3><p>每个新会话开头会收到注入的身份、本项目任务和相关知识；Agent 用 <code>dispatch begin / log / done</code> 记任务，用 <code>dispatch wiki</code> 记坑。你不需要在界面里逐个点完成。「等我」只放需要你处理的：未读回复、等待确认、只有你能做的事。</p><ul><li>看板 / 表格、右键菜单、回收站可恢复</li><li>⌘K 搜项目、会话、任务；⌘N 新建会话（可带图片和附件）</li></ul></div>
-    <div class="shot"><img src="assets/shot-inbox.png" alt="等我"></div>
+    <div class="txt"><div class="kicker" data-i18n="f5.k">任务板 · 等我</div><h3 data-i18n="f5.h">任务由 Agent 自己记</h3><p data-i18n-html="f5.p">每个新会话开头会收到注入的身份、本项目任务和相关知识；Agent 用 <code>dispatch begin / log / done</code> 记任务，用 <code>dispatch wiki</code> 记坑。你不需要在界面里逐个点完成。「等我」只放需要你处理的：未读回复、等待确认、只有你能做的事。</p><ul><li data-i18n="f5.l1">看板 / 表格、右键菜单、回收站可恢复</li><li data-i18n="f5.l2">⌘K 搜项目、会话、任务；⌘N 新建会话（可带图片和附件）</li></ul></div>
+    <div class="shot"><img src="assets/shot-inbox.png" alt=""></div>
   </div>
 
   <div class="feature flip">
-    <div class="txt"><div class="kicker">两台电脑</div><h3>把项目连同会话搬到另一台 Mac</h3><p>任务板、规则、技能两台同步一份；项目页一键「迁移到另一台」：先预检 Git 与文件差异，再把目录（含未提交改动）、Git 历史、正在跑的会话和全部历史记录搬过去，那边直接续上。迁移在后台跑，项目上有带呼吸效果的进度条，切页面、刷新都不丢。</p></div>
-    <div class="shot"><img src="assets/shot-quota.png" alt="统计与额度"></div>
+    <div class="txt"><div class="kicker" data-i18n="f6.k">两台电脑</div><h3 data-i18n="f6.h">把项目连同会话搬到另一台 Mac</h3><p data-i18n="f6.p">任务板、规则、技能两台同步一份；项目页一键「迁移到另一台」：先预检 Git 与文件差异，再把目录（含未提交改动）、Git 历史、正在跑的会话和全部历史记录搬过去，那边直接续上。迁移在后台跑，项目上有带呼吸效果的进度条，切页面、刷新都不丢。</p></div>
+    <div class="shot"><img src="assets/shot-quota.png" alt=""></div>
   </div>
 
   <div class="feature">
-    <div class="txt"><div class="kicker">额度 · 规则 · 技能</div><h3>各 Agent 的用量、共同规则和技能池</h3><p>额度页显示每个 Agent 的已用比例和重置时间，数据来源写明，缺失就说缺失。规则与资料页把所有 Agent 的全局指令收成一份源文件，同步到各自的位置并检查冲突；技能池统一挂载到各 Agent。</p></div>
-    <div class="shot"><img src="assets/shot-wiki.png" alt="知识库"></div>
+    <div class="txt"><div class="kicker" data-i18n="f7.k">额度 · 规则 · 技能</div><h3 data-i18n="f7.h">各 Agent 的用量、共同规则和技能池</h3><p data-i18n="f7.p">额度页显示每个 Agent 的已用比例和重置时间，数据来源写明，缺失就说缺失。规则与资料页把所有 Agent 的全局指令收成一份源文件，同步到各自的位置并检查冲突；技能池统一挂载到各 Agent。</p></div>
+    <div class="shot"><img src="assets/shot-wiki.png" alt=""></div>
   </div>
 </div></section>
 
 <section id="phone"><div class="wrap">
   <div class="feature" style="border-top:0">
-    <div class="txt"><div class="kicker">手机</div><h2 style="font-size:26px">出门也能看进展、回它一句</h2><p>手机通过 Tailscale 访问运行 Dispatch 的电脑，同一套界面按手机宽度排版，可「添加到主屏幕」。会话在电脑上没在跑？一键在电脑上恢复它再发；Agent 停在权限或信任确认框？手机上能看到那块屏幕、直接按键回答。报告生成完、会话变成「等你」时推通知（ntfy / Bark / 系统通知）。</p><ul><li>设置里扫二维码即可，链接带一次性登录令牌</li><li>需要时还能通过 noVNC 看并操作电脑屏幕</li></ul></div>
-    <div class="shot phone"><img src="assets/shot-phone.png" alt="手机版"></div>
+    <div class="txt"><div class="kicker" data-i18n="ph.k">手机</div><h2 style="font-size:26px" data-i18n="ph.h">出门也能看进展、回它一句</h2><p data-i18n="ph.p">手机通过 Tailscale 访问运行 Dispatch 的电脑，同一套界面按手机宽度排版，可「添加到主屏幕」。会话在电脑上没在跑？一键在电脑上恢复它再发；Agent 停在权限或信任确认框？手机上能看到那块屏幕、直接按键回答。报告生成完、会话变成「等你」时推通知（ntfy / Bark / 系统通知）。</p><ul><li data-i18n="ph.l1">设置里扫二维码即可，链接带一次性登录令牌</li><li data-i18n="ph.l2">需要时还能通过 noVNC 看并操作电脑屏幕</li></ul></div>
+    <div class="shot phone"><img src="assets/shot-phone.png" alt=""></div>
   </div>
 </div></section>
 
 <section id="howto"><div class="wrap">
-  <h2>怎么用</h2>
-  <p class="intro">从下载到看见第一个项目，大约十分钟。需要 <a href="https://brew.sh">Homebrew</a>。</p>
+  <h2 data-i18n="how.h2">怎么用</h2>
+  <p class="intro" data-i18n-html="how.intro">从下载到看见第一个项目，大约十分钟。需要 <a href="https://brew.sh">Homebrew</a>。</p>
   <div class="steps">
-    <div class="step"><h3>下载并放行</h3><p>从 <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest">Releases</a> 下载 Apple 芯片或 Intel 的 zip，拖进「应用程序」。包没有 Apple 签名，第一次打开被拦时在终端跑 <code>xattr -dr com.apple.quarantine /Applications/Dispatch.app</code>，或在 系统设置 → 隐私与安全性 点「仍要打开」。</p></div>
-    <div class="step"><h3>首次设置（六步）</h3><p>装依赖（Dolt、Beads、Herdr）→ 建立终端命令 <code>dispatch</code> → 新建或接入任务板 → 勾选你用的 Agent → 同步共同规则与技能 → 可选派一个 Agent 审查。每一步都能重跑。</p></div>
-    <div class="step"><h3>照常开工</h3><p>在终端里像平时一样开 Claude Code / Codex。Dispatch 会读到它们，新会话开头自动收到项目任务和知识；回到 Dispatch 看进展、回复、看成果。第二台电脑在首次设置里选「接入」。</p></div>
+    <div class="step"><h3 data-i18n="how.s1.h">下载并放行</h3><p data-i18n-html="how.s1.p">从 <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest">Releases</a> 下载 Apple 芯片或 Intel 的 zip，拖进「应用程序」。包没有 Apple 签名，第一次打开被拦时在终端跑 <code>xattr -dr com.apple.quarantine /Applications/Dispatch.app</code>，或在 系统设置 → 隐私与安全性 点「仍要打开」。</p></div>
+    <div class="step"><h3 data-i18n="how.s2.h">首次设置（六步）</h3><p data-i18n-html="how.s2.p">装依赖（Dolt、Beads、Herdr）→ 建立终端命令 <code>dispatch</code> → 新建或接入任务板 → 勾选你用的 Agent → 同步共同规则与技能 → 可选派一个 Agent 审查。每一步都能重跑。</p></div>
+    <div class="step"><h3 data-i18n="how.s3.h">照常开工</h3><p data-i18n="how.s3.p">在终端里像平时一样开 Claude Code / Codex。Dispatch 会读到它们，新会话开头自动收到项目任务和知识；回到 Dispatch 看进展、回复、看成果。第二台电脑在首次设置里选「接入」。</p></div>
   </div>
-  <div style="margin-top:22px"><pre><code># 之后终端里也能用，所有界面能看到的，Agent 都能用 --json 问到
+  <div style="margin-top:22px"><pre><code data-i18n="how.code"># 之后终端里也能用，所有界面能看到的，Agent 都能用 --json 问到
 dispatch here                 # 当前项目此刻：现状、14 天时间线、没做完的任务
 dispatch begin "标题" -P 项目   # Agent 记任务；log 记进展；done 完成
 dispatch wiki add --kind pit "现象" --fix "解法"   # 记坑，下次开工自动注入
@@ -166,14 +169,123 @@ dispatch project 名 --move-to 另一台   # 把项目搬到另一台 Mac</code>
 </div></section>
 
 <section id="faq"><div class="wrap faq">
-  <h2>常见问题</h2>
-  <details open><summary>我的对话和代码会被上传吗？</summary><p>不会。Dispatch 在本机读取 Agent 已有的记录，默认不向任何模型发送文档或聊天内容。只有你在设置里打开「自动总结」，它才会把会话摘录交给你自己配置的模型（可以是 Claude 订阅或你的 API Key）写一段总结。手机访问走 Tailscale，不暴露到公网。</p></details>
-  <details><summary>支持哪些 Agent？</summary><p>Claude Code、Codex（终端和桌面端）、pi、ZCode、Gemini CLI、OpenCode、Hermes。回复原会话支持 Claude Code、Codex、pi；其余能看会话、任务和额度。</p></details>
-  <details><summary>一定要两台电脑吗？</summary><p>不用。一台就是完整的。有第二台时，任务板、规则、技能自动同步，会话和项目可以互相迁移。</p></details>
-  <details><summary>Windows / Linux？</summary><p>现在只有 macOS 14+。界面层是 Tauri + React，逻辑在 Python CLI 里，移植是可能的，但还没做。</p></details>
-  <details><summary>在线试用里看到的是谁的数据？</summary><p>示例数据，写在代码里的几段假会话和任务，只为让你看看界面长什么样。</p></details>
+  <h2 data-i18n="faq.h2">常见问题</h2>
+  <details open><summary data-i18n="faq.q1">我的对话和代码会被上传吗？</summary><p data-i18n="faq.a1">不会。Dispatch 在本机读取 Agent 已有的记录，默认不向任何模型发送文档或聊天内容。只有你在设置里打开「自动总结」，它才会把会话摘录交给你自己配置的模型（可以是 Claude 订阅或你的 API Key）写一段总结。手机访问走 Tailscale，不暴露到公网。</p></details>
+  <details><summary data-i18n="faq.q2">支持哪些 Agent？</summary><p data-i18n="faq.a2">Claude Code、Codex（终端和桌面端）、pi、ZCode、Gemini CLI、OpenCode、Hermes。回复原会话支持 Claude Code、Codex、pi；其余能看会话、任务和额度。</p></details>
+  <details><summary data-i18n="faq.q3">一定要两台电脑吗？</summary><p data-i18n="faq.a3">不用。一台就是完整的。有第二台时，任务板、规则、技能自动同步，会话和项目可以互相迁移。</p></details>
+  <details><summary data-i18n="faq.q4">Windows / Linux？</summary><p data-i18n="faq.a4">现在只有 macOS 14+。界面层是 Tauri + React，逻辑在 Python CLI 里，移植是可能的，但还没做。</p></details>
+  <details><summary data-i18n="faq.q5">在线试用里看到的是谁的数据？</summary><p data-i18n="faq.a5">示例数据，写在代码里的几段假会话和任务，只为让你看看界面长什么样。</p></details>
 </div></section>
 
-<footer><div class="wrap"><span>Dispatch · MIT License · <a href="https://github.com/SchaeferAnjon/dispatch">github.com/SchaeferAnjon/dispatch</a></span><span>由一个人和几个 Agent 一起做的。</span></div></footer>
+<footer><div class="wrap"><span>Dispatch · MIT License · <a href="https://github.com/SchaeferAnjon/dispatch">github.com/SchaeferAnjon/dispatch</a></span><span data-i18n="footer.by">由一个人和几个 Agent 一起做的。</span></div></footer>
+
+<script>
+// Three languages, one page: zh is written in the markup; en/de replace text by key.
+const I18N = {
+en: {
+"meta.title":"Dispatch: all your coding agents' sessions, tasks and progress in one place",
+"meta.desc":"Dispatch is a local workbench for AI coding agents: sessions, tasks, outcomes, quotas, rules and skills of Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode and Hermes, organised by project. Follow progress and reply to the original session from your Mac or your phone. macOS, open source.",
+"brand":"Dispatch","nav.features":"Features","nav.phone":"Phone","nav.howto":"How it works","nav.faq":"FAQ",
+"cta.download":"Download for macOS","cta.demo":"Try it online (sample data)","cta.source":"Source code",
+"hero.h1":"You are running more and more coding agents.<br>Their sessions, tasks and progress belong in one place.",
+"hero.lead":"Dispatch reads the records your agents already keep on your Mac and organises every session, task and outcome by <b>project</b>: who is waiting for you, who is working, how far things got, at a glance. Reply to the original session from your Mac or your phone, without spinning up another model process.",
+"hero.sub":"macOS 14+ · MIT open source · runs locally, sends nothing to any model unless you turn it on",
+"why.h2":"What it solves",
+"why.intro":"Once you use several coding agents the hard part is not the code, it is remembering: where did this project stop last time? Which terminal has an agent waiting for my approval? What did it change and deliver? Can I answer it while I am out? Dispatch pulls all of that back into one place.",
+"why.c1.h":"No change to your habits","why.c1.p":"Agents keep running in your terminal. Dispatch only reads the local records they already write (Claude Code and Codex transcripts, the OpenCode, ZCode and Hermes databases). No API key, no task board required to start.",
+"why.c2.h":"Projects come first","why.c2.p":"Sessions are grouped into projects by directory; tasks and outcomes hang off sessions. The project page is the complete record: review, sessions, tasks, outcomes, documents, knowledge base.",
+"why.c3.h":"Replies go to the original session","why.c3.p":"See an agent waiting on the workbench or your phone and answer right there; the message lands in that terminal's original session. If it is busy the message queues; a mistake can be withdrawn.",
+"features.h2":"Features","features.intro":"Everything below is in the app today; screenshots use sample data.",
+"f1.k":"Workbench","f1.h":"Each project, right now","f1.p":"One card per project shows its current state: unread replies, sessions waiting for approval, running sessions and what they are doing this moment, tasks in progress with acceptance checkboxes, the latest outcome. Projects quiet for three days fold into one line.",
+"f1.l1":"Counts of what needs you, and every agent's quota, along the top","f1.l2":"Star projects to pin them, archive to hide them, the same on both Macs",
+"f2.k":"Project page","f2.h":"The complete record of one project","f2.p":"The review page opens with a model-written paragraph on where things stand, then a 14-day timeline: task progress and completions, git commits, session summaries grouped by day; unfinished tasks with their acceptance progress; each live session in this directory, what it is doing and whether it can be closed.",
+"f2.l1":"Sessions, tasks, outcomes, unassigned tasks, directories and documents each have a tab","f2.l2":"A <b>knowledge base</b> per project: pitfalls hit here, what worked, retrospectives","f2.l3":"Double-click the title to rename; sortable; opens in a new window",
+"f3.k":"Sessions","f3.h":"Every step the agent takes, and reply in place","f3.p":"Thinking, tool calls, changed files, images and artifacts on one page; running sessions are tailed live. The reply box sits underneath: queue, interrupt-and-send, attach pictures, withdraw-and-edit a queued message. Running sessions are highlighted green in the list; the blue dot only marks a finished reply you have not read.",
+"f3.l1":"Sessions you have opened reappear instantly and then fetch only what was appended","f3.l2":"Claude Code's permission mode and model can be switched here",
+"f4.k":"Windows · Split view","f4.h":"Several sessions side by side","f4.p":"Split the session page into 2 or 4 panes, each an independent session with its own reply box and live updates; ⧉ in the title bar detaches the current page into its own window; ⌘-click a project, session or task to open it in a new window. Read a project's documents while watching an agent work.",
+"f5.k":"Task board · Waiting on you","f5.h":"Agents keep the tasks themselves","f5.p":"Every new session starts with its identity, the project's tasks and relevant knowledge injected; agents record tasks with <code>dispatch begin / log / done</code> and pitfalls with <code>dispatch wiki</code>. You never tick things off by hand. \"Waiting on you\" holds only what needs you: unread replies, approvals, things only you can do.",
+"f5.l1":"Board or table, context menus, a recoverable trash","f5.l2":"⌘K searches projects, sessions and tasks; ⌘N starts a session (with pictures and files)",
+"f6.k":"Two Macs","f6.h":"Move a project, sessions included, to the other Mac","f6.p":"Task board, rules and skills stay in sync between both Macs. One click on the project page hands it over: a preflight of Git and file differences, then the directory (uncommitted changes included), Git history, running sessions and the full transcript history move across and continue there. The move runs in the background with a breathing progress bar on the project; changing pages or reloading loses nothing.",
+"f7.k":"Quota · Rules · Skills","f7.h":"Usage per agent, shared rules and a skill pool","f7.p":"The quota page shows each agent's used share and reset time, with its data source named; missing data is called missing. Rules & references gathers every agent's global instructions into one source file, syncs it to each agent's location and checks for conflicts; one skill pool mounts into every agent.",
+"ph.k":"Phone","ph.h":"Follow progress and answer from anywhere","ph.p":"Your phone reaches the Mac running Dispatch over Tailscale; the same interface lays out for phone width and can be added to the home screen. Session not running on the Mac? Revive it there with one tap, then send. Agent stuck on a permission or trust dialog? See that screen on your phone and press the keys. Notifications when a report is done or a session starts waiting on you (ntfy, Bark or macOS notifications).",
+"ph.l1":"Scan the QR code in Settings; the link carries a one-time login token","ph.l2":"When needed, view and control the Mac's screen through noVNC",
+"how.h2":"How to get started","how.intro":"From download to your first project in about ten minutes. Requires <a href=\"https://brew.sh\">Homebrew</a>.",
+"how.s1.h":"Download and allow","how.s1.p":"Get the Apple silicon or Intel zip from <a href=\"https://github.com/SchaeferAnjon/dispatch/releases/latest\">Releases</a> and drag Dispatch.app into Applications. The build is not Apple-signed: when Gatekeeper blocks it, run <code>xattr -dr com.apple.quarantine /Applications/Dispatch.app</code> in Terminal, or click \"Open Anyway\" under System Settings → Privacy & Security.",
+"how.s2.h":"First-run setup (six steps)","how.s2.p":"Install dependencies (Dolt, Beads, Herdr) → create the <code>dispatch</code> terminal command → create or join a task board → tick the agents you use → sync shared rules and skills → optionally have an agent review them. Every step can be re-run.",
+"how.s3.h":"Work as usual","how.s3.p":"Start Claude Code or Codex in your terminal as you always do. Dispatch picks them up; new sessions begin with the project's tasks and knowledge injected. Come back to Dispatch to follow progress, reply and see outcomes. On a second Mac choose \"join\" during setup.",
+"how.code":"# Everything the app shows, agents can ask for with --json\ndispatch here                 # this project right now: status, 14-day timeline, open tasks\ndispatch begin \"title\" -P project   # agents record tasks; log progress; done to finish\ndispatch wiki add --kind pit \"symptom\" --fix \"fix\"   # a pitfall, injected into the next session\ndispatch serve qr             # QR code for the phone\ndispatch project name --move-to other-mac   # move a project to the other Mac",
+"faq.h2":"FAQ",
+"faq.q1":"Are my conversations and code uploaded anywhere?","faq.a1":"No. Dispatch reads the agents' existing records on your Mac and sends no documents or chat content to any model by default. Only if you enable \"auto summary\" in Settings does it hand session excerpts to a model you configured yourself (a Claude subscription or your own API key) to write a summary. Phone access goes over Tailscale, nothing is exposed to the public internet.",
+"faq.q2":"Which agents are supported?","faq.a2":"Claude Code, Codex (terminal and desktop), pi, ZCode, Gemini CLI, OpenCode and Hermes. Replying to the original session works for Claude Code, Codex and pi; the others show sessions, tasks and quotas.",
+"faq.q3":"Do I need two Macs?","faq.a3":"No. One Mac is the complete product. With a second one, the task board, rules and skills sync automatically and sessions and projects can be moved between them.",
+"faq.q4":"Windows / Linux?","faq.a4":"macOS 14+ only for now. The UI is Tauri + React and the logic lives in a Python CLI, so a port is possible but not done.",
+"faq.q5":"Whose data is in the online demo?","faq.a5":"Sample data: a few fake sessions and tasks written into the code, only to show what the interface looks like.",
+"footer.by":"Made by one person and a few agents."
+},
+de: {
+"meta.title":"Dispatch: Sitzungen, Aufgaben und Fortschritt aller Coding-Agents an einem Ort",
+"meta.desc":"Dispatch ist eine lokale Arbeitsfläche für KI-Coding-Agents: Sitzungen, Aufgaben, Ergebnisse, Kontingente, Regeln und Skills von Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode und Hermes, nach Projekt geordnet. Fortschritt verfolgen und der ursprünglichen Sitzung vom Mac oder vom Handy aus antworten. macOS, Open Source.",
+"brand":"Dispatch","nav.features":"Funktionen","nav.phone":"Handy","nav.howto":"So geht's","nav.faq":"FAQ",
+"cta.download":"Für macOS laden","cta.demo":"Online ausprobieren (Beispieldaten)","cta.source":"Quellcode",
+"hero.h1":"Sie nutzen immer mehr Coding-Agents.<br>Ihre Sitzungen, Aufgaben und Fortschritte gehören an einen Ort.",
+"hero.lead":"Dispatch liest die Aufzeichnungen, die Ihre Agents ohnehin auf dem Mac anlegen, und ordnet jede Sitzung, jede Aufgabe und jedes Ergebnis nach <b>Projekt</b>: Wer wartet auf Sie, wer arbeitet gerade, wie weit ist es, auf einen Blick. Antworten Sie der ursprünglichen Sitzung vom Mac oder vom Handy aus, ohne einen weiteren Modellprozess zu starten.",
+"hero.sub":"macOS 14+ · MIT Open Source · läuft lokal, sendet nichts an ein Modell, solange Sie es nicht einschalten",
+"why.h2":"Welches Problem es löst",
+"why.intro":"Mit mehreren Coding-Agents liegt die Mühe nicht im Code, sondern im Erinnern: Wo stand dieses Projekt zuletzt? In welchem Terminal wartet ein Agent auf meine Freigabe? Was hat er geändert und geliefert? Kann ich unterwegs antworten? Dispatch holt all das an einen Ort zurück.",
+"why.c1.h":"Keine Umstellung","why.c1.p":"Die Agents laufen weiter in Ihrem Terminal. Dispatch liest nur die lokalen Aufzeichnungen, die sie ohnehin schreiben (Transkripte von Claude Code und Codex, die Datenbanken von OpenCode, ZCode und Hermes). Kein API-Schlüssel, kein Aufgabenboard nötig, um anzufangen.",
+"why.c2.h":"Das Projekt ist der Ausgangspunkt","why.c2.p":"Sitzungen werden über ihr Verzeichnis Projekten zugeordnet; Aufgaben und Ergebnisse hängen an Sitzungen. Die Projektseite ist die vollständige Akte: Rückblick, Sitzungen, Aufgaben, Ergebnisse, Dokumente, Wissensbasis.",
+"why.c3.h":"Antworten landen in der Originalsitzung","why.c3.p":"Sehen Sie auf der Arbeitsfläche oder am Handy, dass ein Agent wartet, antworten Sie direkt; die Nachricht landet in der ursprünglichen Sitzung im Terminal. Ist er beschäftigt, wird sie eingereiht; ein Versehen lässt sich zurückziehen.",
+"features.h2":"Funktionen","features.intro":"Alles hier ist heute in der App vorhanden; die Screenshots zeigen Beispieldaten.",
+"f1.k":"Arbeitsfläche","f1.h":"Jedes Projekt, jetzt gerade","f1.p":"Eine Karte pro Projekt zeigt den aktuellen Stand: ungelesene Antworten, Sitzungen, die auf Freigabe warten, laufende Sitzungen und was sie gerade tun, Aufgaben in Arbeit mit Abnahmefortschritt, das neueste Ergebnis. Projekte ohne Bewegung seit drei Tagen falten sich zu einer Zeile.",
+"f1.l1":"Oben: was auf Sie wartet, und das Kontingent jedes Agents","f1.l2":"Projekte anpinnen (Stern) oder archivieren, auf beiden Macs gleich",
+"f2.k":"Projektseite","f2.h":"Die vollständige Akte eines Projekts","f2.p":"Der Rückblick beginnt mit einem vom Modell geschriebenen Absatz zum Stand, dann eine 14-Tage-Zeitleiste: Aufgabenfortschritt und Abschlüsse, Git-Commits, Sitzungszusammenfassungen nach Tag; offene Aufgaben mit Abnahmefortschritt; jede aktive Sitzung in diesem Verzeichnis, was sie tut und ob sie geschlossen werden kann.",
+"f2.l1":"Sitzungen, Aufgaben, Ergebnisse, nicht zugeordnete Aufgaben, Verzeichnisse und Dokumente haben je einen Reiter","f2.l2":"Eine <b>Wissensbasis</b> pro Projekt: hier getretene Fallen, was funktioniert hat, Rückblicke","f2.l3":"Doppelklick auf den Titel zum Umbenennen; sortierbar; öffnet sich in einem neuen Fenster",
+"f3.k":"Sitzungen","f3.h":"Jeder Schritt des Agents, Antwort an Ort und Stelle","f3.p":"Denken, Werkzeugaufrufe, geänderte Dateien, Bilder und Artefakte auf einer Seite; laufende Sitzungen werden live mitgelesen. Das Antwortfeld sitzt darunter: einreihen, unterbrechen und senden, Bilder anhängen, eine eingereihte Nachricht zurückziehen und bearbeiten. Laufende Sitzungen sind in der Liste grün hervorgehoben; der blaue Punkt markiert nur eine fertige, ungelesene Antwort.",
+"f3.l1":"Bereits geöffnete Sitzungen erscheinen sofort wieder und laden danach nur das Neue","f3.l2":"Berechtigungsmodus und Modell von Claude Code lassen sich hier umschalten",
+"f4.k":"Fenster · Geteilte Ansicht","f4.h":"Mehrere Sitzungen nebeneinander","f4.p":"Die Sitzungsseite lässt sich in 2 oder 4 Felder teilen, jedes eine eigenständige Sitzung mit eigenem Antwortfeld und Live-Aktualisierung; ⧉ in der Titelleiste löst die aktuelle Seite in ein eigenes Fenster; ⌘-Klick auf Projekt, Sitzung oder Aufgabe öffnet ein neues Fenster. Projektdokumente lesen, während ein Agent arbeitet.",
+"f5.k":"Aufgabenboard · Wartet auf Sie","f5.h":"Die Agents führen die Aufgaben selbst","f5.p":"Jede neue Sitzung beginnt mit eingespielter Identität, den Aufgaben des Projekts und passendem Wissen; Agents halten Aufgaben mit <code>dispatch begin / log / done</code> fest und Fallen mit <code>dispatch wiki</code>. Sie haken nichts von Hand ab. „Wartet auf Sie“ enthält nur, was Sie brauchen: ungelesene Antworten, Freigaben, Dinge, die nur Sie tun können.",
+"f5.l1":"Board oder Tabelle, Kontextmenüs, wiederherstellbarer Papierkorb","f5.l2":"⌘K durchsucht Projekte, Sitzungen und Aufgaben; ⌘N startet eine Sitzung (mit Bildern und Dateien)",
+"f6.k":"Zwei Macs","f6.h":"Ein Projekt samt Sitzungen auf den anderen Mac umziehen","f6.p":"Aufgabenboard, Regeln und Skills bleiben zwischen beiden Macs synchron. Ein Klick auf der Projektseite übergibt es: erst eine Vorprüfung von Git- und Dateiunterschieden, dann ziehen Verzeichnis (inklusive nicht eingecheckter Änderungen), Git-Historie, laufende Sitzungen und die gesamte Transkript-Historie um und laufen dort weiter. Der Umzug läuft im Hintergrund mit einem atmenden Fortschrittsbalken am Projekt; Seitenwechsel oder Neuladen verlieren nichts.",
+"f7.k":"Kontingent · Regeln · Skills","f7.h":"Verbrauch pro Agent, gemeinsame Regeln, ein Skill-Pool","f7.p":"Die Kontingentseite zeigt je Agent den verbrauchten Anteil und die Rücksetzzeit mit Angabe der Datenquelle; fehlende Daten heißen fehlend. Regeln & Nachschlagen sammelt die globalen Anweisungen aller Agents in einer Quelldatei, synchronisiert sie an die jeweiligen Orte und prüft auf Konflikte; ein Skill-Pool wird in jeden Agent eingehängt.",
+"ph.k":"Handy","ph.h":"Unterwegs den Fortschritt sehen und antworten","ph.p":"Das Handy erreicht den Mac mit Dispatch über Tailscale; dieselbe Oberfläche passt sich der Handybreite an und lässt sich zum Home-Bildschirm hinzufügen. Läuft die Sitzung auf dem Mac nicht mehr? Mit einem Tipp dort wiederbeleben und dann senden. Hängt der Agent an einem Berechtigungs- oder Vertrauensdialog? Den Bildschirmausschnitt am Handy sehen und die Tasten drücken. Benachrichtigungen, wenn ein Bericht fertig ist oder eine Sitzung auf Sie wartet (ntfy, Bark oder macOS-Mitteilungen).",
+"ph.l1":"QR-Code in den Einstellungen scannen; der Link trägt ein einmaliges Anmelde-Token","ph.l2":"Bei Bedarf den Mac-Bildschirm per noVNC sehen und bedienen",
+"how.h2":"So fangen Sie an","how.intro":"Vom Download zum ersten Projekt in etwa zehn Minuten. Benötigt <a href=\"https://brew.sh\">Homebrew</a>.",
+"how.s1.h":"Laden und freigeben","how.s1.p":"Die zip für Apple Silicon oder Intel aus den <a href=\"https://github.com/SchaeferAnjon/dispatch/releases/latest\">Releases</a> laden und Dispatch.app in „Programme“ ziehen. Der Build ist nicht von Apple signiert: Blockiert Gatekeeper, im Terminal <code>xattr -dr com.apple.quarantine /Applications/Dispatch.app</code> ausführen oder unter Systemeinstellungen → Datenschutz & Sicherheit auf „Trotzdem öffnen“ klicken.",
+"how.s2.h":"Ersteinrichtung (sechs Schritte)","how.s2.p":"Abhängigkeiten installieren (Dolt, Beads, Herdr) → Terminalbefehl <code>dispatch</code> anlegen → Aufgabenboard anlegen oder beitreten → genutzte Agents ankreuzen → gemeinsame Regeln und Skills synchronisieren → optional einen Agent prüfen lassen. Jeder Schritt lässt sich wiederholen.",
+"how.s3.h":"Wie gewohnt arbeiten","how.s3.p":"Claude Code oder Codex im Terminal starten wie immer. Dispatch nimmt sie auf; neue Sitzungen beginnen mit den Aufgaben und dem Wissen des Projekts. Zurück in Dispatch Fortschritt verfolgen, antworten, Ergebnisse ansehen. Auf einem zweiten Mac in der Einrichtung „beitreten“ wählen.",
+"how.code":"# Alles, was die App zeigt, können Agents mit --json abfragen\ndispatch here                 # dieses Projekt jetzt: Stand, 14-Tage-Zeitleiste, offene Aufgaben\ndispatch begin \"Titel\" -P projekt   # Agents legen Aufgaben an; log für Fortschritt; done zum Abschluss\ndispatch wiki add --kind pit \"Symptom\" --fix \"Lösung\"   # eine Falle, in die nächste Sitzung eingespielt\ndispatch serve qr             # QR-Code fürs Handy\ndispatch project name --move-to anderer-mac   # ein Projekt auf den anderen Mac umziehen",
+"faq.h2":"Häufige Fragen",
+"faq.q1":"Werden meine Gespräche und mein Code irgendwohin hochgeladen?","faq.a1":"Nein. Dispatch liest die vorhandenen Aufzeichnungen der Agents auf Ihrem Mac und sendet standardmäßig keine Dokumente oder Chatinhalte an ein Modell. Nur wenn Sie in den Einstellungen die „automatische Zusammenfassung“ einschalten, übergibt es Sitzungsauszüge an ein von Ihnen selbst konfiguriertes Modell (Claude-Abo oder eigener API-Schlüssel). Der Handyzugriff läuft über Tailscale; nichts wird ins öffentliche Internet gestellt.",
+"faq.q2":"Welche Agents werden unterstützt?","faq.a2":"Claude Code, Codex (Terminal und Desktop), pi, ZCode, Gemini CLI, OpenCode und Hermes. Antworten in die Originalsitzung funktioniert bei Claude Code, Codex und pi; die übrigen zeigen Sitzungen, Aufgaben und Kontingente.",
+"faq.q3":"Brauche ich zwei Macs?","faq.a3":"Nein. Ein Mac ist das vollständige Produkt. Mit einem zweiten synchronisieren sich Aufgabenboard, Regeln und Skills automatisch, und Sitzungen und Projekte lassen sich hin- und herziehen.",
+"faq.q4":"Windows / Linux?","faq.a4":"Derzeit nur macOS 14+. Die Oberfläche ist Tauri + React, die Logik steckt in einer Python-CLI; eine Portierung ist möglich, aber noch nicht gemacht.",
+"faq.q5":"Wessen Daten zeigt die Online-Demo?","faq.a5":"Beispieldaten: ein paar erfundene Sitzungen und Aufgaben im Code, nur damit man die Oberfläche sieht.",
+"footer.by":"Gemacht von einer Person und ein paar Agents."
+}
+};
+const LANG_ATTR = { zh: "zh-CN", en: "en", de: "de" };
+const zhCache = new Map();
+function apply(lang) {
+  document.querySelectorAll("[data-i18n],[data-i18n-html],[data-i18n-content]").forEach((el) => {
+    const key = el.dataset.i18n || el.dataset.i18nHtml || el.dataset.i18nContent;
+    const isHtml = "i18nHtml" in el.dataset, isContent = "i18nContent" in el.dataset;
+    if (!zhCache.has(el)) zhCache.set(el, isContent ? el.getAttribute("content") : isHtml ? el.innerHTML : el.textContent);
+    const text = lang === "zh" ? zhCache.get(el) : (I18N[lang] && I18N[lang][key]) || zhCache.get(el);
+    if (isContent) el.setAttribute("content", text); else if (isHtml) el.innerHTML = text; else el.textContent = text;
+  });
+  document.documentElement.lang = LANG_ATTR[lang];
+  document.querySelectorAll(".lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  try { localStorage.setItem("dispatch-site-lang", lang); } catch (e) {}
+}
+function pick() {
+  const q = new URLSearchParams(location.search).get("lang");
+  if (q && I18N[q] || q === "zh") return q;
+  try { const s = localStorage.getItem("dispatch-site-lang"); if (s) return s; } catch (e) {}
+  const n = (navigator.language || "en").toLowerCase();
+  return n.startsWith("zh") ? "zh" : n.startsWith("de") ? "de" : "en";
+}
+document.querySelectorAll(".lang button").forEach((b) => b.addEventListener("click", () => apply(b.dataset.lang)));
+apply(pick());
+</script>
 </body>
 </html>

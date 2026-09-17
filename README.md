@@ -5,7 +5,7 @@
 <h1 align="center">Dispatch 调度台</h1>
 
 <p align="center">
-你的 AI 编程 Agent 越来越多——它们的会话、任务和进展应该放进一个台子。<br>
+你的 AI 编程 Agent 越来越多，它们的会话、任务和进展应该放进一个台子。<br>
 Claude Code · Codex · pi · ZCode · Gemini CLI · OpenCode · Hermes
 </p>
 
@@ -94,12 +94,12 @@ npm run tauri build
 
 首次打开会走一遍。每一步都能重跑，也可以右上角「跳过，以后不再提示」，之后从 设置 → 首次设置 再打开。按顺序：
 
-1. **装依赖** —— 检测并安装 Dolt、Beads、Herdr，缺哪个点哪个。
-2. **终端命令** —— 把 `dispatch` 链接到 `~/.local/bin/dispatch`，之后终端里直接可用。也可以手动：`ln -sf /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py ~/.local/bin/dispatch`。
-3. **任务板** —— 第一台机器选「只有这一台，或这是第一台」新建任务板，这台成为枢纽；已有一台装了 Dispatch 就选「接入它的任务板」并填那台的 `用户名@地址`（见下一节）。
-4. **Agent** —— 勾选这台电脑上要用的 Agent（Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes），并确认 Herdr 在跑。
-5. **规则与技能** —— 准备共同规则 `~/.agents/rules/GLOBAL.md` 并同步到各 Agent，同时把技能池挂到它们下面。
-6. **审查优化**（可选）—— 派一个 Agent 审查规则与技能并给出建议。
+1. **装依赖**：检测并安装 Dolt、Beads、Herdr，缺哪个点哪个。
+2. **终端命令**：把 `dispatch` 链接到 `~/.local/bin/dispatch`，之后终端里直接可用。也可以手动：`ln -sf /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py ~/.local/bin/dispatch`。
+3. **任务板**：第一台机器选「只有这一台，或这是第一台」新建任务板，这台成为枢纽；已有一台装了 Dispatch 就选「接入它的任务板」并填那台的 `用户名@地址`（见下一节）。
+4. **Agent**：勾选这台电脑上要用的 Agent（Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes），并确认 Herdr 在跑。
+5. **规则与技能**：准备共同规则 `~/.agents/rules/GLOBAL.md` 并同步到各 Agent，同时把技能池挂到它们下面。
+6. **审查优化**（可选）：派一个 Agent 审查规则与技能并给出建议。
 
 前五步都打勾后才能「完成，进入工作台」。
 
@@ -151,7 +151,7 @@ dispatch move <会话 id 前缀> --to <机器 id 或名字> [--prompt "额外交
 ```sh
 dispatch rules inspect --json
 dispatch rules optimize --path ~/.codex/AGENTS.md --model gpt-6-astra --json
-dispatch facts show -P relecture      # 常用信息：服务器/域名/数据库/API 名字，按项目分节，prime 自动注入
+dispatch facts show -P harbor-api      # 常用信息：服务器/域名/数据库/API 名字，按项目分节，prime 自动注入
 dispatch facts sections --json
 dispatch task trash TASK_ID --json
 dispatch task restore TASK_ID --json
