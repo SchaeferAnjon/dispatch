@@ -16,7 +16,7 @@ import { ConversationMenuButton } from "./ConversationActions";
 import { SessionReply } from "./SessionReply";
 import { SessionQuestion, pendingQuestion } from "./SessionQuestion";
 
-interface Props { onBack?: { label: string; go: () => void }; localHostName?: string; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string; onProject?: (name: string) => void; solo?: boolean }
+interface Props { onBack?: { label: string; go: () => void }; localHostName?: string; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string; onProject?: (name: string) => void; solo?: boolean; offlineHosts?: { id: string; name: string }[] }
 
 const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code", cron: "定时任务", telegram: "Telegram", weixin: "微信", whatsapp: "WhatsApp", discord: "Discord", slack: "Slack" };
 
@@ -82,7 +82,7 @@ export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?
 // that was two or three seconds every time.
 const detailCache = new Map<string, SessionDetail>();
 
-export function SessionsView({ onBack, onProject, solo = false, localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
+export function SessionsView({ onBack, onProject, solo = false, offlineHosts = [], localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
   const showScripts = false; // script-launched sessions live under 定时或脚本
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState<string>("");
@@ -313,7 +313,12 @@ export function SessionsView({ onBack, onProject, solo = false, localHostName, a
           </div>
         </div>}
         {!split && !sel && <div className="empty">选一个会话。这里能看到它做了什么、改了哪些文件、派了哪些子 Agent，以及怎么恢复它。</div>}
-        {!split && sel && !detail && <div className="empty">{busy ? "读取对话记录…" : loadError ? "暂时读不到会话，正在重试。" : ""}<button className="link" onClick={() => setSel(null)}>返回会话列表</button></div>}
+        {!split && sel && !detail && (() => {
+          // The transcript lives on another Mac: when that Mac is off the tailnet the read cannot
+          // succeed, and the message should say so instead of promising a retry.
+          const away = selHost ? offlineHosts.find((h) => h.id === selHost || h.name === selHost) : undefined;
+          return <div className="empty">{busy ? "读取对话记录…" : away ? `这段会话在 ${away.name} 上，现在连不上那台电脑（它的 Tailscale 离线或在睡眠）；等它上线后会自动读到。` : loadError ? "暂时读不到会话，正在重试。" : ""}<button className="link" onClick={() => setSel(null)}>返回会话列表</button></div>;
+        })()}
         {!split && detail && (() => {
           const m = detail.meta; const a = actorOf(m.agent, me); const l = liveOf(m.session_id, m.host ?? "local");
           const linked = issues.filter(i => linkedSessions(i).includes(m.session_id));
