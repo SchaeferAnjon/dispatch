@@ -6,7 +6,7 @@ import { t, useT } from "../i18n";
 // logic, this page only shows state and presses buttons. 跳过 marks the guide done
 // so it never comes back unless asked for from 设置.
 
-interface Dep { name: string; found: boolean; path: string; formula: string | null; why: string; required: boolean; installable: boolean }
+interface Dep { name: string; found: boolean; path: string; formula: string | null; why: string; required: boolean; installable: boolean; version?: string }
 interface AgentRow { id: string; name: string; found: boolean; home: string; hooks: boolean | null; rules: boolean }
 interface Step { id: string; title: string; ok: boolean; detail: string; optional?: boolean; deps?: Dep[]; reviewers?: { id: string; kind: string; name: string }[]; cli?: { link: string; exists: boolean; target: string; in_app: boolean }; board?: { exists: boolean; server_up: boolean; hub?: { name: string; ssh: string } | null; mode: string; reverse_ssh?: Reverse }; agents?: AgentRow[]; rules?: { have_rules: boolean; targets: { agent: string; state: string; path: string }[]; seeded_from: string } }
 // Can the hub ssh back here? Needed for the hub to merge this Mac's sessions; 远程登录
@@ -70,7 +70,7 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
 
       <ol className="setup-steps">
         <Card n={1} s={step("deps")} busy={busy === "deps"}>
-          <ul className="setup-deps">{deps.map((d) => <li key={d.name} className={d.found ? "ok" : d.required ? "miss" : "opt"}><span className="mark">{d.found ? "✓" : d.required ? "✗" : "·"}</span><b className="mono">{d.name}</b><span className="muted">{d.why}</span></li>)}</ul>
+          <ul className="setup-deps">{deps.map((d) => <li key={d.name} className={d.found ? "ok" : d.required ? "miss" : "opt"}><span className="mark">{d.found ? "✓" : d.required ? "✗" : "·"}</span><b className="mono">{d.name}</b><span className="muted">{t(d.why)}{d.version ? ` · ${d.version}` : ""}</span></li>)}</ul>
           {brewMissing && <p className="setup-note">{t("Homebrew 要在终端里装（会要管理员密码）。打开「终端」粘贴这一行，装完回来点「重新检测」：")}<code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code><button className="btn sm" onClick={() => api.copy('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"').then(() => onNotify(t("已复制")))}>{t("复制")}</button></p>}
           {!brewMissing && missing.length > 0 && <button className="btn primary" disabled={!!busy} onClick={() => void run("deps", missing.map((d) => d.name), t("依赖装好了"))}>{busy === "deps" ? t("安装中…（可能要几分钟）") : t("装上 {names}", { names: missing.map((d) => d.name).join(t("、")) })}</button>}
           {!deps.find((d) => d.name === "tailscale")?.found && <p className="muted small">{t("Tailscale 可选：两台电脑不在同一个 Wi‑Fi 时才需要。")}<button className="link" onClick={() => api.openPath("https://tailscale.com/download/mac").catch(() => {})}>{t("下载页 ↗")}</button></p>}

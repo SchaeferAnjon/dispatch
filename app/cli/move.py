@@ -408,7 +408,8 @@ def remote_file_count(h, remote_cwd, skip_git=True):
     (its objects arrive by push, not by the transfer being measured) and counted when the folder is
     copied whole — the same rule the planned count follows."""
     q = shlex.quote(remote_cwd)
-    r = run_remote(h, f"[ -d {q} ] && find {q} -type f {"-not -path '*/.git/*' " if skip_git else ''}| wc -l || echo 0", timeout=60)
+    no_git = "-not -path '*/.git/*' " if skip_git else ""  # not nested in the f-string: Python < 3.12 rejects reused quotes
+    r = run_remote(h, f"[ -d {q} ] && find {q} -type f {no_git}| wc -l || echo 0", timeout=60)
     try:
         return int(r.stdout.split()[-1])
     except (ValueError, IndexError):

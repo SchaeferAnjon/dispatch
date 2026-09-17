@@ -5,7 +5,8 @@ import { TaskActions, isArchivedTask, isTrashed } from "./components/TaskActions
 import { selectQuotas, type SharedQuota } from './quotas';
 import { UsageView } from "./components/Quota";
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
-import { getApi, isTauri, isServed, type Api, type AgentStartInput } from "./api";
+import { getApi, isTauri, isServed, type Api, type AgentStartInput, type EnvReport } from "./api";
+import { EnvCheck } from "./components/EnvCheck";
 import { Detail } from "./components/Detail";
 import { NewSession, SessionActions } from "./components/SessionActions";
 import { NewTask } from "./components/NewTask";
@@ -117,6 +118,10 @@ export default function App() {
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [api]);
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
+  // The CLI itself could not answer `init status` (no Python, one too old, a broken bundle): ask
+  // Rust what this Mac has and show that, instead of an empty workbench with a stack trace.
+  const [envProblem, setEnvProblem] = useState<{ report: EnvReport | null; error: string } | null>(null);
+  const checkEnv = async (a: Api, error: string) => { const report = await a.envCheck(); if (!report || !report.python.ok || !report.cli_exists) setEnvProblem({ report, error }); else setEnvProblem(null); };
   // New releases: checked once a day after start-up; the title bar shows a chip when one exists.
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const checkUpdate = useCallback(async () => { if (!api) return; try { const r = JSON.parse((await api.on("local", ["update", "check", "--json"])).replace(/^[^{]*/, "")) as UpdateInfo; setUpdate(r); } catch (e) { setUpdate({ current: "?", latest: "", url: "", error: String(e) }); } }, [api]);
@@ -326,7 +331,7 @@ export default function App() {
         if (!initialPlace.current && (VIEWS as string[]).includes(requestedView ?? "")) changeView(requestedView as View);
         if (!initialPlace.current && inf.initial_task && !inf.initial_task.startsWith("session:")) setSelected(inf.initial_task);
         // The first-run guide, until it is finished or skipped once.
-        if (isTauri) { try { const st = JSON.parse((await a.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); if (!st.done && !requestedView) changeView("setup"); } catch { /* CLI too old */ } }
+        if (isTauri) { try { const st = JSON.parse((await a.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setInitStatus(st); if (!st.done && !requestedView) changeView("setup"); } catch (e) { await checkEnv(a, String(e)); } }
       } catch (e) { setErr(String(e)); }
       await reload(a);
       off = await a.onChange(() => reload(a));
@@ -856,6 +861,22 @@ export default function App() {
 
   // Until first-run setup is finished, the app is a blank shell around the guide: no board,
   // no agents, no quota — nothing that would be read from a machine that is not set up yet.
+  if (isTauri && envProblem && api) {
+    const recheck = async () => {
+      try { const st = JSON.parse((await api.on("local", ["init", "status", "--json"])).replace(/^[^{]*/, "")) as InitStatus; setEnvProblem(null); setErr(""); setInitStatus(st); if (!st.done) setView("setup"); else void reload(); }
+      catch (e) { await checkEnv(api, String(e)); }
+    };
+    return (
+      <div className="app setup-shell">
+        <div className="titlebar" data-tauri-drag-region>
+          <div className="lead" data-tauri-drag-region><b>Dispatch</b><span className="muted">{t("调度台")}</span></div>
+          <div className="crumb" data-tauri-drag-region><b>{t("环境检查")}</b></div>
+          <div className="tb-right" />
+        </div>
+        <div className="body setup-body-wrap"><main className="main"><section className="view"><EnvCheck api={api} report={envProblem.report} error={envProblem.error} onRetry={recheck} /></section></main></div>
+      </div>
+    );
+  }
   if (isTauri && initStatus && !initStatus.done && api) {
     return (
       <div className="app setup-shell">

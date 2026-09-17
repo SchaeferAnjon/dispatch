@@ -22,6 +22,9 @@ fn tr(key: &'static str) -> &'static str {
         ("en", "quit") => "Quit", ("de", "quit") => "Beenden", (_, "quit") => "退出",
         ("en", "cannot_start") => "Cannot start {what} ({bin}): {err}", ("de", "cannot_start") => "{what} kann nicht gestartet werden ({bin}): {err}", (_, "cannot_start") => "无法启动 {what}（{bin}）：{err}",
         ("en", "not_skill_dir") => "Not inside a skills directory, refused: {path}", ("de", "not_skill_dir") => "Nicht im Skills-Verzeichnis, abgelehnt: {path}", (_, "not_skill_dir") => "不在技能目录里，拒绝：{path}",
+        ("en", "no_python") => "No usable Python found (needs 3.9 or newer). Install one with `brew install python@3.12`, or run `xcode-select --install`, then reopen Dispatch. To pick a specific interpreter set DISPATCH_PYTHON.",
+        ("de", "no_python") => "Kein nutzbares Python gefunden (3.9 oder neuer nötig). Installieren Sie es mit `brew install python@3.12` oder führen Sie `xcode-select --install` aus und öffnen Sie Dispatch erneut. Einen bestimmten Interpreter wählen Sie mit DISPATCH_PYTHON.",
+        (_, "no_python") => "没找到可用的 Python（需要 3.9 或更新）。用 `brew install python@3.12` 装一个，或运行 `xcode-select --install`，然后重新打开 Dispatch。要指定解释器可设环境变量 DISPATCH_PYTHON。",
         ("en", "memories_parse") => "Could not parse memories: {err}", ("de", "memories_parse") => "Memories konnten nicht gelesen werden: {err}", (_, "memories_parse") => "memories 解析失败：{err}",
         _ => key,
     }
@@ -62,6 +65,104 @@ fn bd_bin() -> PathBuf {
 // The GUI is always driven by the human, so it never inherits an agent's BEADS_ACTOR.
 fn actor() -> String {
     std::env::var("DISPATCH_ACTOR").unwrap_or_else(|_| home().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "user".into()))
+}
+
+/// PATH for every child process: GUI apps launched from the Dock do not inherit the shell's.
+fn tool_path() -> String {
+    format!(
+        "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:{}:{}",
+        home().join(".local/bin").display(),
+        std::env::var("PATH").unwrap_or_default()
+    )
+}
+
+/// Apple's `/usr/bin/python3` and `/usr/bin/git` are stubs until the Command Line Tools are
+/// installed; running one pops the system's install dialog. Only touch them when the tools exist.
+fn clt_installed() -> bool {
+    Path::new("/Library/Developer/CommandLineTools/usr/bin").is_dir() || Path::new("/Applications/Xcode.app/Contents/Developer").is_dir()
+}
+
+fn python_version(bin: &Path) -> Option<(u32, u32, String)> {
+    let out = Command::new(bin).args(["-c", "import sys;print('%d.%d.%d' % sys.version_info[:3])"]).env("PYTHONDONTWRITEBYTECODE", "1").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let mut it = v.split('.').map(|x| x.parse::<u32>().unwrap_or(0));
+    Some((it.next()?, it.next()?, v))
+}
+
+fn python_candidates() -> Vec<PathBuf> {
+    let mut c: Vec<PathBuf> = Vec::new();
+    if let Ok(p) = std::env::var("DISPATCH_PYTHON") {
+        if !p.is_empty() {
+            c.push(PathBuf::from(p));
+        }
+    }
+    for dir in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        c.push(PathBuf::from(dir).join("python3"));
+        for minor in (9..=14).rev() {
+            c.push(PathBuf::from(dir).join(format!("python3.{minor}")));
+        }
+    }
+    c.push(home().join(".local/bin/python3"));
+    if clt_installed() {
+        c.push(PathBuf::from("/usr/bin/python3"));
+    }
+    c
+}
+
+/// The interpreter the bundled CLI runs on: the first Python ≥ 3.9 among the usual places.
+/// Only a success is cached, so installing Python while Dispatch is open is picked up on the next call.
+fn python_bin() -> Result<PathBuf, String> {
+    static FOUND: std::sync::OnceLock<Mutex<Option<PathBuf>>> = std::sync::OnceLock::new();
+    let cell = FOUND.get_or_init(|| Mutex::new(None));
+    if let Ok(g) = cell.lock() {
+        if let Some(p) = g.as_ref() {
+            return Ok(p.clone());
+        }
+    }
+    for c in python_candidates() {
+        if !c.exists() {
+            continue;
+        }
+        if let Some((major, minor, _)) = python_version(&c) {
+            if major > 3 || (major == 3 && minor >= 9) {
+                if let Ok(mut g) = cell.lock() {
+                    *g = Some(c.clone());
+                }
+                return Ok(c);
+            }
+        }
+    }
+    Err(tr("no_python").to_string())
+}
+
+fn which_tool(name: &str) -> Option<PathBuf> {
+    let dirs = [PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin"), home().join(".local/bin"), home().join("go/bin"), PathBuf::from("/usr/bin"), PathBuf::from("/bin")];
+    dirs.iter().map(|d| d.join(name)).find(|p| p.exists())
+}
+
+/// What this Mac has, without going through Python: the first-run page shows it when the CLI
+/// itself cannot start (no Python, or one too old), which is exactly when `init status` cannot.
+#[tauri::command]
+async fn env_check() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let py = python_bin().ok();
+        let py_info = py.as_ref().and_then(|p| python_version(p)).map(|(_, _, v)| v);
+        let tool = |n: &str| which_tool(n).map(|p| p.display().to_string());
+        let clt = clt_installed();
+        // /usr/bin/git is a stub without the Command Line Tools.
+        let git = ["/opt/homebrew/bin/git", "/usr/local/bin/git"].iter().map(PathBuf::from).find(|p| p.exists()).map(|p| p.display().to_string())
+            .or_else(|| if clt { Some("/usr/bin/git".to_string()) } else { None });
+        let macos = Command::new("sw_vers").arg("-productVersion").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+        serde_json::json!({
+            "python": { "path": py.as_ref().map(|p| p.display().to_string()), "version": py_info, "ok": py.is_some() },
+            "brew": tool("brew"), "bd": tool("bd"), "dolt": tool("dolt"), "herdr": tool("herdr"), "tmux": tool("tmux"), "tailscale": tool("tailscale").or_else(|| if Path::new("/Applications/Tailscale.app").exists() { Some("/Applications/Tailscale.app".to_string()) } else { None }),
+            "git": git, "clt": clt, "macos": macos, "arch": std::env::consts::ARCH,
+            "cli": dispatch_bin().display().to_string(), "cli_exists": dispatch_bin().exists(),
+        })
+    }).await.map_err(|e| e.to_string())
 }
 
 fn run_bd_blocking(args: &[String]) -> Result<String, String> {
@@ -320,16 +421,13 @@ fn dispatch_bin() -> PathBuf {
 
 fn run_dispatch_blocking(args: &[String]) -> Result<String, String> {
     let bin = dispatch_bin();
-    let path = format!(
-        "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:{}:{}",
-        home().join(".local/bin").display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    let out = Command::new("python3")
+    let path = tool_path();
+    let out = Command::new(python_bin()?)
         .arg(&bin)
         .args(args)
         .env("BEADS_DIR", beads_dir())
         .env("BEADS_ACTOR", actor()) // the GUI speaks as the human, whatever shell launched it
+        .env("PYTHONDONTWRITEBYTECODE", "1") // a __pycache__ inside the .app breaks its code signature
         .env("PATH", path)
         .output()
         .map_err(|e| cannot_start("dispatch", &bin, e))?;
@@ -344,16 +442,13 @@ fn run_dispatch_stdin_blocking(args: &[String], stdin: Option<String>) -> Result
     use std::io::Write;
     use std::process::Stdio;
     let bin = dispatch_bin();
-    let path = format!(
-        "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:{}:{}",
-        home().join(".local/bin").display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    let mut child = Command::new("python3")
+    let path = tool_path();
+    let mut child = Command::new(python_bin()?)
         .arg(&bin)
         .args(args)
         .env("BEADS_DIR", beads_dir())
         .env("BEADS_ACTOR", actor())
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PATH", path)
         .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped())
@@ -944,7 +1039,7 @@ pub fn run() {
             bd_close, bd_reopen, bd_comment, bd_labels, bd_update, bd_create, sessions,
             task_sessions, resume_cmd, session_list, open_window, session_activity, session_seen, session_detail, focus_session, memories_list, memory_set, memory_forget,
             skills_list, skill_toggle, skill_read, skill_write, skill_open, skills_improve, env_list, env_get, env_set, env_unset, insights, dispatch_on, tray_update, set_locale,
-            rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path
+            rules_read, rules_write, rules_status, rules_sync, quota, stats, hosts, agent_start, graph, folders, open_path, env_check
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

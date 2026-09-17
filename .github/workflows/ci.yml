@@ -1,0 +1,36 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cli:
+    # The bundled CLI must run on the Python a fresh Mac has (3.9 from the Command Line Tools).
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Every CLI module compiles on this Python
+        run: python -m py_compile app/cli/*.py
+      - name: Every CLI module ships in the app bundle
+        run: cd app/cli && python -m unittest -q test_bundle
+
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: cd app && npm ci
+      - run: cd app && npx tsc --noEmit
+      - run: cd app && npm test
+      - run: cd app && npx vite build

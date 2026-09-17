@@ -7724,7 +7724,9 @@ def cmd_discuss(a):
         print(json.dumps(result, ensure_ascii=False)); return
     print(f"\n讨论结束：{len(new)} 条新发言（含发起），{elapsed}s。" + (f"\n结论：{conclusion}" if conclusion else "") + ("\n连续两轮没有新提议了，可以收尾：dispatch discuss-doc " + a.task if state.get("quiet_rounds", 0) >= 2 else ""))
     for c in new:
-        print(f"— {c.get('author')}：{re.sub(r'\\s+', ' ', (c.get('text') or '')[len(DISCUSS_TAG):]).strip()[:400]}")
+        # Outside the f-string: Python < 3.12 forbids a backslash inside one.
+        said = re.sub(r"\s+", " ", (c.get("text") or "")[len(DISCUSS_TAG):]).strip()[:400]
+        print(f"· {c.get('author')}：{said}")
     if panes and not a.close:
         print("\n讨论用的 Agent 还开着：" + "、".join(f"{k}={p}" for k, p in result["panes"].items()) + "（`dispatch agent close <pane>` 关掉）")
     print(f"\n下一步由你拍板拆分：dispatch split {a.task} --to codex:\"子任务标题|说明\" --to claude:\"…\"")

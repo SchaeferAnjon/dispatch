@@ -42,6 +42,8 @@ AGENT_HOMES = {
 DEPS = [
     # name, binary, brew formula/cask, why, required
     ("brew", "brew", None, "macOS 的包管理器，下面几样都靠它装", True),
+    ("python", "python3", "python@3.12", "运行 Dispatch 自带的命令行（需要 3.9 或更新）", True),
+    ("git", "git", "git", "项目页的提交记录、项目迁移、看屏幕的安装都要它", True),
     ("dolt", "dolt", "dolt", "任务板的数据库（带版本历史，能在两台电脑之间同步）", True),
     ("bd", "bd", "beads", "任务板本身（Beads），Agent 用它记任务", True),
     ("herdr", "herdr", "herdr", "终端里的 Agent 多路复用器，Dispatch 用它派活给 Agent", True),
@@ -106,12 +108,30 @@ def machine():
 
 # ---------------------------------------------------------------- deps
 
+def clt_installed():
+    """Apple ships /usr/bin/python3 and /usr/bin/git as stubs that pop an installer dialog until
+    the Command Line Tools (or Xcode) exist; a stub on PATH is not the tool."""
+    return os.path.isdir("/Library/Developer/CommandLineTools/usr/bin") or os.path.isdir("/Applications/Xcode.app/Contents/Developer")
+
+
+def dep_path(name, binary):
+    if name == "python":
+        return sys.executable  # this wizard is running on it, so it is there and new enough
+    path = which(binary)
+    if path and path.startswith("/usr/bin/") and name == "git" and not clt_installed():
+        return None
+    return path
+
+
 def deps_status():
     rows = []
     for name, binary, formula, why, required in DEPS:
-        path = which(binary)
-        rows.append({"name": name, "found": bool(path), "path": path, "formula": formula, "why": why, "required": required,
-                     "installable": bool(formula) and bool(which("brew"))})
+        path = dep_path(name, binary)
+        row = {"name": name, "found": bool(path), "path": path, "formula": formula, "why": why, "required": required,
+               "installable": bool(formula) and bool(which("brew"))}
+        if name == "python":
+            row["version"] = "%d.%d.%d" % sys.version_info[:3]
+        rows.append(row)
     return rows
 
 
@@ -124,7 +144,7 @@ def deps_install(names):
         if not dep:
             failed.append({"name": name, "error": "unknown"}); continue
         _, binary, formula, _, _ = dep
-        if which(binary):
+        if dep_path(name, binary):
             done.append(name); continue
         if name == "brew":
             failed.append({"name": name, "error": "Homebrew 要在终端里装（需要管理员密码）", "command": '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'}); continue
@@ -133,7 +153,7 @@ def deps_install(names):
         if not which("brew"):
             failed.append({"name": name, "error": "先装 Homebrew"}); continue
         code, o, e = run([which("brew"), "install", "--quiet", formula], timeout=1800)
-        if code == 0 and which(binary):
+        if code == 0 and dep_path(name, binary):
             done.append(name)
         else:
             failed.append({"name": name, "error": (e or o).strip()[-800:]})

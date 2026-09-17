@@ -6,6 +6,7 @@ import type { Interaction } from "./derive";
 export interface AgentStartInput { kind: string; host?: string; cwd?: string; model?: string; task?: string; prompt?: string; label?: string; timeout?: number }
 export interface AgentStartResult { host: string; pane_id: string; tab_id: string; name: string; kind: string; actor: string; cwd: string; status: string; task: string; output: string; warning?: string; prompt_sent?: boolean }
 
+export interface EnvReport { python: { path: string | null; version: string | null; ok: boolean }; brew: string | null; bd: string | null; dolt: string | null; herdr: string | null; tmux: string | null; tailscale: string | null; git: string | null; clt: boolean; macos: string; arch: string; cli: string; cli_exists: boolean }
 export interface Api {
   info(): Promise<Info>;
   list(): Promise<Issue[]>;
@@ -41,6 +42,8 @@ export interface Api {
   on(host: string, args: string[], stdin?: string): Promise<string>;
   graph(): Promise<GraphData>;
   openPath(path: string): Promise<void>;
+  /** What this Mac has (Python, Homebrew, bd…), asked without the CLI; null outside the desktop app. */
+  envCheck(): Promise<EnvReport | null>;
   rulesRead(): Promise<string>;
   rulesWrite(content: string): Promise<void>;
   rulesStatus(): Promise<RulesStatus>;
@@ -148,6 +151,7 @@ function coreApi(call: Call, invoke: Invoke): Omit<Api, "copy" | "openWindow" | 
     on: (host, args, stdin) => call("dispatch_on", { host: host === "local" ? null : host, args, stdin: stdin ?? null }),
     graph: async () => parse<GraphData>(await call("graph"), { nodes: [], edges: [] }),
     openPath: async (path) => void (await invoke("open_path", { path })),
+    envCheck: async () => { try { return await invoke<EnvReport>("env_check"); } catch { return null; } },
     rulesRead: () => call("rules_read"),
     rulesWrite: async (content) => void (await call("rules_write", { content })),
     rulesStatus: async () => parse<RulesStatus>(await call("rules_status"), { hash: "", source: "", targets: [] }),

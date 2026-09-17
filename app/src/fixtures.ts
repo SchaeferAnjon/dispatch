@@ -326,6 +326,7 @@ export function fixtureApi(): Api {
     envSet: async () => {},
     envUnset: async () => {},
     openPath: async () => {},
+    envCheck: async () => null,
     hosts: async () => [HOST],
     on: async (_h, args) => {
       const [cmd, sub] = args;
