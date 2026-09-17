@@ -263,5 +263,7 @@ const session: Dict = {
   "你也说一句（回车发言）；他们正在说，你的话会在这轮结束后得到回应": "Say something too (Return sends). They are talking now, so your line gets an answer once this round ends.",
   "你也说一句（回车发言，Shift+回车换行；截图直接粘贴），他们会接着回应": "Say something too (Return sends, Shift+Return for a new line; paste screenshots straight in) and they will respond.",
   "附图": "Attach a picture", "发言": "Say it",
+  "停掉 {where} 扩展里的这份，在那台电脑的 Herdr 里接着同一段对话，再发这条；之后回 {where} 要重新 resume": "Stop the copy in the {where} extension, continue the same conversation in Herdr on that Mac, then send this; to go back to {where} later, resume it there again",
+  "编辑器": "editor",
 };
 export default session;

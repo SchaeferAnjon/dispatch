@@ -363,7 +363,8 @@ export function fixtureApi(): Api {
       if (cmd === "session-summary") return JSON.stringify({ summary: "", cached: true });
       if (cmd === "task-archive") return JSON.stringify({ archived: [] });
       if (cmd === "lineage") return JSON.stringify(lineageOf(String(sub)));
-      if (cmd === "attachment" || cmd === "commits" || cmd === "memories" || cmd === "docs-list") return "[]";
+      if (cmd === "commits") { const id = String(sub); const proj = issues.find((i) => i.id === id)?.labels?.find((l) => l.startsWith("project:"))?.slice(8) ?? ""; const rows = (commits[proj] ?? []).filter(([, , subject]) => subject.includes(`(${id})`)); return JSON.stringify({ root: P(proj), remote: `https://github.com/mia/${proj}`, commits: rows.map(([ts, sha, subject]) => ({ hash: sha + "0".repeat(33), short: sha, date: new Date(ts * 1000).toISOString(), author: "mia", subject, files: ["src/index.ts"], file_count: 1, add: 12, del: 3 })) }); }
+      if (cmd === "attachment" || cmd === "memories" || cmd === "docs-list") return "[]";
       if (cmd === "stats") return JSON.stringify({ days: 14, sessions: 7, tokens: 1_240_000 });
       if (cmd === "notify") return JSON.stringify({ ok: true, via: "system" });
       if (cmd === "screen" || cmd === "hosts" || cmd === "agent" || cmd === "discuss" || cmd === "discuss-live" || cmd === "discuss-doc" || cmd === "split" || cmd === "log" || cmd === "image") return JSON.stringify({ ok: true });

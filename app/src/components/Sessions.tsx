@@ -19,7 +19,8 @@ import { useT, useLocale } from "../i18n";
 
 interface Props { onBack?: { label: string; go: () => void }; localHostName?: string; archivedProjects: Set<string>; refs: SessionRef[]; scriptCount: number; refsLoaded: boolean; archiveDays: number; outcomes: Issue[]; activities: Activity[]; issues: Issue[]; activityError: boolean; onSeen: (a: Activity, reply: string) => Promise<void>; api: Api; me: string; live: Session[]; onSelectTask: (id: string) => void; onSelected?: (id: string | null) => void; onDone: (m: string) => void; onError: (m: string) => void; initialId?: string | null; hostId?: string; onProject?: (name: string) => void; solo?: boolean; offlineHosts?: { id: string; name: string }[] }
 
-const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", sdk: "SDK", "vscode-extension": "VS Code", cron: "定时任务", telegram: "Telegram", weixin: "微信", whatsapp: "WhatsApp", discord: "Discord", slack: "Slack" };
+// Where the conversation was started (the CLI's shared vocabulary: `dispatch list` → entrypoint).
+const ENTRY: Record<string, string> = { cli: "终端", desktop: "桌面端", vscode: "VS Code", "vscode-extension": "VS Code", sdk: "SDK", "sdk-cli": "SDK", "sdk-ts": "SDK", exec: "脚本运行", subagent: "子 Agent", cron: "定时任务", gateway: "网关", telegram: "Telegram", weixin: "微信", whatsapp: "WhatsApp", discord: "Discord", slack: "Slack" };
 
 // The conversation itself, one block per turn (thinking folded, tool cards, text). Shared by the
 // session page and the sub-agent viewer.

@@ -486,5 +486,6 @@ const settings: Dict = {
   "坑、做对的事、方法、复盘；Agent 开工前会查。": "Stolperfallen, Bewährtes, Anleitungen und Rückblicke; Agenten sehen vor der Arbeit hier nach.",
   "工作区根目录、外观、手机与屏幕访问、更新、接入另一台电脑。": "Arbeitsbereich-Ordner, Erscheinungsbild, Handy- und Bildschirmzugriff, Updates, weiteren Mac verbinden.",
   "# 服务器与数据库\n\n> 记录机器、云服务、数据库和账号用途。密码、Token 和 API Key 在「密钥与 API」中管理。\n> Agent 的行为规则和项目指令在「Agent 规则」中管理。\n\n## 通用\n\n### 服务器\n\n- 名称与用途：\n- 地址：\n- 关联密钥名称：\n\n### 数据库\n\n- 名称与用途：\n- 连接地址：\n- 关联密钥名称：\n\n### 常用资料\n\n- 资料位置：\n": "# Server und Datenbanken\n\n> Hier Rechner, Cloud-Dienste, Datenbanken und den Zweck von Konten festhalten. Kennwörter, Tokens und API-Keys werden unter „Keys und APIs“ verwaltet.\n> Verhaltensregeln der Agenten und Projektanweisungen stehen unter „Agent-Regeln“.\n\n## Allgemein\n\n### Server\n\n- Name und Zweck:\n- Adresse:\n- Zugehöriger Key-Name:\n\n### Datenbank\n\n- Name und Zweck:\n- Verbindungsadresse:\n- Zugehöriger Key-Name:\n\n### Unterlagen\n\n- Speicherort:\n",
+  "VS Code 里的 Claude Code / Codex 扩展用的是同一份记录和同一套 hook，勾上对应的 Agent 就够了；它们的会话会标成「VS Code」。": "Die Claude-Code-/Codex-Erweiterungen in VS Code nutzen dieselben Aufzeichnungen und Hooks: den passenden Agent anzuhaken genügt; ihre Unterhaltungen werden als „VS Code“ markiert.",
 };
 export default settings;

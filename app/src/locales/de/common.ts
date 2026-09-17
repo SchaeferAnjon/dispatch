@@ -24,6 +24,7 @@ const common: Dict = {
   "P3 低：有空再做": "P3 Niedrig: bei Gelegenheit", "P4 想法：先记着": "P4 Idee: nur notiert",
   "优先级 {text}；bd update <id> -p 0–4 可改": "Priorität {text}; ändern mit bd update <id> -p 0–4",
   // Session sources and states (derive.ts / activity.ts)
+  "脚本运行": "Skriptlauf", "网关": "Gateway",
   "终端": "Terminal", "桌面端": "Desktop", "编辑器": "Editor", "聊天": "Chat", "定时任务": "Geplant", "来源未知": "Unbekannte Quelle", "常驻": "Dauerhaft",
   "{app} · 常驻": "{app} · dauerhaft", "会话记录": "Sitzungsprotokoll", "零散会话": "Lose Sitzungen",
   "已结束": "Beendet", "等待确认": "Wartet auf Bestätigung", "状态未知": "Status unbekannt", "在跑": "Läuft", "空闲": "Inaktiv",

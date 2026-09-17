@@ -121,7 +121,7 @@ export function SetupView({ api, status, onStatus, onDone, onError, onNotify }: 
         </Card>
 
         <Card n={4} s={step("agents")} busy={busy === "agents"}>
-          <p className="muted">{t("检测到已安装的 Agent。选中的会收到同一份规则；Claude Code 还会装上 hook（会话状态、任务板摘要、编辑互斥、额度）。")}</p>
+          <p className="muted">{t("检测到已安装的 Agent。选中的会收到同一份规则；Claude Code 还会装上 hook（会话状态、任务板摘要、编辑互斥、额度）。")} {t("VS Code 里的 Claude Code / Codex 扩展用的是同一份记录和同一套 hook，勾上对应的 Agent 就够了；它们的会话会标成「VS Code」。")}</p>
           <div className="setup-agents">{agents.map((a) => <label key={a.id} className={a.found ? "" : "off"}><input type="checkbox" checked={picked?.includes(a.id) ?? false} onChange={(e) => setPicked((p) => e.target.checked ? [...(p ?? []), a.id] : (p ?? []).filter((x) => x !== a.id))} /><b>{a.name}</b><span className="muted small">{a.found ? (a.hooks ? t("hook 已装") : a.home.replace(/^\/Users\/[^/]+/, "~")) : t("未安装")}</span></label>)}</div>
           <button className="btn primary" disabled={!!busy || !(picked?.length)} onClick={() => void run("agents", picked ?? [], t("Agent 已配置"))}>{busy === "agents" ? t("配置中…") : t("就用这些")}</button>
           {log.agents && <pre className="setup-log">{log.agents}</pre>}

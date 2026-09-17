@@ -99,7 +99,7 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
   <h2 data-i18n="why.h2">它解决什么问题</h2>
   <p class="intro" data-i18n="why.intro">用了几个编程 Agent 之后，麻烦不在写代码，而在「记住」：这个项目上一次做到哪了？哪个终端里的 Agent 在等我确认？它改了哪些文件、交付了什么？出门了还能不能回它一句？Dispatch 把这些都收回一个台子。</p>
   <div class="grid3">
-    <div class="card"><h3 data-i18n="why.c1.h">不用改你的习惯</h3><p data-i18n="why.c1.p">Agent 还是在你的终端里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录，OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。</p></div>
+    <div class="card"><h3 data-i18n="why.c1.h">不用改你的习惯</h3><p data-i18n="why.c1.p">Agent 还是在你的终端或编辑器里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录，包括 VS Code 扩展里开的会话；OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。</p></div>
     <div class="card"><h3 data-i18n="why.c2.h">项目是起点</h3><p data-i18n="why.c2.p">会话按目录归到项目，任务和成果挂在会话上。项目页就是这个项目的全部记录：回顾、会话、任务、成果、文档、知识库。</p></div>
     <div class="card"><h3 data-i18n="why.c3.h">回复回到原会话</h3><p data-i18n="why.c3.p">在工作台或手机上看到 Agent 在等你，直接回，消息投递到那个终端里的原会话；正在跑就排队，排错了能撤回。</p></div>
   </div>
@@ -171,7 +171,7 @@ dispatch project 名 --move-to 另一台   # 把项目搬到另一台 Mac</code>
 <section id="faq"><div class="wrap faq">
   <h2 data-i18n="faq.h2">常见问题</h2>
   <details open><summary data-i18n="faq.q1">我的对话和代码会被上传吗？</summary><p data-i18n="faq.a1">不会。Dispatch 在本机读取 Agent 已有的记录，默认不向任何模型发送文档或聊天内容。只有你在设置里打开「自动总结」，它才会把会话摘录交给你自己配置的模型（可以是 Claude 订阅或你的 API Key）写一段总结。手机访问走 Tailscale，不暴露到公网。</p></details>
-  <details><summary data-i18n="faq.q2">支持哪些 Agent？</summary><p data-i18n="faq.a2">Claude Code、Codex（终端和桌面端）、pi、ZCode、Gemini CLI、OpenCode、Hermes。回复原会话支持 Claude Code、Codex、pi；其余能看会话、任务和额度。</p></details>
+  <details><summary data-i18n="faq.q2">支持哪些 Agent？</summary><p data-i18n="faq.a2">Claude Code、Codex（终端、桌面端和 VS Code 扩展）、pi、ZCode、Gemini CLI、OpenCode、Hermes。回复原会话支持 Claude Code、Codex、pi；VS Code 扩展里的会话先一键接进 Herdr 再回；其余能看会话、任务和额度。</p></details>
   <details><summary data-i18n="faq.q3">一定要两台电脑吗？</summary><p data-i18n="faq.a3">不用。一台就是完整的。有第二台时，任务板、规则、技能自动同步，会话和项目可以互相迁移。</p></details>
   <details><summary data-i18n="faq.q4">Windows / Linux？</summary><p data-i18n="faq.a4">现在只有 macOS 14+。界面层是 Tauri + React，逻辑在 Python CLI 里，移植是可能的，但还没做。</p></details>
   <details><summary data-i18n="faq.q5">在线试用里看到的是谁的数据？</summary><p data-i18n="faq.a5">示例数据，写在代码里的几段假会话和任务，只为让你看看界面长什么样。</p></details>
@@ -192,7 +192,7 @@ en: {
 "hero.sub":"macOS 14+ · MIT open source · runs locally, sends nothing to any model unless you turn it on",
 "why.h2":"What it solves",
 "why.intro":"Once you use several coding agents the hard part is not the code, it is remembering: where did this project stop last time? Which terminal has an agent waiting for my approval? What did it change and deliver? Can I answer it while I am out? Dispatch pulls all of that back into one place.",
-"why.c1.h":"No change to your habits","why.c1.p":"Agents keep running in your terminal. Dispatch only reads the local records they already write (Claude Code and Codex transcripts, the OpenCode, ZCode and Hermes databases). No API key, no task board required to start.",
+"why.c1.h":"No change to your habits","why.c1.p":"Agents keep running in your terminal or editor. Dispatch only reads the local records they already write (Claude Code and Codex transcripts, including sessions started from the VS Code extensions; the OpenCode, ZCode and Hermes databases). No API key, no task board required to start.",
 "why.c2.h":"Projects come first","why.c2.p":"Sessions are grouped into projects by directory; tasks and outcomes hang off sessions. The project page is the complete record: review, sessions, tasks, outcomes, documents, knowledge base.",
 "why.c3.h":"Replies go to the original session","why.c3.p":"See an agent waiting on the workbench or your phone and answer right there; the message lands in that terminal's original session. If it is busy the message queues; a mistake can be withdrawn.",
 "features.h2":"Features","features.intro":"Everything below is in the app today; screenshots use sample data.",
@@ -216,7 +216,7 @@ en: {
 "how.code":"# Everything the app shows, agents can ask for with --json\ndispatch here                 # this project right now: status, 14-day timeline, open tasks\ndispatch begin \"title\" -P project   # agents record tasks; log progress; done to finish\ndispatch wiki add --kind pit \"symptom\" --fix \"fix\"   # a pitfall, injected into the next session\ndispatch serve qr             # QR code for the phone\ndispatch project name --move-to other-mac   # move a project to the other Mac",
 "faq.h2":"FAQ",
 "faq.q1":"Are my conversations and code uploaded anywhere?","faq.a1":"No. Dispatch reads the agents' existing records on your Mac and sends no documents or chat content to any model by default. Only if you enable \"auto summary\" in Settings does it hand session excerpts to a model you configured yourself (a Claude subscription or your own API key) to write a summary. Phone access goes over Tailscale, nothing is exposed to the public internet.",
-"faq.q2":"Which agents are supported?","faq.a2":"Claude Code, Codex (terminal and desktop), pi, ZCode, Gemini CLI, OpenCode and Hermes. Replying to the original session works for Claude Code, Codex and pi; the others show sessions, tasks and quotas.",
+"faq.q2":"Which agents are supported?","faq.a2":"Claude Code, Codex (terminal, desktop and the VS Code extensions), pi, ZCode, Gemini CLI, OpenCode and Hermes. Replying to the original session works for Claude Code, Codex and pi; a session from a VS Code extension is first taken into Herdr with one click, then you reply; the others show sessions, tasks and quotas.",
 "faq.q3":"Do I need two Macs?","faq.a3":"No. One Mac is the complete product. With a second one, the task board, rules and skills sync automatically and sessions and projects can be moved between them.",
 "faq.q4":"Windows / Linux?","faq.a4":"macOS 14+ only for now. The UI is Tauri + React and the logic lives in a Python CLI, so a port is possible but not done.",
 "faq.q5":"Whose data is in the online demo?","faq.a5":"Sample data: a few fake sessions and tasks written into the code, only to show what the interface looks like.",
@@ -232,7 +232,7 @@ de: {
 "hero.sub":"macOS 14+ · MIT Open Source · läuft lokal, sendet nichts an ein Modell, solange Sie es nicht einschalten",
 "why.h2":"Welches Problem es löst",
 "why.intro":"Mit mehreren Coding-Agents liegt die Mühe nicht im Code, sondern im Erinnern: Wo stand dieses Projekt zuletzt? In welchem Terminal wartet ein Agent auf meine Freigabe? Was hat er geändert und geliefert? Kann ich unterwegs antworten? Dispatch holt all das an einen Ort zurück.",
-"why.c1.h":"Keine Umstellung","why.c1.p":"Die Agents laufen weiter in Ihrem Terminal. Dispatch liest nur die lokalen Aufzeichnungen, die sie ohnehin schreiben (Transkripte von Claude Code und Codex, die Datenbanken von OpenCode, ZCode und Hermes). Kein API-Schlüssel, kein Aufgabenboard nötig, um anzufangen.",
+"why.c1.h":"Keine Umstellung","why.c1.p":"Die Agents laufen weiter in Ihrem Terminal oder Editor. Dispatch liest nur die lokalen Aufzeichnungen, die sie ohnehin schreiben (Transkripte von Claude Code und Codex, auch aus den VS-Code-Erweiterungen; die Datenbanken von OpenCode, ZCode und Hermes). Kein API-Schlüssel, kein Aufgabenboard nötig, um anzufangen.",
 "why.c2.h":"Das Projekt ist der Ausgangspunkt","why.c2.p":"Sitzungen werden über ihr Verzeichnis Projekten zugeordnet; Aufgaben und Ergebnisse hängen an Sitzungen. Die Projektseite ist die vollständige Akte: Rückblick, Sitzungen, Aufgaben, Ergebnisse, Dokumente, Wissensbasis.",
 "why.c3.h":"Antworten landen in der Originalsitzung","why.c3.p":"Sehen Sie auf der Arbeitsfläche oder am Handy, dass ein Agent wartet, antworten Sie direkt; die Nachricht landet in der ursprünglichen Sitzung im Terminal. Ist er beschäftigt, wird sie eingereiht; ein Versehen lässt sich zurückziehen.",
 "features.h2":"Funktionen","features.intro":"Alles hier ist heute in der App vorhanden; die Screenshots zeigen Beispieldaten.",
@@ -256,7 +256,7 @@ de: {
 "how.code":"# Alles, was die App zeigt, können Agents mit --json abfragen\ndispatch here                 # dieses Projekt jetzt: Stand, 14-Tage-Zeitleiste, offene Aufgaben\ndispatch begin \"Titel\" -P projekt   # Agents legen Aufgaben an; log für Fortschritt; done zum Abschluss\ndispatch wiki add --kind pit \"Symptom\" --fix \"Lösung\"   # eine Falle, in die nächste Sitzung eingespielt\ndispatch serve qr             # QR-Code fürs Handy\ndispatch project name --move-to anderer-mac   # ein Projekt auf den anderen Mac umziehen",
 "faq.h2":"Häufige Fragen",
 "faq.q1":"Werden meine Gespräche und mein Code irgendwohin hochgeladen?","faq.a1":"Nein. Dispatch liest die vorhandenen Aufzeichnungen der Agents auf Ihrem Mac und sendet standardmäßig keine Dokumente oder Chatinhalte an ein Modell. Nur wenn Sie in den Einstellungen die „automatische Zusammenfassung“ einschalten, übergibt es Sitzungsauszüge an ein von Ihnen selbst konfiguriertes Modell (Claude-Abo oder eigener API-Schlüssel). Der Handyzugriff läuft über Tailscale; nichts wird ins öffentliche Internet gestellt.",
-"faq.q2":"Welche Agents werden unterstützt?","faq.a2":"Claude Code, Codex (Terminal und Desktop), pi, ZCode, Gemini CLI, OpenCode und Hermes. Antworten in die Originalsitzung funktioniert bei Claude Code, Codex und pi; die übrigen zeigen Sitzungen, Aufgaben und Kontingente.",
+"faq.q2":"Welche Agents werden unterstützt?","faq.a2":"Claude Code, Codex (Terminal, Desktop und VS-Code-Erweiterungen), pi, ZCode, Gemini CLI, OpenCode und Hermes. Antworten in die Originalsitzung funktioniert bei Claude Code, Codex und pi; eine Sitzung aus einer VS-Code-Erweiterung wird zuerst mit einem Klick in Herdr übernommen, dann antworten Sie; die übrigen zeigen Sitzungen, Aufgaben und Kontingente.",
 "faq.q3":"Brauche ich zwei Macs?","faq.a3":"Nein. Ein Mac ist das vollständige Produkt. Mit einem zweiten synchronisieren sich Aufgabenboard, Regeln und Skills automatisch, und Sitzungen und Projekte lassen sich hin- und herziehen.",
 "faq.q4":"Windows / Linux?","faq.a4":"Derzeit nur macOS 14+. Die Oberfläche ist Tauri + React, die Logik steckt in einer Python-CLI; eine Portierung ist möglich, aber noch nicht gemacht.",
 "faq.q5":"Wessen Daten zeigt die Online-Demo?","faq.a5":"Beispieldaten: ein paar erfundene Sitzungen und Aufgaben im Code, nur damit man die Oberfläche sieht.",

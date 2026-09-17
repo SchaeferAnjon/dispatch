@@ -47,7 +47,7 @@ Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent
 
 ## 特色一览
 
-- **不用改你的习惯**：Agent 还是在你的终端里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录；OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。
+- **不用改你的习惯**：Agent 还是在你的终端或编辑器里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录，包括 VS Code 扩展里开的会话；OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。
 - **项目是起点**：会话按目录归到项目，任务和成果挂在会话上；项目可收藏、归档、改显示名，两台电脑一致。
 - **回复回到原会话**：从工作台、等我或手机进入会话直接回，消息投递到那个终端里的原会话；正在跑就排队，排错了能撤回。
 - **任务由 Agent 自己记**：新会话开头自动收到身份、本项目任务和相关知识；Agent 用 `dispatch begin / log / done` 记任务、`dispatch wiki` 记坑，你不用在界面里逐个点完成。

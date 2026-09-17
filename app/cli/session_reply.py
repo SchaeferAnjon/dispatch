@@ -797,9 +797,14 @@ def status(d, ref):
         info = dict(available=False, label=str(e) if isinstance(e, Rejected) else '暂时无法连接原 Agent，请重新连接。', receipts=receipts)
         live = adoptable(d, ref)
         if live is not None:
-            info.update(label='原会话在这台电脑的 %s 里跑，没接进 Herdr' % (live.get('source_app') or '其它终端'),
-                        adoptable=True, adopt_state='working' if live.get('state') == 'working' else 'idle',
-                        source_app=live.get('source_app') or '')
+            where = live.get('source_app') or '其它终端'
+            kind = live.get('source_kind') or ''
+            # An editor extension (VS Code / Cursor…) has no terminal to type into: the message can
+            # only go in after the same transcript is resumed in Herdr, which stops the editor's copy.
+            label = ('原会话在这台电脑的 %s 扩展里跑。这里发不进编辑器面板；接进 Herdr 后 %s 里那份会停，之后在 Herdr 或手机上继续' % (where, where)
+                     if kind == 'editor' else '原会话在这台电脑的 %s 里跑，没接进 Herdr' % where)
+            info.update(label=label, adoptable=True, adopt_state='working' if live.get('state') == 'working' else 'idle',
+                        source_app=live.get('source_app') or '', source_kind=kind)
         elif resumable(d, ref):
             # Not in Herdr, not in the desktop, not in any other terminal: the process is gone.
             # 「重新连接」 can never succeed — say so, and offer to bring it back (a Herdr tab

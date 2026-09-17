@@ -7,7 +7,7 @@ import { t, useT } from '../i18n';
 interface Receipt { id: string; text: string; state: 'sending' | 'accepted' | 'failed' | 'unknown'; note: string; created: number; delivered?: boolean }
 interface DesktopRequest { id: string; kind: 'command' | 'file' | 'permission' | 'question' | 'option' | 'elicitation' | 'other'; summary: string; reason?: string; cwd?: string; files?: string[]; questions?: { id: string; text: string; options: string[] }[] }
 interface Desktop { running: boolean; status: string; requests: DesktopRequest[]; model?: string; approval_policy?: string }
-interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop; adoptable?: boolean; adopt_state?: 'idle' | 'working'; source_app?: string; resumable?: boolean; blocked?: boolean; screen?: string }
+interface Connection { available: boolean; label: string; working?: boolean; receipts: Receipt[]; model?: string; mode?: string; desktop?: Desktop; adoptable?: boolean; adopt_state?: 'idle' | 'working'; source_app?: string; source_kind?: string; resumable?: boolean; blocked?: boolean; screen?: string }
 const REQUEST_LABEL: Record<DesktopRequest['kind'], string> = { command: '要跑命令', file: '要改文件', permission: '申请权限', question: '在提问', option: '要你选', elicitation: 'MCP 请求', other: '等确认' };
 const MODES: [string, string][] = [['default', '手动确认'], ['acceptEdits', '自动接受编辑'], ['plan', '计划模式'], ['bypassPermissions', '跳过权限']];
 const MODELS: [string, string][] = [['fable', 'Fable 5.1'], ['opus', 'Opus 5'], ['sonnet', 'Sonnet 5'], ['haiku', 'Haiku 4.5']];
@@ -300,7 +300,7 @@ export function SessionReply({ api, session, messages, onSent }: { api: Api; ses
         {connection.model && <select aria-label={t('模型')} title={t('模型：终端里的 /model')} value={modelAlias(connection.model)} disabled={switching || !!connection.working} onChange={e => void control({ model: e.target.value })}>{MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}{!MODELS.some(([v]) => v === modelAlias(connection.model!)) && <option value={modelAlias(connection.model)}>{connection.model}</option>}</select>}
       </span>}
       {!connection?.available && connection?.adoptable && <button className="btn sm" type="button" disabled={adopting || connection.adopt_state === 'working'}
-        title={connection.adopt_state === 'working' ? t('它正在 {where} 里跑，等它停下来再接', { where: connection.source_app || t('原终端') }) : t('把它从 {where} 接进那台电脑的 Herdr，再发这条', { where: connection.source_app || t('原终端') })}
+        title={connection.adopt_state === 'working' ? t('它正在 {where} 里跑，等它停下来再接', { where: connection.source_app || t('原终端') }) : connection.source_kind === 'editor' ? t('停掉 {where} 扩展里的这份，在那台电脑的 Herdr 里接着同一段对话，再发这条；之后回 {where} 要重新 resume', { where: connection.source_app || t('编辑器') }) : t('把它从 {where} 接进那台电脑的 Herdr，再发这条', { where: connection.source_app || t('原终端') })}
         onClick={() => void adopt()}>{adopting ? t('正在接…') : t('接进 Herdr 再发')}</button>}
       {!connection?.available && connection?.resumable && <button className="btn sm primary" type="button" disabled={reviving || busy}
         title={t('在电脑的 Herdr 里新开一个页签恢复这段对话（同一份记录），恢复好就把你打的这条发过去')}

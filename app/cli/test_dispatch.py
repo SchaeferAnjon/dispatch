@@ -1728,3 +1728,42 @@ class SaveFile(unittest.TestCase):
             self.assertTrue(path.startswith(os.path.join(tmp, "files")))
             self.assertTrue(path.endswith("-weird_name.tar.gz"))
             self.assertEqual(os.path.getsize(path), 10)
+
+
+class SessionOrigin(unittest.TestCase):
+    """Where a conversation was started, in one vocabulary across agents (task-xhk8)."""
+
+    def test_claude_entrypoints_map_to_shared_words(self):
+        self.assertEqual(dispatch.origin_of("cli"), "cli")
+        self.assertEqual(dispatch.origin_of("claude-desktop"), "desktop")
+        self.assertEqual(dispatch.origin_of("claude-vscode"), "vscode")
+        self.assertEqual(dispatch.origin_of("vscode-extension"), "vscode")
+        self.assertEqual(dispatch.origin_of("sdk-cli"), "sdk-cli")  # scripts stay recognisable to the views
+        self.assertEqual(dispatch.origin_of(""), "")
+
+    def test_codex_source_wins_over_originator(self):
+        self.assertEqual(dispatch.origin_of("vscode", "codex_vscode"), "vscode")
+        self.assertEqual(dispatch.origin_of(None, "Codex Desktop"), "desktop")
+        self.assertEqual(dispatch.origin_of("exec", "codex_exec"), "exec")
+        self.assertEqual(dispatch.origin_of("cli", "codex-tui"), "cli")
+        self.assertEqual(dispatch.origin_of({"subagent": {"thread_spawn": {"depth": 1}}}, "codex_cli_rs"), "subagent")
+
+    def test_codex_rollout_first_record_names_the_front_end(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({"type": "session_meta", "payload": {"id": "s1", "cwd": "/p", "originator": "codex_vscode", "source": "vscode"}}) + "\n")
+            f.write(json.dumps({"type": "event_msg", "payload": {"type": "task_started"}}) + "\n")
+        try:
+            self.assertEqual(dispatch.codex_meta_origin(f.name), "vscode")
+        finally:
+            os.unlink(f.name)
+        self.assertEqual(dispatch.codex_meta_origin("/nonexistent/rollout.jsonl"), "")
+
+    def test_bare_process_under_vscode_is_an_editor_session(self):
+        table = {1: (0, "/sbin/launchd"), 10: (1, "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"),
+                 11: (10, "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)"),
+                 12: (11, "/Users/x/.vscode/extensions/anthropic.claude-code-2.1.263-darwin-arm64/resources/native-binary/claude")}
+        self.assertEqual(dispatch.host_of(12, table), ("editor", "VS Code"))
+        ghostty = {1: (0, "/sbin/launchd"), 20: (1, "/Applications/Ghostty.app/Contents/MacOS/ghostty"), 21: (20, "-fish"), 22: (21, "codex")}
+        self.assertEqual(dispatch.host_of(22, ghostty), ("terminal", "Ghostty"))
+        bare = {1: (0, "/sbin/launchd"), 30: (1, "/usr/bin/login"), 31: (30, "-zsh"), 32: (31, "claude")}
+        self.assertEqual(dispatch.host_of(32, bare), ("unknown", "未登记"))

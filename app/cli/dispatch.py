@@ -1361,9 +1361,9 @@ def live_sessions(local_only=False):
             # No hook wrote a record (another person's terminal, hooks not installed): still
             # say where it runs and which transcript it most likely is, so it can be adopted.
             cwd = pid_cwd(pid)
-            app = host_app_of(pid, table) or ""
+            kind, app = host_of(pid, table)
             idx = idx if idx is not None else (load_index() or {})
-            row = {"agent": "claude-code" if base == "claude" else "codex", "session_id": f"pid-{pid}", "agent_pid": pid, "cwd": cwd, "project": os.path.basename(cwd.rstrip("/")) if cwd else "", "source_kind": "terminal" if app else "unknown", "source_app": app or "未登记", "state": "unknown", "alive": True, "registered": False, "started_at": 0, "last_at": 0}
+            row = {"agent": "claude-code" if base == "claude" else "codex", "session_id": f"pid-{pid}", "agent_pid": pid, "cwd": cwd, "project": os.path.basename(cwd.rstrip("/")) if cwd else "", "source_kind": kind, "source_app": app, "state": "unknown", "alive": True, "registered": False, "started_at": 0, "last_at": 0}
             guess = probable_session(idx, row["agent"], cwd)
             if guess:
                 row["probable_session_id"] = guess["session_id"]; row["title"] = guess.get("title", ""); row["last_at"] = guess.get("mtime", 0)
@@ -1419,6 +1419,63 @@ def pid_cwd(pid):
         return next((l[1:] for l in r.stdout.splitlines() if l.startswith("n/")), "")
     except Exception:
         return ""
+
+
+# Where a conversation was started, in one vocabulary for every agent: the transcript index and
+# the phone/desktop views show it as 终端 / 桌面端 / VS Code / SDK / 定时任务. Claude Code writes
+# `entrypoint` on every record ("cli", "claude-desktop", "claude-vscode", "sdk-cli"…); Codex writes
+# `originator` + `source` once, in session_meta ("codex_vscode"/"vscode", "Codex Desktop", "codex_exec"…).
+ORIGIN_V = 2  # bump to re-derive every Codex row's origin from its session_meta
+ORIGIN_ALIASES = {"claude-desktop": "desktop", "claude-vscode": "vscode", "vscode-extension": "vscode", "codex_vscode": "vscode",
+                  "codex desktop": "desktop", "codex_work_desktop": "desktop", "codex_exec": "exec", "exec": "exec",
+                  "codex-tui": "cli", "codex_cli_rs": "cli", "codex-cli": "cli", "terminal": "cli"}
+
+
+def origin_of(*raw):
+    """The first non-empty value among `raw` (a Claude `entrypoint`, a Codex `source`, a Codex
+    `originator`), mapped to the shared vocabulary; unknown values pass through as they are."""
+    for v in raw:
+        if not v:
+            continue
+        if isinstance(v, dict):
+            # Codex writes `source: {"subagent": {...}}` on threads another Codex spawned.
+            return "subagent" if "subagent" in v else ""
+        v = str(v).strip()
+        return ORIGIN_ALIASES.get(v.lower(), v)
+    return ""
+
+
+def codex_meta_origin(path, limit=4 * 1024 * 1024):
+    """Codex rollouts name their front end only in the first record (session_meta) — a long line,
+    since it also carries the whole base_instructions text."""
+    try:
+        with open(path, "rb") as f:
+            first = f.readline(limit).decode("utf-8", "replace")
+        p = json.loads(first)
+        p = p.get("payload", p)
+        return origin_of(p.get("source"), p.get("originator"))
+    except Exception:
+        return ""
+
+
+def host_of(pid, table):
+    """(source_kind, label) of the app hosting a bare agent process — the same classifier the
+    hooks use, so a `claude` the VS Code extension spawned reads as VS Code, not as a terminal."""
+    chain, p = [], pid
+    for _ in range(30):
+        ent = table.get(p)
+        if not ent:
+            break
+        ppid, comm = ent
+        chain.append(comm)
+        if ppid <= 1:
+            break
+        p = ppid
+    kind, label = _mod("presence").classify(chain)
+    if (kind, label) == ("terminal", "终端"):
+        app = host_app_of(pid, table)
+        return ("terminal", app) if app else ("unknown", "未登记")
+    return kind, label
 
 
 def probable_session(idx, agent, cwd, within=6 * 3600):
@@ -1773,6 +1830,11 @@ def refresh_index():
             # Shape changed: re-read the whole file once so the counters start from zero.
             e.update(off=0, mtime=0, tasks={}, claims=[], user_msgs=0, assistant_msgs=0, tools={}, stats_v=STATS_V, **stats_fields())
         if e["mtime"] == st.st_mtime and e["size"] == st.st_size:
+            if agent == "codex" and e.get("origin_v") != ORIGIN_V:
+                e["entrypoint"] = codex_meta_origin(path) or "cli"  # older index rows: one read of the first line, then cached
+                e["origin_v"] = ORIGIN_V
+                if e["entrypoint"] == "subagent":
+                    e["subagent"] = True  # a thread another Codex spawned: not a conversation of its own
             idx[path] = e
             continue
         if st.st_size < e["off"]:
@@ -1798,6 +1860,10 @@ def refresh_index():
                     p = d.get("payload", d)
                     e["session_id"] = p.get("id", "")
                     e["cwd"] = p.get("cwd", "")
+                    e["entrypoint"] = origin_of(p.get("source"), p.get("originator")) or "cli"
+                    e["origin_v"] = ORIGIN_V
+                    if e["entrypoint"] == "subagent":
+                        e["subagent"] = True
                 except Exception:
                     pass
         if not e["cwd"]:
@@ -1813,7 +1879,7 @@ def refresh_index():
         if not e["entrypoint"]:
             m = re_entry.search(buf)
             if m:
-                e["entrypoint"] = m.group(1)
+                e["entrypoint"] = origin_of(m.group(1))
         if not e["first_prompt"]:
             e["first_prompt"] = first_prompt_of(agent, buf)
             if not e["subagent"] and _internal_run(e):
@@ -1995,7 +2061,7 @@ def ref_of(path, e, task_id=None):
     if e['agent'] == 'codex':
         from activity import codex_titles, user_text
         e = dict(e, title=codex_titles(HOME).get(e['session_id']) or user_text(e.get('title', '')))
-    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": git_root_name(e["cwd"]) or os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": e.get("entrypoint", ""), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode", "opencode", "hermes") else []}
+    return {"agent": e["agent"], "session_id": e["session_id"], "cwd": e["cwd"], "project": git_root_name(e["cwd"]) or os.path.basename(e["cwd"].rstrip("/")), "title": e.get("title", ""), "first_prompt": e.get("first_prompt", ""), "last_at": e["mtime"], "first_ts": e.get("first_ts", ""), "last_ts": e.get("last_ts", ""), "entrypoint": origin_of(e.get("entrypoint", "")), "branch": e.get("branch", ""), "user_msgs": e.get("user_msgs", 0), "assistant_msgs": e.get("assistant_msgs", 0), "tools": e.get("tools", {}), "tasks": e.get("tasks", {}), "mentions": e["tasks"].get(task_id, 0) if task_id else sum(e["tasks"].values()), "current_task": (e.get("claims") or [None])[-1], "resume_cmd": resume_command(e["agent"], e["session_id"], e["cwd"]), "path": path, "size": e.get("size", 0), "subagents": subagents_of(path) if e["agent"] in ("claude-code", "zcode", "opencode", "hermes") else []}
 
 
 _KNOWN_IDS = None

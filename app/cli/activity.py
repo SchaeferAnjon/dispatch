@@ -171,6 +171,9 @@ def observe(state, d):
     if t == 'session_meta':
         state['session_id'] = p.get('id') or p.get('session_id') or state.get('session_id')
         state['cwd'] = p.get('cwd', state.get('cwd', ''))
+        # Which Codex front end started it (VS Code extension, desktop app, terminal, `codex exec`).
+        src = (p.get('source') or p.get('originator') or '').strip().lower()
+        state['entrypoint'] = {'vscode': 'vscode', 'codex_vscode': 'vscode', 'codex desktop': 'desktop', 'codex_work_desktop': 'desktop', 'exec': 'exec', 'codex_exec': 'exec'}.get(src, 'cli' if src else state.get('entrypoint', ''))
     if t == 'ai-title':
         state['title'] = d.get('aiTitle') or state.get('title', '')
     if t == 'turn_context':

@@ -486,5 +486,6 @@ const settings: Dict = {
   "坑、做对的事、方法、复盘；Agent 开工前会查。": "Pitfalls, things that worked, how-tos and retros; agents consult it before starting.",
   "工作区根目录、外观、手机与屏幕访问、更新、接入另一台电脑。": "Workspace roots, appearance, phone and screen access, updates, connecting another Mac.",
   "# 服务器与数据库\n\n> 记录机器、云服务、数据库和账号用途。密码、Token 和 API Key 在「密钥与 API」中管理。\n> Agent 的行为规则和项目指令在「Agent 规则」中管理。\n\n## 通用\n\n### 服务器\n\n- 名称与用途：\n- 地址：\n- 关联密钥名称：\n\n### 数据库\n\n- 名称与用途：\n- 连接地址：\n- 关联密钥名称：\n\n### 常用资料\n\n- 资料位置：\n": "# Servers and databases\n\n> Record machines, cloud services, databases and what each account is for. Passwords, tokens and API keys are managed under “Keys and APIs”.\n> Agent behaviour rules and project instructions are managed under “Agent rules”.\n\n## General\n\n### Server\n\n- Name and purpose:\n- Address:\n- Related key name:\n\n### Database\n\n- Name and purpose:\n- Connection address:\n- Related key name:\n\n### Reference material\n\n- Where it lives:\n",
+  "VS Code 里的 Claude Code / Codex 扩展用的是同一份记录和同一套 hook，勾上对应的 Agent 就够了；它们的会话会标成「VS Code」。": "The Claude Code / Codex extensions in VS Code share the same records and hooks: ticking the matching agent is enough; their conversations are labelled “VS Code”.",
 };
 export default settings;
