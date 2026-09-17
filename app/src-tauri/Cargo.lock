@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "dispatch"
-version = "0.7.29"
+version = "0.7.30"
 dependencies = [
  "dirs",
  "notify",
