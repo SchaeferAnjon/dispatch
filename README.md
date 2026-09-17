@@ -11,6 +11,7 @@ Claude Code · Codex · pi · ZCode · Gemini CLI · OpenCode · Hermes
 
 <p align="center">
   <a href="https://schaeferanjon.github.io/dispatch/"><b>官网与演示视频</b></a> ·
+  <a href="https://schaeferanjon.github.io/dispatch/manual/"><b>使用手册（可搜索，中/英/德）</b></a> ·
   <a href="https://schaeferanjon.github.io/dispatch/demo/#/home"><b>在线试用（示例数据）</b></a> ·
   <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest"><b>下载 macOS 版</b></a>
 </p>
@@ -54,6 +55,10 @@ Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent
 - **两台电脑**：任务板、规则、技能同步一份；项目连同未提交改动、Git 历史、正在跑的会话和历史记录一键迁到另一台，后台跑、带进度条。
 - **手机**：通过 Tailscale 访问，同一套界面；通知走 ntfy / Bark / 系统通知；需要时用 noVNC 看并操作电脑屏幕。
 - **一切可用命令行问到**：界面能看到的，`dispatch … --json` 都能拿到，Agent 也能用。
+
+## 使用手册
+
+觉得功能多、不知道从哪开始：看 **[使用手册](https://schaeferanjon.github.io/dispatch/manual/)**（可全文搜索，中文、English、Deutsch）。它按「五分钟上手 → 核心概念 → 每个视图 → 手机 → 两台电脑 → Agent 约定 → 命令行参考 → 排错」的顺序写，每一页开头都说明这一页解决什么。
 
 ## 安装
 

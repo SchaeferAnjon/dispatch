@@ -77,7 +77,7 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
 <body>
 <header class="top"><div class="wrap">
   <a class="brand" href="#"><img src="assets/icon.png" alt=""><span data-i18n="brand">Dispatch 调度台</span></a>
-  <nav class="links"><a href="#features" data-i18n="nav.features">功能</a><a href="#phone" data-i18n="nav.phone">手机</a><a href="#howto" data-i18n="nav.howto">怎么用</a><a href="#faq" data-i18n="nav.faq">常见问题</a><a href="https://github.com/SchaeferAnjon/dispatch">GitHub</a></nav>
+  <nav class="links"><a href="#features" data-i18n="nav.features">功能</a><a href="#phone" data-i18n="nav.phone">手机</a><a href="#howto" data-i18n="nav.howto">怎么用</a><a href="manual/#/" class="manual-link" data-i18n="nav.manual">使用手册</a><a href="#faq" data-i18n="nav.faq">常见问题</a><a href="https://github.com/SchaeferAnjon/dispatch">GitHub</a></nav>
   <div class="lang" role="group" aria-label="Language"><button data-lang="zh">中文</button><button data-lang="en">EN</button><button data-lang="de">DE</button></div>
   <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-i18n="cta.download">下载 macOS 版</a>
 </div></header>
@@ -87,11 +87,12 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
   <p class="lead" data-i18n-html="hero.lead">Dispatch 读取本机已有的 Agent 记录，按<b>项目</b>组织每一段会话、每个任务和每项成果：谁在等你、谁在跑、做到哪了，一眼看清；在电脑或手机上直接回复原会话，不另开模型进程。</p>
   <div class="cta">
     <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-i18n="cta.download">下载 macOS 版</a>
-    <a class="btn" href="demo/#/home" target="_blank" data-i18n="cta.demo">在线试用（示例数据）</a>
+    <a class="btn demo-link" href="demo/?lang=zh#/home" target="_blank" data-i18n="cta.demo">在线试用（示例数据）</a>
+    <a class="btn manual-link" href="manual/#/" target="_blank" data-i18n="cta.manual">使用手册（可搜索）</a>
     <a class="btn" href="https://github.com/SchaeferAnjon/dispatch" data-i18n="cta.source">查看源码</a>
   </div>
   <p class="sub" data-i18n="hero.sub">macOS 14+ · 开源 MIT · 本地运行，默认不向任何模型发送你的文档或对话</p>
-  <div class="video"><video src="assets/demo.mp4" poster="assets/poster.jpg" controls playsinline muted autoplay loop></video></div>
+  <div class="video"><video data-media="demo.mp4" src="assets/demo.mp4" data-poster="poster.jpg" poster="assets/poster.jpg" controls playsinline muted autoplay loop></video></div>
   <div class="agents"><span>Claude Code</span><span>Codex</span><span>pi</span><span>ZCode</span><span>Gemini CLI</span><span>OpenCode</span><span>Hermes</span></div>
 </div></section>
 
@@ -111,44 +112,44 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
 
   <div class="feature">
     <div class="txt"><div class="kicker" data-i18n="f1.k">工作台</div><h3 data-i18n="f1.h">每个项目此刻的情况</h3><p data-i18n="f1.p">按项目排列，每张卡片是这个项目现在的样子：未读回复、等待确认的会话，正在跑的会话和它当前在做的动作，进行中的任务和验收进度，最新成果。三天没动静的项目折叠成一行。</p><ul><li data-i18n="f1.l1">顶部是需要你处理的计数，和各 Agent 的额度</li><li data-i18n="f1.l2">项目可收藏置顶、归档隐藏，两台电脑一致</li></ul></div>
-    <div class="shot"><img src="assets/shot-home.png" alt=""></div>
+    <div class="shot"><img data-media="shot-home.png" src="assets/shot-home.png" alt=""></div>
   </div>
 
   <div class="feature flip">
     <div class="txt"><div class="kicker" data-i18n="f2.k">项目页</div><h3 data-i18n="f2.h">一个项目的全部记录</h3><p data-i18n="f2.p">回顾页用模型写一段「现状」，下面是最近 14 天的时间线：任务进展与完成、git 提交、会话总结按天分组；还有没做完的任务和验收进度、本目录每个活会话在做什么、能不能关。</p><ul><li data-i18n="f2.l1">会话、任务、成果、待归属任务、目录、文档各一页</li><li data-i18n-html="f2.l2"><b>知识库</b>按项目分：这个项目踩过的坑、做对的事、复盘</li><li data-i18n="f2.l3">双击标题改显示名，可排序、可在新窗口打开</li></ul></div>
-    <div class="shot"><img src="assets/shot-project.png" alt=""></div>
+    <div class="shot"><img data-media="shot-project.png" src="assets/shot-project.png" alt=""></div>
   </div>
 
   <div class="feature">
     <div class="txt"><div class="kicker" data-i18n="f3.k">会话</div><h3 data-i18n="f3.h">看 Agent 的每一步，直接回复</h3><p data-i18n="f3.p">思考、工具调用、改动的文件、图片和产物都在一页里，正在跑的会话实时跟读。回复框就在下面：排队发送、打断并发送、发图片，排错了「撤回并编辑」。列表里正在跑的会话绿色高亮，答完等你看的才有蓝点。</p><ul><li data-i18n="f3.l1">看过的会话再打开秒显，之后只拉新增的部分</li><li data-i18n="f3.l2">Claude Code 的权限模式和模型可以在这里切</li></ul></div>
-    <div class="shot"><img src="assets/shot-session.png" alt=""></div>
+    <div class="shot"><img data-media="shot-session.png" src="assets/shot-session.png" alt=""></div>
   </div>
 
   <div class="feature flip">
     <div class="txt"><div class="kicker" data-i18n="f4.k">多窗口 · 分屏</div><h3 data-i18n="f4.h">几段会话并排看</h3><p data-i18n="f4.p">会话页一键分成 2 格或 4 格，每格是独立的会话，各自回复、各自实时更新；顶栏 ⧉ 把当前页面分离成独立窗口；⌘+点击项目、会话、任务直接开新窗口。一边看项目文档一边盯着 Agent 干活。</p></div>
-    <div class="shot"><img src="assets/shot-split.png" alt=""></div>
+    <div class="shot"><img data-media="shot-split.png" src="assets/shot-split.png" alt=""></div>
   </div>
 
   <div class="feature">
     <div class="txt"><div class="kicker" data-i18n="f5.k">任务板 · 等我</div><h3 data-i18n="f5.h">任务由 Agent 自己记</h3><p data-i18n-html="f5.p">每个新会话开头会收到注入的身份、本项目任务和相关知识；Agent 用 <code>dispatch begin / log / done</code> 记任务，用 <code>dispatch wiki</code> 记坑。你不需要在界面里逐个点完成。「等我」只放需要你处理的：未读回复、等待确认、只有你能做的事。</p><ul><li data-i18n="f5.l1">看板 / 表格、右键菜单、回收站可恢复</li><li data-i18n="f5.l2">⌘K 搜项目、会话、任务；⌘N 新建会话（可带图片和附件）</li></ul></div>
-    <div class="shot"><img src="assets/shot-inbox.png" alt=""></div>
+    <div class="shot"><img data-media="shot-inbox.png" src="assets/shot-inbox.png" alt=""></div>
   </div>
 
   <div class="feature flip">
     <div class="txt"><div class="kicker" data-i18n="f6.k">两台电脑</div><h3 data-i18n="f6.h">把项目连同会话搬到另一台 Mac</h3><p data-i18n="f6.p">任务板、规则、技能两台同步一份；项目页一键「迁移到另一台」：先预检 Git 与文件差异，再把目录（含未提交改动）、Git 历史、正在跑的会话和全部历史记录搬过去，那边直接续上。迁移在后台跑，项目上有带呼吸效果的进度条，切页面、刷新都不丢。</p></div>
-    <div class="shot"><img src="assets/shot-quota.png" alt=""></div>
+    <div class="shot"><img data-media="shot-quota.png" src="assets/shot-quota.png" alt=""></div>
   </div>
 
   <div class="feature">
     <div class="txt"><div class="kicker" data-i18n="f7.k">额度 · 规则 · 技能</div><h3 data-i18n="f7.h">各 Agent 的用量、共同规则和技能池</h3><p data-i18n="f7.p">额度页显示每个 Agent 的已用比例和重置时间，数据来源写明，缺失就说缺失。规则与资料页把所有 Agent 的全局指令收成一份源文件，同步到各自的位置并检查冲突；技能池统一挂载到各 Agent。</p></div>
-    <div class="shot"><img src="assets/shot-wiki.png" alt=""></div>
+    <div class="shot"><img data-media="shot-wiki.png" src="assets/shot-wiki.png" alt=""></div>
   </div>
 </div></section>
 
 <section id="phone"><div class="wrap">
   <div class="feature" style="border-top:0">
     <div class="txt"><div class="kicker" data-i18n="ph.k">手机</div><h2 style="font-size:26px" data-i18n="ph.h">出门也能看进展、回它一句</h2><p data-i18n="ph.p">手机通过 Tailscale 访问运行 Dispatch 的电脑，同一套界面按手机宽度排版，可「添加到主屏幕」。会话在电脑上没在跑？一键在电脑上恢复它再发；Agent 停在权限或信任确认框？手机上能看到那块屏幕、直接按键回答。报告生成完、会话变成「等你」时推通知（ntfy / Bark / 系统通知）。</p><ul><li data-i18n="ph.l1">设置里扫二维码即可，链接带一次性登录令牌</li><li data-i18n="ph.l2">需要时还能通过 noVNC 看并操作电脑屏幕</li></ul></div>
-    <div class="shot phone"><img src="assets/shot-phone.png" alt=""></div>
+    <div class="shot phone"><img data-media="shot-phone.png" src="assets/shot-phone.png" alt=""></div>
   </div>
 </div></section>
 
@@ -185,8 +186,8 @@ const I18N = {
 en: {
 "meta.title":"Dispatch: all your coding agents' sessions, tasks and progress in one place",
 "meta.desc":"Dispatch is a local workbench for AI coding agents: sessions, tasks, outcomes, quotas, rules and skills of Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode and Hermes, organised by project. Follow progress and reply to the original session from your Mac or your phone. macOS, open source.",
-"brand":"Dispatch","nav.features":"Features","nav.phone":"Phone","nav.howto":"How it works","nav.faq":"FAQ",
-"cta.download":"Download for macOS","cta.demo":"Try it online (sample data)","cta.source":"Source code",
+"brand":"Dispatch","nav.features":"Features","nav.phone":"Phone","nav.howto":"How it works","nav.manual":"Manual","nav.faq":"FAQ",
+"cta.download":"Download for macOS","cta.demo":"Try it online (sample data)","cta.manual":"User manual (searchable)","cta.source":"Source code",
 "hero.h1":"You are running more and more coding agents.<br>Their sessions, tasks and progress belong in one place.",
 "hero.lead":"Dispatch reads the records your agents already keep on your Mac and organises every session, task and outcome by <b>project</b>: who is waiting for you, who is working, how far things got, at a glance. Reply to the original session from your Mac or your phone, without spinning up another model process.",
 "hero.sub":"macOS 14+ · MIT open source · runs locally, sends nothing to any model unless you turn it on",
@@ -225,8 +226,8 @@ en: {
 de: {
 "meta.title":"Dispatch: Sitzungen, Aufgaben und Fortschritt aller Coding-Agents an einem Ort",
 "meta.desc":"Dispatch ist eine lokale Arbeitsfläche für KI-Coding-Agents: Sitzungen, Aufgaben, Ergebnisse, Kontingente, Regeln und Skills von Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode und Hermes, nach Projekt geordnet. Fortschritt verfolgen und der ursprünglichen Sitzung vom Mac oder vom Handy aus antworten. macOS, Open Source.",
-"brand":"Dispatch","nav.features":"Funktionen","nav.phone":"Handy","nav.howto":"So geht's","nav.faq":"FAQ",
-"cta.download":"Für macOS laden","cta.demo":"Online ausprobieren (Beispieldaten)","cta.source":"Quellcode",
+"brand":"Dispatch","nav.features":"Funktionen","nav.phone":"Handy","nav.howto":"So geht's","nav.manual":"Handbuch","nav.faq":"FAQ",
+"cta.download":"Für macOS laden","cta.demo":"Online ausprobieren (Beispieldaten)","cta.manual":"Handbuch (durchsuchbar)","cta.source":"Quellcode",
 "hero.h1":"Sie nutzen immer mehr Coding-Agents.<br>Ihre Sitzungen, Aufgaben und Fortschritte gehören an einen Ort.",
 "hero.lead":"Dispatch liest die Aufzeichnungen, die Ihre Agents ohnehin auf dem Mac anlegen, und ordnet jede Sitzung, jede Aufgabe und jedes Ergebnis nach <b>Projekt</b>: Wer wartet auf Sie, wer arbeitet gerade, wie weit ist es, auf einen Blick. Antworten Sie der ursprünglichen Sitzung vom Mac oder vom Handy aus, ohne einen weiteren Modellprozess zu starten.",
 "hero.sub":"macOS 14+ · MIT Open Source · läuft lokal, sendet nichts an ein Modell, solange Sie es nicht einschalten",
@@ -275,6 +276,14 @@ function apply(lang) {
   });
   document.documentElement.lang = LANG_ATTR[lang];
   document.querySelectorAll(".lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  // The demo, screenshots and video exist per language (assets/en/…, assets/de/…; Chinese at the root).
+  document.querySelectorAll(".demo-link").forEach((a) => { a.href = "demo/?lang=" + lang + "#/home"; });
+  document.querySelectorAll(".manual-link").forEach((a) => { a.href = "manual/#/" + (lang === "zh" ? "" : lang + "/"); });
+  const dir = lang === "zh" ? "assets/" : "assets/" + lang + "/";
+  document.querySelectorAll("[data-media]").forEach((el) => {
+    const want = dir + el.dataset.media;
+    if (el.getAttribute("src") !== want) { el.setAttribute("src", want); if (el.dataset.poster) el.setAttribute("poster", dir + el.dataset.poster); if (el.tagName === "VIDEO") el.load(); }
+  });
   try { localStorage.setItem("dispatch-site-lang", lang); } catch (e) {}
 }
 function pick() {
