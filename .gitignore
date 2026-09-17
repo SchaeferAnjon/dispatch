@@ -1,6 +1,5 @@
 .DS_Store
 .playwright-mcp/
-.playwright-mcp/
 phone-home.png
 *.log
 # node / vite

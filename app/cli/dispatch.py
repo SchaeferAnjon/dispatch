@@ -101,6 +101,17 @@ def beads_dir_portable():
     return "~/" + real[len(home):] if real.startswith(home) else real
 
 
+def looks_like_task_id(key):
+    """`<board prefix>-<id>`, with the prefix this board really uses (it can carry digits or capitals);
+    the generic shape stays accepted so ids from another board's notes still resolve as tasks."""
+    try:
+        pre = re.escape(task_prefix())
+    except Exception:
+        pre = "task"
+    # The generic shape is letters only: a session id prefix such as "b07cc9ed-5bed" must not pass.
+    return bool(re.match(rf"^(?:{pre}|[a-z]+)-[a-z0-9]{{2,8}}$", key or ""))
+
+
 def whoami():
     """Who this command speaks as on the board: the agent's own name when a hook or a launcher
     set BEADS_ACTOR, else the person at this Mac (their account name, like the desktop app)."""
@@ -143,6 +154,12 @@ def _sh(args, timeout=20, env=None):
 
 
 TOOL_FORMULA = {"bd": "beads", "dolt": "dolt", "herdr": "herdr", "tmux": "tmux", "git": "git", "rsync": "rsync", "ssh": "openssh"}
+
+
+def debug(where, err):
+    """Swallowed errors stay swallowed for people, and show up for whoever sets DISPATCH_DEBUG=1."""
+    if os.environ.get("DISPATCH_DEBUG"):
+        print(f"[dispatch debug] {where}: {type(err).__name__}: {err}", file=sys.stderr)
 
 
 def missing_tool_hint(tool):
@@ -992,7 +1009,7 @@ def resolve_agent(host, key):
     for a in agents:
         if low in (a.get("terminal_title_stripped") or a.get("terminal_title") or "").lower():
             return a["pane_id"]
-    if re.match(r"^[a-z]+-[a-z0-9]{2,8}$", key) and host is None:
+    if looks_like_task_id(key) and host is None:
         for s in live_sessions():
             if s.get("herdr") and (s.get("current_task") == key or key in (s.get("claims") or [])):
                 return s["herdr"]["pane_id"]
@@ -3271,7 +3288,12 @@ def cmd_save_image(a):
     data = d.get("data", "")
     if data.startswith("data:"):
         data = data.split(",", 1)[1]
-    raw = base64.b64decode(data)
+    if len(data) * 3 // 4 > 20 * 1024 * 1024:
+        raise SystemExit("图片超过 20 MB")
+    try:
+        raw = base64.b64decode(data, validate=False)
+    except Exception:
+        raise SystemExit("图片内容不是有效的 base64，没有保存")
     if len(raw) > 20 * 1024 * 1024:
         raise SystemExit("图片超过 20 MB")
     ext = "jpg" if raw[:3] == b"\xff\xd8\xff" else "png" if raw[:4] == b"\x89PNG" else "gif" if raw[:3] == b"GIF" else "webp" if raw[8:12] == b"WEBP" else "bin"
@@ -3292,7 +3314,12 @@ def cmd_save_file(a):
     data = d.get("data", "")
     if data.startswith("data:"):
         data = data.split(",", 1)[1]
-    raw = base64.b64decode(data)
+    if len(data) * 3 // 4 > 50 * 1024 * 1024:
+        raise SystemExit("文件超过 50 MB")
+    try:
+        raw = base64.b64decode(data, validate=False)
+    except Exception:
+        raise SystemExit("文件内容不是有效的 base64，没有保存")
     if len(raw) > 50 * 1024 * 1024:
         raise SystemExit("附件超过 50 MB")
     folder = os.path.join(DISPATCH_DIR, "files")
@@ -3457,7 +3484,7 @@ def resolve(idx, key):
     if ':' in key:
         agent, sid = key.split(':', 1)
         return [r for r in session_refs(idx, session_id=sid) if r['agent'] == agent]
-    if re.match(r"^[a-z]+-[a-z0-9]{2,8}$", key):
+    if looks_like_task_id(key):
         return session_refs(idx, task_id=key)
     return session_refs(idx, session_id=key)
 
@@ -3468,7 +3495,7 @@ def refs_everywhere(key, on=""):
     if on in ("", "local") or on == local_host_name():
         mine = [dict(r, host="local", host_name=local_host_name()) for r in resolve(refresh_index(), key)[:1]]
         found += [("local", local_host_name(), r) for r in annotate_moves(mine)]
-    if on not in ("local",) and on != local_host_name() and not re.match(r"^[a-z]+-[a-z0-9]{2,8}$", key):
+    if on not in ("local",) and on != local_host_name() and not looks_like_task_id(key):
         agent, sid = key.split(":", 1) if ":" in key else ("", key)
         seen = set()
         for r in remote_refs():
@@ -4051,8 +4078,8 @@ def cc_switch_flag(name, agent, on):
         con.execute(f"update skills set {col}=?, updated_at=? where name=?", (1 if on else 0, int(time.time()), name))
         con.commit()
         con.close()
-    except Exception:
-        pass
+    except Exception as e:
+        debug("cc_switch_flag", e)
 
 
 def cmd_skills(a):
@@ -6443,7 +6470,8 @@ def catalog_items():
         for name, on in sorted((st.get("enabledPlugins") or {}).items()):
             if on:
                 continue
-            pl, mk = name.split("@", 1)
+            pl, _, mk = name.partition("@")  # a plugin installed without a marketplace has no "@"
+            mk = mk or "*"
             desc = ""
             for d in sorted(glob.glob(os.path.join(HOME, ".claude", "plugins", "cache", mk, pl, "*", ".claude-plugin", "plugin.json")))[-1:]:
                 try:

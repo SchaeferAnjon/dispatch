@@ -385,11 +385,15 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    // On a Mac the shortcut key is ⌘ only: Ctrl+K / Ctrl+N / Ctrl+T are text-editing keys in every
+    // macOS text field (kill line, next line, transpose) and must keep working while typing a reply.
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSearch(true); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); setNewSession(true); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "t") { e.preventDefault(); setCreating(true); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r") { e.preventDefault(); void reload(); }
+      const mod = mac ? e.metaKey : (e.metaKey || e.ctrlKey);
+      if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); setSearch(true); }
+      if (mod && e.key.toLowerCase() === "n") { e.preventDefault(); setNewSession(true); }
+      if (mod && e.key.toLowerCase() === "t") { e.preventDefault(); setCreating(true); }
+      if (mod && e.key.toLowerCase() === "r") { e.preventDefault(); void reload(); }
       if (e.key === "Escape" && document.activeElement === searchRef.current) { setQuery(""); searchRef.current?.blur(); }
     };
     window.addEventListener("keydown", onKey);

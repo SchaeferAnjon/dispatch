@@ -191,21 +191,35 @@ def cli_link():
             os.symlink(src, dst)
     # PATH for the shells people actually use.
     added = []
-    fish = os.path.join(D.HOME, ".config", "fish", "conf.d", "dispatch.fish")
-    if not os.path.exists(fish):
-        os.makedirs(os.path.dirname(fish), exist_ok=True)
-        open(fish, "w").write("# Dispatch CLI\nfish_add_path -g $HOME/.local/bin /opt/homebrew/bin\n")
-        added.append(fish)
-    zprofile = os.path.join(D.HOME, ".zprofile")
+    # fish only for people who have it (not a stray ~/.config/fish on every Mac).
+    if which("fish") or os.path.isdir(os.path.join(D.HOME, ".config", "fish")):
+        fish = os.path.join(D.HOME, ".config", "fish", "conf.d", "dispatch.fish")
+        if not os.path.exists(fish):
+            os.makedirs(os.path.dirname(fish), exist_ok=True)
+            open(fish, "w").write("# Dispatch CLI\nfish_add_path -g $HOME/.local/bin /opt/homebrew/bin\n")
+            added.append(fish)
     line = 'export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH" # dispatch'
+    # zsh is macOS's default; bash for people who switched back (login shells read ~/.bash_profile).
+    rc_files = [os.path.join(D.HOME, ".zprofile")]
+    if os.environ.get("SHELL", "").endswith("bash") or os.path.exists(os.path.join(D.HOME, ".bash_profile")):
+        rc_files.append(os.path.join(D.HOME, ".bash_profile"))
+    for rc in rc_files:
+        try:
+            cur = open(rc).read()
+        except FileNotFoundError:
+            cur = ""
+        if "# dispatch" not in cur:
+            open(rc, "a").write(("\n" if cur and not cur.endswith("\n") else "") + line + "\n")
+            added.append(rc)
+    # Does a fresh login shell really find it? Said plainly, so "command not found" is no surprise.
+    shell = os.environ.get("SHELL") or "/bin/zsh"
     try:
-        cur = open(zprofile).read()
-    except FileNotFoundError:
-        cur = ""
-    if "# dispatch" not in cur:
-        open(zprofile, "a").write(("\n" if cur and not cur.endswith("\n") else "") + line + "\n")
-        added.append(zprofile)
-    return {"link": link, "target": bundled_cli(), "path_files": added}
+        r = subprocess.run([shell, "-lc", "command -v dispatch"], capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+        verified = r.returncode == 0 and bool(r.stdout.strip())
+    except Exception:
+        verified = False
+    return {"link": link, "target": bundled_cli(), "path_files": added, "shell": os.path.basename(shell), "verified": verified,
+            "note": "" if verified else f"新开的 {os.path.basename(shell)} 终端里还找不到 dispatch：把 ~/.local/bin 加进 PATH，或直接用完整路径 {link}"}
 
 
 # ---------------------------------------------------------------- board
@@ -573,6 +587,14 @@ def remote_dispatch_json(target, args, timeout=90):
     return json.loads(r.stdout[i:])
 
 
+def herdr_session_here():
+    """The Herdr session this Mac's agents live in (what a peer has to attach to)."""
+    try:
+        return D.herdr_session_name() or "main"
+    except Exception:
+        return "main"
+
+
 def hub_info():
     """Runs ON the hub, called over ssh by a Mac that wants to join: make sure the board is
     reachable from outside and hand back what the joiner needs."""
@@ -592,7 +614,7 @@ def hub_info():
             pub = open(p).read().strip(); break
     return {"name": m["name"], "user": m["user"], "ip": ip, "tailscale_ip": m["tailscale_ip"], "lan_ip": m["lan_ip"],
             "remote": f"http://{ip}:{REMOTESAPI_PORT}/task", "sync_user": user, "sync_password": pw, "pubkey": pub,
-            "rules_dir": os.path.dirname(D.RULES_FILE), "pool": D.POOL, "dispatch": "$HOME/.local/bin/dispatch", "beads_dir": D.beads_dir_portable()}
+            "rules_dir": os.path.dirname(D.RULES_FILE), "pool": D.POOL, "dispatch": "$HOME/.local/bin/dispatch", "beads_dir": D.beads_dir_portable(), "herdr_session": herdr_session_here()}
 
 
 def board_retire():
@@ -666,11 +688,11 @@ def board_join(target, replace=False):
     sync_sh = os.path.join(D.DISPATCH_DIR, "board-sync.sh")
     write_plist(L.label("beads-sync"), ["/bin/bash", sync_sh], env={"BOARD_HUB": hub["ip"]}, interval=120, log=os.path.join(SHARED, "sync.log"))
     # Both Macs know each other.
-    hub_entry = {"id": re.sub(r"[^a-z0-9]+", "-", hub["name"].lower()).strip("-") or "hub", "name": hub["name"], "ssh": f"{hub['user']}@{hub['ip']}", "dispatch": hub["dispatch"], "herdr_session": "main", **({"beads_dir": hub["beads_dir"]} if hub.get("beads_dir") and hub["beads_dir"] != "~/tasks/.beads" else {})}
+    hub_entry = {"id": re.sub(r"[^a-z0-9]+", "-", hub["name"].lower()).strip("-") or "hub", "name": hub["name"], "ssh": f"{hub['user']}@{hub['ip']}", "dispatch": hub["dispatch"], "herdr_session": hub.get("herdr_session") or "main", **({"beads_dir": hub["beads_dir"]} if hub.get("beads_dir") and hub["beads_dir"] != "~/tasks/.beads" else {})}
     hs = [h for h in D.hosts() if h.get("ssh") != hub_entry["ssh"]] + [hub_entry]
     json.dump(hs, open(D.HOSTS_FILE, "w"), ensure_ascii=False, indent=2)
     me = machine()
-    my_entry = {"id": re.sub(r"[^a-z0-9]+", "-", me["name"].lower()).strip("-") or "mac", "name": me["name"], "ssh": f"{me['user']}@{me['tailscale_ip'] or me['lan_ip']}", "dispatch": "$HOME/.local/bin/dispatch", "herdr_session": "main", **({"beads_dir": D.beads_dir_portable()} if D.beads_dir_portable() != "~/tasks/.beads" else {})}
+    my_entry = {"id": re.sub(r"[^a-z0-9]+", "-", me["name"].lower()).strip("-") or "mac", "name": me["name"], "ssh": f"{me['user']}@{me['tailscale_ip'] or me['lan_ip']}", "dispatch": "$HOME/.local/bin/dispatch", "herdr_session": herdr_session_here(), **({"beads_dir": D.beads_dir_portable()} if D.beads_dir_portable() != "~/tasks/.beads" else {})}
     try:
         remote_dispatch_json(target, ["init", "add-host", "'" + json.dumps(my_entry, ensure_ascii=False) + "'"])
     except Exception as e:

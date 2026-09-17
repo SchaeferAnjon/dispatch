@@ -87,6 +87,13 @@ export const MovedChip = ({ r }: { r: { moved_to_name?: string; moved_from_name?
 // background), instead of a blank 「读取对话记录…」 and a full re-parse — over ssh from the other Mac
 // that was two or three seconds every time.
 const detailCache = new Map<string, SessionDetail>();
+// A long transcript is megabytes of parsed messages: keep the few conversations the person is
+// moving between, not every one opened since launch.
+const DETAIL_CACHE_MAX = 8;
+function cacheDetail(key: string, d: SessionDetail) {
+  detailCache.delete(key); detailCache.set(key, d);
+  while (detailCache.size > DETAIL_CACHE_MAX) { const oldest = detailCache.keys().next().value; if (oldest === undefined) break; detailCache.delete(oldest); }
+}
 
 export function SessionsView({ onBack, onProject, solo = false, offlineHosts = [], localHostName, archivedProjects, refs, scriptCount, refsLoaded: loaded, archiveDays, activities, issues, outcomes, activityError, onSeen, api, me, live, onSelectTask, onSelected, onDone, onError, initialId, hostId }: Props) {
   const t = useT();
@@ -163,7 +170,7 @@ export function SessionsView({ onBack, onProject, solo = false, offlineHosts = [
         d = { ...d, meta: { ...d.meta, host: selHost, remote: true, host_name: r?.host_name ?? selHost, moved_to: r?.moved_to, moved_to_name: r?.moved_to_name, moved_from: r?.moved_from, moved_from_name: r?.moved_from_name } };
       } else d = await api.sessionDetail(sel);
       lastFull = Date.now();
-      if (alive) { detailCache.set(sel, d); setDetail(d); setLoadError(false); }
+      if (alive) { cacheDetail(sel, d); setDetail(d); setLoadError(false); }
     };
     // Between resyncs only what was appended since the last read travels (`--since <offset>`),
     // for an idle conversation as well as a running one.
@@ -172,7 +179,7 @@ export function SessionsView({ onBack, onProject, solo = false, offlineHosts = [
       if (!d || d.offset === undefined) return fetchFull();
       const raw = await api.on(selHost ?? d.meta.host ?? "local", ["session", `${d.meta.agent}:${d.meta.session_id}`, "--since", String(d.offset), "--json"]);
       const t = JSON.parse(raw.slice(Math.max(0, raw.indexOf("{")))) as SessionTail;
-      if (alive && t.partial) setDetail((prev) => { if (!prev) return prev; const next = mergeTail(prev, t); detailCache.set(sel, next); return next; });
+      if (alive && t.partial) setDetail((prev) => { if (!prev) return prev; const next = mergeTail(prev, t); cacheDetail(sel, next); return next; });
     };
     const refresh = async () => {
       if (document.visibilityState === 'visible') {
@@ -202,7 +209,7 @@ export function SessionsView({ onBack, onProject, solo = false, offlineHosts = [
         try {
           const raw = await api.on(host, ['session', key, '--since', String(d.offset), '--json']);
           const t = JSON.parse(raw.slice(Math.max(0, raw.indexOf('{')))) as SessionTail;
-          if (alive && t.partial) setDetail((prev) => { if (!prev) return prev; const next = mergeTail(prev, t); detailCache.set(sel, next); return next; });
+          if (alive && t.partial) setDetail((prev) => { if (!prev) return prev; const next = mergeTail(prev, t); cacheDetail(sel, next); return next; });
         } catch { /* the next full read catches up */ }
         inflight = false;
       }

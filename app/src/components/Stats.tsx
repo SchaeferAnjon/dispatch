@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment,  useEffect, useMemo, useState } from "react";
 import type { Api, AgentStartInput } from "../api";
 import { actorOf } from "../derive";
 import type { Stats, StatsDay, StatsRank } from "../types";
@@ -95,10 +95,10 @@ function HourGrid({ hours }: { hours: number[][] }) {
       <div className="hg">
         <span />{Array.from({ length: 24 }, (_, h) => <span key={h} className="hh muted">{h % 3 === 0 ? h : ""}</span>)}
         {hours.map((row, w) => (
-          <>
-            <span key={`w${w}`} className="hw muted">{wdShort(w)}</span>
+          <Fragment key={`row${w}`}>
+            <span className="hw muted">{wdShort(w)}</span>
             {row.map((n, h) => <i key={`${w}-${h}`} className={`c l${level(n, max)}`} title={`${t(WD[w])} ${h}:00 · ${t("{n} 条消息", { n })}`} />)}
-          </>
+          </Fragment>
         ))}
       </div>
       {busiest && busiest.n > 0 && <div className="muted small" style={{ marginTop: 6 }}>{t("最忙：{wd} {from}:00 – {to}:00", { wd: t(WD[busiest.w]), from: busiest.h, to: busiest.h + 1 })}</div>}

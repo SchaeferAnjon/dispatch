@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment,  useEffect, useMemo, useState } from "react";
 import type { Api } from "../api";
 import type { Host, Skill } from "../types";
 import { HostPicker, hostReason } from "./HostPicker";
@@ -211,7 +211,7 @@ export function SkillsView({ api, hosts, onDone, onError, hostId = "" }: Props) 
                 const { meta, body } = splitFrontmatter(content);
                 return (
                   <>
-                    {meta.length > 0 && <div className="fm">{meta.map(([k, v]) => <><b key={k + "k"}>{k}</b><span key={k + "v"}>{v}</span></>)}</div>}
+                    {meta.length > 0 && <div className="fm">{meta.map(([k, v]) => <Fragment key={k}><b>{k}</b><span>{v}</span></Fragment>)}</div>}
                     <Markdown src={body} onRelativeLink={follow} />
                     {files.length > 1 && <details className="skill-files"><summary className="muted small">{t("这个技能的文件 · {n}", { n: files.length })}</summary>{files.map((f) => <button key={f} className={`link mono small${f === file ? " on" : ""}`} onClick={() => setFile(f)}>{f}</button>)}</details>}
                   </>

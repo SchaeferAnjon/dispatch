@@ -595,5 +595,7 @@ const settings: Dict = {
   "只防系统休眠（默认）": "Nur System (Standard)",
   "屏幕也常亮": "Auch Bildschirm",
   "不干预": "Nicht eingreifen",
+  "新开的终端里还找不到 dispatch：把 ~/.local/bin 加进 PATH，或直接用上面的完整路径。": "Ein neues Terminal findet dispatch noch nicht: ~/.local/bin zum PATH hinzufügen oder den vollständigen Pfad oben verwenden.",
+  "新开的终端里能直接用 dispatch 了。": "In einem neuen Terminal lässt sich dispatch jetzt direkt ausführen.",
 };
 export default settings;
