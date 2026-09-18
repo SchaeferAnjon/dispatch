@@ -87,6 +87,28 @@ class PhoneEntryOnAnotherMac(unittest.TestCase):
             self.assertIn("--to '#/x y'", run.call_args.args[0][-1])
 
 
+class HomeScreenIcon(unittest.TestCase):
+    """iOS asks for the icon without the page's cookie, and the installed app has no src-tauri/."""
+
+    def test_icons_come_from_the_web_build(self):
+        with tempfile.TemporaryDirectory() as d:
+            for name in ("apple-touch-icon.png", "phone-icon-512.png"):
+                open(os.path.join(d, name), "wb").write(b"png")
+            with patch.object(serve, "DIST", d), patch.object(serve, "ICON", "/nowhere/icon.png"):
+                for path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png", "/icon.png", "/phone-icon-512.png", "/favicon.ico"):
+                    self.assertTrue(serve.phone_icon(path).startswith(d), path)
+
+    def test_the_shipped_web_build_really_has_them(self):
+        public = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(serve.__file__))), "public")
+        for name in set(serve.PHONE_ICONS.values()):
+            self.assertTrue(os.path.isfile(os.path.join(public, name)), name)
+
+    def test_manifest_and_page_point_at_them(self):
+        icons = [i["src"] for i in json.loads(serve.manifest())["icons"]]
+        self.assertTrue(all(i in serve.PHONE_ICONS for i in icons), icons)
+        self.assertIn('href="/apple-touch-icon.png"', serve.INJECT)
+
+
 class Binding(unittest.TestCase):
     def test_lan_only_when_allowed(self):
         import dispatch as d

@@ -236,12 +236,25 @@ def commands():
 CMDS = commands()
 
 
+# Full-bleed, opaque icons for a phone's home screen (the desktop icon has transparent margins,
+# which iOS paints black). They ship inside the web build, so the installed app has them too.
+PHONE_ICONS = {"/apple-touch-icon.png": "apple-touch-icon.png", "/apple-touch-icon-precomposed.png": "apple-touch-icon.png",
+               "/phone-icon-512.png": "phone-icon-512.png", "/icon.png": "phone-icon-512.png", "/favicon.ico": "apple-touch-icon.png"}
+
+
+def phone_icon(path):
+    full = os.path.join(DIST, PHONE_ICONS[path])
+    if os.path.isfile(full):
+        return full
+    return ICON if os.path.isfile(ICON) else ""  # running from source before the first web build
+
+
 def manifest():
-    return json.dumps({"name": "Dispatch", "short_name": "Dispatch", "start_url": "/", "scope": "/", "display": "standalone", "background_color": "#F4F3EF", "theme_color": "#F4F3EF", "icons": [{"src": "/icon.png", "sizes": "512x512", "type": "image/png"}]})
+    return json.dumps({"name": "Dispatch", "short_name": "Dispatch", "start_url": "/", "scope": "/", "display": "standalone", "background_color": "#F4F3EF", "theme_color": "#F4F3EF", "icons": [{"src": "/phone-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}, {"src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png"}]})
 
 
 SW = "self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',()=>{});"
-INJECT = '<script>window.__DISPATCH_SERVE__=1;if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script><link rel="manifest" href="/manifest.webmanifest"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Dispatch"><link rel="apple-touch-icon" href="/icon.png"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
+INJECT = '<script>window.__DISPATCH_SERVE__=1;if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script><link rel="manifest" href="/manifest.webmanifest"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Dispatch"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"><link rel="icon" type="image/png" href="/apple-touch-icon.png"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
 
 
 class H(BaseHTTPRequestHandler):
@@ -298,8 +311,12 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, manifest(), MIME[".webmanifest"])
         if u.path == "/sw.js":
             return self._send(200, SW, MIME[".js"])
-        if u.path == "/icon.png" and os.path.exists(ICON):
-            return self._send(200, open(ICON, "rb").read(), "image/png", {"Cache-Control": "max-age=86400"})
+        if u.path in PHONE_ICONS:
+            # Before the login check: iOS fetches the home-screen icon without the page's cookie.
+            icon = phone_icon(u.path)
+            if icon:
+                return self._send(200, open(icon, "rb").read(), "image/png", {"Cache-Control": "max-age=86400"})
+            return self._send(404, "", "text/plain")
         if u.path == "/api/health":
             # `version` lets an open phone page notice the Mac updated and offer a refresh.
             # `moved`: an open page learns that the phone's entry now lives on another Mac and reloads into the forward.
