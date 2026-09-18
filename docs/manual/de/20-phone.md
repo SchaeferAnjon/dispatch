@@ -82,3 +82,9 @@ Wenn Sie den ganzen Bildschirm des Rechners sehen und einen Dialog anklicken mü
 3. „Bildschirmlink kopieren“ und ans Handy schicken, oder „Bildschirm ansehen ⧉“ im Arbeitsplatz oder auf der Seite Agent-Status. Öffnen Sie den Link im Browser des Handys und melden Sie sich mit Benutzernamen und Anmeldekennwort dieses Macs an, dann sehen und bedienen Sie den Bildschirm. Das Handy muss mit Tailscale verbunden sein.
 
 Öffnen Sie den eigenen Bildschirmlink lokal, ergibt das ein Bild im Bild; er ist für das Handy oder den anderen Rechner gedacht. `dispatch screen status` zeigt den Zustand.
+
+## Zwei Macs: Welchen das Handy nutzt
+
+Das Handy braucht nur einen Mac; wählen Sie den, der immer läuft (etwa einen Mac mini). Stellen Sie in den Einstellungen beim Handy-Zugriff „Die Handy-Version läuft auf“ auf diesen Mac. QR-Code und Link zeigen dann dorthin, und dieser Mac zeigt auch die Sitzungen des anderen.
+
+Zeigt der auf dem Handy gespeicherte Zugang noch auf das Notebook, müssen Sie nichts von Hand ändern: Beim nächsten Öffnen bringt das Notebook das Handy zum dauerhaft laufenden Mac und meldet es dort an. Fügen Sie die neue Seite dort erneut zum Home-Bildschirm hinzu oder speichern Sie ein Lesezeichen. Auch Links in Benachrichtigungen öffnen direkt den dauerhaft laufenden Mac. Ist dieser gerade nicht erreichbar, bedient das Notebook das Handy weiter selbst.

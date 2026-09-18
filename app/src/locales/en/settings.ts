@@ -50,7 +50,7 @@ const settings: Dict = {
   "手机版跑在": "Phone version runs on",
   "手机版跑在哪台 Mac": "Which Mac serves the phone version",
   "本机（{name}）": "this Mac ({name})",
-  "选常驻的那台，这台电脑带走了手机也能用；换了机器要在手机上重新打开一次链接": "Pick the machine that stays put, so the phone keeps working when you take this one along; after switching, open the link on the phone once more",
+  "选常驻的那台，这台电脑关着手机也能用。手机上原来存的入口打开时会自动带去那台，到了之后重新添加到主屏幕或存成书签": "Pick the Mac that stays on, so the phone works while this one is closed. The entry already saved on the phone is taken there automatically when opened; once there, add the page to the home screen or bookmark it again",
   "复制链接": "Copy link",
   "屏幕访问": "Screen access",
   "手机连上 Tailscale 后，用浏览器打开这个链接就能看到并操作这台电脑的屏幕（noVNC），登录用这台 Mac 的用户名和密码。": "Once the phone is on Tailscale, open this link in a browser to see and control this Mac’s screen (noVNC); log in with this Mac’s user name and password.",

@@ -93,6 +93,18 @@ def serve_link(path):
         return ""
     if not conf.get("token"):
         return ""
+    dest = path[1:] if path.startswith("/#/") else path  # "/#/sessions/x" → "#/sessions/x"
+    if conf.get("phone_host"):
+        # The phone lives on another Mac (the always-on one): the link must open there, or it
+        # is dead whenever this Mac is closed. That Mac can show this Mac's sessions too.
+        try:
+            import serve
+            home = serve.phone_home(conf)
+            link = serve.remote_login_link(home, to=dest, ttl=LINK_TTL.get(channel()[0], 24 * 3600)) if home else ""
+            if link:
+                return link
+        except Exception as e:
+            D.debug("notify.serve_link phone_host", e)
     ip = conf.get("bind") or D.tailscale_ip() or (D.lan_ip() if conf.get("allow_lan") else "")
     if not ip:
         return ""
@@ -101,7 +113,6 @@ def serve_link(path):
         code = serve.login_issue(ttl=LINK_TTL.get(channel()[0]))
     except Exception:
         code = ""
-    dest = path[1:] if path.startswith("/#/") else path  # "/#/sessions/x" → "#/sessions/x"
     q = {"login": code, "to": dest} if code else {"to": dest}
     return f"http://{ip}:{conf.get('port', 7799)}/?" + urllib.parse.urlencode(q)
 

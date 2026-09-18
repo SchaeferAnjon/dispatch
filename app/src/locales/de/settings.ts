@@ -50,7 +50,7 @@ const settings: Dict = {
   "手机版跑在": "Handy-Version läuft auf",
   "手机版跑在哪台 Mac": "Welcher Mac die Handy-Version bereitstellt",
   "本机（{name}）": "dieser Mac ({name})",
-  "选常驻的那台，这台电脑带走了手机也能用；换了机器要在手机上重新打开一次链接": "Wählen Sie den Mac, der stehen bleibt — dann funktioniert das Handy auch, wenn Sie diesen mitnehmen; nach einem Wechsel den Link auf dem Handy einmal neu öffnen",
+  "选常驻的那台，这台电脑关着手机也能用。手机上原来存的入口打开时会自动带去那台，到了之后重新添加到主屏幕或存成书签": "Wählen Sie den Mac, der immer läuft, dann funktioniert das Handy auch bei zugeklapptem Gerät. Der auf dem Handy gespeicherte Zugang führt beim Öffnen automatisch dorthin; fügen Sie die Seite dort erneut zum Home-Bildschirm hinzu oder speichern Sie ein Lesezeichen",
   "复制链接": "Link kopieren",
   "屏幕访问": "Bildschirmzugriff",
   "手机连上 Tailscale 后，用浏览器打开这个链接就能看到并操作这台电脑的屏幕（noVNC），登录用这台 Mac 的用户名和密码。": "Sobald das Handy in Tailscale ist, diesen Link im Browser öffnen, um den Bildschirm dieses Macs zu sehen und zu steuern (noVNC); Anmeldung mit Benutzername und Kennwort dieses Macs.",

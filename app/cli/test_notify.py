@@ -127,6 +127,21 @@ class ServeLink(unittest.TestCase):
                 left = list(json.load(open(logins)).values())[0] - time.time()
                 self.assertTrue(lo < left <= hi, (chan, left))
 
+    def test_when_the_phone_lives_on_another_mac_the_link_opens_there(self):
+        import serve
+        with tempfile.TemporaryDirectory() as d:
+            json.dump({"token": "tok", "port": 7799, "bind": "100.1.2.3", "phone_host": "mini"}, open(os.path.join(d, "serve.json"), "w"))
+            home = {"id": "mini", "name": "Mac mini", "ssh": "me@mini"}
+            with patch.object(notify.D, "DISPATCH_DIR", d), patch.object(serve, "phone_home", return_value=home), \
+                 patch.object(serve, "remote_login_link", return_value="http://100.9.9.9:7799/?login=abc&to=%23%2Fsessions%2Fs1") as far:
+                link = notify.serve_link("/#/sessions/s1")
+            self.assertTrue(link.startswith("http://100.9.9.9:7799/"))
+            self.assertEqual(far.call_args.kwargs["to"], "#/sessions/s1")
+            # that Mac does not answer: fall back to this one rather than sending a dead link
+            with patch.object(notify.D, "DISPATCH_DIR", d), patch.object(serve, "phone_home", return_value=home), \
+                 patch.object(serve, "remote_login_link", return_value=""), patch.multiple(serve, DISPATCH_DIR=d, LOGINS=os.path.join(d, "serve-logins.json")):
+                self.assertTrue(notify.serve_link("/#/sessions/s1").startswith("http://100.1.2.3:7799/?login="))
+
     def test_no_conf_is_empty(self):
         with tempfile.TemporaryDirectory() as d, patch.object(notify.D, "DISPATCH_DIR", d):
             self.assertEqual(notify.serve_link("/x"), "")

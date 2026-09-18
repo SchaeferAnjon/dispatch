@@ -39,6 +39,54 @@ class LoginCodes(unittest.TestCase):
             self.assertEqual(notify.serve_link("/#/home"), "")  # LAN not allowed → nothing to link to
 
 
+class PhoneEntryOnAnotherMac(unittest.TestCase):
+    """`serve host <id>` says the phone should use the always-on Mac. A phone paired with this
+    Mac before that must be taken there, or it loses access whenever this Mac is closed."""
+
+    def test_a_mac_that_points_elsewhere_hands_out_no_links(self):
+        with self.assertRaises(SystemExit):
+            serve.login_link({"token": "t", "phone_host": "mini"})
+
+    def test_own_link_carries_a_short_lived_code_and_the_page(self):
+        with tempfile.TemporaryDirectory() as d, patch.multiple(serve, DISPATCH_DIR=d, LOGINS=os.path.join(d, "l.json")), \
+             patch.object(serve, "bind_address", return_value="100.9.9.9"):
+            link = serve.login_link({"token": "t", "port": 7799}, to="#/sessions/s1", ttl=300)
+            self.assertTrue(link.startswith("http://100.9.9.9:7799/?login="))
+            self.assertIn("to=%23%2Fsessions%2Fs1", link)
+            self.assertNotIn("token", link)
+            import time
+            self.assertLessEqual(list(json.load(open(os.path.join(d, "l.json"))).values())[0] - time.time(), 305)
+
+    def test_only_listening_to_itself_is_refused(self):
+        with patch.object(serve, "bind_address", return_value="127.0.0.1"), self.assertRaises(SystemExit):
+            serve.login_link({"token": "t"})
+
+    def test_forward_page_goes_to_the_link_and_keeps_the_hash(self):
+        page = serve.moved_page("http://100.9.9.9:7799/?login=abc", "Mac <mini>")
+        self.assertIn("http://100.9.9.9:7799/?login=abc", page)
+        self.assertIn("Mac &lt;mini&gt;", page)
+        self.assertIn("location.hash", page)
+
+    def test_a_mac_that_is_off_is_asked_once_in_a_while_not_on_every_request(self):
+        import subprocess, sys, types
+        fake = types.SimpleNamespace(remote_beads=lambda h: "BEADS_DIR=x", remote_cli=lambda h: "dispatch", hosts=lambda: [])
+        serve._HOME_DOWN["at"] = 0.0
+        with patch.dict(sys.modules, {"dispatch": fake}), patch.object(serve.subprocess, "run", side_effect=subprocess.TimeoutExpired("ssh", 15)) as run:
+            self.assertEqual(serve.remote_login_link({"id": "mini", "ssh": "me@mini"}), "")
+            self.assertEqual(serve.remote_login_link({"id": "mini", "ssh": "me@mini"}), "")
+            self.assertEqual(run.call_count, 1)
+        serve._HOME_DOWN["at"] = 0.0
+
+    def test_answering_mac_gives_its_link(self):
+        import sys, types
+        fake = types.SimpleNamespace(remote_beads=lambda h: "BEADS_DIR=x", remote_cli=lambda h: "dispatch", hosts=lambda: [])
+        done = types.SimpleNamespace(returncode=0, stdout="noise\nhttp://100.9.9.9:7799/?login=abc\n", stderr="")
+        serve._HOME_DOWN["at"] = 0.0
+        with patch.dict(sys.modules, {"dispatch": fake}), patch.object(serve.subprocess, "run", return_value=done) as run:
+            self.assertEqual(serve.remote_login_link({"id": "mini", "ssh": "me@mini"}, to="#/x y"), "http://100.9.9.9:7799/?login=abc")
+            self.assertIn("--to '#/x y'", run.call_args.args[0][-1])
+
+
 class Binding(unittest.TestCase):
     def test_lan_only_when_allowed(self):
         import dispatch as d

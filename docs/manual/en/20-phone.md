@@ -82,3 +82,9 @@ When you need to see the whole Mac screen and click some dialog:
 3. "Copy screen link" and send it to the phone, or use "View screen ⧉" on the workbench or the Agent status page. Open it in the phone's browser and sign in with this Mac's user name and login password to see and control the screen. The phone has to be on Tailscale.
 
 Opening your own screen link on the same Mac gives you a screen inside a screen; it is meant for a phone or the other Mac. `dispatch screen status` shows the state.
+
+## With two Macs, which one the phone uses
+
+The phone needs only one Mac; pick the one that stays on (a Mac mini, say). In Settings, under phone access, set "The phone version runs on" to it. The QR code and link then point there, and that Mac also shows the sessions of the other one.
+
+If the entry saved on the phone still points at the laptop, there is nothing to change by hand: the next time it is opened, the laptop takes the phone to the always-on Mac and signs it in. Once there, add the new page to the home screen or bookmark it again. Links in notifications open the always-on Mac directly too. When that Mac cannot be reached for a moment, the laptop keeps serving the phone itself.

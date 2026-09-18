@@ -302,7 +302,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, open(ICON, "rb").read(), "image/png", {"Cache-Control": "max-age=86400"})
         if u.path == "/api/health":
             # `version` lets an open phone page notice the Mac updated and offer a refresh.
-            return self._send(200, json.dumps({"ok": True, "authed": self._authed(), "version": SERVE_VERSION, "started": STARTED}))
+            # `moved`: an open page learns that the phone's entry now lives on another Mac and reloads into the forward.
+            return self._send(200, json.dumps({"ok": True, "authed": self._authed(), "version": SERVE_VERSION, "started": STARTED, "moved": bool(self._authed() and phone_home())}))
         if not self._authed():
             return self._send(401, "<meta charset=utf-8><p style='font:16px system-ui;padding:24px'>需要令牌：在 Mac 上跑 <code>dispatch serve url</code>，用它给的完整链接打开一次。</p>", "text/html; charset=utf-8")
         if u.path.startswith("/insights/"):
@@ -315,6 +316,13 @@ class H(BaseHTTPRequestHandler):
                 return self._send(404, "<meta charset=utf-8><p style='font:16px system-ui;padding:24px'>没有这份报告</p>", "text/html; charset=utf-8")
             return self._send(200, open(hit["html"], "rb").read(), "text/html; charset=utf-8")
         path = "/index.html" if u.path in ("", "/") else u.path
+        if path == "/index.html" and "stay" not in q:
+            # The phone was paired with this Mac before its entry moved to the always-on one:
+            # take it there. If that Mac does not answer, keep serving here.
+            home = phone_home()
+            link = remote_login_link(home) if home else ""
+            if link:
+                return self._send(200, moved_page(link, home.get("name") or home["id"]), "text/html; charset=utf-8")
         full = os.path.realpath(os.path.join(DIST, path.lstrip("/")))
         if not full.startswith(os.path.realpath(DIST) + os.sep) or not os.path.isfile(full):
             full = os.path.join(DIST, "index.html")
@@ -549,6 +557,70 @@ def phone_url(conf, ip):
     return url(conf, ip)
 
 
+def phone_home(conf=None):
+    """The Mac the phone is meant to use (`serve host <id>`), as a hosts.json row; None when it is
+    this Mac. Read fresh each time: the running service must notice a change made from settings."""
+    if conf is None:
+        try:
+            conf = json.load(open(CONF))
+        except Exception:
+            return None
+    target = conf.get("phone_host")
+    if not target:
+        return None
+    sys.path.insert(0, HERE)
+    import dispatch as d
+    return next((x for x in d.hosts() if target in (x["id"], x["name"]) and x.get("ssh")), None)
+
+
+_HOME_DOWN = {"at": 0.0}
+
+
+def remote_login_link(h, to="", ttl=300):
+    """A single-use link into the phone service on another Mac, asked for over ssh. '' when that
+    Mac does not answer (remembered for 30 s, so a Mac that is off does not slow every request)."""
+    import shlex
+    if time.time() - _HOME_DOWN["at"] < 30:
+        return ""
+    sys.path.insert(0, HERE)
+    import dispatch as d
+    cmd = f"env {d.remote_beads(h)} {d.remote_cli(h)} serve login-link --ttl {int(ttl)}" + (f" --to {shlex.quote(to)}" if to else "")
+    try:
+        r = subprocess.run(["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", h["ssh"], cmd], capture_output=True, text=True, timeout=15)
+        u = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
+        if r.returncode == 0 and u.startswith("http"):
+            return u
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    _HOME_DOWN["at"] = time.time()
+    return ""
+
+
+def login_link(conf, to="", ttl=300):
+    """This Mac's own single-use link. Refuses when this Mac itself points the phone elsewhere:
+    two Macs pointing at each other would bounce the phone back and forth."""
+    if conf.get("phone_host"):
+        raise SystemExit("这台电脑自己的手机入口也指向别的电脑（serve host），不发登录链接")
+    ip = bind_address(conf, wait=0)
+    if ip == "127.0.0.1":
+        raise SystemExit("这台电脑的手机服务只监听本机，手机连不上")
+    q = {"login": login_issue(ttl=ttl)}
+    if to:
+        q["to"] = to
+    return f"http://{ip}:{conf.get('port', 7799)}/?" + urllib.parse.urlencode(q)
+
+
+def moved_page(link, name):
+    """What an already-paired phone gets from the old entry: it is taken to the new one (keeping
+    the page it asked for), and told to save the new address."""
+    import html
+    return ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Dispatch</title>"
+            "<body style='font:16px/1.6 system-ui;padding:28px;max-width:30em;margin:auto'>"
+            f"<p><b>手机入口已经搬到「{html.escape(name)}」。</b></p><p>正在带你过去。到了之后把新页面重新「添加到主屏幕」或存成书签，以后这台电脑关着也能打开。</p>"
+            f"<p><a id=go href='{html.escape(link, quote=True)}'>没有自动跳转就点这里</a></p>"
+            "<script>var a=document.getElementById('go'),h=location.hash;if(h&&h.length>2)a.href+='&to='+encodeURIComponent(h);location.replace(a.href);</script>")
+
+
 def cmd_host(conf, argv):
     """`serve host` — which Mac the phone link points at; `serve host <id>|local` changes it.
     The desktop's settings page renders this as a dropdown (hosts.json plus this Mac)."""
@@ -579,7 +651,7 @@ def cmd_host(conf, argv):
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help", "help"):
-        print("用法：dispatch serve [install [--lan|--no-lan] | uninstall | status | url | qr | host …] [--json]\n不带子命令：在前台启动手机服务。")
+        print("用法：dispatch serve [install [--lan|--no-lan] | uninstall | status | url | qr | host … | login-link [--to 路径] [--ttl 秒]] [--json]\n不带子命令：在前台启动手机服务。")
         return
     conf = load_conf()
     if len(sys.argv) > 1 and sys.argv[1] == "host":
@@ -594,6 +666,11 @@ def main():
         else:
             print(("手机访问已开启：" if r.get("running") else "常驻服务已装，但还没应答：" if r.get("installed") else "手机访问没开启：") + f"{r.get('address')}:{r.get('port')}"
                   + ("" if r.get("phone_reachable") else "（只监听本机：没有 Tailscale，也没允许局域网；`dispatch serve install --lan` 允许同一 Wi-Fi 的设备访问）"))
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "login-link":
+        rest = sys.argv[2:]
+        opt = lambda k, d="": rest[rest.index(k) + 1] if k in rest and rest.index(k) + 1 < len(rest) else d
+        print(login_link(conf, to=opt("--to"), ttl=int(opt("--ttl", "300") or 300)))
         return
     ip = bind_address(conf, wait=0 if len(sys.argv) > 1 else 60)
     if len(sys.argv) > 1 and sys.argv[1] == "url":

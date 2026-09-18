@@ -168,7 +168,13 @@ export default function App() {
     let first = "";
     const tick = async () => {
       try {
-        const h = await (await fetch("/api/health", { cache: "no-store" })).json() as { version?: string };
+        const h = await (await fetch("/api/health", { cache: "no-store" })).json() as { version?: string; moved?: boolean };
+        // The phone's entry moved to another Mac: reload, the server takes this phone there.
+        // At most once in ten minutes: when that Mac is down this one keeps serving, and must not reload forever.
+        if (h.moved && !window.location.search.includes("stay")) {
+          let last = 0; try { last = Number(sessionStorage.getItem("dispatch-moved-try") || 0); } catch { /* private mode */ }
+          if (Date.now() - last > 600_000) { try { sessionStorage.setItem("dispatch-moved-try", String(Date.now())); } catch { /* private mode */ } window.location.reload(); return; }
+        }
         if (!h.version) return;
         if (!first) first = h.version; else if (h.version !== first) setWebUpdate(h.version);
       } catch { /* offline; try again later */ }

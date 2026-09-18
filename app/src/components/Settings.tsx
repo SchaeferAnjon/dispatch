@@ -248,7 +248,7 @@ export function SettingsView({ settings, onSave, theme, onTheme, api, summaryPro
           <div><b>{t("手机访问")}</b>
             <PhoneAccess api={api} onDone={(m) => setPhoneNote(m)} onError={(m) => setPhoneNote(m)} />
             {phoneNote && <p className="muted small" role="status">{phoneNote}</p>}
-            {phoneHost && phoneHost.hosts.length > 1 && <p className="settings-inline"><span>{t("手机版跑在")}</span><select value={phoneHost.phone_host} onChange={(e) => onPhoneHost?.(e.target.value)} aria-label={t("手机版跑在哪台 Mac")}>{phoneHost.hosts.map((h) => <option key={h.id} value={h.id}>{h.local ? t("本机（{name}）", { name: h.name }) : h.name}</option>)}</select><span className="muted small">{t("选常驻的那台，这台电脑带走了手机也能用；换了机器要在手机上重新打开一次链接")}</span></p>}
+            {phoneHost && phoneHost.hosts.length > 1 && <p className="settings-inline"><span>{t("手机版跑在")}</span><select value={phoneHost.phone_host} onChange={(e) => onPhoneHost?.(e.target.value)} aria-label={t("手机版跑在哪台 Mac")}>{phoneHost.hosts.map((h) => <option key={h.id} value={h.id}>{h.local ? t("本机（{name}）", { name: h.name }) : h.name}</option>)}</select><span className="muted small">{t("选常驻的那台，这台电脑关着手机也能用。手机上原来存的入口打开时会自动带去那台，到了之后重新添加到主屏幕或存成书签")}</span></p>}
           </div>
         </div>}
         {onScreen && <div className="settings-row">
