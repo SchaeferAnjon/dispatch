@@ -9,6 +9,10 @@
 #
 #   first-run.sh                      the latest release; the repository is private, so gh downloads it on this Mac
 #   first-run.sh --zip FILE           a Dispatch-IDE-*.zip instead
+#   first-run.sh --dmg FILE           a Dispatch-IDE-*.dmg, installed the way --as-download installs a zip: Gatekeeper
+#                                     on, the dmg in ~/Downloads with the quarantine mark, checked by Gatekeeper, opened,
+#                                     the app copied out of it with the mark a Finder drag gives it (ditto here: the
+#                                     dmg's window has no fixed layout to drag in), then the first open and its Open
 #   first-run.sh --app DIR            a built "Dispatch IDE.app" (dispatch build's ~/dispatch-builds/<name>/Dispatch IDE.app)
 #   first-run.sh --overlay-cli        put this checkout's CLI package into the app first (cli/bundle.json: the CLI,
 #                                     Dispatch's agent rules, skills, plugins), to try a fix before it is built
@@ -26,8 +30,8 @@
 #                                     newuser.mjs from there: first-run.sh --from wizard --to wizard --scenario newuser.mjs)
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; VM="$HERE/vm.sh"; APPDIR="$(cd "$HERE/../.." && pwd)"
-ZIP=""; APPSRC=""; OVERLAY=0; FROM=""; TO=""; ENDED=0; SHOTS=""; DOWNLOAD=0; NOCLT=0; SCENARIO="$HERE/wizard.mjs"
-while [ $# -gt 0 ]; do case "$1" in --zip) ZIP="$2"; shift 2;; --app) APPSRC="$2"; shift 2;; --overlay-cli) OVERLAY=1; shift;; --shots) SHOTS="$2"; shift 2;; --from) FROM="$2"; shift 2;; --to) TO="$2"; shift 2;; --as-download) DOWNLOAD=1; shift;; --no-clt) NOCLT=1; shift;; --scenario) SCENARIO="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2;; *) echo "unknown: $1" >&2; exit 2;; esac; done
+ZIP=""; DMG=""; APPSRC=""; OVERLAY=0; FROM=""; TO=""; ENDED=0; SHOTS=""; DOWNLOAD=0; NOCLT=0; SCENARIO="$HERE/wizard.mjs"
+while [ $# -gt 0 ]; do case "$1" in --zip) ZIP="$2"; shift 2;; --dmg) DMG="$2"; DOWNLOAD=1; shift 2;; --app) APPSRC="$2"; shift 2;; --overlay-cli) OVERLAY=1; shift;; --shots) SHOTS="$2"; shift 2;; --from) FROM="$2"; shift 2;; --to) TO="$2"; shift 2;; --as-download) DOWNLOAD=1; shift;; --no-clt) NOCLT=1; shift;; --scenario) SCENARIO="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2;; *) echo "unknown: $1" >&2; exit 2;; esac; done
 APP='/Applications/Dispatch IDE.app'
 ELECTRON="$APP/Contents/MacOS/Dispatch IDE"
 PORT=9333
@@ -76,8 +80,13 @@ download_install() {
   "$VM" raw "test -d '$APP'" && ok "the Finder moved it into Applications ($(secs "$t") s), still marked from the internet: ${mark%%;*}" || bad "the app is not in Applications"
   echo "move $(secs "$t")" >> "$times"
   shot 00b-in-applications
-  # the first open: Gatekeeper checks the whole app with Apple (Verifying…), then asks once; Open is the default button
-  t=$(now)
+  first_open
+}
+
+# The first open of a quarantined app: Gatekeeper checks the whole app with Apple (Verifying…), then asks once; Open is
+# the default button
+first_open() {
+  local t; t=$(now)
   "$VM" raw "open '$APP'"
   local asked="" clicked=""
   for _ in $(seq 1 90); do
@@ -102,8 +111,40 @@ download_install() {
   fi
 }
 
+# The dmg a person downloads (--dmg): Gatekeeper checks the dmg, it opens, the app comes out with the download's mark
+download_install_dmg() {
+  local dmg="$1" name vol=/tmp/dide-dmg; name="$(basename "$dmg")"
+  local times="${SHOTS:-$TMP}/times.txt"; mkdir -p "$(dirname "$times")"
+  "$VM" raw "sudo spctl --global-enable 2>/dev/null || sudo spctl --master-enable; pkill -x 'Dispatch IDE' 2>/dev/null; rm -rf '$APP'"
+  case "$("$VM" raw 'spctl --status 2>&1')" in *enabled*) ok "Gatekeeper is on, as on a new Mac";; *) bad "Gatekeeper could not be turned on";; esac
+  "$VM" put "$dmg" "Downloads/$name" >/dev/null
+  "$VM" raw "xattr -w com.apple.quarantine \"0083;\$(printf %x \$(date +%s));Safari;\$(uuidgen)\" ~/Downloads/$name && xattr -w com.apple.metadata:kMDItemWhereFroms https://github.com/SchaeferAnjon/dispatch/releases ~/Downloads/$name"
+  local gk; gk=$("$VM" raw "spctl -a -vv -t open --context context:primary-signature ~/Downloads/$name 2>&1")
+  case "$gk" in *accepted*Notarized*) ok "Gatekeeper accepts the dmg: $(echo "$gk" | sed -n 2p)";; *) bad "Gatekeeper on the dmg: $(echo "$gk" | tr '\n' ' ')";; esac
+  "$VM" raw "mkdir -p ~/.dispatch-ide && echo '{\"remote-debugging-port\": \"$PORT\"}' > ~/.dispatch-ide/argv.json"
+  local t; t=$(now)
+  "$VM" raw "hdiutil detach $vol -quiet 2>/dev/null; hdiutil attach -nobrowse -readonly -mountpoint $vol ~/Downloads/$name -quiet" \
+    && ok "the dmg opens ($(secs "$t") s): $("$VM" raw "ls $vol | tr '\n' ' '")" || bad "hdiutil could not open $name"
+  "$VM" raw "ditto $vol/'Dispatch IDE.app' '$APP'; hdiutil detach $vol -quiet"
+  local mark; mark=$("$VM" raw "xattr -p com.apple.quarantine '$APP' 2>/dev/null")
+  if [ -z "$mark" ]; then
+    # the Finder gives a copy out of a quarantined dmg the dmg's mark; ditto from the mount may not
+    "$VM" raw "xattr -w com.apple.quarantine \"\$(xattr -p com.apple.quarantine ~/Downloads/$name)\" '$APP'"
+    mark=$("$VM" raw "xattr -p com.apple.quarantine '$APP' 2>/dev/null"); warn "ditto left no quarantine mark: gave the app the dmg's, as the Finder does"
+  fi
+  "$VM" raw "test -d '$APP'" && ok "Dispatch IDE.app copied into Applications, marked from the internet: ${mark%%;*}" || bad "the app is not in Applications"
+  gk=$("$VM" raw "spctl -a -vv -t exec '$APP' 2>&1")
+  case "$gk" in *accepted*Notarized*) ok "Gatekeeper accepts the app: $(echo "$gk" | sed -n 2p)";; *) bad "Gatekeeper on the app: $(echo "$gk" | tr '\n' ' ')";; esac
+  # the Finder window the app was dragged into stays behind Gatekeeper's question (first_open looks for it there)
+  "$VM" raw "open /Applications"; sleep 2
+  shot 00b-in-applications
+  first_open
+}
+
 if step install "Download Dispatch IDE and put it in /Applications"; then
-  if [ -n "$APPSRC" ]; then
+  if [ -n "$DMG" ]; then
+    :
+  elif [ -n "$APPSRC" ]; then
     ditto -c -k --sequesterRsrc --keepParent "$APPSRC" "$TMP/DispatchIDE.zip" && ZIP="$TMP/DispatchIDE.zip"
   elif [ -z "$ZIP" ]; then
     # the release assets of a private repository are not on a public URL (an unauthenticated curl gets 404)
@@ -114,7 +155,9 @@ if step install "Download Dispatch IDE and put it in /Applications"; then
     "$VM" raw 'sudo rm -rf /Library/Developer/CommandLineTools && sudo xcode-select --reset' >/dev/null 2>&1
     "$VM" raw 'xcode-select -p' >/dev/null 2>&1 && bad "the command line tools are still here" || ok "no command line tools, as on a new Mac"
   fi
-  if [ "$DOWNLOAD" = 1 ] && [ -n "$ZIP" ]; then
+  if [ -n "$DMG" ]; then
+    download_install_dmg "$DMG"
+  elif [ "$DOWNLOAD" = 1 ] && [ -n "$ZIP" ]; then
     download_install "$ZIP"
   else
     [ -n "$ZIP" ] && "$VM" put "$ZIP" /tmp/DispatchIDE.zip

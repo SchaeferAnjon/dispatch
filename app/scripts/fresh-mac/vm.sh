@@ -42,6 +42,8 @@ case "${1:-}" in
     fi
     for _ in $(seq 1 90); do [ -n "$(ip)" ] && break; sleep 2; done
     [ -n "$(ip)" ] || { echo "the VM did not get an address" >&2; exit 1; }
+    # a first boot has an address before sshd listens: the password login below would hit a closed port
+    for _ in $(seq 1 90); do nc -z -G 2 "$(ip)" 22 2>/dev/null && break; sleep 2; done
     if ! ssh "${SSH_OPTS[@]}" -o BatchMode=yes "admin@$(ip)" true 2>/dev/null; then
       # First boot: put our public key in with the image's password, once.
       PUB="$(cat "$KEY.pub")" VMIP="$(ip)" PASS="$USER_PASS" expect -c '
