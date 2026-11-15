@@ -1,300 +1,792 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title data-i18n="meta.title">Dispatch 调度台：把所有 AI 编程 Agent 的会话、任务和进展放进一个台子</title>
-<meta name="description" data-i18n-content="meta.desc" content="Dispatch 是一个本地的 Agent 工作台：Claude Code、Codex、pi、ZCode、Gemini CLI、OpenCode、Hermes 的会话、任务、成果、额度、规则与技能，按项目组织；电脑和手机都能看进展、直接回复原会话。macOS，开源。">
-<meta property="og:title" content="Dispatch">
-<meta property="og:description" content="All your coding agents' sessions, tasks and progress in one place. Reply from your Mac or your phone.">
-<meta property="og:image" content="https://schaeferanjon.github.io/dispatch/assets/poster.jpg">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dispatch: see what your AI agent is doing</title>
+<meta name="description" content="A Mac app for Claude Code, Codex and OpenCode: follow each step on the right, see changes by turn, and get a short note whenever the agent makes something new. Free and open source.">
+<meta property="og:title" content="Dispatch: see what your AI agent is doing">
+<meta property="og:description" content="A Mac app for Claude Code, Codex and OpenCode. Follow each step, learn while it works.">
+<meta property="og:image" content="https://schaeferanjon.github.io/dispatch/assets/icon.png">
 <link rel="icon" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/icon.png">
 <style>
-:root{--ink:#1d1c1a;--ink-2:#5c5850;--ink-3:#8f8a80;--line:#e6e2da;--bg:#f7f5f1;--panel:#fff;--accent:#1d5fd1;--accent-soft:#e7eefb;--green:#2e8b57;--radius:14px}
-@media(prefers-color-scheme:dark){:root{--ink:#ecebe7;--ink-2:#b5b1a8;--ink-3:#807b72;--line:#2c2b28;--bg:#141413;--panel:#1d1d1b;--accent:#6d9bff;--accent-soft:#22314f;--green:#4fb27c}}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
-a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
-code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--accent-soft);padding:1px 6px;border-radius:5px}
-pre{background:#1c1c1a;color:#e8e6e0;padding:14px 16px;border-radius:10px;overflow:auto;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}
-pre code{background:none;padding:0;color:inherit}
-.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
-header.top{position:sticky;top:0;z-index:5;backdrop-filter:saturate(1.4) blur(10px);background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid var(--line)}
-header.top .wrap{display:flex;align-items:center;gap:18px;height:58px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--ink)}
-.brand img{width:28px;height:28px;border-radius:7px}
-nav.links{margin-left:auto;display:flex;gap:18px;font-size:14px}
-nav.links a{color:var(--ink-2)}
-.lang{display:flex;gap:2px;border:1px solid var(--line);border-radius:8px;padding:2px;background:var(--panel)}
-.lang button{border:0;background:none;color:var(--ink-2);font:600 12.5px/1 inherit;padding:6px 9px;border-radius:6px;cursor:pointer}
-.lang button.on{background:var(--accent);color:#fff}
-.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-weight:600;font-size:15px}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn:hover{text-decoration:none;filter:brightness(1.03)}
-.hero{padding:72px 0 36px;text-align:center}
-.hero h1{font-size:clamp(30px,5vw,52px);line-height:1.15;margin:0 0 14px;letter-spacing:-.01em}
-.hero p.lead{font-size:clamp(17px,2.2vw,21px);color:var(--ink-2);max-width:760px;margin:0 auto 26px}
-.hero .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.hero .sub{margin-top:14px;color:var(--ink-3);font-size:13.5px}
-.video{margin:34px auto 0;max-width:1120px;border-radius:var(--radius);overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.18);border:1px solid var(--line);background:#000}
-.video video{display:block;width:100%;height:auto}
-.agents{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:28px 0 0}
-.agents span{padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:13.5px;background:var(--panel);color:var(--ink-2)}
-section{padding:56px 0}
-section h2{font-size:clamp(24px,3.4vw,34px);margin:0 0 8px;letter-spacing:-.01em}
-section p.intro{color:var(--ink-2);max-width:760px;margin:0 0 28px;font-size:17px}
-.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px}
-.card h3{margin:0 0 6px;font-size:17px}
-.card p{margin:0;color:var(--ink-2);font-size:14.5px}
-.feature{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:36px;align-items:center;padding:36px 0;border-top:1px solid var(--line)}
-.feature:first-of-type{border-top:0}
-.feature.flip{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
-.feature.flip .txt{order:2}
-.feature h3{font-size:22px;margin:0 0 8px}
-.feature .kicker{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
-.feature p{color:var(--ink-2);margin:0 0 10px}
-.feature ul{margin:8px 0 0;padding-left:18px;color:var(--ink-2)}
-.feature li{margin:4px 0}
-.shot{border-radius:12px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.14);overflow:hidden;background:var(--panel)}
-.shot img{display:block;width:100%;height:auto}
-.shot.phone{max-width:300px;margin:0 auto;border-radius:28px;border-width:6px;border-color:#222;box-shadow:0 26px 60px rgba(0,0,0,.28)}
-.steps{counter-reset:s;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-.step{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;position:relative}
-.step::before{counter-increment:s;content:counter(s);display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;margin-bottom:10px}
-.step h3{margin:0 0 6px;font-size:16px}
-.step p{margin:0;color:var(--ink-2);font-size:14.5px}
-.faq details{border-top:1px solid var(--line);padding:14px 0}
-.faq summary{cursor:pointer;font-weight:600;list-style:none}
-.faq summary::-webkit-details-marker{display:none}
-.faq details p{color:var(--ink-2);margin:8px 0 0}
-footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--ink-3);font-size:13.5px}
-footer .wrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
-@media(max-width:860px){.grid3,.steps{grid-template-columns:1fr}.feature,.feature.flip{grid-template-columns:1fr;gap:18px}.feature.flip .txt{order:0}.hero{padding:44px 0 24px}nav.links{display:none}}
+/* ===== tokens: DESIGN.md stone, light and dark ===== */
+:root {
+  color-scheme: light;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", system-ui, sans-serif;
+  --serif: "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+  --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --page: #fafaf9; --bg: #ffffff; --bg-2: #fafaf9; --shell: #f5f5f4; --sel: #f2f1f0; --chip: #f2f1f0; --chip-2: #f5f5f4;
+  --text: #0c0a09; --text-2: #79716b; --hair: #e7e5e4; --hair-2: #e7e5e4;
+  --fill: #252525; --fill-text: #fafaf9; --ring: rgba(37,37,37,.3);
+  --pop: 0 1px 2px rgba(0,0,0,.04), 0 10px 28px -8px rgba(0,0,0,.14);
+  --working: #2e8b57; --waiting: #b88100; --done: #2f6f73; --stopped: #c9683f; --plan: #6e56cf; --handoff: #1d5fd1;
+  --i-gray: #8a857c; --i-amber: #c28a12; --i-green: #2e8b57; --i-blue: #1d5fd1; --i-cream: #d1d1cd; --i-coral: #c9683f; --i-teal: #2f6f73; --i-purple: #6e56cf; --i-cream-dot: #f4f3ef;
+  --code-str: #a8552f; --code-key: #6e56cf; --code-com: #79716b;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1); --ease-std: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: linear(0, 0.26, 0.6, 0.86, 1.02, 1.08, 1.07, 1.03, 1, 0.99, 1);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0c0a09; --bg: #151311; --bg-2: #1c1917; --shell: #0c0a09; --sel: #292524; --chip: #292524; --chip-2: rgba(255,255,255,.045);
+  --text: #fafaf9; --text-2: #a6a09b; --hair: rgba(255,255,255,.1); --hair-2: rgba(255,255,255,.15);
+  --fill: #fafaf9; --fill-text: #0c0a09; --ring: rgba(250,250,249,.3);
+  --pop: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px -8px rgba(0,0,0,.6);
+  --done: #3a797d; --handoff: #286add; --plan: #725bd4;
+  --i-cream: #f4f3ef;
+  --code-str: #e08a62; --code-key: #a08cff; --code-com: #8a857c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--text); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; text-autospace: normal; font-kerning: normal; overflow-x: hidden; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; }
+.ico { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.ico.f { fill: currentColor; stroke: none; }
+.wrap { width: min(1160px, calc(100% - 64px)); margin: 0 auto; }
+
+/* ===== site chrome, same skeleton as apps.us-cloud.uk ===== */
+.nav { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(16px); }
+.nav .in { height: 56px; display: flex; align-items: center; gap: 24px; }
+.brand { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.brand img { width: 22px; height: 22px; border-radius: 5px; }
+.nav .by { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+.nav .by:hover { color: var(--text); }
+.nav .sp { flex: 1; }
+.nav .gh { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.nav .gh:hover { color: var(--text); }
+.seg { display: flex; padding: 2px; border-radius: 999px; border: 1px solid var(--hair-2); background: var(--bg); }
+.seg button { border: 0; background: none; padding: 2px 10px; border-radius: 999px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.seg button.on { background: var(--chip); color: var(--text); font-weight: 500; }
+.pill { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 999px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--hair-2); background: var(--bg); white-space: nowrap; transition: background-color .15s; }
+.pill:hover { background: var(--sel); }
+.pill:active { transform: translateY(1px); }
+.pill.solid { background: var(--fill); color: var(--fill-text); border-color: var(--fill); }
+.pill.solid:hover { opacity: .9; }
+.pill.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.pill .ico { width: 16px; height: 16px; }
+.fine { font-size: 12px; color: var(--text-2); line-height: 1.6; }
+.fine b { color: var(--text); font-weight: 500; }
+.fine a { text-decoration: underline; text-decoration-color: var(--hair-2); text-underline-offset: 3px; }
+.fine a:hover { color: var(--text); text-decoration-color: currentColor; }
+.kicker { font-size: 13px; color: var(--text-2); }
+h1, h2 { font-family: var(--serif); font-weight: 600; letter-spacing: 0; text-wrap: balance; }
+
+/* facts: three things that do not change */
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.facts > div { display: grid; grid-template-columns: 24px 1fr; gap: 0 12px; align-content: start; }
+.facts .ico { width: 20px; height: 20px; color: var(--text-2); margin-top: 2px; grid-row: span 2; }
+.facts b { font-size: 14px; font-weight: 600; }
+.facts span { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+
+/* footer: the hub's strip, Dispatch marked as here */
+.foot { border-top: 1px solid var(--hair); margin-top: 64px; padding: 20px 0 32px; }
+.xstrip { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; font-size: 13px; color: var(--text-2); }
+.xstrip .by b { font-weight: 600; color: var(--text); }
+.xstrip .by u { text-underline-offset: 3px; text-decoration-color: var(--hair-2); }
+.xstrip .by:hover u { text-decoration-color: currentColor; color: var(--text); }
+.xstrip .icons { display: flex; gap: 8px; }
+.xstrip .icons a { position: relative; display: block; width: 22px; height: 22px; }
+.xstrip .icons img { width: 22px; height: 22px; border-radius: 5px; box-shadow: 0 0 0 1px var(--hair); transition: transform .15s; }
+.xstrip .icons a:hover img { transform: translateY(-1px); }
+.xstrip .icons a.cur::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--text-2); }
+.xstrip .icons .tip { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); padding: 3px 8px; border-radius: 6px; background: var(--text); color: var(--bg); font-size: 12px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s; }
+.xstrip .icons a:hover .tip { opacity: 1; }
+.foot .row { display: flex; justify-content: space-between; margin-top: 12px; font-size: 12px; color: var(--text-2); }
+
+/* ===== the Dispatch window, rebuilt (real values from DESIGN.md) ===== */
+.winbox { position: relative; }
+.win { position: absolute; left: 0; top: 0; transform-origin: 0 0; width: 1180px; height: 700px; display: grid; grid-template-rows: 40px 1fr 28px; background: var(--shell); border: 1px solid var(--hair-2); border-radius: 12px; overflow: hidden; font-size: 13px; line-height: 1.5; box-shadow: var(--pop); }
+.win .tb { display: flex; align-items: center; gap: 12px; padding: 0 12px; color: var(--text-2); }
+.win .lights { display: flex; gap: 8px; margin-right: 8px; }
+.win .lights i { width: 12px; height: 12px; border-radius: 50%; background: var(--hair-2); }
+.win .tb .mid { flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); min-width: 0; }
+.win .tb .mid b { font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win .tb .r { display: flex; gap: 14px; }
+.win .body { display: grid; grid-template-columns: 220px minmax(0, 1fr) 400px; gap: 6px; padding: 0 6px 0 0; min-height: 0; }
+.win .bar { display: flex; align-items: center; gap: 16px; padding: 0 14px; font-size: 12px; color: var(--text-2); }
+.win .bar .sp { flex: 1; }
+.win .bar .q { display: flex; align-items: center; gap: 6px; }
+.win .bar .cells { display: flex; gap: 2px; }
+.win .bar .cells i { width: 5px; height: 12px; border-radius: 1.6px; border: 1px solid color-mix(in srgb, var(--text-2) 45%, transparent); }
+.win .bar .cells i.on { background: var(--text-2); border-color: var(--text-2); }
+
+/* sidebar */
+.side { padding: 4px 8px 12px; overflow: hidden; }
+.side .hd { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px 0 6px; }
+.side .hd b { font-weight: 600; font-size: 13px; }
+.side .hd .new { margin-left: auto; height: 24px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--hair-2); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.side .hd .new kbd { font: 11px var(--sans); color: var(--text-2); }
+.lrow { position: relative; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 20px; color: var(--text); white-space: nowrap; transition: background-color .15s; }
+.lrow.ent { height: 36px; }
+.lrow .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lrow .tm { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.lrow.sel { background: var(--sel); }
+.lrow.in1 { padding-left: 28px; }
+.lrow .ico { color: var(--text-2); }
+.slot14 { width: 14px; height: 14px; flex: none; display: grid; place-items: center; position: relative; }
+.grp { height: 8px; }
+
+/* marks: VS Code's round state icons */
+.mk { width: 14px; height: 14px; flex: none; display: block; }
+.mk.m-now { color: var(--working); } .mk.m-wait { color: var(--waiting); } .mk.m-done { color: var(--done); } .mk.m-grey { color: var(--text-2); } .mk.m-sub { color: var(--plan); }
+.mk.breath { animation: breath 2s ease-in-out infinite; }
+@keyframes breath { 50% { opacity: .8; } }
+
+/* the running blocks (the icon's ten, falling) */
+svg.drop { overflow: visible; display: block; }
+.dropclip { width: 16px; height: 14px; overflow: hidden; display: grid; align-items: end; justify-items: center; margin-top: -2px; padding-top: 0; }
+
+/* chat column */
+.chat { position: relative; background: var(--bg); border: 1px solid var(--hair); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.chat .flow { flex: 1; min-height: 0; overflow: hidden; padding: 24px 28px 8px; display: flex; flex-direction: column; gap: 4px; }
+.bub { align-self: flex-end; max-width: 80%; padding: 12px 16px; border-radius: 24px; background: var(--chip); font-size: 14px; line-height: 1.55; }
+:root[data-theme="dark"] .bub { background: rgba(250,250,249,.06); }
+.say { font-size: 14px; line-height: 1.7; margin-top: 16px; }
+.tool { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 12px; color: var(--text-2); }
+.tool .v { font-weight: 500; }
+.tool .a { font-family: var(--mono); font-size: 12px; color: color-mix(in srgb, var(--text-2) 75%, transparent); }
+.tool .ico { width: 14px; height: 14px; }
+.tool .plus { color: var(--working); } .tool .minus { color: var(--stopped); }
+.did { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin-top: 16px; height: 24px; }
+.files { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin-top: 8px; }
+.shim { background: linear-gradient(90deg, var(--text-2) 0%, var(--text-2) 40%, var(--text) 50%, var(--text-2) 60%, var(--text-2) 100%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: shim 2s linear infinite; }
+@keyframes shim { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.comp { margin: 0 28px 8px; border: 1px solid var(--hair-2); border-radius: 24px; background: var(--chip-2); padding: 14px 16px 10px; }
+.comp .ta { min-height: 24px; font-size: 14px; color: var(--text); }
+.comp .ta.ph { color: var(--text-2); }
+.comp .ta .caret { display: inline-block; width: 1.5px; height: 1.05em; vertical-align: -.15em; background: var(--text); margin-left: 1px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.comp .tools { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-size: 13px; color: var(--text-2); }
+.comp .tools span { display: flex; align-items: center; gap: 6px; }
+.comp .send { margin-left: auto; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--text) 12%, transparent); color: var(--text-2); transition: background-color .15s; }
+.comp .send.on { background: var(--fill); color: var(--fill-text); }
+.comp .send.stop i { width: 10px; height: 10px; border-radius: 3px; background: var(--text-2); animation: breath 2.4s ease-in-out infinite; }
+.cstat { display: flex; justify-content: space-between; margin: 0 40px 12px; font-size: 12px; color: var(--text-2); }
+.cstat span { display: flex; align-items: center; gap: 6px; }
+.cstat .ico { width: 14px; height: 14px; }
+
+/* right panel */
+.rp { position: relative; background: var(--bg); border: 1px solid var(--hair); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.tabs { display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 8px; border-bottom: 1px solid color-mix(in srgb, var(--hair) 40%, transparent); flex: none; }
+.tabs span { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; color: var(--text-2); font-size: 13px; white-space: nowrap; }
+.tabs span.on { background: var(--sel); color: var(--text); }
+.tabs .ico { width: 14px; height: 14px; }
+.now { padding: 8px 20px 0; }
+.now .st { display: flex; align-items: center; gap: 8px; height: 20px; font-size: 12px; color: var(--text-2); }
+.now h4 { margin: 4px 0 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
+.now .rn { margin-top: 2px; font-size: 12px; color: var(--text-2); height: 18px; }
+.now .btns { display: flex; gap: 8px; margin-top: 12px; }
+.now .btns span { height: 32px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--hair-2); }
+.now .btns span.g { border-color: transparent; color: var(--text-2); }
+.task { margin-top: 24px; }
+.task .th { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 0 0 0; }
+.task .th b { font-weight: 500; flex: 1; }
+.task .th .n { font-size: 11px; color: var(--text-2); }
+.task .th .ico { width: 12px; height: 12px; color: var(--text-2); }
+.steps { position: relative; margin-left: 0; }
+.steps::before { content: ""; position: absolute; left: 6.5px; top: 9px; bottom: 9px; width: 1px; background: var(--hair); }
+.step { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; color: var(--text-2); }
+.step .mk { background: var(--bg); box-shadow: 0 0 0 2px var(--bg); border-radius: 50%; }
+.step.cur { color: var(--text); font-weight: 500; }
+.step.dn { color: var(--text-2); }
+.deliv { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 13px; }
+.deliv .ico { width: 14px; height: 14px; color: var(--text-2); }
+.deliv .tm { margin-left: auto; font-size: 11px; color: var(--text-2); }
+.fold { display: flex; align-items: center; gap: 8px; height: 28px; margin-top: 24px; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--text-2) 70%, transparent); }
+.fold .ico { width: 12px; height: 12px; }
+.fold .n { margin-left: auto; font-weight: 400; font-size: 11px; }
+
+/* editor (Walk me through) */
+.ed { position: absolute; inset: 41px 0 0 0; background: var(--bg); font: 12.5px/20px var(--mono); padding: 8px 0; opacity: 0; transition: opacity .2s var(--ease-out); pointer-events: none; }
+.ed.on { opacity: 1; }
+.ed .crumb { font: 12px var(--sans); color: var(--text-2); padding: 0 16px 8px; display: flex; gap: 6px; align-items: center; }
+.ed .ln { display: flex; padding-right: 12px; white-space: pre; transition: background-color .2s var(--ease-out); }
+.ed .ln i { font-style: normal; width: 40px; text-align: right; padding-right: 14px; color: color-mix(in srgb, var(--text-2) 70%, transparent); flex: none; }
+.ed .ln.hi { background: color-mix(in srgb, var(--text) 7%, transparent); box-shadow: inset 2px 0 0 var(--text-2); }
+.ed .s { color: var(--code-str); } .ed .k { color: var(--code-key); } .ed .c { color: var(--code-com); }
+
+/* bottom-right cards: Talk cards, Walk me through */
+.corner { position: absolute; right: 16px; bottom: 16px; width: 340px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+.card { width: 100%; background: var(--bg); border: 1px solid var(--hair-2); border-radius: 12px; box-shadow: var(--pop); opacity: 0; transform: translateY(8px); transition: opacity .2s var(--ease-out), transform .2s var(--ease-out); }
+:root[data-theme="dark"] .card { background: var(--bg-2); }
+.card.on { opacity: 1; transform: none; }
+.talk { padding: 10px 12px 10px 14px; }
+.talk .r1 { display: flex; align-items: center; gap: 8px; height: 20px; }
+.talk .r1 .ico { width: 14px; height: 14px; color: var(--text-2); }
+.talk .r1 b { font-weight: 500; }
+.talk .r1 small { font-size: 11px; color: var(--text-2); }
+.talk .r1 .x { margin-left: auto; }
+.talk p { margin: 2px 0 8px 22px; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.talk .tl { height: 2px; border-radius: 2px; background: color-mix(in srgb, var(--text-2) 18%, transparent); overflow: hidden; margin-left: 22px; }
+.talk .tl i { display: block; height: 100%; width: 0; background: color-mix(in srgb, var(--text-2) 55%, transparent); }
+.talk.on .tl i { animation: tl 7s linear forwards; }
+@keyframes tl { to { width: 100%; } }
+.wpill { width: auto; height: 32px; border-radius: 999px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; }
+.wpill b { font-weight: 500; }
+.wpill small { font-size: 12px; color: var(--text-2); }
+.wpill .ico { width: 14px; height: 14px; color: var(--text-2); }
+.stop .hd { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-bottom: 1px solid color-mix(in srgb, var(--hair) 40%, transparent); }
+.stop .hd b { font-weight: 500; }
+.stop .hd small { font-size: 12px; color: var(--text-2); }
+.stop .hd .x { margin-left: auto; color: var(--text-2); }
+.stop .bd { padding: 12px 12px 8px; }
+.stop .f { display: flex; align-items: center; gap: 8px; }
+.stop .f b { font-weight: 500; }
+.stop .f small { font-size: 12px; color: var(--text-2); }
+.stop .f .ico { width: 14px; height: 14px; color: var(--text-2); }
+.stop p { margin: 6px 0 10px; font-size: 14px; line-height: 1.7; }
+.stop .ask { display: inline-flex; height: 24px; align-items: center; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--text-2); background: var(--chip); }
+.stop .ft { display: flex; align-items: center; gap: 8px; padding: 8px 12px 12px; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.stop .ft .b { height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; }
+.stop .ft .b.next { background: var(--fill); color: var(--fill-text); margin-left: auto; }
+.stop .ft .b.back { color: var(--text-2); }
+
+/* sub-agent strip */
+.strip { margin: 0 28px 8px; background: var(--bg-2); border-radius: 16px; padding: 4px; font-size: 12px; color: var(--text-2); }
+:root[data-theme="dark"] .strip { background: var(--chip); }
+.strip .h { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; }
+.strip .h b { font-weight: 600; }
+.strip .s { padding: 3px 8px 5px; }
+.strip .s .a { display: flex; align-items: center; gap: 8px; height: 26px; }
+.strip .s .a b { font-size: 13px; font-weight: 500; color: var(--text); flex: 1; }
+.strip .s .a small, .strip .s .b small { font-size: 11px; font-variant-numeric: tabular-nums; }
+.strip .s .b { display: flex; gap: 8px; height: 20px; padding-left: 22px; }
+.strip .s .b span { flex: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shim, .mk.breath, .comp .ta .caret, .talk.on .tl i, .comp .send.stop i { animation: none; }
+  .shim { color: var(--text-2) !important; background: none; }
+  .card, .ed { transition: none; }
+}
+
+/* ===== direction A: one live window ===== */
+.hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: end; padding: 40px 0 32px; }
+.hero h1 { margin: 8px 0 0; font-size: 46px; line-height: 1.2; }
+.hero .rt p { margin: 0 0 20px; font-size: 15px; color: var(--text-2); max-width: 34em; text-wrap: pretty; }
+.hero .rt p b { color: var(--text); font-weight: 500; }
+.cta { display: flex; flex-wrap: wrap; gap: 8px; }
+.hero .fine { margin-top: 12px; }
+.stage { position: relative; }
+.rail { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 16px; margin-top: 20px; }
+.rail button { position: relative; text-align: left; border: 0; background: none; padding: 14px 4px 4px 0; cursor: pointer; color: var(--text-2); }
+.rail .b { position: absolute; left: 0; right: 0; top: 0; height: 2px; border-radius: 2px; background: var(--hair); overflow: hidden; }
+.rail .b i { display: block; height: 100%; width: 0; background: var(--text); }
+.rail .l { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.rail .l em { font-style: normal; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; background: var(--chip); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.rail .d { display: block; margin-top: 4px; font-size: 13px; line-height: 1.5; }
+.rail button.on .l { color: var(--text); }
+.rail button.on .l em { background: var(--fill); color: var(--fill-text); }
+.rail button:hover .l { color: var(--text); }
+.facts { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--hair); }
+.again { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 48px; padding: 28px 32px; border-radius: 16px; background: var(--bg); border: 1px solid var(--hair); }
+.again h2 { margin: 0; font-size: 26px; line-height: 1.3; }
+.again .fine { margin-top: 4px; }
+@media (max-width: 980px) {
+  .hero { grid-template-columns: 1fr; gap: 20px; padding: 28px 0 24px; }
+  .hero h1 { font-size: 36px; }
+}
+@media (max-width: 720px) {
+  .wrap { width: calc(100% - 32px); }
+  .nav .in { gap: 12px; }
+  .nav .by span, .nav .gh span { display: none; }
+  .hero h1 { font-size: 30px; }
+  .rail { grid-template-columns: repeat(4, 1fr); gap: 0 8px; }
+  .rail .d { display: none; }
+  .rail .l { flex-direction: column; align-items: flex-start; gap: 4px; font-size: 13px; }
+  .railnote { display: block !important; }
+  .facts { grid-template-columns: 1fr; gap: 16px; margin-top: 36px; }
+  .again { flex-direction: column; align-items: flex-start; padding: 22px 20px; }
+  .again h2 { font-size: 22px; }
+  .foot .row { flex-direction: column; gap: 4px; }
+}
+.appsi { display: contents; }
+.railnote { display: none; margin: 10px 0 0; font-size: 13px; color: var(--text-2); min-height: 2.6em; }
 </style>
 </head>
 <body>
-<header class="top"><div class="wrap">
-  <a class="brand" href="#"><img src="assets/icon.png" alt=""><span data-i18n="brand">Dispatch 调度台</span></a>
-  <nav class="links"><a href="#features" data-i18n="nav.features">功能</a><a href="#phone" data-i18n="nav.phone">手机</a><a href="#howto" data-i18n="nav.howto">怎么用</a><a href="manual/#/" class="manual-link" data-i18n="nav.manual">使用手册</a><a href="#faq" data-i18n="nav.faq">常见问题</a><a href="https://github.com/SchaeferAnjon/dispatch">GitHub</a></nav>
-  <div class="lang" role="group" aria-label="Language"><button data-lang="zh">中文</button><button data-lang="en">EN</button><button data-lang="de">DE</button></div>
-  <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-i18n="cta.download">下载 macOS 版</a>
+<header class="nav"><div class="wrap in">
+  <a class="brand" href="./" data-part="logo"><img src="assets/icon.png" alt="">Dispatch</a>
+  <a class="by" href="https://apps.us-cloud.uk" target="_blank" rel="noopener"><span class="appsi"></span><span data-i="nav.by"></span></a>
+  <span class="sp"></span>
+  <div class="seg"><button data-lang="zh">简</button><button data-lang="en">EN</button></div>
+  <a class="gh" href="https://github.com/SchaeferAnjon/dispatch" target="_blank" rel="noopener"><span class="ghi"></span><span>GitHub</span></a>
+  <a class="pill sm" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-dl data-i="nav.dl"></a>
 </div></header>
 
-<section class="hero"><div class="wrap">
-  <h1 data-i18n-html="hero.h1">你的 AI 编程 Agent 越来越多，<br>它们的会话、任务和进展应该放进一个台子</h1>
-  <p class="lead" data-i18n-html="hero.lead">Dispatch 读取本机已有的 Agent 记录，按<b>项目</b>组织每一段会话、每个任务和每项成果：谁在等你、谁在跑、做到哪了，一眼看清；在电脑或手机上直接回复原会话，不另开模型进程。</p>
-  <div class="cta">
-    <a class="btn primary" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-i18n="cta.download">下载 macOS 版</a>
-    <a class="btn demo-link" href="demo/?lang=zh#/home" target="_blank" data-i18n="cta.demo">在线试用（示例数据）</a>
-    <a class="btn manual-link" href="manual/#/" target="_blank" data-i18n="cta.manual">使用手册（可搜索）</a>
-    <a class="btn" href="https://github.com/SchaeferAnjon/dispatch" data-i18n="cta.source">查看源码</a>
-  </div>
-  <p class="sub" data-i18n="hero.sub">macOS 14+ · 开源 GPL-3.0 · 本地运行，默认不向任何模型发送你的文档或对话</p>
-  <div class="video"><video data-media="demo.mp4" src="assets/demo.mp4" data-poster="poster.jpg" poster="assets/poster.jpg" controls playsinline muted autoplay loop></video></div>
-  <div class="agents"><span>Claude Code</span><span>Codex</span><span>pi</span><span>ZCode</span><span>Gemini CLI</span><span>OpenCode</span><span>Hermes</span></div>
-</div></section>
+<main class="wrap">
+  <section class="hero" data-part="hero">
+    <div><div class="kicker" data-i="k"></div><h1 data-i="h"></h1></div>
+    <div class="rt">
+      <p data-i="p"></p>
+      <div class="cta">
+        <a class="pill solid" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-dl><span class="apl"></span><span data-i="dl"></span></a>
+        <a class="pill" href="https://github.com/SchaeferAnjon/dispatch" target="_blank" rel="noopener"><span class="ghi"></span><span data-i="src"></span></a>
+      </div>
+      <div class="fine" data-i="fine"></div>
+    </div>
+  </section>
 
-<section id="why"><div class="wrap">
-  <h2 data-i18n="why.h2">它解决什么问题</h2>
-  <p class="intro" data-i18n="why.intro">用了几个编程 Agent 之后，麻烦不在写代码，而在「记住」：这个项目上一次做到哪了？哪个终端里的 Agent 在等我确认？它改了哪些文件、交付了什么？出门了还能不能回它一句？Dispatch 把这些都收回一个台子。</p>
-  <div class="grid3">
-    <div class="card"><h3 data-i18n="why.c1.h">不用改你的习惯</h3><p data-i18n="why.c1.p">Agent 还是在你的终端或编辑器里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录，包括 VS Code 扩展里开的会话；OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。</p></div>
-    <div class="card"><h3 data-i18n="why.c2.h">项目是起点</h3><p data-i18n="why.c2.p">会话按目录归到项目，任务和成果挂在会话上。项目页就是这个项目的全部记录：回顾、会话、任务、成果、文档、知识库。</p></div>
-    <div class="card"><h3 data-i18n="why.c3.h">回复回到原会话</h3><p data-i18n="why.c3.p">在工作台或手机上看到 Agent 在等你，直接回，消息投递到那个终端里的原会话；正在跑就排队，排错了能撤回。</p></div>
-  </div>
-</div></section>
+  <section class="stage" data-part="live window">
+    <div class="winbox" id="winbox"></div>
+    <div class="rail" id="rail" role="tablist" data-part="four moments"></div>
+    <p class="railnote" id="railnote"></p>
+  </section>
 
-<section id="features"><div class="wrap">
-  <h2 data-i18n="features.h2">特色功能</h2>
-  <p class="intro" data-i18n="features.intro">下面每一项都是软件里实际能用的，截图来自示例数据。</p>
+  <section class="facts" data-part="three facts">
+    <div><span class="fi" data-ic="lock"></span><b data-i="f1"></b><span data-i="f1t"></span></div>
+    <div><span class="fi" data-ic="code"></span><b data-i="f2"></b><span data-i="f2t"></span></div>
+    <div><span class="fi" data-ic="key"></span><b data-i="f3"></b><span data-i="f3t"></span></div>
+  </section>
 
-  <div class="feature">
-    <div class="txt"><div class="kicker" data-i18n="f1.k">工作台</div><h3 data-i18n="f1.h">每个项目此刻的情况</h3><p data-i18n="f1.p">按项目排列，每张卡片是这个项目现在的样子：未读回复、等待确认的会话，正在跑的会话和它当前在做的动作，进行中的任务和验收进度，最新成果。三天没动静的项目折叠成一行。</p><ul><li data-i18n="f1.l1">顶部是需要你处理的计数，和各 Agent 的额度</li><li data-i18n="f1.l2">项目可收藏置顶、归档隐藏，两台电脑一致</li></ul></div>
-    <div class="shot"><img data-media="shot-home.png" src="assets/shot-home.png" alt=""></div>
-  </div>
+  <section class="again" data-part="download again">
+    <div><h2 data-i="ag"></h2><div class="fine" data-i="agt"></div></div>
+    <a class="pill solid" href="https://github.com/SchaeferAnjon/dispatch/releases/latest" data-dl><span class="apl"></span><span data-i="dl"></span></a>
+  </section>
+</main>
 
-  <div class="feature flip">
-    <div class="txt"><div class="kicker" data-i18n="f2.k">项目页</div><h3 data-i18n="f2.h">一个项目的全部记录</h3><p data-i18n="f2.p">回顾页用模型写一段「现状」，下面是最近 14 天的时间线：任务进展与完成、git 提交、会话总结按天分组；还有没做完的任务和验收进度、本目录每个活会话在做什么、能不能关。</p><ul><li data-i18n="f2.l1">会话、任务、成果、待归属任务、目录、文档各一页</li><li data-i18n-html="f2.l2"><b>知识库</b>按项目分：这个项目踩过的坑、做对的事、复盘</li><li data-i18n="f2.l3">双击标题改显示名，可排序、可在新窗口打开</li></ul></div>
-    <div class="shot"><img data-media="shot-project.png" src="assets/shot-project.png" alt=""></div>
-  </div>
-
-  <div class="feature">
-    <div class="txt"><div class="kicker" data-i18n="f3.k">会话</div><h3 data-i18n="f3.h">看 Agent 的每一步，直接回复</h3><p data-i18n="f3.p">思考、工具调用、改动的文件、图片和产物都在一页里，正在跑的会话实时跟读。回复框就在下面：排队发送、打断并发送、发图片，排错了「撤回并编辑」。列表里正在跑的会话绿色高亮，答完等你看的才有蓝点。</p><ul><li data-i18n="f3.l1">看过的会话再打开秒显，之后只拉新增的部分</li><li data-i18n="f3.l2">Claude Code 的权限模式和模型可以在这里切</li></ul></div>
-    <div class="shot"><img data-media="shot-session.png" src="assets/shot-session.png" alt=""></div>
-  </div>
-
-  <div class="feature flip">
-    <div class="txt"><div class="kicker" data-i18n="f4.k">多窗口 · 分屏</div><h3 data-i18n="f4.h">几段会话并排看</h3><p data-i18n="f4.p">会话页一键分成 2 格或 4 格，每格是独立的会话，各自回复、各自实时更新；顶栏 ⧉ 把当前页面分离成独立窗口；⌘+点击项目、会话、任务直接开新窗口。一边看项目文档一边盯着 Agent 干活。</p></div>
-    <div class="shot"><img data-media="shot-split.png" src="assets/shot-split.png" alt=""></div>
-  </div>
-
-  <div class="feature">
-    <div class="txt"><div class="kicker" data-i18n="f5.k">任务板 · 等我</div><h3 data-i18n="f5.h">任务由 Agent 自己记</h3><p data-i18n-html="f5.p">每个新会话开头会收到注入的身份、本项目任务和相关知识；Agent 用 <code>dispatch begin / log / done</code> 记任务，用 <code>dispatch wiki</code> 记坑。你不需要在界面里逐个点完成。「等我」只放需要你处理的：未读回复、等待确认、只有你能做的事。</p><ul><li data-i18n="f5.l1">看板 / 表格、右键菜单、回收站可恢复</li><li data-i18n="f5.l2">⌘K 搜项目、会话、任务；⌘N 新建会话（可带图片和附件）</li></ul></div>
-    <div class="shot"><img data-media="shot-inbox.png" src="assets/shot-inbox.png" alt=""></div>
-  </div>
-
-  <div class="feature flip">
-    <div class="txt"><div class="kicker" data-i18n="f6.k">两台电脑</div><h3 data-i18n="f6.h">把项目连同会话搬到另一台 Mac</h3><p data-i18n="f6.p">任务板、规则、技能两台同步一份；项目页一键「迁移到另一台」：先预检 Git 与文件差异，再把目录（含未提交改动）、Git 历史、正在跑的会话和全部历史记录搬过去，那边直接续上。迁移在后台跑，项目上有带呼吸效果的进度条，切页面、刷新都不丢。</p></div>
-    <div class="shot"><img data-media="shot-quota.png" src="assets/shot-quota.png" alt=""></div>
-  </div>
-
-  <div class="feature">
-    <div class="txt"><div class="kicker" data-i18n="f7.k">额度 · 规则 · 技能</div><h3 data-i18n="f7.h">各 Agent 的用量、共同规则和技能池</h3><p data-i18n="f7.p">额度页显示每个 Agent 的已用比例和重置时间，数据来源写明，缺失就说缺失。规则与资料页把所有 Agent 的全局指令收成一份源文件，同步到各自的位置并检查冲突；技能池统一挂载到各 Agent。</p></div>
-    <div class="shot"><img data-media="shot-wiki.png" src="assets/shot-wiki.png" alt=""></div>
-  </div>
-</div></section>
-
-<section id="phone"><div class="wrap">
-  <div class="feature" style="border-top:0">
-    <div class="txt"><div class="kicker" data-i18n="ph.k">手机</div><h2 style="font-size:26px" data-i18n="ph.h">出门也能看进展、回它一句</h2><p data-i18n="ph.p">手机通过 Tailscale 访问运行 Dispatch 的电脑，同一套界面按手机宽度排版，可「添加到主屏幕」。会话在电脑上没在跑？一键在电脑上恢复它再发；Agent 停在权限或信任确认框？手机上能看到那块屏幕、直接按键回答。报告生成完、会话变成「等你」时推通知（ntfy / Bark / 系统通知）。</p><ul><li data-i18n="ph.l1">在设置里开启手机访问后扫一次二维码，手机就记住登录；通知里的链接用一次性登录码</li><li data-i18n="ph.l2">需要时还能通过 noVNC 看并操作电脑屏幕</li></ul></div>
-    <div class="shot phone"><img data-media="shot-phone.png" src="assets/shot-phone.png" alt=""></div>
-  </div>
-</div></section>
-
-<section id="howto"><div class="wrap">
-  <h2 data-i18n="how.h2">怎么用</h2>
-  <p class="intro" data-i18n-html="how.intro">从下载到看见第一个项目，大约十分钟。需要 <a href="https://brew.sh">Homebrew</a>。</p>
-  <div class="steps">
-    <div class="step"><h3 data-i18n="how.s1.h">下载安装</h3><p data-i18n-html="how.s1.p">从 <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest">Releases</a> 下载 Apple 芯片（M 系列）的 dmg，把 Dispatch IDE.app 拖进「应用程序」；目前只发布这一种包，Intel 机器请从源码构建。包有 Developer ID 签名，没有经过 Apple 公证：第一次双击被拦下后，到 系统设置 → 隐私与安全性 的「安全性」一栏点「仍要打开」，确认框里再点一次「仍要打开」并输入登录密码，之后就能正常双击打开。</p></div>
-    <div class="step"><h3 data-i18n="how.s2.h">首次设置（六步）</h3><p data-i18n-html="how.s2.p">装依赖（Dolt、Beads、Herdr）→ 建立终端命令 <code>dispatch</code> → 新建或接入任务板 → 勾选你用的 Agent → 同步共同规则与技能 → 可选派一个 Agent 审查。每一步都能重跑。</p></div>
-    <div class="step"><h3 data-i18n="how.s3.h">照常开工</h3><p data-i18n="how.s3.p">在终端里像平时一样开 Claude Code / Codex。Dispatch 会读到它们，新会话开头自动收到项目任务和知识；回到 Dispatch 看进展、回复、看成果。第二台电脑在首次设置里选「接入」。</p></div>
-  </div>
-  <div style="margin-top:22px"><pre><code data-i18n="how.code"># 之后终端里也能用，所有界面能看到的，Agent 都能用 --json 问到
-dispatch here                 # 当前项目此刻：现状、14 天时间线、没做完的任务
-dispatch begin "标题" -P 项目   # Agent 记任务；log 记进展；done 完成
-dispatch wiki add --kind pit "现象" --fix "解法"   # 记坑，下次开工自动注入
-dispatch serve qr             # 手机扫码访问
-dispatch project 名 --move-to 另一台   # 把项目搬到另一台 Mac</code></pre></div>
-</div></section>
-
-<section id="faq"><div class="wrap faq">
-  <h2 data-i18n="faq.h2">常见问题</h2>
-  <details open><summary data-i18n="faq.q1">我的对话和代码会被上传吗？</summary><p data-i18n="faq.a1">不会。Dispatch 在本机读取 Agent 已有的记录，默认不向任何模型发送文档或聊天内容。只有你在首次设置的「模型与总结」里选了模型（Claude Code 订阅或你自己的 API Key）并勾上具体用途，它才会把对应的摘录交给那个模型；没选之前什么都不发。手机访问走 Tailscale，不暴露到公网。</p></details>
-  <details><summary data-i18n="faq.q2">支持哪些 Agent？</summary><p data-i18n="faq.a2">Claude Code、Codex（终端、桌面端和 VS Code 扩展）、pi、ZCode、Gemini CLI、OpenCode、Hermes。回复原会话支持 Claude Code、Codex、pi；VS Code 扩展里的会话先一键接进 Herdr 再回；其余能看会话、任务和额度。</p></details>
-  <details><summary data-i18n="faq.q3">一定要两台电脑吗？</summary><p data-i18n="faq.a3">不用。一台就是完整的。有第二台时，任务板、规则、技能自动同步，会话和项目可以互相迁移。</p></details>
-  <details><summary data-i18n="faq.q4">Windows / Linux？</summary><p data-i18n="faq.a4">现在只有 macOS 14+。界面层是 Tauri + React，逻辑在 Python CLI 里，移植是可能的，但还没做。</p></details>
-  <details><summary data-i18n="faq.q5">在线试用里看到的是谁的数据？</summary><p data-i18n="faq.a5">示例数据，写在代码里的几段假会话和任务，只为让你看看界面长什么样。</p></details>
-</div></section>
-
-<footer><div class="wrap"><span>Dispatch · GPL-3.0 · <a href="https://github.com/SchaeferAnjon/dispatch">github.com/SchaeferAnjon/dispatch</a></span><span data-i18n="footer.by">由一个人和几个 Agent 一起做的。</span></div></footer>
+<footer class="foot" data-part="footer"><div class="wrap">
+  <div class="xstrip" id="strip"></div>
+  <div class="row"><span>© 2026 SchaeferAnjon · GPL-3.0</span><span id="host"></span></div>
+</div></footer>
 
 <script>
-// Three languages, one page: zh is written in the markup; en/de replace text by key.
-const I18N = {
-en: {
-"meta.title":"Dispatch: all your coding agents' sessions, tasks and progress in one place",
-"meta.desc":"Dispatch is a local workbench for AI coding agents: sessions, tasks, outcomes, quotas, rules and skills of Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode and Hermes, organised by project. Follow progress and reply to the original session from your Mac or your phone. macOS, open source.",
-"brand":"Dispatch","nav.features":"Features","nav.phone":"Phone","nav.howto":"How it works","nav.manual":"Manual","nav.faq":"FAQ",
-"cta.download":"Download for macOS","cta.demo":"Try it online (sample data)","cta.manual":"User manual (searchable)","cta.source":"Source code",
-"hero.h1":"You are running more and more coding agents.<br>Their sessions, tasks and progress belong in one place.",
-"hero.lead":"Dispatch reads the records your agents already keep on your Mac and organises every session, task and outcome by <b>project</b>: who is waiting for you, who is working, how far things got, at a glance. Reply to the original session from your Mac or your phone, without spinning up another model process.",
-"hero.sub":"macOS 14+ · GPL-3.0 open source · runs locally, sends nothing to any model unless you turn it on",
-"why.h2":"What it solves",
-"why.intro":"Once you use several coding agents the hard part is not the code, it is remembering: where did this project stop last time? Which terminal has an agent waiting for my approval? What did it change and deliver? Can I answer it while I am out? Dispatch pulls all of that back into one place.",
-"why.c1.h":"No change to your habits","why.c1.p":"Agents keep running in your terminal or editor. Dispatch only reads the local records they already write (Claude Code and Codex transcripts, including sessions started from the VS Code extensions; the OpenCode, ZCode and Hermes databases). No API key, no task board required to start.",
-"why.c2.h":"Projects come first","why.c2.p":"Sessions are grouped into projects by directory; tasks and outcomes hang off sessions. The project page is the complete record: review, sessions, tasks, outcomes, documents, knowledge base.",
-"why.c3.h":"Replies go to the original session","why.c3.p":"See an agent waiting on the workbench or your phone and answer right there; the message lands in that terminal's original session. If it is busy the message queues; a mistake can be withdrawn.",
-"features.h2":"Features","features.intro":"Everything below is in the app today; screenshots use sample data.",
-"f1.k":"Workbench","f1.h":"Each project, right now","f1.p":"One card per project shows its current state: unread replies, sessions waiting for approval, running sessions and what they are doing this moment, tasks in progress with acceptance checkboxes, the latest outcome. Projects quiet for three days fold into one line.",
-"f1.l1":"Counts of what needs you, and every agent's quota, along the top","f1.l2":"Star projects to pin them, archive to hide them, the same on both Macs",
-"f2.k":"Project page","f2.h":"The complete record of one project","f2.p":"The review page opens with a model-written paragraph on where things stand, then a 14-day timeline: task progress and completions, git commits, session summaries grouped by day; unfinished tasks with their acceptance progress; each live session in this directory, what it is doing and whether it can be closed.",
-"f2.l1":"Sessions, tasks, outcomes, unassigned tasks, directories and documents each have a tab","f2.l2":"A <b>knowledge base</b> per project: pitfalls hit here, what worked, retrospectives","f2.l3":"Double-click the title to rename; sortable; opens in a new window",
-"f3.k":"Sessions","f3.h":"Every step the agent takes, and reply in place","f3.p":"Thinking, tool calls, changed files, images and artifacts on one page; running sessions are tailed live. The reply box sits underneath: queue, interrupt-and-send, attach pictures, withdraw-and-edit a queued message. Running sessions are highlighted green in the list; the blue dot only marks a finished reply you have not read.",
-"f3.l1":"Sessions you have opened reappear instantly and then fetch only what was appended","f3.l2":"Claude Code's permission mode and model can be switched here",
-"f4.k":"Windows · Split view","f4.h":"Several sessions side by side","f4.p":"Split the session page into 2 or 4 panes, each an independent session with its own reply box and live updates; ⧉ in the title bar detaches the current page into its own window; ⌘-click a project, session or task to open it in a new window. Read a project's documents while watching an agent work.",
-"f5.k":"Task board · Waiting on you","f5.h":"Agents keep the tasks themselves","f5.p":"Every new session starts with its identity, the project's tasks and relevant knowledge injected; agents record tasks with <code>dispatch begin / log / done</code> and pitfalls with <code>dispatch wiki</code>. You never tick things off by hand. \"Waiting on you\" holds only what needs you: unread replies, approvals, things only you can do.",
-"f5.l1":"Board or table, context menus, a recoverable trash","f5.l2":"⌘K searches projects, sessions and tasks; ⌘N starts a session (with pictures and files)",
-"f6.k":"Two Macs","f6.h":"Move a project, sessions included, to the other Mac","f6.p":"Task board, rules and skills stay in sync between both Macs. One click on the project page hands it over: a preflight of Git and file differences, then the directory (uncommitted changes included), Git history, running sessions and the full transcript history move across and continue there. The move runs in the background with a breathing progress bar on the project; changing pages or reloading loses nothing.",
-"f7.k":"Quota · Rules · Skills","f7.h":"Usage per agent, shared rules and a skill pool","f7.p":"The quota page shows each agent's used share and reset time, with its data source named; missing data is called missing. Rules & references gathers every agent's global instructions into one source file, syncs it to each agent's location and checks for conflicts; one skill pool mounts into every agent.",
-"ph.k":"Phone","ph.h":"Follow progress and answer from anywhere","ph.p":"Your phone reaches the Mac running Dispatch over Tailscale; the same interface lays out for phone width and can be added to the home screen. Session not running on the Mac? Revive it there with one tap, then send. Agent stuck on a permission or trust dialog? See that screen on your phone and press the keys. Notifications when a report is done or a session starts waiting on you (ntfy, Bark or macOS notifications).",
-"ph.l1":"Scan the QR code in Settings once; the phone remembers the login, and links in notifications carry single-use codes","ph.l2":"When needed, view and control the Mac's screen through noVNC",
-"how.h2":"How to get started","how.intro":"From download to your first project in about ten minutes. Requires <a href=\"https://brew.sh\">Homebrew</a>.",
-"how.s1.h":"Download and install","how.s1.p":"Get the Apple silicon (M series) dmg, the only package published, from <a href=\"https://github.com/SchaeferAnjon/dispatch/releases/latest\">Releases</a> and drag Dispatch IDE.app into Applications; on an Intel Mac, build from source instead. The app is signed with a Developer ID but not notarized by Apple: when the first double-click is blocked, click Open Anyway under Security in System Settings › Privacy & Security, then Open Anyway again in the question that follows and your login password, and it opens normally from then on.",
-"how.s2.h":"First-run setup (six steps)","how.s2.p":"Install dependencies (Dolt, Beads, Herdr) → create the <code>dispatch</code> terminal command → create or join a task board → tick the agents you use → sync shared rules and skills → optionally have an agent review them. Every step can be re-run.",
-"how.s3.h":"Work as usual","how.s3.p":"Start Claude Code or Codex in your terminal as you always do. Dispatch picks them up; new sessions begin with the project's tasks and knowledge injected. Come back to Dispatch to follow progress, reply and see outcomes. On a second Mac choose \"join\" during setup.",
-"how.code":"# Everything the app shows, agents can ask for with --json\ndispatch here                 # this project right now: status, 14-day timeline, open tasks\ndispatch begin \"title\" -P project   # agents record tasks; log progress; done to finish\ndispatch wiki add --kind pit \"symptom\" --fix \"fix\"   # a pitfall, injected into the next session\ndispatch serve qr             # QR code for the phone\ndispatch project name --move-to other-mac   # move a project to the other Mac",
-"faq.h2":"FAQ",
-"faq.q1":"Are my conversations and code uploaded anywhere?","faq.a1":"No. Dispatch reads the agents' existing records on your Mac and sends no documents or chat content to any model by default. Only after you pick a model in first-run setup under \"Models & summaries\" (the Claude Code subscription or your own API key) and tick the specific uses does it hand the matching excerpts to that model; until then nothing is sent. Phone access goes over Tailscale, nothing is exposed to the public internet.",
-"faq.q2":"Which agents are supported?","faq.a2":"Claude Code, Codex (terminal, desktop and the VS Code extensions), pi, ZCode, Gemini CLI, OpenCode and Hermes. Replying to the original session works for Claude Code, Codex and pi; a session from a VS Code extension is first taken into Herdr with one click, then you reply; the others show sessions, tasks and quotas.",
-"faq.q3":"Do I need two Macs?","faq.a3":"No. One Mac is the complete product. With a second one, the task board, rules and skills sync automatically and sessions and projects can be moved between them.",
-"faq.q4":"Windows / Linux?","faq.a4":"macOS 14+ only for now. The UI is Tauri + React and the logic lives in a Python CLI, so a port is possible but not done.",
-"faq.q5":"Whose data is in the online demo?","faq.a5":"Sample data: a few fake sessions and tasks written into the code, only to show what the interface looks like.",
-"footer.by":"Made by one person and a few agents."
-},
-de: {
-"meta.title":"Dispatch: Sitzungen, Aufgaben und Fortschritt aller Coding-Agents an einem Ort",
-"meta.desc":"Dispatch ist eine lokale Arbeitsfläche für KI-Coding-Agents: Sitzungen, Aufgaben, Ergebnisse, Kontingente, Regeln und Skills von Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode und Hermes, nach Projekt geordnet. Fortschritt verfolgen und der ursprünglichen Sitzung vom Mac oder vom Handy aus antworten. macOS, Open Source.",
-"brand":"Dispatch","nav.features":"Funktionen","nav.phone":"Handy","nav.howto":"So geht's","nav.manual":"Handbuch","nav.faq":"FAQ",
-"cta.download":"Für macOS laden","cta.demo":"Online ausprobieren (Beispieldaten)","cta.manual":"Handbuch (durchsuchbar)","cta.source":"Quellcode",
-"hero.h1":"Sie nutzen immer mehr Coding-Agents.<br>Ihre Sitzungen, Aufgaben und Fortschritte gehören an einen Ort.",
-"hero.lead":"Dispatch liest die Aufzeichnungen, die Ihre Agents ohnehin auf dem Mac anlegen, und ordnet jede Sitzung, jede Aufgabe und jedes Ergebnis nach <b>Projekt</b>: Wer wartet auf Sie, wer arbeitet gerade, wie weit ist es, auf einen Blick. Antworten Sie der ursprünglichen Sitzung vom Mac oder vom Handy aus, ohne einen weiteren Modellprozess zu starten.",
-"hero.sub":"macOS 14+ · GPL-3.0 Open Source · läuft lokal, sendet nichts an ein Modell, solange Sie es nicht einschalten",
-"why.h2":"Welches Problem es löst",
-"why.intro":"Mit mehreren Coding-Agents liegt die Mühe nicht im Code, sondern im Erinnern: Wo stand dieses Projekt zuletzt? In welchem Terminal wartet ein Agent auf meine Freigabe? Was hat er geändert und geliefert? Kann ich unterwegs antworten? Dispatch holt all das an einen Ort zurück.",
-"why.c1.h":"Keine Umstellung","why.c1.p":"Die Agents laufen weiter in Ihrem Terminal oder Editor. Dispatch liest nur die lokalen Aufzeichnungen, die sie ohnehin schreiben (Transkripte von Claude Code und Codex, auch aus den VS-Code-Erweiterungen; die Datenbanken von OpenCode, ZCode und Hermes). Kein API-Schlüssel, kein Aufgabenboard nötig, um anzufangen.",
-"why.c2.h":"Das Projekt ist der Ausgangspunkt","why.c2.p":"Sitzungen werden über ihr Verzeichnis Projekten zugeordnet; Aufgaben und Ergebnisse hängen an Sitzungen. Die Projektseite ist die vollständige Akte: Rückblick, Sitzungen, Aufgaben, Ergebnisse, Dokumente, Wissensbasis.",
-"why.c3.h":"Antworten landen in der Originalsitzung","why.c3.p":"Sehen Sie auf der Arbeitsfläche oder am Handy, dass ein Agent wartet, antworten Sie direkt; die Nachricht landet in der ursprünglichen Sitzung im Terminal. Ist er beschäftigt, wird sie eingereiht; ein Versehen lässt sich zurückziehen.",
-"features.h2":"Funktionen","features.intro":"Alles hier ist heute in der App vorhanden; die Screenshots zeigen Beispieldaten.",
-"f1.k":"Arbeitsfläche","f1.h":"Jedes Projekt, jetzt gerade","f1.p":"Eine Karte pro Projekt zeigt den aktuellen Stand: ungelesene Antworten, Sitzungen, die auf Freigabe warten, laufende Sitzungen und was sie gerade tun, Aufgaben in Arbeit mit Abnahmefortschritt, das neueste Ergebnis. Projekte ohne Bewegung seit drei Tagen falten sich zu einer Zeile.",
-"f1.l1":"Oben: was auf Sie wartet, und das Kontingent jedes Agents","f1.l2":"Projekte anpinnen (Stern) oder archivieren, auf beiden Macs gleich",
-"f2.k":"Projektseite","f2.h":"Die vollständige Akte eines Projekts","f2.p":"Der Rückblick beginnt mit einem vom Modell geschriebenen Absatz zum Stand, dann eine 14-Tage-Zeitleiste: Aufgabenfortschritt und Abschlüsse, Git-Commits, Sitzungszusammenfassungen nach Tag; offene Aufgaben mit Abnahmefortschritt; jede aktive Sitzung in diesem Verzeichnis, was sie tut und ob sie geschlossen werden kann.",
-"f2.l1":"Sitzungen, Aufgaben, Ergebnisse, nicht zugeordnete Aufgaben, Verzeichnisse und Dokumente haben je einen Reiter","f2.l2":"Eine <b>Wissensbasis</b> pro Projekt: hier getretene Fallen, was funktioniert hat, Rückblicke","f2.l3":"Doppelklick auf den Titel zum Umbenennen; sortierbar; öffnet sich in einem neuen Fenster",
-"f3.k":"Sitzungen","f3.h":"Jeder Schritt des Agents, Antwort an Ort und Stelle","f3.p":"Denken, Werkzeugaufrufe, geänderte Dateien, Bilder und Artefakte auf einer Seite; laufende Sitzungen werden live mitgelesen. Das Antwortfeld sitzt darunter: einreihen, unterbrechen und senden, Bilder anhängen, eine eingereihte Nachricht zurückziehen und bearbeiten. Laufende Sitzungen sind in der Liste grün hervorgehoben; der blaue Punkt markiert nur eine fertige, ungelesene Antwort.",
-"f3.l1":"Bereits geöffnete Sitzungen erscheinen sofort wieder und laden danach nur das Neue","f3.l2":"Berechtigungsmodus und Modell von Claude Code lassen sich hier umschalten",
-"f4.k":"Fenster · Geteilte Ansicht","f4.h":"Mehrere Sitzungen nebeneinander","f4.p":"Die Sitzungsseite lässt sich in 2 oder 4 Felder teilen, jedes eine eigenständige Sitzung mit eigenem Antwortfeld und Live-Aktualisierung; ⧉ in der Titelleiste löst die aktuelle Seite in ein eigenes Fenster; ⌘-Klick auf Projekt, Sitzung oder Aufgabe öffnet ein neues Fenster. Projektdokumente lesen, während ein Agent arbeitet.",
-"f5.k":"Aufgabenboard · Wartet auf Sie","f5.h":"Die Agents führen die Aufgaben selbst","f5.p":"Jede neue Sitzung beginnt mit eingespielter Identität, den Aufgaben des Projekts und passendem Wissen; Agents halten Aufgaben mit <code>dispatch begin / log / done</code> fest und Fallen mit <code>dispatch wiki</code>. Sie haken nichts von Hand ab. „Wartet auf Sie“ enthält nur, was Sie brauchen: ungelesene Antworten, Freigaben, Dinge, die nur Sie tun können.",
-"f5.l1":"Board oder Tabelle, Kontextmenüs, wiederherstellbarer Papierkorb","f5.l2":"⌘K durchsucht Projekte, Sitzungen und Aufgaben; ⌘N startet eine Sitzung (mit Bildern und Dateien)",
-"f6.k":"Zwei Macs","f6.h":"Ein Projekt samt Sitzungen auf den anderen Mac umziehen","f6.p":"Aufgabenboard, Regeln und Skills bleiben zwischen beiden Macs synchron. Ein Klick auf der Projektseite übergibt es: erst eine Vorprüfung von Git- und Dateiunterschieden, dann ziehen Verzeichnis (inklusive nicht eingecheckter Änderungen), Git-Historie, laufende Sitzungen und die gesamte Transkript-Historie um und laufen dort weiter. Der Umzug läuft im Hintergrund mit einem atmenden Fortschrittsbalken am Projekt; Seitenwechsel oder Neuladen verlieren nichts.",
-"f7.k":"Kontingent · Regeln · Skills","f7.h":"Verbrauch pro Agent, gemeinsame Regeln, ein Skill-Pool","f7.p":"Die Kontingentseite zeigt je Agent den verbrauchten Anteil und die Rücksetzzeit mit Angabe der Datenquelle; fehlende Daten heißen fehlend. Regeln & Nachschlagen sammelt die globalen Anweisungen aller Agents in einer Quelldatei, synchronisiert sie an die jeweiligen Orte und prüft auf Konflikte; ein Skill-Pool wird in jeden Agent eingehängt.",
-"ph.k":"Handy","ph.h":"Unterwegs den Fortschritt sehen und antworten","ph.p":"Das Handy erreicht den Mac mit Dispatch über Tailscale; dieselbe Oberfläche passt sich der Handybreite an und lässt sich zum Home-Bildschirm hinzufügen. Läuft die Sitzung auf dem Mac nicht mehr? Mit einem Tipp dort wiederbeleben und dann senden. Hängt der Agent an einem Berechtigungs- oder Vertrauensdialog? Den Bildschirmausschnitt am Handy sehen und die Tasten drücken. Benachrichtigungen, wenn ein Bericht fertig ist oder eine Sitzung auf Sie wartet (ntfy, Bark oder macOS-Mitteilungen).",
-"ph.l1":"QR-Code in den Einstellungen einmal scannen; das Handy merkt sich die Anmeldung, Links in Benachrichtigungen tragen Einmal-Codes","ph.l2":"Bei Bedarf den Mac-Bildschirm per noVNC sehen und bedienen",
-"how.h2":"So fangen Sie an","how.intro":"Vom Download zum ersten Projekt in etwa zehn Minuten. Benötigt <a href=\"https://brew.sh\">Homebrew</a>.",
-"how.s1.h":"Laden und installieren","how.s1.p":"Das dmg für Apple Silicon (M-Serie), das einzige veröffentlichte Paket, aus den <a href=\"https://github.com/SchaeferAnjon/dispatch/releases/latest\">Releases</a> laden und Dispatch IDE.app in „Programme“ ziehen; auf einem Intel-Mac stattdessen aus dem Quellcode bauen. Die App ist mit einer Developer ID signiert, aber nicht von Apple notarisiert: Wird der erste Doppelklick blockiert, in Systemeinstellungen › Datenschutz & Sicherheit unter „Sicherheit“ auf „Dennoch öffnen“ klicken, in der Rückfrage noch einmal „Dennoch öffnen“ und das Anmeldepasswort, danach öffnet sie sich normal.",
-"how.s2.h":"Ersteinrichtung (sechs Schritte)","how.s2.p":"Abhängigkeiten installieren (Dolt, Beads, Herdr) → Terminalbefehl <code>dispatch</code> anlegen → Aufgabenboard anlegen oder beitreten → genutzte Agents ankreuzen → gemeinsame Regeln und Skills synchronisieren → optional einen Agent prüfen lassen. Jeder Schritt lässt sich wiederholen.",
-"how.s3.h":"Wie gewohnt arbeiten","how.s3.p":"Claude Code oder Codex im Terminal starten wie immer. Dispatch nimmt sie auf; neue Sitzungen beginnen mit den Aufgaben und dem Wissen des Projekts. Zurück in Dispatch Fortschritt verfolgen, antworten, Ergebnisse ansehen. Auf einem zweiten Mac in der Einrichtung „beitreten“ wählen.",
-"how.code":"# Alles, was die App zeigt, können Agents mit --json abfragen\ndispatch here                 # dieses Projekt jetzt: Stand, 14-Tage-Zeitleiste, offene Aufgaben\ndispatch begin \"Titel\" -P projekt   # Agents legen Aufgaben an; log für Fortschritt; done zum Abschluss\ndispatch wiki add --kind pit \"Symptom\" --fix \"Lösung\"   # eine Falle, in die nächste Sitzung eingespielt\ndispatch serve qr             # QR-Code fürs Handy\ndispatch project name --move-to anderer-mac   # ein Projekt auf den anderen Mac umziehen",
-"faq.h2":"Häufige Fragen",
-"faq.q1":"Werden meine Gespräche und mein Code irgendwohin hochgeladen?","faq.a1":"Nein. Dispatch liest die vorhandenen Aufzeichnungen der Agents auf Ihrem Mac und sendet standardmäßig keine Dokumente oder Chatinhalte an ein Modell. Erst wenn Sie in der Ersteinrichtung unter „Modelle & Zusammenfassungen“ ein Modell wählen (das Claude-Code-Abo oder Ihren eigenen API-Schlüssel) und die einzelnen Verwendungen anhaken, übergibt es die passenden Auszüge an dieses Modell; bis dahin wird nichts gesendet. Der Handyzugriff läuft über Tailscale; nichts wird ins öffentliche Internet gestellt.",
-"faq.q2":"Welche Agents werden unterstützt?","faq.a2":"Claude Code, Codex (Terminal, Desktop und VS-Code-Erweiterungen), pi, ZCode, Gemini CLI, OpenCode und Hermes. Antworten in die Originalsitzung funktioniert bei Claude Code, Codex und pi; eine Sitzung aus einer VS-Code-Erweiterung wird zuerst mit einem Klick in Herdr übernommen, dann antworten Sie; die übrigen zeigen Sitzungen, Aufgaben und Kontingente.",
-"faq.q3":"Brauche ich zwei Macs?","faq.a3":"Nein. Ein Mac ist das vollständige Produkt. Mit einem zweiten synchronisieren sich Aufgabenboard, Regeln und Skills automatisch, und Sitzungen und Projekte lassen sich hin- und herziehen.",
-"faq.q4":"Windows / Linux?","faq.a4":"Derzeit nur macOS 14+. Die Oberfläche ist Tauri + React, die Logik steckt in einer Python-CLI; eine Portierung ist möglich, aber noch nicht gemacht.",
-"faq.q5":"Wessen Daten zeigt die Online-Demo?","faq.a5":"Beispieldaten: ein paar erfundene Sitzungen und Aufgaben im Code, nur damit man die Oberfläche sieht.",
-"footer.by":"Gemacht von einer Person und ein paar Agents."
-}
+/* ===== theme: the delivery page passes #theme= and posts dispatch-theme; alone it follows the system ===== */
+(() => {
+  const root = document.documentElement, mq = matchMedia("(prefers-color-scheme: dark)");
+  const m = location.hash.match(/theme=(light|dark)/);
+  let fixed = m ? m[1] : null;
+  const set = () => { root.dataset.theme = fixed || (mq.matches ? "dark" : "light"); };
+  set(); mq.addEventListener("change", set);
+  addEventListener("message", e => { if (e.data && e.data.type === "dispatch-theme") { fixed = e.data.theme; set(); } });
+})();
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/* ===== line icons, 16px, 1.5 stroke, round caps ===== */
+const ICONS = {
+  bell: '<path d="M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3z"/><path d="M6.5 14h3"/>',
+  folder: '<path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>',
+  pulse: '<path d="M1.5 8.5h3L6 4l3 8 1.5-3.5h4"/>',
+  diff: '<path d="M3.5 1.8h6l3 3v9.4h-9z"/><path d="M6 7.2h4M8 5.2v4M6 11.5h4"/>',
+  files: '<path d="M5.5 1.8h5l3 3v7.7h-8z"/><path d="M3 4.5v9.7h7.5"/>',
+  book: '<path d="M2 3.5h4a2 2 0 0 1 2 2v8a1.5 1.5 0 0 0-1.5-1.5H2zM14 3.5h-4a2 2 0 0 0-2 2v8a1.5 1.5 0 0 1 1.5-1.5H14z"/>',
+  list: '<path d="M6 4h8M6 8h8M6 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01"/>',
+  plus: '<path d="M8 3v10M3 8h10"/>',
+  search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>',
+  newfile: '<path d="M4 1.8h5l3 3v9.4H4z"/><path d="M8 7.5v4M6 9.5h4"/>',
+  package: '<path d="M8 1.8l5.5 3v6.4L8 14.2l-5.5-3V4.8z"/><path d="M2.5 4.8L8 8l5.5-3.2M8 8v6.2"/>',
+  compass: '<circle cx="8" cy="8" r="6.2"/><path d="M10.6 5.4L9.2 9.2 5.4 10.6 6.8 6.8z"/>',
+  file: '<path d="M4 1.8h5l3 3v9.4H4z"/><path d="M9 1.8v3h3"/>',
+  edit: '<path d="M10.5 2.5l3 3L6 13H3v-3z"/>',
+  terminal: '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.5"/><path d="M4.5 6.5l2 1.5-2 1.5M8 10h3"/>',
+  x: '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>',
+  caretR: '<path d="M6 4l4 4-4 4"/>',
+  caretD: '<path d="M4 6l4 4 4-4"/>',
+  branch: '<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="5.5" r="1.5"/><path d="M4.5 5v6M11.5 7c0 2.5-3 2.5-7 4"/>',
+  shield: '<path d="M8 1.8l5 2v4c0 3-2.2 5.2-5 6.4-2.8-1.2-5-3.4-5-6.4v-4z"/>',
+  lock: '<rect x="3.5" y="7" width="9" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>',
+  code: '<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/>',
+  key: '<circle cx="5.5" cy="10.5" r="3"/><path d="M7.6 8.4L13.5 2.5M11.2 4.8l1.6 1.6"/>',
+  gear: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.8M8 12.4v1.8M1.8 8h1.8M12.4 8h1.8M3.6 3.6l1.3 1.3M11.1 11.1l1.3 1.3M3.6 12.4l1.3-1.3M11.1 4.9l1.3-1.3"/>',
+  sidebar: '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.5"/><path d="M6 2.8v10.4"/>',
+  panel: '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.5"/><path d="M10 2.8v10.4"/>',
+  up: '<path d="M8 13V3.5M4 7l4-4 4 4"/>',
+  question: '<circle cx="8" cy="8" r="6.2"/><path d="M6.3 6.2a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1v.4M8 11.6h.01"/>',
+  spark: '<path d="M8 1.8v12.4M1.8 8h12.4M3.6 3.6l8.8 8.8M12.4 3.6l-8.8 8.8"/>',
+  check: '<path d="M3.5 8.5l3 3 6-7"/>',
+  agent: '<circle cx="8" cy="5" r="2.8"/><path d="M2.8 14c.5-2.6 2.6-4.2 5.2-4.2s4.7 1.6 5.2 4.2"/>',
+  commit: '<circle cx="8" cy="8" r="2.5"/><path d="M1.5 8h4M10.5 8h4"/>',
+  clock: '<circle cx="8" cy="8" r="6.2"/><path d="M8 4.5V8l2.3 1.5"/>',
+  chat: '<path d="M2.5 3.5h11v7.5H7l-3 2.5v-2.5H2.5z"/>',
+  apps: '<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>',
+  arrow: '<path d="M3 8h10M9 4l4 4-4 4"/>',
+  monitor: '<rect x="1.8" y="2.5" width="12.4" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3"/>',
+  cup: '<path d="M3 6h8v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM11 7h1.2a1.5 1.5 0 0 1 0 3H11"/>',
 };
-const LANG_ATTR = { zh: "zh-CN", en: "en", de: "de" };
-const zhCache = new Map();
-function apply(lang) {
-  document.querySelectorAll("[data-i18n],[data-i18n-html],[data-i18n-content]").forEach((el) => {
-    const key = el.dataset.i18n || el.dataset.i18nHtml || el.dataset.i18nContent;
-    const isHtml = "i18nHtml" in el.dataset, isContent = "i18nContent" in el.dataset;
-    if (!zhCache.has(el)) zhCache.set(el, isContent ? el.getAttribute("content") : isHtml ? el.innerHTML : el.textContent);
-    const text = lang === "zh" ? zhCache.get(el) : (I18N[lang] && I18N[lang][key]) || zhCache.get(el);
-    if (isContent) el.setAttribute("content", text); else if (isHtml) el.innerHTML = text; else el.textContent = text;
-  });
-  document.documentElement.lang = LANG_ATTR[lang];
-  document.querySelectorAll(".lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
-  // The demo, screenshots and video exist per language (assets/en/…, assets/de/…; Chinese at the root).
-  document.querySelectorAll(".demo-link").forEach((a) => { a.href = "demo/?lang=" + lang + "#/home"; });
-  document.querySelectorAll(".manual-link").forEach((a) => { a.href = "manual/#/" + (lang === "zh" ? "" : lang + "/"); });
-  const dir = lang === "zh" ? "assets/" : "assets/" + lang + "/";
-  document.querySelectorAll("[data-media]").forEach((el) => {
-    const want = dir + el.dataset.media;
-    if (el.getAttribute("src") !== want) { el.setAttribute("src", want); if (el.dataset.poster) el.setAttribute("poster", dir + el.dataset.poster); if (el.tagName === "VIDEO") el.load(); }
-  });
-  try { localStorage.setItem("dispatch-site-lang", lang); } catch (e) {}
+const ic = (n, cls = "") => `<svg class="ico ${cls}" viewBox="0 0 16 16" aria-hidden="true">${ICONS[n]}</svg>`;
+const APPLE = '<svg class="ico f" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9 0 0-2.8-1.1-2.9-4.3zM13.9 5.3c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.2.1 2.4-.6 3.1-1.5z"/></svg>';
+const GITHUB = '<svg class="ico f" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9V21c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></svg>';
+
+/* ===== state marks (DESIGN.md 符号表): VS Code's round icons, 14px ===== */
+let MASKS = 0;
+function mark(kind, extra = "") {
+  // kind: now | wait | done | grey-done | todo | stopped | sub
+  const cls = { now: "m-now", wait: "m-wait", done: "m-done", "grey-done": "m-grey", todo: "m-grey", stopped: "", sub: "m-sub" }[kind] || "";
+  const style = kind === "stopped" ? ' style="color:var(--stopped)"' : "";
+  if (kind === "todo") return `<svg class="mk ${cls} ${extra}" viewBox="0 0 16 16"${style}><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  if (kind === "done" || kind === "grey-done") {
+    const id = "pm" + (++MASKS);
+    return `<svg class="mk ${cls} ${extra}" viewBox="0 0 16 16"${style}><mask id="${id}"><rect width="16" height="16" fill="#fff"/><path d="M4.8 8.3l2.1 2.1 4.3-4.6" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></mask><circle cx="8" cy="8" r="7" fill="currentColor" mask="url(#${id})"/></svg>`;
+  }
+  return `<svg class="mk ${cls} ${extra}" viewBox="0 0 16 16"${style}><circle cx="8" cy="8" r="7" fill="currentColor"/></svg>`;
 }
-function pick() {
-  const q = new URLSearchParams(location.search).get("lang");
-  if (q && I18N[q] || q === "zh") return q;
-  try { const s = localStorage.getItem("dispatch-site-lang"); if (s) return s; } catch (e) {}
-  const n = (navigator.language || "en").toLowerCase();
-  return n.startsWith("zh") ? "zh" : n.startsWith("de") ? "de" : "en";
+
+/* ===== the app icon's ten blocks (base/common/dispatchPalette.ts) and their drop (方案三「落块」) ===== */
+const BLOCKS = [
+  [0, 0, 0, 120, 120, 26, "gray", 1], [1, 160, 0, 120, 120, 26, "amber", 1], [2, 320, 0, 120, 120, 26, "green", 1], [3, 480, 0, 120, 120, 26, "blue", 1],
+  [4, 0, 160, 120, 72, 18, "cream", .92], [5, 160, 160, 120, 72, 18, "coral", 1], [6, 320, 160, 120, 72, 18, "teal", 1], [7, 480, 160, 120, 72, 18, "purple", 1],
+  [8, 0, 256, 120, 72, 18, "cream", .55], [9, 160, 256, 120, 72, 18, "cream", .92],
+].map(([i, x, y, w, h, rx, c, o]) => ({ i, x, y, w, h, rx, c, o }));
+const DROP = { order: [8, 9, 4, 5, 6, 7, 0, 1, 2, 3], gap: 220, g: 0.0018, bounce: 0.28, rest: 0.12, block: 22, fall: 101.2, restMs: 1000 };
+// each block's fall, simulated once at 60 frames a second, in the design's px (its blocks 22px)
+const TRAJ = BLOCKS.map(b => {
+  const out = []; let y = -(DROP.fall + b.y * DROP.block / b.w), vy = 0, done = false; const dt = 1000 / 60;
+  while (!done) { vy += DROP.g * dt; y += vy * dt; if (y >= 0) { y = 0; if (vy > DROP.rest) vy = -vy * DROP.bounce; else done = true; } out.push(y); }
+  return out;
+});
+const DROP_MS = Math.max(...DROP.order.map((i, k) => k * DROP.gap + TRAJ[i].length * 1000 / 60));
+const ROUND_MS = DROP_MS + DROP.restMs;
+/** The icon as SVG: `w` px wide. mark: the logo with the Dock's white-centred dot and its glow; ghosts: the empty slots. */
+function iconSVG(w, { mark = false, ghosts = false, cls = "", dropping = false } = {}) {
+  const k = mark ? w / (564 + 58 * 1.6) : w / 600;
+  const h = mark ? (484 + 58 * 1.6) * k : 328 * k;
+  let s = `<svg class="${cls}"${mark ? ' data-mark="1"' : ""} width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`;
+  if (ghosts) s += BLOCKS.map(b => `<rect x="${b.x * k}" y="${b.y * k}" width="${b.w * k}" height="${b.h * k}" rx="${b.rx * k}" fill="currentColor" fill-opacity=".08"/>`).join("");
+  s += BLOCKS.map(b => `<rect class="blk" data-i="${b.i}" x="${b.x * k}" y="${b.y * k}" width="${b.w * k}" height="${b.h * k}" rx="${b.rx * k}" style="fill:var(--i-${b.c})" fill-opacity="${b.o}"${dropping ? ' opacity="0"' : ""}/>`).join("");
+  if (mark) {
+    const cx = 564 * k, cy = 484 * k, r = 58 * k;
+    s += `<defs><radialGradient id="glow${w | 0}"><stop offset="0" stop-color="var(--i-green)"/><stop offset=".45" stop-color="var(--i-green)" stop-opacity=".45"/><stop offset="1" stop-color="var(--i-green)" stop-opacity="0"/></radialGradient></defs>`;
+    s += `<g class="dot"${dropping ? ' opacity="0"' : ""}><circle class="glow" cx="${cx}" cy="${cy}" r="${r * 1.6}" fill="url(#glow${w | 0})"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="var(--i-green)"/><circle cx="${cx}" cy="${cy}" r="${26 * k}" fill="var(--i-cream-dot)"/></g>`;
+  }
+  return s + "</svg>";
 }
-document.querySelectorAll(".lang button").forEach((b) => b.addEventListener("click", () => apply(b.dataset.lang)));
-apply(pick());
+/** One clock for every running icon on the page: they fall in step (DESIGN.md 动效「图标掉落」). */
+const RUNNING = new Set(); let T0 = performance.now();
+function frameAt(svg, t, once) {
+  const scale = svg.width.baseVal.value / 600 * 120 / DROP.block * (svg.dataset.mark ? 600 / (564 + 58 * 1.6) : 1);
+  svg.querySelectorAll(".blk").forEach(r => {
+    const i = +r.dataset.i, k = DROP.order.indexOf(i), local = t - k * DROP.gap;
+    if (local < 0) { r.setAttribute("opacity", "0"); return; }
+    const tr = TRAJ[i], f = Math.min(tr.length - 1, Math.floor(local / (1000 / 60)));
+    r.setAttribute("opacity", "1"); r.setAttribute("transform", `translate(0 ${(tr[f] * scale).toFixed(2)})`);
+  });
+  const dot = svg.querySelector(".dot");
+  if (dot) { const p = Math.max(0, Math.min(1, (t - DROP_MS) / 220)); dot.setAttribute("opacity", p); }
+}
+function tick(now) {
+  const t = (now - T0) % ROUND_MS;
+  for (const svg of RUNNING) { if (!svg.isConnected) { RUNNING.delete(svg); continue; } frameAt(svg, t); }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+function runIcon(svg) { if (REDUCED) return; RUNNING.add(svg); }
+/** Drop the icon once (the logo forming), then stay. */
+function dropOnce(svg) {
+  if (REDUCED) { svg.querySelectorAll(".blk").forEach(r => r.setAttribute("opacity", "1")); const d = svg.querySelector(".dot"); if (d) d.setAttribute("opacity", "1"); return; }
+  const start = performance.now();
+  const step = (now) => { const t = now - start; frameAt(svg, Math.min(t, DROP_MS + 300)); if (t < DROP_MS + 300) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+/** The running mark for a session row: 16 wide, falling with everyone else. */
+const runMark = () => `<span class="dropclip">${iconSVG(16, { cls: "drop run", dropping: true })}</span>`;
+function wakeIcons(root = document) { root.querySelectorAll("svg.run").forEach(runIcon); }
+
+/* ===== language: #lang= or ?lang= > last pick > the browser's ===== */
+let LANG = (() => {
+  // the old site had German too (README links carry ?lang=de); it reads English now
+  const h = (location.hash + "&" + location.search).match(/lang=(zh|en|de)\b/); if (h) return h[1] === "zh" ? "zh" : "en";
+  try { const s = localStorage.getItem("dispatch.lang"); if (s === "zh" || s === "en") return s; } catch (e) {}
+  return /^zh/i.test(navigator.language || "") ? "zh" : "en";
+})();
+const t = (k) => (T[LANG][k] ?? T.en[k] ?? k).replace(/\{v\}/g, REL.v).replace(/\{rel\}/g, REL.page).replace(/\{inst\}/g, INSTALL[LANG]);
+function applyText() {
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.title = t("title");
+  document.querySelectorAll("[data-i]").forEach(el => { el.innerHTML = t(el.dataset.i); });
+  document.querySelectorAll(".seg button").forEach(b => b.classList.toggle("on", b.dataset.lang === LANG));
+}
+
+/* ===== links (the release and the hub) ===== */
+const GH = "https://github.com/SchaeferAnjon/dispatch";
+const HUB = "https://apps.us-cloud.uk";
+/* The newest release. The download buttons start on the release page and switch to its .dmg once GitHub answers;
+   v is what "Latest" says until then (the release this page went out with). */
+// the full first-open steps: the install section of the README in that language
+const INSTALL = { en: `${GH}/blob/main/README.en.md#install-from-a-release`, zh: `${GH}#%E4%BB%8E-release-%E5%AE%89%E8%A3%85` };
+const REL = { v: "0.9.5", page: `${GH}/releases/latest`, dmg: null };
+const APPS = [
+  ["mc", "MeetCaption", "https://meetcaption.us-cloud.uk", "assets/apps/meetcaption.png"], ["af", "Ask Free", "https://askfree.us-cloud.uk", "assets/apps/askfree.png"],
+  ["gnw", "GetNewWord", "https://getnewword.us-cloud.uk", "assets/apps/getnewword.png"], ["pr", "ParaRead", "https://pararead.us-cloud.uk", "assets/apps/pararead.png"],
+  ["tr", "TypeRight", "https://typeright.us-cloud.uk", "assets/apps/typeright.png"], ["cn", "Canvas Notes", "https://canvas-note.us-cloud.uk", "assets/apps/canvasnotes.png"],
+  ["dp", "Dispatch", "./", "assets/icon.png"],
+];
+function stripHTML() {
+  return `<a class="by" href="${HUB}" target="_blank" rel="noopener">${t("by")} <span>·</span> <u>${t("all")}</u></a>
+    <span class="icons">${APPS.map(([id, n, u, img]) => `<a class="${id === "dp" ? "cur" : ""}" href="${u}" ${id === "dp" ? 'aria-current="page"' : 'target="_blank" rel="noopener"'} aria-label="${n}"><img src="${img}" alt=""><span class="tip">${n}${id === "dp" ? " · " + t("here") : ""}</span></a>`).join("")}</span>`;
+}
+function setDownloads() { document.querySelectorAll("[data-dl]").forEach(a => { a.href = REL.dmg || REL.page; }); }
+/* GitHub's latest release: its .dmg for the buttons, its number for "Latest". No answer: the buttons keep the release page. */
+function latest() {
+  fetch("https://api.github.com/repos/SchaeferAnjon/dispatch/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+    .then(r => (r.ok ? r.json() : null)).then(j => {
+      if (!j) return;
+      const f = (j.assets || []).find(x => /\.dmg$/i.test(x.name));
+      if (f) REL.dmg = f.browser_download_url;
+      if (/^v?\d+(\.\d+)+$/.test(j.tag_name || "")) REL.v = j.tag_name.replace(/^v/, "");
+      if (j.html_url) REL.page = j.html_url;
+      applyText(); setDownloads();
+    }).catch(() => {});
+}
+
+/* ===== the window's content: one small, real job (a dark mode switch) ===== */
+const ASK = "Add a dark mode switch to Settings, and remember what I pick.";
+const STEPS = ["Find where the colours live", "Put both themes in one file", "Add the switch to Settings", "Remember the pick and test it"];
+const TOOLS = [
+  { ic: "file", v: "Read", a: "src/settings.tsx" },
+  { ic: "newfile", v: "Created", a: "src/theme.ts" },
+  { ic: "package", v: "Installed", a: "use-local-storage" },
+  { ic: "edit", v: "Edited", a: "src/settings.tsx", d: ["+18", "−2"] },
+  { ic: "terminal", v: "Ran", a: "npm test" },
+];
+const RIGHT_NOW = ["reading src/settings.tsx", "writing src/theme.ts", "adding the switch to Settings", "running npm test"];
+const TALK = [
+  { ic: "newfile", n: "theme.ts", tag: "New file", p: "Keeps the light and dark colours in one place." },
+  { ic: "package", n: "use-local-storage", tag: "Installed", p: "Remembers what you pick after the app closes." },
+];
+const STOPS = [
+  { ic: "newfile", f: "theme.ts", m: "New file · lines 1–5", p: "Both colour sets live here, so the switch only has to pick a name.", file: "theme", hi: [1, 5] },
+  { ic: "file", f: "settings.tsx", m: "18 lines added · lines 12–14", p: "The switch itself. Turning it calls applyTheme and saves your pick.", file: "settings", hi: [12, 14] },
+  { ic: "file", f: "package.json", m: "1 line added · line 9", p: "use-local-storage, the small library that remembers the pick.", file: "pkg", hi: [9, 9] },
+];
+const CODE = {
+  theme: ['<span class="c">// Keeps the light and dark colours in one place.</span>', '<span class="k">export const</span> themes = {', '  light: { page: <span class="s">\'#ffffff\'</span>, text: <span class="s">\'#1c1917\'</span> },', '  dark:  { page: <span class="s">\'#1c1917\'</span>, text: <span class="s">\'#fafaf9\'</span> },', '};', '', '<span class="k">export function</span> applyTheme(name) {', '  document.body.dataset.theme = name;', '}'],
+  settings: ['<span class="k">import</span> { applyTheme } <span class="k">from</span> <span class="s">\'./theme\'</span>;', '<span class="k">import</span> useLocalStorage <span class="k">from</span> <span class="s">\'use-local-storage\'</span>;', '', '<span class="k">export function</span> Settings() {', '  <span class="k">const</span> [dark, setDark] = useLocalStorage(<span class="s">\'dark\'</span>, <span class="k">false</span>);', '  <span class="k">const</span> flip = (on) => {', '    setDark(on);', '    applyTheme(on ? <span class="s">\'dark\'</span> : <span class="s">\'light\'</span>);', '  };', '  <span class="k">return</span> (', '    &lt;Page title=<span class="s">"Settings"</span>&gt;', '      &lt;Row label=<span class="s">"Dark mode"</span>&gt;', '        &lt;Switch checked={dark} onChange={flip} /&gt;', '      &lt;/Row&gt;', '    &lt;/Page&gt;', '  );', '}'],
+  pkg: ['{', '  <span class="s">"name"</span>: <span class="s">"reading-app"</span>,', '  <span class="s">"version"</span>: <span class="s">"0.3.0"</span>,', '  <span class="s">"scripts"</span>: {', '    <span class="s">"test"</span>: <span class="s">"vitest run"</span>', '  },', '  <span class="s">"dependencies"</span>: {', '    <span class="s">"react"</span>: <span class="s">"^19.1.0"</span>,', '    <span class="s">"use-local-storage"</span>: <span class="s">"^3.0.0"</span>', '  }', '}'],
+};
+const FILE_NAME = { theme: "theme.ts", settings: "settings.tsx", pkg: "package.json" };
+
+function initialState() {
+  return { comp: "", compMode: "ph", bubble: false, tools: 0, toolRun: false, say: false, row: "none", now: "empty", step: 0, mins: "just now", talk: [false, false], pill: false, stop: -1 };
+}
+
+function makeWindow(box, { narrow = false } = {}) {
+  const W = narrow ? 380 : 1180, H = narrow ? 760 : 700;
+  box.innerHTML = `<div class="win${narrow ? " narrow" : ""}" style="width:${W}px;height:${H}px" data-part="window">
+    <div class="tb">
+      ${narrow ? "" : `<span class="lights"><i></i><i></i><i></i></span>${ic("sidebar")}`}
+      <span class="mid">${ic("folder")}<span>reading-app</span><span>›</span><b class="tt">New session</b><span class="tmk"></span></span>
+      ${narrow ? "" : `<span class="r">${ic("bell")}${ic("monitor")}${ic("panel")}</span>`}
+    </div>
+    <div class="body">
+      ${narrow ? "" : `<div class="side"></div>`}
+      <div class="chat"><div class="flow"></div>
+        <div class="comp"><div class="ta"></div><div class="tools">${ic("plus")}<span>${ic("spark")}Claude Code</span><span>Opus</span><span class="send">${ic("up")}</span></div></div>
+        ${narrow ? "" : `<div class="cstat"><span>${ic("shield")}Ask for risky actions</span><span>${ic("branch")}main</span></div>`}
+      </div>
+      <div class="rp" data-part="right panel">
+        <div class="tabs"></div>
+        <div class="nowbox"></div>
+        <div class="ed"></div>
+        <div class="corner" data-part="corner cards">
+          ${TALK.map((c, i) => `<div class="card talk" data-talk="${i}"><div class="r1">${ic(c.ic)}<b>${c.n}</b><small>${c.tag}</small><span class="x">${ic("x")}</span></div><p>${c.p}</p><div class="tl"><i></i></div></div>`).join("")}
+          <div class="card wpill">${ic("compass")}<b>Walk me through</b><small>3 stops</small><span class="x" style="width:24px;display:grid;place-items:center;color:var(--text-2)">${ic("x")}</span></div>
+          <div class="card stop"><div class="hd">${ic("compass")}<b>Walk me through</b><small>· this turn, 3 stops</small><span class="x">${ic("x")}</span></div><div class="bd"></div><div class="ft"><span class="cnt"></span><span class="b next">Next</span></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="bar">${ic("gear")}<span>Settings</span><span class="sp"></span><span class="q">${ic("cup")}</span><span class="q">${ic("spark")}<span class="cells">${"<i class=on></i>".repeat(7)}${"<i></i>".repeat(3)}</span></span></div>
+  </div>`;
+  const win = box.querySelector(".win");
+  if (narrow) { const b = win.querySelector(".body"); b.style.gridTemplateColumns = "1fr"; b.style.gridTemplateRows = "300px 1fr"; b.style.padding = "0 6px 6px"; win.querySelector(".corner").style.width = "calc(100% - 24px)"; win.querySelector(".corner").style.right = "12px"; win.querySelector(".corner").style.bottom = "12px"; win.querySelector(".comp").style.margin = "0 12px 12px"; win.querySelector(".flow").style.padding = "16px 14px 8px"; }
+  const $ = (s) => win.querySelector(s);
+  let S = initialState();
+  const fit = () => { const s = box.clientWidth / W; win.style.transform = `scale(${s})`; box.style.height = H * s + "px"; };
+  new ResizeObserver(fit).observe(box); fit();
+
+  function side() {
+    const el = $(".side"); if (!el) return;
+    const rowMark = S.row === "run" ? runMark() : S.row === "done" ? mark("done") : "";
+    el.innerHTML = `<div class="hd"><b>Sessions</b><span class="new">New <kbd>⌘N</kbd></span>${ic("search")}</div>
+      <div class="lrow ent">${ic("bell")}<span class="t">Waiting for you</span><span class="tm">1</span></div>
+      <div class="lrow in1"><span class="slot14">${ic("question")}</span><span class="t">Pick a font for headings</span><span class="tm">4m</span></div>
+      <div class="grp"></div>
+      <div class="lrow ent">${ic("clock")}<span class="t">Automations</span></div>
+      <div class="lrow ent">${ic("chat")}<span class="t">Chats</span></div>
+      <div class="lrow ent">${ic("folder")}<span class="t">Projects</span></div>
+      <div class="lrow"><span class="slot14">${ic("folder")}</span><span class="t">reading-app</span></div>
+      ${S.row !== "none" ? `<div class="lrow in1 sel"><span class="slot14">${rowMark}</span><span class="t">Add a dark mode switch</span></div>` : ""}
+      <div class="lrow in1"><span class="slot14"></span><span class="t">Fix the export button</span></div>
+      <div class="lrow"><span class="slot14">${ic("folder")}</span><span class="t">website</span></div>
+      <div class="lrow in1"><span class="slot14">${runMark()}</span><span class="t">Write the about page</span></div>
+      <div class="lrow in1"><span class="slot14"></span><span class="t">Compress the photos</span></div>`;
+  }
+  function chat() {
+    const f = $(".flow"); let h = "";
+    if (S.bubble) h += `<div class="bub">${ASK}</div>`;
+    if (S.tools) {
+      h += `<div class="did">Did ${S.tools} step${S.tools > 1 ? "s" : ""} ${ic("caretR")}</div>`;
+      TOOLS.slice(0, S.tools).forEach((x, i) => {
+        const run = S.toolRun && i === S.tools - 1;
+        h += `<div class="tool${i === S.tools - 1 && S.fresh ? " fresh" : ""}">${ic(x.ic)}<span class="v${run ? " shim" : ""}">${x.v}</span><span class="a">${x.a}</span>${x.d ? `<span class="plus">${x.d[0]}</span><span class="minus">${x.d[1]}</span>` : ""}</div>`;
+      });
+    }
+    if (S.say) h += `<div class="say">Done. Settings has a <b>Dark mode</b> switch now, and the app remembers your pick the next time it opens. All 12 tests pass.</div><div class="files">${ic("files")}2 files changed <span class="plus" style="color:var(--working)">+23</span><span style="color:var(--stopped)">−2</span></div>`;
+    f.innerHTML = h; f.scrollTop = f.scrollHeight;
+    const ta = $(".ta"), send = $(".send");
+    ta.className = "ta" + (S.compMode === "ph" ? " ph" : "");
+    ta.innerHTML = S.compMode === "ph" ? (S.now === "work" ? "Ask Claude Code" : "Ask Claude Code to build something") : `${S.comp}<span class="caret"></span>`;
+    send.className = "send" + (S.compMode === "type" ? " on" : "") + (S.now === "work" && S.compMode === "ph" ? " stop" : "");
+    send.innerHTML = S.now === "work" && S.compMode === "ph" ? "<i></i>" : ic("up");
+  }
+  function tabs() {
+    const ed = S.stop >= 0;
+    $(".tabs").innerHTML = `<span class="${ed ? "" : "on"}">${ic("pulse")}${S.now === "empty" && !ed ? "Now" : "Now"}</span>${ed ? `<span class="on">${ic("file")}${FILE_NAME[STOPS[S.stop].file]}</span>` : `<span>${ic("diff")}Changes</span>`}<span>${ic("files")}${narrow ? "" : "Files"}</span><span>${ic("book")}${narrow ? "" : "Docs"}</span><span>${ic("list")}${narrow ? "" : "Tasks"}</span>`;
+  }
+  function now() {
+    const n = $(".nowbox");
+    if (S.now === "empty") { n.innerHTML = `<div style="height:100%;display:grid;place-items:center;padding-bottom:60px"><div style="display:grid;justify-items:center;gap:16px;color:var(--text-2);font-size:13px">${iconSVG(110, { mark: true })}<span>What should we build?</span></div></div>`; n.style.height = "calc(100% - 40px)"; return; }
+    n.style.height = "";
+    const work = S.now === "work";
+    const st = work ? `<span class="slot14">${runMark()}</span>Working · step ${S.step + 1} of ${STEPS.length} · ${S.mins}` : `<span class="slot14">${mark("done")}</span>Done · just now`;
+    const steps = STEPS.map((x, i) => {
+      const k = !work || i < S.step ? "grey-done" : i === S.step ? "now" : "todo";
+      return `<div class="step ${!work || i < S.step ? "dn" : i === S.step ? "cur" : ""}">${mark(k, k === "now" ? "breath" : "")}<span>${x}</span></div>`;
+    }).join("");
+    n.innerHTML = `<div class="now"><div class="st">${st}</div>
+      <h4>${work ? "Adding a dark mode switch" : "Settings has a dark mode switch"}</h4>
+      ${work ? `<div class="rn shim">Right now: ${RIGHT_NOW[S.step]}</div>` : `<div class="btns"><span>${ic("compass")}Walk me through</span><span class="g">See changes</span></div>`}
+      <div class="task"><div class="th">${ic("caretD")}<b>Dark mode in Settings</b><span class="n">${work ? `${S.step} of ${STEPS.length}` : "Done"}</span></div>
+      <div class="steps">${steps}</div>
+      ${work ? "" : `<div class="deliv">${ic("commit")}<span>Add a dark mode switch</span><span class="tm">now</span></div>`}</div>
+      <div class="fold">${ic("caretR")}Done in this session<span class="n">2</span></div></div>`;
+  }
+  function overlay() {
+    $(".tt").textContent = S.row === "none" ? "New session" : "Add a dark mode switch";
+    $(".tmk").innerHTML = S.row === "run" ? runMark() : S.row === "done" ? mark("grey-done") : "";
+    win.querySelectorAll("[data-talk]").forEach((c, i) => c.classList.toggle("on", S.talk[i]));
+    $(".wpill").classList.toggle("on", S.pill);
+    const stop = $(".stop"), ed = $(".ed");
+    if (S.stop >= 0) {
+      const s = STOPS[S.stop];
+      stop.querySelector(".bd").innerHTML = `<div class="f">${ic(s.ic)}<b>${s.f}</b><small>${s.m}</small></div><p>${s.p}</p><span class="ask">Ask about this</span>`;
+      stop.querySelector(".cnt").textContent = `Stop ${S.stop + 1} of ${STOPS.length}`;
+      stop.querySelector(".next").textContent = S.stop === STOPS.length - 1 ? "Done" : "Next";
+      ed.innerHTML = `<div class="crumb">reading-app ${ic("caretR")} src ${ic("caretR")} ${FILE_NAME[s.file]}</div>` + CODE[s.file].map((l, i) => `<div class="ln${i + 1 >= s.hi[0] && i + 1 <= s.hi[1] ? " hi" : ""}"><i>${i + 1}</i>${l || " "}</div>`).join("");
+    }
+    stop.classList.toggle("on", S.stop >= 0); ed.classList.toggle("on", S.stop >= 0);
+  }
+  function render() { side(); chat(); tabs(); now(); overlay(); wakeIcons(win); }
+  render();
+  return {
+    win,
+    get: () => S,
+    set(p) { S = Object.assign({}, S, p); render(); },
+    reset(p) { S = Object.assign(initialState(), p); render(); },
+    press(sel) { const el = $(sel); if (!el) return; el.animate([{ transform: "translateY(0)" }, { transform: "translateY(1px)" }, { transform: "translateY(0)" }], { duration: 150 }); },
+  };
+}
+
+const T = {
+  en: {
+    "title": "Dispatch: see what your AI agent is doing",
+    "nav.by": "All apps", "nav.dl": "Download",
+    "k": "A Mac app for Claude Code, Codex and OpenCode",
+    "h": "See what your AI is doing.<br>Learn while it works.",
+    "p": "Your coding agent in one window you can follow: <b>each step on the right</b>, each change by turn, and a short note whenever it makes something new. Ask why at any line.",
+    "dl": "Download for Mac", "src": "Source on GitHub",
+    "fine": "<b>Free and open source</b> · Apple silicon, macOS 14 or later · Uses your own Claude Code or Codex subscription, or OpenCode<br>Latest {v} · <a href=\"{rel}\" target=\"_blank\" rel=\"noopener\">What's new</a><br>First open: Privacy &amp; Security › <b>Open Anyway</b> (not notarized). <a href=\"{inst}\" target=\"_blank\" rel=\"noopener\">Steps</a>",
+    "r1": "Ask", "r1d": "Say what you want in plain words.",
+    "r2": "Watch", "r2d": "Now shows the plan and the step it is on.",
+    "r3": "Learn", "r3d": "A small card says what each new file or package is for.",
+    "r4": "Review", "r4d": "Walk me through: the turn's changes, one stop at a time.",
+    "f1": "Stays on your Mac", "f1t": "No account, no tracking. Your code goes only to the AI you already use, never to us.",
+    "f2": "Open source", "f2t": "GPL-3.0. Built on VS Code, so the full editor is one click away.",
+    "f3": "Your own subscription", "f3t": "Claude Code, Codex or OpenCode. Nothing extra to pay; the first launch installs what it needs with Homebrew.",
+    "ag": "Give your agent a window.", "agt": "Free · Apple silicon · macOS 14 or later · First open: Privacy &amp; Security › Open Anyway",
+    "by": "Made by <b>SchaeferAnjon</b>", "all": "All apps", "here": "You are here",
+  },
+  zh: {
+    "title": "Dispatch：AI 在做什么，看得懂",
+    "nav.by": "全部软件", "nav.dl": "下载",
+    "k": "给 Claude Code、Codex、OpenCode 用的 Mac 窗口",
+    "h": "AI 在做什么，看得懂；<br>它做的时候，你也学会。",
+    "p": "把编程 Agent 放进一扇看得清的窗口：<b>右边一步一步走</b>，改动按轮看，它新建了什么就冒一句话说明。哪一行不懂，就地问。",
+    "dl": "下载 Mac 版", "src": "GitHub 上的源码",
+    "fine": "<b>免费开源</b> · Apple 芯片，macOS 14 及以上 · 用你自己的 Claude Code、Codex 订阅，或 OpenCode<br>最新 {v} · <a href=\"{rel}\" target=\"_blank\" rel=\"noopener\">更新了什么</a><br>未经 Apple 公证：第一次打开，到隐私与安全性，点<b>「仍要打开」</b>。<a href=\"{inst}\" target=\"_blank\" rel=\"noopener\">步骤</a>",
+    "r1": "交代", "r1d": "用大白话说要什么。",
+    "r2": "看着", "r2d": "Now 里是计划和正在做的那一步。",
+    "r3": "学到", "r3d": "新文件、新装的包，各冒一张小卡说是干什么的。",
+    "r4": "回看", "r4d": "带我看一遍：这一轮改了什么，一站一站看。",
+    "f1": "只在你的 Mac 上", "f1t": "不用注册，不收集。代码只发给你本来就在用的 AI，不经过我们。",
+    "f2": "开源", "f2t": "GPL-3.0 许可。基于 VS Code，完整的编辑器一点就到。",
+    "f3": "用你自己的订阅", "f3t": "Claude Code、Codex 或 OpenCode。不多收钱；第一次打开时用 Homebrew 装好要用的东西。",
+    "ag": "给你的 Agent 一扇窗。", "agt": "免费 · Apple 芯片 · macOS 14 及以上 · 第一次打开：隐私与安全性 › 仍要打开",
+    "by": "<b>SchaeferAnjon</b> 出品", "all": "全部软件", "here": "你在这里",
+  },
+};
+
+/* the four moments, played one after another; a click picks one and stops the autoplay */
+const SCENES = [
+  { k: "r1", base: {}, async play(w, W) {
+      await W(700);
+      for (let i = 1; i <= ASK.length; i++) { w.set({ comp: ASK.slice(0, i), compMode: "type" }); await W(26); }
+      await W(500); w.press(".send");
+      w.set({ comp: "", compMode: "ph", bubble: true, row: "run", now: "work", step: 0, mins: "just now" });
+      await W(800); w.set({ tools: 1, toolRun: true }); await W(1800);
+  } },
+  { k: "r2", base: { bubble: true, tools: 1, toolRun: true, row: "run", now: "work", step: 0 }, async play(w, W) {
+      await W(1500); w.set({ toolRun: false }); await W(300);
+      w.set({ step: 1, tools: 2, toolRun: true, mins: "1 min" }); await W(2200);
+      w.set({ toolRun: false }); await W(1400);
+  } },
+  { k: "r3", base: { bubble: true, tools: 2, row: "run", now: "work", step: 1, mins: "1 min" }, async play(w, W) {
+      await W(500); w.set({ talk: [true, false] }); await W(1500);
+      w.set({ tools: 3, toolRun: true }); await W(400); w.set({ talk: [true, true] }); await W(2400);
+      w.set({ toolRun: false, step: 2, tools: 4, toolRun: true, mins: "2 min" }); await W(2600); w.set({ toolRun: false }); await W(600);
+  } },
+  { k: "r4", base: { bubble: true, tools: 5, toolRun: true, row: "run", now: "work", step: 3, mins: "2 min" }, async play(w, W) {
+      await W(1700);
+      w.set({ toolRun: false, now: "done", row: "done", say: true, talk: [false, false] }); await W(1300);
+      w.set({ pill: true }); await W(1700); w.press(".wpill");
+      w.set({ pill: false, stop: 0 }); await W(3600);
+      for (let i = 1; i < STOPS.length; i++) { w.press(".stop .next"); w.set({ stop: i }); await W(3600); }
+  } },
+];
+let CUR = 0, GEN = 0, PICKED = false, HOVER = false, WIN = null, NARROW = null;
+const box = document.getElementById("winbox"), rail = document.getElementById("rail");
+function railHTML() {
+  rail.innerHTML = SCENES.map((s, i) => `<button role="tab" data-go="${i}"><span class="b"><i></i></span><span class="l"><em>${i + 1}</em>${t(s.k)}</span><span class="d">${t(s.k + "d")}</span></button>`).join("");
+}
+function mountWindow() {
+  const narrow = box.clientWidth < 700;
+  if (narrow === NARROW && WIN) return false;
+  NARROW = narrow; WIN = makeWindow(box, { narrow }); return true;
+}
+async function play(i, byUser) {
+  CUR = i; if (byUser) PICKED = true;
+  const g = ++GEN, sc = SCENES[i];
+  [...rail.children].forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i); const bar = b.querySelector(".b i"); bar.style.width = k < i ? "100%" : "0"; bar.style.opacity = k < i ? ".3" : "1"; });
+  document.getElementById("railnote").textContent = t(sc.k + "d");
+  WIN.reset(sc.base);
+  const bar = rail.children[i].querySelector(".b i");
+  const total = { 0: 5500, 1: 5400, 2: 8000, 3: 15500 }[i]; let spent = 0;
+  const W = async (ms) => { let left = ms; while (left > 0) { await sleep(50); if (g !== GEN) throw 0; if (!HOVER) { left -= 50; spent += 50; bar.style.width = Math.min(100, spent / total * 100) + "%"; } } };
+  if (REDUCED) { endState(i); bar.style.width = "100%"; return; }
+  try { await sc.play(WIN, W); bar.style.width = "100%"; await W(1600); } catch (e) { return; }
+  if (!PICKED) play((i + 1) % SCENES.length);
+}
+function endState(i) {
+  WIN.reset([{ bubble: true, tools: 1, toolRun: true, row: "run", now: "work", step: 0 }, { bubble: true, tools: 2, toolRun: true, row: "run", now: "work", step: 1, mins: "1 min" }, { bubble: true, tools: 4, row: "run", now: "work", step: 2, mins: "2 min", talk: [true, true] }, { bubble: true, tools: 5, row: "done", now: "done", say: true, stop: 0 }][i]);
+}
+rail.addEventListener("click", e => { const b = e.target.closest("[data-go]"); if (b) play(+b.dataset.go, true); });
+box.addEventListener("mouseenter", () => { HOVER = true; }); box.addEventListener("mouseleave", () => { HOVER = false; });
+new ResizeObserver(() => { if (mountWindow()) play(CUR, PICKED); }).observe(box);
+
+function render() {
+  applyText(); railHTML();
+  document.querySelectorAll(".ghi").forEach(e => e.innerHTML = GITHUB);
+  document.querySelectorAll(".apl").forEach(e => e.innerHTML = APPLE);
+  document.querySelectorAll(".fi").forEach(e => e.outerHTML = ic(e.dataset.ic));
+  document.querySelector(".appsi").innerHTML = ic("apps");
+  if (/^https?:$/.test(location.protocol)) document.getElementById("host").textContent = location.host + location.pathname.replace(/index\.html$/, "").replace(/\/$/, "");
+  setDownloads();
+  document.getElementById("strip").innerHTML = stripHTML();
+}
+document.querySelector(".seg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; LANG = b.dataset.lang; try { localStorage.setItem("dispatch.lang", LANG); } catch (er) {} render(); play(CUR, PICKED); });
+render(); mountWindow(); latest();
+const at = location.hash.match(/scene=(\d)/); play(at ? +at[1] - 1 : 0, !!at);
 </script>
 </body>
 </html>
