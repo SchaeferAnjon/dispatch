@@ -12,14 +12,14 @@ Claude Code · Codex · pi · ZCode · Gemini CLI · OpenCode · Hermes
 </p>
 
 <p align="center">
-  <a href="https://schaeferanjon.github.io/dispatch/?lang=de"><b>Website und Demovideo</b></a> ·
-  <a href="https://schaeferanjon.github.io/dispatch/manual/#/de/"><b>Benutzerhandbuch (durchsuchbar, ZH/EN/DE)</b></a> ·
-  <a href="https://schaeferanjon.github.io/dispatch/demo/?lang=de#/home"><b>Online ausprobieren (Beispieldaten)</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/?lang=de"><b>Website</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/manual/#/de/"><b>Benutzerhandbuch (durchsuchbar, ZH/EN/DE)</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/demo/?lang=de#/home"><b>Online ausprobieren (Beispieldaten)</b></a> ·
   <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest"><b>Für macOS herunterladen</b></a>
 </p>
 
 <p align="center">
-  <a href="https://schaeferanjon.github.io/dispatch/?lang=de"><img src="docs/assets/de/poster.jpg" width="880" alt="Dispatch-Demo: Arbeitsplatz, Projektseite, Antwort in einer Sitzung"></a>
+  <a href="https://dispatch.us-cloud.uk/?lang=de"><img src="docs/assets/de/poster.jpg" width="880" alt="Dispatch-Demo: Arbeitsplatz, Projektseite, Antwort in einer Sitzung"></a>
 </p>
 
 Dispatch ist ein **lokaler** Agent-Arbeitsplatz. Es liest die Aufzeichnungen, die Ihre Agenten auf diesem Mac ohnehin schon führen, und ordnet jede Sitzung, jede Aufgabe und jedes Ergebnis nach **Projekt**: wer auf Sie wartet, wer gerade läuft und wie weit etwas ist, alles auf einen Blick. Sie antworten am Rechner oder am Handy direkt in der Ursprungssitzung, ohne zusätzlichen Modellprozess, und standardmäßig werden weder Ihre Dokumente noch Ihre Unterhaltungen an ein Modell gesendet.
@@ -60,7 +60,7 @@ Unterstützt **macOS 14+**, die Weboberfläche passt auf die Handybreite, quello
 
 ## Benutzerhandbuch
 
-Zu viele Funktionen und unklar, wo Sie anfangen sollen? Lesen Sie das **[Benutzerhandbuch](https://schaeferanjon.github.io/dispatch/manual/#/de/)** (Volltextsuche, 中文, English, Deutsch). Es ist in der Reihenfolge „In fünf Minuten startklar → Kernbegriffe → Jede Seite → Handy → Zwei Macs → Konventionen auf Agent-Seite → Referenz der Befehlszeile → Fehlerbehebung“ aufgebaut, und jede Seite sagt eingangs, welches Problem sie löst.
+Zu viele Funktionen und unklar, wo Sie anfangen sollen? Lesen Sie das **[Benutzerhandbuch](https://dispatch.us-cloud.uk/manual/#/de/)** (Volltextsuche, 中文, English, Deutsch). Es ist in der Reihenfolge „In fünf Minuten startklar → Kernbegriffe → Jede Seite → Handy → Zwei Macs → Konventionen auf Agent-Seite → Referenz der Befehlszeile → Fehlerbehebung“ aufgebaut, und jede Seite sagt eingangs, welches Problem sie löst.
 
 ## Installation
 

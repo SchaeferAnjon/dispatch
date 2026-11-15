@@ -98,5 +98,5 @@ Agents 窗口 / 编辑器窗口（ide/vscode，VS Code 1.139.1 源码加我们�
 - `app/icons/`、`app/public/`：图标和静态资源；icon.icns 换了要拷一份到 `ide/vscode/resources/darwin/code.icns`
 - `agent/skills/`（随包分发的技能，任务板约定在 `agent/skills/task-board/SKILL.md`）、`agent/agents/`（子 Agent 定义）、`agent/rules/`（dispatch.md 等规则）、`agent/opencode/`、`agent/pi/`
 - `ide/`：构建、签名、发版脚本，逐个说明在 `ide/README.md`；`ide/tests/`、`ide/whats-new/`、`ide/opencode-kit/`、`ide/codesign-retry`
-- `docs/`：公开仓库的 Pages 从这里发（schaeferanjon.github.io/dispatch）：官网首页 `docs/index.html`（一个文件，窗口用 HTML 重画，下载按钮打开时向 GitHub 取最新 Release 的 .dmg；页尾出品条的各软件图标在 `docs/assets/apps/`）、自动更新通道 `docs/updates/`（不能挪）、用户手册（`docs/manual/`）、网页版演示（`docs/demo/`）、手机协议（`docs/mobile-protocol.md`）
+- `docs/`：公开仓库的 Pages 从这里发（schaeferanjon.github.io/dispatch；对外域名 dispatch.us-cloud.uk 由服务器上的 cloudflared 和 Caddy 转到 Pages）：官网首页 `docs/index.html`（一个文件，窗口用 HTML 重画，下载按钮打开时向 GitHub 取最新 Release 的 .dmg；页尾出品条的各软件图标在 `docs/assets/apps/`）、自动更新通道 `docs/updates/`（不能挪）、用户手册（`docs/manual/`）、网页版演示（`docs/demo/`）、手机协议（`docs/mobile-protocol.md`）
 - `design/`：设计稿和决策记录（`design/task-model/DECISIONS.md` 等），`design/decisions-log.md` 是 CLAUDE.md 挪出来的历史

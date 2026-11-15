@@ -12,9 +12,9 @@ Claude Code · Codex · pi · ZCode · Gemini CLI · OpenCode · Hermes
 </p>
 
 <p align="center">
-  <a href="https://schaeferanjon.github.io/dispatch/"><b>官网与演示视频</b></a> ·
-  <a href="https://schaeferanjon.github.io/dispatch/manual/"><b>使用手册（可搜索，中/英/德）</b></a> ·
-  <a href="https://schaeferanjon.github.io/dispatch/demo/#/home"><b>在线试用（示例数据）</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/"><b>官网</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/manual/"><b>使用手册（可搜索，中/英/德）</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/demo/#/home"><b>在线试用（示例数据）</b></a> ·
   <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest"><b>下载 macOS 版</b></a>
 </p>
 
@@ -60,7 +60,7 @@ Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent
 
 ## 使用手册
 
-觉得功能多、不知道从哪开始：看 **[使用手册](https://schaeferanjon.github.io/dispatch/manual/)**（可全文搜索，中文、English、Deutsch）。它按「五分钟上手 → 核心概念 → 每个视图 → 手机 → 两台电脑 → Agent 约定 → 命令行参考 → 排错」的顺序写，每一页开头都说明这一页解决什么。
+觉得功能多、不知道从哪开始：看 **[使用手册](https://dispatch.us-cloud.uk/manual/)**（可全文搜索，中文、English、Deutsch）。它按「五分钟上手 → 核心概念 → 每个视图 → 手机 → 两台电脑 → Agent 约定 → 命令行参考 → 排错」的顺序写，每一页开头都说明这一页解决什么。
 
 ## 安装
 

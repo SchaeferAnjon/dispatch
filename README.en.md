@@ -12,14 +12,14 @@ Claude Code · Codex · pi · ZCode · Gemini CLI · OpenCode · Hermes
 </p>
 
 <p align="center">
-  <a href="https://schaeferanjon.github.io/dispatch/?lang=en"><b>Website and demo video</b></a> ·
-  <a href="https://schaeferanjon.github.io/dispatch/manual/#/en/"><b>User manual (searchable, ZH/EN/DE)</b></a> ·
-  <a href="https://schaeferanjon.github.io/dispatch/demo/?lang=en#/home"><b>Try it online (sample data)</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/?lang=en"><b>Website</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/manual/#/en/"><b>User manual (searchable, ZH/EN/DE)</b></a> ·
+  <a href="https://dispatch.us-cloud.uk/demo/?lang=en#/home"><b>Try it online (sample data)</b></a> ·
   <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest"><b>Download for macOS</b></a>
 </p>
 
 <p align="center">
-  <a href="https://schaeferanjon.github.io/dispatch/?lang=en"><img src="docs/assets/en/poster.jpg" width="880" alt="Dispatch demo: Workbench, project page, replying to a session"></a>
+  <a href="https://dispatch.us-cloud.uk/?lang=en"><img src="docs/assets/en/poster.jpg" width="880" alt="Dispatch demo: Workbench, project page, replying to a session"></a>
 </p>
 
 Dispatch is a **local** Agent workbench. It reads the records your Agents already keep on this Mac and organizes every session, task, and outcome by **project**: who is waiting on you, who is running, and how far along things are, all at a glance. Reply to the original session from your Mac or your phone, with no extra model process, and by default nothing from your documents or conversations is sent to any model.
@@ -60,7 +60,7 @@ Runs on **macOS 14+**, the web interface fits a phone screen, open source (GPL-3
 
 ## User manual
 
-Too many features and not sure where to begin? Read the **[user manual](https://schaeferanjon.github.io/dispatch/manual/#/en/)** (full-text search, 中文, English, Deutsch). It is laid out as "Five-minute start → Core concepts → Every page → Phone → Two Macs → Agent conventions → Command-line reference → Troubleshooting", and every page opens by saying what problem it solves.
+Too many features and not sure where to begin? Read the **[user manual](https://dispatch.us-cloud.uk/manual/#/en/)** (full-text search, 中文, English, Deutsch). It is laid out as "Five-minute start → Core concepts → Every page → Phone → Two Macs → Agent conventions → Command-line reference → Troubleshooting", and every page opens by saying what problem it solves.
 
 ## Installation
 
