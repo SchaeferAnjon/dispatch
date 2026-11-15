@@ -1,0 +1,30 @@
+[
+  {
+    "url": "https://github.com/SchaeferAnjon/dispatch/releases/download/v0.9.5/Dispatch-IDE-0.9.5-macos-apple-silicon.zip",
+    "name": "0.9.5 (2026-11-15 16:58)",
+    "version": "1e166a6e3a72e87624b35e54fcde2e0548562df5",
+    "productVersion": "0.9.5 (2026-11-15 16:58)",
+    "hash": "05177775258a3e801533ab00370f370e204d5cfd",
+    "sha256hash": "165036dd7b7e8849b896095b978b2cdc45bc0865bd20472f7497679811edb38d",
+    "timestamp": 1794758330929,
+    "notes": "1e166a6e3a72e87624b35e54fcde2e0548562df5",
+    "whatsNew": [
+      {
+        "title": "Turbo",
+        "where": "Under the message box of a new chat (the + on Chats)"
+      },
+      {
+        "title": "Next up",
+        "where": "Side pane, the Tasks tab"
+      },
+      {
+        "title": "Agents in a terminal",
+        "where": "Press \u2318T, or New Terminal in a project's + menu"
+      },
+      {
+        "title": "Settings in one place",
+        "where": "Press \u2318, or click Settings at the bottom left"
+      }
+    ]
+  }
+]
