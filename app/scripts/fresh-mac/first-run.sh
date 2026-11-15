@@ -9,18 +9,19 @@
 #
 #   first-run.sh                      the latest release; the repository is private, so gh downloads it on this Mac
 #   first-run.sh --zip FILE           a Dispatch-IDE-*.zip instead
-#   first-run.sh --dmg FILE           a Dispatch-IDE-*.dmg, installed the way --as-download installs a zip: Gatekeeper
-#                                     on, the dmg in ~/Downloads with the quarantine mark, checked by Gatekeeper, opened,
-#                                     the app copied out of it with the mark a Finder drag gives it (ditto here: the
-#                                     dmg's window has no fixed layout to drag in), then the first open and its Open
+#   first-run.sh --dmg FILE           a Dispatch-IDE-*.dmg as released (Developer ID, not notarized), the way a person
+#                                     installs it: Gatekeeper on, the dmg in ~/Downloads with the quarantine mark,
+#                                     double-clicked, the app dragged onto Applications in its window, the first open
+#                                     stopped by macOS and let through as the README says (Done, Privacy & Security,
+#                                     Open Anyway twice, the login password); the buttons are found by name (vm.sh ocr)
 #   first-run.sh --app DIR            a built "Dispatch IDE.app" (dispatch build's ~/dispatch-builds/<name>/Dispatch IDE.app)
 #   first-run.sh --overlay-cli        put this checkout's CLI package into the app first (cli/bundle.json: the CLI,
 #                                     Dispatch's agent rules, skills, plugins), to try a fix before it is built
 #   first-run.sh --shots DIR          copy the GUI steps' screenshots and checks.json to DIR
 #   first-run.sh --as-download        install the zip the way a person does after a browser download: Gatekeeper on,
 #                                     the zip in ~/Downloads with the quarantine mark, Archive Utility opens it, the
-#                                     Finder moves the app into Applications, the first open goes through Gatekeeper's
-#                                     check and its Open (the clicks and keys go through the VM's Screen Sharing)
+#                                     Finder moves the app into Applications, the first open is stopped and let through
+#                                     as with --dmg (the clicks and keys go through the VM's Screen Sharing)
 #   first-run.sh --no-clt             take the image's command line tools out first: a new Mac has none (no git, and
 #                                     python3 is a stub that asks to install them)
 #   first-run.sh --scenario FILE      what to click through after the first window (default wizard.mjs; newuser.mjs:
@@ -83,61 +84,115 @@ download_install() {
   first_open
 }
 
-# The first open of a quarantined app: Gatekeeper checks the whole app with Apple (Verifying…), then asks once; Open is
-# the default button
+# Where a piece of text is on the VM's screen now, as "X Y" (the first line OCR reads as exactly TEXT, or containing it
+# with --part); nothing when it is not there. Buttons are clicked by name: the dialogs move with what else is open.
+at_text() {
+  local part=0; [ "$1" = --part ] && { part=1; shift; }
+  "$VM" ocr 2>/dev/null | awk -F'\t' -v t="$1" -v p="$part" '(p && index($3, t)) || $3 == t { print $1, $2; f = 1; exit } END { exit !f }'
+}
+# wait_text SECONDS [--part] TEXT: wait for it to be on screen; prints where
+wait_text() {
+  local w="" end=$(( $(date +%s) + $1 )); shift
+  while [ "$(date +%s)" -lt "$end" ]; do w=$(at_text "$@"); [ -n "$w" ] && { echo "$w"; return 0; }; sleep 2; done
+  return 1
+}
+devtools() { "$VM" raw "curl -s -m 2 http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; }
+
+# The first open of a download. Releases are signed with a Developer ID and not notarized (2026-11-15), so macOS stops
+# the first double-click and the person lets it through once, the way the README says: Done, then System Settings ›
+# Privacy & Security, Open Anyway, Open Anyway again in the question that comes up, the login password, OK. Each click
+# finds its button by its name on screen; a step that is not there is a FAIL, and the app is then let through with
+# the README's other way (xattr) so the rest of the run still tests the app.
 first_open() {
-  local t; t=$(now)
+  local t w y1; t=$(now)
   "$VM" raw "open '$APP'"
-  local asked="" clicked=""
-  for _ in $(seq 1 90); do
-    sleep 3
-    if "$VM" raw "curl -s -m 2 http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then break; fi
-    # where its Open button is: the Finder's white list behind it until the question is up (the button is blue, or
-    # grey while the dialog is not in front); clicked until the app answers (the first click may only bring it forward)
-    local px; px=$("$VM" screen pixel 1140 726 2>/dev/null)
-    set -- $px
-    if [ -n "${3:-}" ] && { [ "$1" -lt 225 ] || [ "$2" -lt 225 ] || [ "$3" -lt 225 ]; }; then
-      [ -z "$asked" ] && { asked=$(secs "$t"); shot 00c-gatekeeper; }
-      "$VM" screen click 1140 726 >/dev/null; clicked=$(now)
-    fi
-  done
-  [ -n "$clicked" ] && t=$clicked
-  [ -n "$asked" ] && ok "Gatekeeper checked it and asked once after $asked s (Apple checked it for malicious software); Open" || warn "no Gatekeeper question seen"
-  echo "gatekeeper ${asked:-none}" >> "$times"
-  if "$VM" raw "curl -s -m 2 http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then
-    ok "Dispatch IDE opened $(secs "$t") s after Open"; echo "first-window $(secs "$t")" >> "$times"
+  if w=$(wait_text 90 --part 'Not Opened'); then
+    shot 00c-blocked
+    devtools && bad "the app started although macOS said it was not opened" \
+      || ok "the first open is stopped and the app does not start ($(secs "$t") s): $("$VM" ocr | awk -F'\t' '/Not Opened|could not verify/ { printf "%s ", $3 }')"
+    echo "blocked $(secs "$t")" >> "$times"
+    # Done, never Move to Trash next to it
+    w=$(at_text Done) && "$VM" screen click $w >/dev/null && sleep 2
+    "$VM" raw "pgrep -x 'Dispatch IDE' >/dev/null" && bad "Dispatch IDE is still running after Done" || ok "Done: nothing runs, the app stays in Applications"
   else
-    bad "Dispatch IDE did not open after Gatekeeper"; shot 00d-no-window
+    shot 00c-no-question; bad "no \"Not Opened\" question within 90 s of the first open"
+  fi
+  # System Settings › Privacy & Security (the deep link is where its side bar's item goes), down to Security
+  "$VM" raw "open 'x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension'"
+  wait_text 30 'Privacy & Security' >/dev/null
+  for _ in 1 2 3 4 5 6 7 8; do w=$(at_text "Open Anyway") && break; "$VM" screen scroll 1200 900 500 >/dev/null; sleep 1; done
+  if [ -n "$w" ]; then
+    shot 00d-privacy-security
+    ok "Privacy & Security shows: $("$VM" ocr | awk -F'\t' '/was blocked/ { print $3; exit }') · Open Anyway"
+    y1=${w#* }; t=$(now)
+    "$VM" screen click $w >/dev/null
+    # the question that follows has its own Open Anyway (not the one in the list behind it)
+    if wait_text 20 --part 'Apple is not able to verify' >/dev/null; then
+      shot 00e-open-anyway-question
+      w=$("$VM" ocr | awk -F'\t' -v y="$y1" '$3 == "Open Anyway" && ($2 - y > 20 || y - $2 > 20) { print $1, $2; exit }')
+      [ -n "$w" ] && "$VM" screen click $w >/dev/null && ok "the question Open \"Dispatch IDE\"? answered with Open Anyway" || bad "the question has no Open Anyway"
+    else
+      bad "no Open \"Dispatch IDE\"? question after Open Anyway"
+    fi
+    if wait_text 20 --part 'Enter an administrator' >/dev/null; then
+      w=$(at_text Password)
+      [ -n "$w" ] && "$VM" screen click $w type admin sleep 0.5 >/dev/null
+      shot 00f-password
+      w=$(at_text OK) && "$VM" screen click $w >/dev/null \
+        && ok "asked for an administrator's password (user admin filled in): typed it, then OK" || bad "the password question has no OK"
+    else
+      bad "no password question after Open Anyway"
+    fi
+    for _ in $(seq 1 30); do devtools && break; sleep 2; done
+  else
+    shot 00d-no-open-anyway; bad "Privacy & Security shows no Open Anyway"
+  fi
+  if devtools; then
+    ok "Dispatch IDE opened $(secs "$t") s after Open Anyway"; echo "first-window $(secs "$t")" >> "$times"
+    "$VM" raw "osascript -e 'quit app \"System Settings\"'" >/dev/null 2>&1
+  else
+    bad "Dispatch IDE did not open by Open Anyway: let through with xattr, the README's other way"; shot 00g-no-window
+    "$VM" raw "osascript -e 'quit app \"System Settings\"'; pkill -x 'Dispatch IDE'; xattr -dr com.apple.quarantine '$APP'; open '$APP'" >/dev/null 2>&1
+    for _ in $(seq 1 30); do devtools && break; sleep 2; done
   fi
 }
 
-# The dmg a person downloads (--dmg): Gatekeeper checks the dmg, it opens, the app comes out with the download's mark
+# The dmg a person downloads (--dmg): Gatekeeper sees a Developer ID signature without notarization, a double-click
+# opens the dmg, the app is dragged onto the Applications link beside it (the Finder gives the copy the download's mark)
 download_install_dmg() {
-  local dmg="$1" name vol=/tmp/dide-dmg; name="$(basename "$dmg")"
+  local dmg="$1" name w a; name="$(basename "$dmg")"
   local times="${SHOTS:-$TMP}/times.txt"; mkdir -p "$(dirname "$times")"
   "$VM" raw "sudo spctl --global-enable 2>/dev/null || sudo spctl --master-enable; pkill -x 'Dispatch IDE' 2>/dev/null; rm -rf '$APP'"
   case "$("$VM" raw 'spctl --status 2>&1')" in *enabled*) ok "Gatekeeper is on, as on a new Mac";; *) bad "Gatekeeper could not be turned on";; esac
   "$VM" put "$dmg" "Downloads/$name" >/dev/null
   "$VM" raw "xattr -w com.apple.quarantine \"0083;\$(printf %x \$(date +%s));Safari;\$(uuidgen)\" ~/Downloads/$name && xattr -w com.apple.metadata:kMDItemWhereFroms https://github.com/SchaeferAnjon/dispatch/releases ~/Downloads/$name"
   local gk; gk=$("$VM" raw "spctl -a -vv -t open --context context:primary-signature ~/Downloads/$name 2>&1")
-  case "$gk" in *accepted*Notarized*) ok "Gatekeeper accepts the dmg: $(echo "$gk" | sed -n 2p)";; *) bad "Gatekeeper on the dmg: $(echo "$gk" | tr '\n' ' ')";; esac
+  case "$gk" in *'source=Unnotarized Developer ID'*) ok "Gatekeeper on the dmg: Developer ID, not notarized, as released ($(echo "$gk" | sed -n 's/^origin=//p'))";; *) bad "Gatekeeper on the dmg: $(echo "$gk" | tr '\n' ' ')";; esac
   "$VM" raw "mkdir -p ~/.dispatch-ide && echo '{\"remote-debugging-port\": \"$PORT\"}' > ~/.dispatch-ide/argv.json"
   local t; t=$(now)
-  "$VM" raw "hdiutil detach $vol -quiet 2>/dev/null; hdiutil attach -nobrowse -readonly -mountpoint $vol ~/Downloads/$name -quiet" \
-    && ok "the dmg opens ($(secs "$t") s): $("$VM" raw "ls $vol | tr '\n' ' '")" || bad "hdiutil could not open $name"
-  "$VM" raw "ditto $vol/'Dispatch IDE.app' '$APP'; hdiutil detach $vol -quiet"
-  local mark; mark=$("$VM" raw "xattr -p com.apple.quarantine '$APP' 2>/dev/null")
-  if [ -z "$mark" ]; then
-    # the Finder gives a copy out of a quarantined dmg the dmg's mark; ditto from the mount may not
-    "$VM" raw "xattr -w com.apple.quarantine \"\$(xattr -p com.apple.quarantine ~/Downloads/$name)\" '$APP'"
-    mark=$("$VM" raw "xattr -p com.apple.quarantine '$APP' 2>/dev/null"); warn "ditto left no quarantine mark: gave the app the dmg's, as the Finder does"
+  "$VM" raw "open ~/Downloads/$name; for i in \$(seq 1 60); do ls /Volumes | grep -q '^Dispatch IDE' && break; sleep 1; done; sleep 3"
+  local vol; vol=$("$VM" raw "ls /Volumes | grep -m1 '^Dispatch IDE'"); [ -n "$vol" ] && vol="/Volumes/$vol"
+  [ -n "$vol" ] && ok "double-clicked, the dmg opened ($(secs "$t") s): $vol holds $("$VM" raw "ls '$vol' | tr '\n' ' '")" || bad "the dmg did not open on a double-click"
+  # its window: Applications and Dispatch IDE side by side; the app's icon sits above its name
+  w=$(wait_text 20 'Dispatch IDE'); a=$(at_text Applications)
+  shot 00a-dmg-window
+  t=$(now)
+  if [ -n "$vol" ] && [ -n "$w" ] && [ -n "$a" ]; then
+    set -- $w $a
+    "$VM" screen drag "$1" $(( $2 - 80 )) "$3" $(( $4 - 80 )) >/dev/null
+    "$VM" raw "for i in \$(seq 1 240); do [ -x '$ELECTRON' ] && [ \"\$(du -sk '$APP' | cut -f1)\" -ge \"\$(du -sk '$vol/Dispatch IDE.app' | cut -f1)\" ] && break; sleep 1; done; sleep 2"
   fi
-  "$VM" raw "test -d '$APP'" && ok "Dispatch IDE.app copied into Applications, marked from the internet: ${mark%%;*}" || bad "the app is not in Applications"
-  gk=$("$VM" raw "spctl -a -vv -t exec '$APP' 2>&1")
-  case "$gk" in *accepted*Notarized*) ok "Gatekeeper accepts the app: $(echo "$gk" | sed -n 2p)";; *) bad "Gatekeeper on the app: $(echo "$gk" | tr '\n' ' ')";; esac
-  # the Finder window the app was dragged into stays behind Gatekeeper's question (first_open looks for it there)
-  "$VM" raw "open /Applications"; sleep 2
+  local mark; mark=$("$VM" raw "xattr -p com.apple.quarantine '$APP' 2>/dev/null")
+  if "$VM" raw "test -x '$ELECTRON'" && [ -n "$mark" ]; then
+    ok "dragged onto Applications in the dmg's window ($(secs "$t") s), marked from the internet: ${mark%%;*}"
+  else
+    bad "the drag onto Applications did not copy the app with the download's mark: copied with ditto instead"
+    "$VM" raw "rm -rf '$APP'; ditto '$vol/Dispatch IDE.app' '$APP' && xattr -w com.apple.quarantine \"\$(xattr -p com.apple.quarantine ~/Downloads/$name)\" '$APP'"
+  fi
+  echo "copy $(secs "$t")" >> "$times"
   shot 00b-in-applications
+  gk=$("$VM" raw "spctl -a -vv -t exec '$APP' 2>&1")
+  case "$gk" in *'source=Unnotarized Developer ID'*) ok "Gatekeeper on the app: Developer ID, not notarized, as released";; *) bad "Gatekeeper on the app: $(echo "$gk" | tr '\n' ' ')";; esac
   first_open
 }
 

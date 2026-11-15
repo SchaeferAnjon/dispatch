@@ -7,7 +7,8 @@
 #   vm.sh put A B   copy a file or folder into the VM
 #   vm.sh get A B   copy a file out of the VM
 #   vm.sh shot F    screenshot of the VM's screen into F (png), through Screen Sharing: what a person sees
-#   vm.sh screen …  the mouse and keys of a person on that screen (screen.py: click, drag, key, pixel, shot)
+#   vm.sh screen …  the mouse and keys of a person on that screen (screen.py: click, drag, scroll, key, pixel, shot)
+#   vm.sh ocr       the text on that screen now and where it is: X <tab> Y <tab> text per line (ocr.swift)
 #   vm.sh reboot    restart the VM and wait until it answers again
 #   vm.sh reset     throw the VM away; the next `up` starts from the pristine image again
 #   vm.sh down      stop the VM
@@ -29,6 +30,12 @@ screen() {
   [ -x "$VENV/bin/python" ] || { python3 -m venv "$VENV" && "$VENV/bin/pip" -q install asyncvnc pillow >/dev/null; } || return 1
   for _ in 1 2 3 4 5; do "$VENV/bin/python" "$(dirname "$0")/screen.py" "$(ip)" "$@" 2>/dev/null && return 0; sleep 4; done
   echo "Screen Sharing did not answer" >&2; return 1
+}
+# ocr.swift built once with this Mac's swiftc (Apple's Vision reads the screenshot)
+ocr() {
+  local bin="${VENV%/venv}/ocr" png; png="$(mktemp -t vmocr).png"
+  [ "$bin" -nt "$(dirname "$0")/ocr.swift" ] || swiftc -O "$(dirname "$0")/ocr.swift" -o "$bin" || return 1
+  screen shot "$png" && "$bin" "$png"; local r=$?; rm -f "$png" "${png%.png}"; return $r
 }
 wait_ssh() { for _ in $(seq 1 90); do if [ -n "$(ip)" ] && ssh "${SSH_OPTS[@]}" -o BatchMode=yes "admin@$(ip)" true 2>/dev/null; then return 0; fi; sleep 2; done; return 1; }
 
@@ -61,6 +68,7 @@ case "${1:-}" in
   get)   scp -r "${SSH_OPTS[@]}" "admin@$(ip):$2" "$3" ;;
   shot)  screen shot "$2" ;;
   screen) shift; screen "$@" ;;
+  ocr)   ocr ;;
   reboot) ssh "${SSH_OPTS[@]}" "admin@$(ip)" "sudo shutdown -r now" || true; sleep 20; wait_ssh && echo "back: admin@$(ip)" ;;
   down)  "$TART" stop "$VM" 2>/dev/null || true ;;
   reset) "$TART" stop "$VM" 2>/dev/null || true; "$TART" delete "$VM" 2>/dev/null || true; echo "reset" ;;

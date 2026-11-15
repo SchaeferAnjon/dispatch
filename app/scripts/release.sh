@@ -1,5 +1,5 @@
 #!/bin/bash
-# Zip a Dispatch IDE that the build service built, signed and notarized, with the dispatch CLI, and publish a
+# Zip a Dispatch IDE that the build service built and signed, with the dispatch CLI, and publish a
 # GitHub release. It never builds the app itself (ide/build.sh is not run by hand): first
 #   dispatch build start main --on local, dispatch build sign <name>
 # Usage: scripts/release.sh 0.8.0 --build <name> [--notes <file>]   (run from anywhere; needs `gh auth login` once)
@@ -55,10 +55,10 @@ if ! git diff --quiet "$BUILT_KANBAN" HEAD -- ide-ext scripts/gen-ide-theme.mjs;
   echo "注意：构建之后 ide-ext 或主题又改过，App 里没有这些改动：" >&2
   git diff --stat "$BUILT_KANBAN" HEAD -- ide-ext scripts/gen-ide-theme.mjs >&2
 fi
-# Developer ID signature and notarization come from `dispatch build sign` (it skips an app that is already
-# signed, notarized and stapled). A downloaded copy then opens without the Gatekeeper warning.
-python3 cli/dispatch.py build sign "$NAME" >/dev/null
-xcrun stapler validate "$APP" >/dev/null || { echo "$APP 没有公证票据，不发布" >&2; exit 1; }
+# The Developer ID signature comes from `dispatch build sign`. Releases are not notarized (the owner's call,
+# 2026-11-15): a downloaded copy is stopped by Gatekeeper on its first open, and the notes below say how to let it
+# through (System Settings › Privacy & Security › Open Anyway, or xattr).
+python3 cli/dispatch.py build sign "$NAME" --no-notarize >/dev/null
 # Capture first: with pipefail, grep -q exiting early would SIGPIPE codesign and fail the pipeline.
 SIG="$(codesign -dv --verbose=2 "${APP}" 2>&1 || true)"
 grep -q '^Authority=Developer ID Application' <<<"$SIG" || { echo "${APP} 不是 Developer ID 签名，不发布" >&2; exit 1; }
@@ -68,8 +68,7 @@ OUT="$OUTDIR/Dispatch-IDE-${V}-macos-${ARCH_LABEL}.zip"
 CLI="$OUTDIR/dispatch-cli-${V}.tar.gz"
 # ditto keeps the bundle's resource forks and symlinks; Finder can unzip it.
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT"
-# The DMG most people expect: open it, drag the app onto Applications. Signed, notarized and stapled
-# like the app, so it opens without the Gatekeeper warning.
+# The DMG most people expect: open it, drag the app onto Applications. Signed like the app.
 DMG="$OUTDIR/Dispatch-IDE-${V}-macos-${ARCH_LABEL}.dmg"
 DMGSRC="$OUTDIR/dmg-src"; mkdir -p "$DMGSRC"
 ditto "$APP" "$DMGSRC/$(basename "$APP")"
@@ -78,11 +77,6 @@ hdiutil create -volname "Dispatch IDE ${V}" -srcfolder "$DMGSRC" -ov -format UDZ
 rm -rf "$DMGSRC"
 IDENT="$(sed -n 's/^Authority=\(Developer ID Application: .*\)$/\1/p' <<<"$SIG" | head -1)"
 codesign --sign "$IDENT" --timestamp "$DMG"
-# Capture first: with pipefail, grep -q exiting early would SIGPIPE notarytool and fail the pipeline.
-NOTARY="$(xcrun notarytool submit "$DMG" --keychain-profile dispatch-notary --wait 2>&1 || true)"
-grep -q 'status: Accepted' <<<"$NOTARY" \
-  || { echo "DMG 公证没通过，不发布（多半是屏幕锁着、钥匙串锁了）：" >&2; echo "$NOTARY" | tail -5 >&2; exit 1; }
-xcrun stapler staple "$DMG" >/dev/null
 python3 - "$CLI" <<'PY'
 import json, os, sys, tarfile
 conf = json.load(open("cli/bundle.json"))
@@ -99,7 +93,7 @@ cat > "$NOTES" <<MD
 ## 安装（macOS · ${ARCH_LABEL}）
 
 1. 下载 \`Dispatch-IDE-${V}-macos-${ARCH_LABEL}.dmg\`，双击打开，把 **Dispatch IDE.app** 拖到旁边的「应用程序」上。也可以下载同名 .zip，双击解压后拖进「应用程序」。
-2. 这个包已经过 Apple 公证，第一次打开时 macOS 只会问一次「是否打开从互联网下载的 App」。
+2. 这个包有 Developer ID 签名，但没有经过 Apple 公证，第一次双击会被 macOS 拦下（「无法验证……不含恶意软件」），点「完成」。然后打开 系统设置 → 隐私与安全性，往下拉到「安全性」，在说 Dispatch IDE 被阻止的那一行点「仍要打开」，弹出的确认框里再点一次「仍要打开」，最后输入登录密码确认。之后就和别的 App 一样双击打开。也可以在终端里一句话放行：\`xattr -dr com.apple.quarantine "/Applications/Dispatch IDE.app"\`。
 3. 终端命令 \`dispatch\`：下载 \`dispatch-cli-${V}.tar.gz\`，解压到 \`~/.dispatch-cli\`，再 \`ln -sf ~/.dispatch-cli/dispatch/cli/dispatch.py ~/.local/bin/dispatch\`。手机回复和派活要常驻的 chatd：\`dispatch chatd install\`。
 
 需要 macOS 14+ 和 Homebrew。

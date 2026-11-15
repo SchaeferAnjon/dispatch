@@ -67,9 +67,13 @@ Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent
 ### 从 Release 安装
 
 1. 到 [Releases](https://github.com/SchaeferAnjon/dispatch/releases) 下载两个包（目前只发布 Apple 芯片版，Intel 机器请按下面「从源码构建」自己打包）：
-   - `Dispatch-IDE-<版本>-macos-apple-silicon.zip`：应用本身；
+   - `Dispatch-IDE-<版本>-macos-apple-silicon.dmg`：应用本身（同名 .zip 也行）；
    - `dispatch-cli-<版本>.tar.gz`：终端命令 `dispatch`、chatd 和手机网页版。
-2. 双击解压 zip，把 **Dispatch IDE.app** 拖进「应用程序」。发版时会用 Developer ID 签名并经 Apple 公证，正常双击就能打开；万一某个版本没公证、被 Gatekeeper 拦下：终端里 `xattr -dr com.apple.quarantine "/Applications/Dispatch IDE.app"`，或 系统设置 → 隐私与安全性 → 最下面点「仍要打开」。
+2. 双击打开 dmg，把 **Dispatch IDE.app** 拖进「应用程序」。包有 Developer ID 签名，但没有经过 Apple 公证，第一次双击会被 macOS 拦下，点「完成」，再放行一次（两种都行）：
+   - 系统设置 → 隐私与安全性 → 往下拉到「安全性」，在说 Dispatch IDE 被阻止的那一行点「仍要打开」；弹出的确认框里再点一次「仍要打开」，然后输入登录密码确认；
+   - 或者终端里 `xattr -dr com.apple.quarantine "/Applications/Dispatch IDE.app"`，再双击。
+
+   之后就和别的 App 一样双击打开。
 3. 命令行：`mkdir -p ~/.dispatch-cli && tar xzf dispatch-cli-<版本>.tar.gz -C ~/.dispatch-cli && ln -sf ~/.dispatch-cli/dispatch/cli/dispatch.py ~/.local/bin/dispatch`，再 `dispatch init` 走首次设置（见下一节），`dispatch chatd install` 让手机回复和派活不依赖任何窗口。
 
 需要 [Homebrew](https://brew.sh)；首次设置会用它装 Dolt、Beads，缺 Python（3.9 或更新）或 git 时也一并装。

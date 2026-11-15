@@ -3,7 +3,8 @@
 # Recording for sshd; `screencapture` over ssh gets only the wallpaper). Coordinates are screen pixels of the 2048x1536
 # picture `shot` saves. Run by vm.sh, which keeps a venv with asyncvnc (MIT) and Pillow.
 #
-#   screen.py IP shot FILE | click X Y | dclick X Y | drag X1 Y1 X2 Y2 | key K[,K…] (Cmd,Alt,c) | type TEXT
+#   screen.py IP shot FILE | click X Y | dclick X Y | drag X1 Y1 X2 Y2 | scroll X Y N (down, -N up) | key K[,K…] (Cmd,Alt,c)
+#                | type TEXT
 #                | pixel X Y (prints r g b) | sleep S          several in one call share one connection
 import asyncio
 import sys
@@ -39,6 +40,14 @@ async def main(ip, args):
                         c.mouse.move(x1 + (x2 - x1) * k // 20, y1 + (y2 - y1) * k // 20)
                         await asyncio.sleep(0.05)
                     await asyncio.sleep(0.6)
+            elif a == 'scroll':
+                x, y, n = at(args[i]), at(args[i + 1]), int(args[i + 2])
+                i += 3
+                c.mouse.move(x, y)
+                await asyncio.sleep(0.15)
+                for _ in range(abs(n)):
+                    (c.mouse.scroll_down if n > 0 else c.mouse.scroll_up)()
+                    await asyncio.sleep(0.01)
             elif a == 'key':
                 c.keyboard.press(*args[i].split(','))
                 i += 1

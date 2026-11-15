@@ -115,6 +115,9 @@ async function newSessionPage(ui) {
   }
   if (!(await until(ui, () => ui.exists({ css: '.sessions-chat-editor' }), 30000))) return false;
   const inProject = () => ui.eval(`(document.querySelector('.new-session-workspace-picker-container')?.innerText || '').includes('demo')`);
+  // demo is made on the first visit; a later one (after setup lands on the Assistant again) picks it, as a person
+  // does, instead of asking for a second project of that name ("already exists in ~/Projects", 2026-11-15)
+  if (!(await inProject()) && (await pickDemo(ui))) await until(ui, inProject, 30000, 500);
   if (!(await inProject())) {
     // setup ends in the Assistant, whose page has no folder menu: a person makes the project from Projects then
     // ("No projects yet" · Add a project) and starts a session from its page; elsewhere the folder menu does it
@@ -144,23 +147,45 @@ async function newSessionPage(ui) {
       await shot(ui, '08b-trust-new-project', [{ spec: { css: '.monaco-dialog-box' }, what: 'A folder Dispatch just made, and it asks to trust its authors' }]);
       await ui.click({ text: 'Trust Folder & Continue', exact: true, within: '.monaco-dialog-box' });
     }
-    if (viaProjects) {
-      // the project's page opens on its own after Add a project; its New Session starts there
-      const pageButton = () => ui.eval(`(() => {
-        const els = [...document.querySelectorAll('a, button, .monaco-button, .action-label')]
-          .filter(e => (e.getAttribute('aria-label') || '').split(' (')[0].trim() === 'New Session' || (e.innerText || '').trim() === 'New Session')
-          .map(e => e.getBoundingClientRect()).filter(r => r.width > 0 && r.left > 400).sort((a, b) => b.left - a.left);
-        return els[0] ? { x: els[0].left + els[0].width / 2, y: els[0].top + els[0].height / 2 } : null;
-      })()`);
-      const b = await until(ui, pageButton, 60000);
-      if (!b) throw new Error("the project's page has no New Session after Add a project");
-      await ui.mouse('mouseMoved', b.x, b.y);
-      await ui.mouse('mousePressed', b.x, b.y, { clickCount: 1 });
-      await ui.mouse('mouseReleased', b.x, b.y, { clickCount: 1 });
-    }
+    // the project's page opens on its own after Add a project; its New Session starts there
+    if (viaProjects) await projectPageNewSession(ui);
     await until(ui, inProject, 120000, 1000);
   }
   return inProject();
+}
+
+/** A new session in demo when it is already a project: its row in the side bar's Projects and its page's New
+ * Session from the Assistant (no folder menu there), else the folder menu's demo. False when there is no demo yet. */
+async function pickDemo(ui) {
+  if (await ui.exists({ css: '.new-session-workspace-picker-container.dispatch-assistant-page' })) {
+    if (!(await ui.exists({ text: 'demo', exact: true }))) return false;
+    await ui.click({ text: 'demo', exact: true });
+    await projectPageNewSession(ui);
+    return true;
+  }
+  await clickPastTips(ui, '.sessions-workspace-picker-trigger');
+  await ui.waitFor({ css: '.action-widget' }, { timeoutMs: 10000 });
+  if (await ui.exists({ text: 'demo', exact: true, within: '.action-widget' })) {
+    await ui.click({ text: 'demo', exact: true, within: '.action-widget' });
+    return true;
+  }
+  await ui.press('Escape');
+  return false;
+}
+
+/** The New Session on a project's page (the rightmost one: the side bar has its own). */
+async function projectPageNewSession(ui) {
+  const pageButton = () => ui.eval(`(() => {
+    const els = [...document.querySelectorAll('a, button, .monaco-button, .action-label')]
+      .filter(e => (e.getAttribute('aria-label') || '').split(' (')[0].trim() === 'New Session' || (e.innerText || '').trim() === 'New Session')
+      .map(e => e.getBoundingClientRect()).filter(r => r.width > 0 && r.left > 400).sort((a, b) => b.left - a.left);
+    return els[0] ? { x: els[0].left + els[0].width / 2, y: els[0].top + els[0].height / 2 } : null;
+  })()`);
+  const b = await until(ui, pageButton, 60000);
+  if (!b) throw new Error("the project's page has no New Session");
+  await ui.mouse('mouseMoved', b.x, b.y);
+  await ui.mouse('mousePressed', b.x, b.y, { clickCount: 1 });
+  await ui.mouse('mouseReleased', b.x, b.y, { clickCount: 1 });
 }
 
 /** Click an element; a first-time tip lying on top of it is closed first, as a person would close it. */

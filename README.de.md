@@ -67,11 +67,13 @@ Zu viele Funktionen und unklar, wo Sie anfangen sollen? Lesen Sie das **[Benutze
 ### Aus einem Release installieren
 
 1. Laden Sie unter [Releases](https://github.com/SchaeferAnjon/dispatch/releases) das Paket für Ihren Rechner herunter:
-   - Veröffentlicht wird nur ein Paket für Apple-Chips (M-Serie): `Dispatch-<Version>-macos-apple-silicon.zip`. Auf einem Intel-Mac bauen Sie es selbst, siehe unten „Aus dem Quellcode bauen“.
-2. Entpacken Sie das Archiv per Doppelklick und ziehen Sie **Dispatch.app** in den Ordner „Programme“.
-3. Releases werden mit einer Developer ID signiert und von Apple notarisiert, ein Doppelklick öffnet die Anwendung. Sollte ein Release das einmal nicht sein und Gatekeeper es aufhalten, geben Sie es auf einem der beiden Wege frei:
-   - Öffnen Sie das Terminal, fügen Sie `xattr -dr com.apple.quarantine "/Applications/Dispatch IDE.app"` ein und öffnen Sie die Anwendung danach erneut;
-   - oder lassen Sie sich einmal per Doppelklick blockieren, gehen Sie dann in Systemeinstellungen → Datenschutz & Sicherheit, ganz nach unten, und klicken Sie auf „Dennoch öffnen“.
+   - Veröffentlicht wird nur ein Paket für Apple-Chips (M-Serie): `Dispatch-IDE-<Version>-macos-apple-silicon.dmg` (oder das gleichnamige .zip). Auf einem Intel-Mac bauen Sie es selbst, siehe unten „Aus dem Quellcode bauen“.
+2. Öffnen Sie das dmg und ziehen Sie **Dispatch IDE.app** in den Ordner „Programme“.
+3. Releases sind mit einer Developer ID signiert, aber nicht von Apple notarisiert: macOS blockiert den ersten Doppelklick. Klicken Sie auf „Fertig“ und geben Sie die App einmal frei, auf einem der beiden Wege:
+   - Systemeinstellungen → Datenschutz & Sicherheit → nach unten bis „Sicherheit“, bei der Meldung, dass Dispatch IDE blockiert wurde, auf „Dennoch öffnen“ klicken; in der folgenden Rückfrage noch einmal „Dennoch öffnen“, dann mit dem Anmeldepasswort bestätigen;
+   - oder im Terminal `xattr -dr com.apple.quarantine "/Applications/Dispatch IDE.app"` einfügen und die App danach per Doppelklick öffnen.
+
+   Danach öffnet sie sich wie jede andere App.
 4. Nach dem Öffnen startet automatisch die **Ersteinrichtung** (siehe nächster Abschnitt). Fehlt Homebrew, zeigt Schritt 1 den Installationsbefehl an.
 
 Erfordert [Homebrew](https://brew.sh); die Ersteinrichtung installiert damit Dolt und Beads, außerdem Python (3.9 oder neuer) oder git, falls sie fehlen. Beim Start prüft die App zuerst die Umgebung: Startet ihre Kommandozeile nicht, zeigt das Fenster, was fehlt und wie Sie es installieren.

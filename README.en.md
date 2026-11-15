@@ -67,11 +67,13 @@ Too many features and not sure where to begin? Read the **[user manual](https://
 ### Install from a Release
 
 1. Go to [Releases](https://github.com/SchaeferAnjon/dispatch/releases) and download the package for your machine:
-   - Only an Apple silicon (M series) package is published: `Dispatch-<version>-macos-apple-silicon.zip`. On an Intel Mac, build it yourself as described under "Build from source" below.
-2. Double-click to unzip and drag **Dispatch.app** into Applications.
-3. Releases are signed with a Developer ID and notarized by Apple, so a double-click opens the app. If a release ever is not and Gatekeeper blocks it, allow it either way:
-   - Open Terminal, paste `xattr -dr com.apple.quarantine "/Applications/Dispatch IDE.app"`, then open the app;
-   - Or double-click once, let it be blocked, then go to System Settings → Privacy & Security → scroll to the bottom and click "Open Anyway".
+   - Only an Apple silicon (M series) package is published: `Dispatch-IDE-<version>-macos-apple-silicon.dmg` (or the .zip of the same name). On an Intel Mac, build it yourself as described under "Build from source" below.
+2. Open the dmg and drag **Dispatch IDE.app** into Applications.
+3. Releases are signed with a Developer ID but not notarized by Apple, so macOS blocks the first double-click. Click Done, then allow it once, either way:
+   - System Settings → Privacy & Security → scroll down to Security, where it says "Dispatch IDE" was blocked to protect your Mac, and click "Open Anyway"; in the question that comes up click "Open Anyway" again, then enter your login password and click OK;
+   - Or open Terminal, paste `xattr -dr com.apple.quarantine "/Applications/Dispatch IDE.app"`, then double-click the app.
+
+   After that it opens like any other app.
 4. Once open, the app goes straight into **first-run setup** (see the next section). If Homebrew is missing, step 1 shows the install command.
 
 Requires [Homebrew](https://brew.sh); first-run setup uses it to install Dolt and Beads, plus Python (3.9 or newer) or git when they are missing. On launch the app checks the environment first: if its command line cannot start, the window lists what is missing and how to install it.
