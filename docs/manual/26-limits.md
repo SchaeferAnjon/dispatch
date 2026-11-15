@@ -5,7 +5,6 @@
 ## 安装与分发
 
 - **只有 Apple 芯片的包。** Release 里只有 `macos-apple-silicon.zip`；Intel 机器需要从源码构建（`cd app && npm ci && npm run tauri build`，需要 Node.js、Rust、Xcode Command Line Tools）。应用内更新器在 Intel 机器上会明确提示没有对应包，不会装错架构的包。
-- **没有 Apple 公证。** 第一次打开会被 Gatekeeper 拦下，按 [五分钟上手](01-quickstart.md) 里的办法放行一次。
 - **需要 Python 3.9 或更新。** 装了 Xcode 命令行工具或 Homebrew 的 Mac 都有；都没有时应用会显示「环境检查」页，列出缺什么、怎么装。
 
 ## 功能范围

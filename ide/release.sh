@@ -3,7 +3,8 @@
 #
 # The app's updater (vscode/src/vs/platform/update, Dispatch's static feed) asks
 #   <updateUrl>/api/update/darwin-arm64/<quality>/<commit>
-# where commit is the running build's id (build.sh, BUILD_SOURCEVERSION). The feed is plain files: for every
+# where commit is the running build's id (build.sh, BUILD_SOURCEVERSION); the version it shows ("Dispatch 0.9.5 is
+# ready") is product.json's dispatchVersion. The feed is plain files: for every
 # build released before, a JSON naming the newest zip ({url, name, version, productVersion, hash,
 # sha256hash, timestamp}, and whatsNew: the new build's What's new for the tooltip's In this update);
 # nothing for the newest build itself (404 = no update). So it can be served by
@@ -16,6 +17,8 @@
 #                SchaeferAnjon/dispatch); no default yet, set it (or DOWNLOAD_BASE)
 # DOWNLOAD_BASE  where the zip will be downloadable (default: this build's GitHub Release,
 #                https://github.com/$DISPATCH_RELEASE_REPO/releases/download/ide-<short id>)
+# ZIP            a zip of this app made already (app/scripts/release.sh passes the release's own zip): the feed names
+#                and hashes it as it is, and nothing is copied into releases/
 # Nothing is uploaded: the script prints the gh command for the release and the folder to publish (the feed is
 # served from the public repository's Pages, docs/updates/, which updateUrl in vscode/product.json names).
 set -euo pipefail
@@ -24,19 +27,24 @@ APP="${1:-VSCode-darwin-arm64/Dispatch IDE.app}"
 OUT="${UPDATE_DIR:-$PWD/updates}"
 [ -d "$APP" ] || { echo "no app at $APP; run ./build.sh first" >&2; exit 1; }
 PRODUCT="$APP/Contents/Resources/app/product.json"
-read -r COMMIT QUALITY VERSION < <(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p.get("commit",""), p.get("quality",""), json.load(open(sys.argv[2])).get("version",""))' "$PRODUCT" "$APP/Contents/Resources/app/package.json")
+read -r COMMIT QUALITY VERSION < <(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p.get("commit",""), p.get("quality",""), p.get("dispatchVersion") or json.load(open(sys.argv[2])).get("version",""))' "$PRODUCT" "$APP/Contents/Resources/app/package.json")
 [ -n "$COMMIT" ] && [ -n "$QUALITY" ] || { echo "$PRODUCT has no commit or quality: build with the current build.sh" >&2; exit 1; }
 SHORT="${COMMIT:0:10}"
-ZIP_NAME="Dispatch-IDE-darwin-arm64-$SHORT.zip"
+ZIP_NAME="$(basename "${ZIP:-Dispatch-IDE-darwin-arm64-$SHORT.zip}")"
 RELEASE_REPO="${DISPATCH_RELEASE_REPO:-}"
 [ -n "$RELEASE_REPO" ] || [ -n "${DOWNLOAD_BASE:-}" ] || { echo "set DISPATCH_RELEASE_REPO (owner/name of the public repository) or DOWNLOAD_BASE" >&2; exit 1; }
 BASE="${DOWNLOAD_BASE:-https://github.com/$RELEASE_REPO/releases/download/ide-$SHORT}"
 
-mkdir -p "$OUT/releases"
-ZIP="$OUT/releases/$ZIP_NAME"
-# Squirrel.Mac wants the .app at the top of the zip; ditto keeps the signature's extended attributes
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP.part"
-mv "$ZIP.part" "$ZIP"
+mkdir -p "$OUT"
+if [ -n "${ZIP:-}" ]; then
+  [ -s "$ZIP" ] || { echo "no zip at $ZIP" >&2; exit 1; }
+else
+  mkdir -p "$OUT/releases"
+  ZIP="$OUT/releases/$ZIP_NAME"
+  # Squirrel.Mac wants the .app at the top of the zip; ditto keeps the signature's extended attributes
+  ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP.part"
+  mv "$ZIP.part" "$ZIP"
+fi
 
 python3 - "$OUT" "$ZIP" "$BASE/$ZIP_NAME" "$COMMIT" "$QUALITY" "$VERSION" "$APP/Contents/Resources/app/whats-new" <<'EOF'
 import base64, hashlib, io, json, os, sys, time

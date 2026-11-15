@@ -94,7 +94,7 @@ Agents 窗口 / 编辑器窗口（ide/vscode，VS Code 1.139.1 源码加我们�
 - `app/src/`：React。`app/src/idechat/`、`app/src/knowledge/` 是扩展的 webview（`npm run build:ext`），其余是已停更的手机网页版；derive.ts、diff.ts 的测试还在跑
 - `app/termd/`：终端常驻进程（Node，代码来自 Orca，MIT）
 - `app/computer/`：`dispatch computer` 的 Swift 小程序
-- `app/scripts/`：install.sh（dispatch-update；没设 DISPATCH_MINI 就在本机构建）、release.sh（发版：手写说明、发到 DISPATCH_RELEASE_REPO）、public-sync.sh（把当前提交导出成公开仓库的一个快照提交，查本机路径、密钥值、私人标记、gitleaks，不推）、gen-ide-theme.mjs（主题）、`app/scripts/ide-e2e/`（端到端场景）、`app/scripts/fresh-mac/`（新机虚拟机测试）
+- `app/scripts/`：install.sh（dispatch-update；没设 DISPATCH_MINI 就在本机构建）、release.sh（发版：手写说明、发到 DISPATCH_RELEASE_REPO，更新通道写进 docs/updates/ 由公开仓库 Pages 提供）、public-sync.sh（把当前提交导出成公开仓库的一个快照提交，查本机路径、密钥值、私人标记、gitleaks，不推）、gen-ide-theme.mjs（主题）、`app/scripts/ide-e2e/`（端到端场景）、`app/scripts/fresh-mac/`（新机虚拟机测试）
 - `app/icons/`、`app/public/`：图标和静态资源；icon.icns 换了要拷一份到 `ide/vscode/resources/darwin/code.icns`
 - `agent/skills/`（随包分发的技能，任务板约定在 `agent/skills/task-board/SKILL.md`）、`agent/agents/`（子 Agent 定义）、`agent/rules/`（dispatch.md 等规则）、`agent/opencode/`、`agent/pi/`
 - `ide/`：构建、签名、发版脚本，逐个说明在 `ide/README.md`；`ide/tests/`、`ide/whats-new/`、`ide/opencode-kit/`、`ide/codesign-retry`

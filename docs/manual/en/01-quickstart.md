@@ -11,15 +11,9 @@
 
 ## 1. Install
 
-1. Download `Dispatch-<version>-macos-apple-silicon.zip` from [Releases](https://github.com/SchaeferAnjon/dispatch/releases/latest) (only the Apple silicon package is published right now; on an Intel machine you have to build from source, see [Known limits](26-limits.md)).
-2. Double-click to unzip and drag **Dispatch.app** into Applications.
-3. The package is not signed with an Apple developer certificate, so Gatekeeper stops the first launch. Take either route:
-   - Open Terminal and paste:
-     ```sh
-     xattr -dr com.apple.quarantine /Applications/Dispatch.app
-     ```
-     then open the app again;
-   - or double-click once, let it be blocked, then go to System Settings → Privacy & Security, scroll to the bottom and click "Open Anyway".
+1. Download `Dispatch-IDE-<version>-macos-apple-silicon.dmg` from [Releases](https://github.com/SchaeferAnjon/dispatch/releases/latest) (only the Apple silicon package is published right now; on an Intel machine you have to build from source, see [Known limits](26-limits.md)).
+2. Open the dmg and drag **Dispatch IDE.app** onto the Applications folder next to it.
+3. The package is signed with a Developer ID and notarized by Apple: on the first launch macOS only asks once whether to open an app downloaded from the internet. Click "Open".
 4. Once it opens, it goes straight into **first-run setup**.
 
 ## 2. First-run setup (eight steps, the last three optional)

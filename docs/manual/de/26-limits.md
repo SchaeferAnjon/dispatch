@@ -5,7 +5,6 @@
 ## Installation und Verteilung
 
 - **Nur ein Paket für Apple-Silicon.** In den Releases liegt nur `macos-apple-silicon.zip`; auf einem Intel-Mac bauen Sie aus dem Quellcode (`cd app && npm ci && npm run tauri build`, benötigt Node.js, Rust und die Xcode Command Line Tools). Der Updater in der App sagt das auf einem Intel-Mac klar und installiert nie ein Paket für die falsche Architektur.
-- **Nicht von Apple notarisiert.** Gatekeeper blockiert den ersten Start; geben Sie ihn einmal frei, wie im [Schnelleinstieg](01-quickstart.md) beschrieben.
 - **Benötigt Python 3.9 oder neuer.** Jeder Mac mit den Xcode Command Line Tools oder Homebrew hat es; fehlt beides, zeigt die App die Seite „Umgebungsprüfung“ mit dem, was fehlt, und wie Sie es installieren.
 
 ## Funktionsumfang

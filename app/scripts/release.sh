@@ -10,6 +10,8 @@
 #             snapshot (app/scripts/public-sync.sh, "sync: 同步到 <commit>"); the tag v<version> is made there.
 # Assets: Dispatch-IDE-<v>-macos-<arch>.dmg and .zip (the app), dispatch-cli-<v>.tar.gz (the CLI, its skill and
 # the phone's web page, listed in cli/bundle.json), SHA256SUMS.
+# The IDE's update feed (ide/release.sh) is rewritten in docs/updates/ to point at the release's zip; commit it,
+# public-sync and push afterwards, and the public repository's Pages (updateUrl in ide/vscode/product.json) serve it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="/opt/homebrew/bin:$PATH"
@@ -106,7 +108,10 @@ MD
 cat "$HANDNOTES" >> "$NOTES"
 # the private tag marks which commit went out; the public one is made by gh on the public repository's main
 git tag -f "v${V}"
+# the update feed: builds released before now point at this release's zip (docs/updates/, served by Pages)
+ZIP="$OUT" UPDATE_DIR="$(cd .. && pwd)/docs/updates" DOWNLOAD_BASE="https://github.com/$RELEASE_REPO/releases/download/v${V}" bash ../ide/release.sh "$APP" | sed -n 1,2p
 ( cd "$OUTDIR" && shasum -a 256 "$(basename "$DMG")" "$(basename "$OUT")" "$(basename "$CLI")" > SHA256SUMS )
 gh release create "v${V}" "$DMG" "$OUT" "$CLI" "$OUTDIR/SHA256SUMS" -R "$RELEASE_REPO" --target main --title "Dispatch v${V}" --notes-file "$NOTES" --latest
 rm -rf "$OUTDIR"
 echo "已发布 v${V}：$(gh release view "v${V}" -R "$RELEASE_REPO" --json url -q .url)"
+echo "更新通道：提交 docs/updates/，再 app/scripts/public-sync.sh 同步并推到 $RELEASE_REPO，Pages 就指向这个 Release"

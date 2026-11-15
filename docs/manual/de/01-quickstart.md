@@ -11,15 +11,9 @@
 
 ## 1. Installation
 
-1. Laden Sie unter [Releases](https://github.com/SchaeferAnjon/dispatch/releases/latest) die Datei `Dispatch-<Version>-macos-apple-silicon.zip` herunter (derzeit wird nur ein Paket für Apple-Silicon veröffentlicht; auf Intel-Rechnern müssen Sie selbst aus dem Quellcode bauen, siehe [Bekannte Einschränkungen](26-limits.md)).
-2. Entpacken Sie das Archiv per Doppelklick und ziehen Sie **Dispatch.app** in den Ordner „Programme“.
-3. Das Paket trägt keine Apple-Entwicklersignatur, deshalb hält Gatekeeper es beim ersten Öffnen auf. Wählen Sie eine der beiden Freigaben:
-   - Öffnen Sie das Terminal und fügen Sie ein:
-     ```sh
-     xattr -dr com.apple.quarantine /Applications/Dispatch.app
-     ```
-     Danach öffnen Sie die Anwendung erneut.
-   - Oder versuchen Sie einmal per Doppelklick zu öffnen, lassen Sie sich blockieren, gehen dann in Systemeinstellungen → Datenschutz & Sicherheit, scrollen ganz nach unten und klicken auf „Dennoch öffnen“.
+1. Laden Sie unter [Releases](https://github.com/SchaeferAnjon/dispatch/releases/latest) die Datei `Dispatch-IDE-<Version>-macos-apple-silicon.dmg` herunter (derzeit wird nur ein Paket für Apple-Silicon veröffentlicht; auf Intel-Rechnern müssen Sie selbst aus dem Quellcode bauen, siehe [Bekannte Einschränkungen](26-limits.md)).
+2. Öffnen Sie das dmg und ziehen Sie **Dispatch IDE.app** auf den Ordner „Programme“ daneben.
+3. Das Paket ist mit einer Developer ID signiert und von Apple notarisiert: Beim ersten Öffnen fragt macOS nur einmal, ob eine aus dem Internet geladene App geöffnet werden soll. Klicken Sie auf „Öffnen“.
 4. Nach dem Öffnen startet automatisch die **Ersteinrichtung**.
 
 ## 2. Ersteinrichtung (acht Schritte, die letzten drei optional)

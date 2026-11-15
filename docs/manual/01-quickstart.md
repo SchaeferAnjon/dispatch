@@ -11,15 +11,9 @@
 
 ## 1. 安装
 
-1. 到 [Releases](https://github.com/SchaeferAnjon/dispatch/releases/latest) 下载 `Dispatch-<版本>-macos-apple-silicon.zip`（目前只发布 Apple 芯片包，Intel 机器需要自己从源码构建，见 [已知限制](26-limits.md)）。
-2. 双击解压，把 **Dispatch.app** 拖进「应用程序」。
-3. 这个包没有 Apple 开发者签名，第一次打开会被 Gatekeeper 拦下。任选一种放行：
-   - 打开「终端」，粘贴：
-     ```sh
-     xattr -dr com.apple.quarantine /Applications/Dispatch.app
-     ```
-     然后再打开应用；
-   - 或者先双击一次被拦，去 系统设置 → 隐私与安全性，拉到最下面点「仍要打开」。
+1. 到 [Releases](https://github.com/SchaeferAnjon/dispatch/releases/latest) 下载 `Dispatch-IDE-<版本>-macos-apple-silicon.dmg`（目前只发布 Apple 芯片包，Intel 机器需要自己从源码构建，见 [已知限制](26-limits.md)）。
+2. 双击打开 dmg，把 **Dispatch IDE.app** 拖到旁边的「应用程序」上。
+3. 这个包有 Developer ID 签名并经过 Apple 公证，第一次打开时 macOS 只会问一次「是否打开从互联网下载的 App」，点「打开」。
 4. 打开后自动进入**首次设置**。
 
 ## 2. 首次设置（八步，后三步可选）

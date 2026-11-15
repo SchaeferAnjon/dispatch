@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const meta = { title: 'About shows Dispatch\'s version', description: 'Help › About: "Dispatch 0.9.4" first, then "VS Code: 1.139.1…".' };
+export const meta = { title: 'About shows Dispatch\'s version', description: 'Help › About: "Dispatch 0.9.5" first, then "VS Code: 1.139.1…".' };
 
 export default async function (ui) {
   const settings = join(ui.rec.user_data_dir, 'User', 'settings.json');
