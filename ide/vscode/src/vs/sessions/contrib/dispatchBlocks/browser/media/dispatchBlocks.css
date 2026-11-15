@@ -1,0 +1,356 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Dispatch's block symbols and their seven motions (patches/050-blocks.patch;
+ *  kanban design/identity/bold A4, A5). The glyphs are the font dispatch-blocks.ttf, one product icon
+ *  each (`$(dispatch-working)`, `$(dispatch-folder)`…, dispatchBlockGlyphs.css); the states that move
+ *  are also drawn as SVG (dispatchBlocks.ts) so a check can draw itself in.
+ *
+ *  Colour is the state and nothing else (DESIGN.md「彩色只出现在三处」), each the app icon's own colour
+ *  (kanban preference「状态色用图标配色」, base/common/dispatchPalette.ts). Curves: only DESIGN.md's three.
+ *  Reduced motion (the Mac's setting, or accessibility.reduceMotion): everything still, the words say it.
+ *--------------------------------------------------------------------------------------------*/
+
+@font-face {
+	font-family: "dispatch-blocks";
+	font-display: block;
+	src: url("./dispatch-blocks.ttf") format("truetype");
+}
+
+.monaco-workbench {
+	/* the states' colours are the app icon's: --dispatch-state-* (base/common/dispatchPalette.ts) */
+	--dispatch-block-idle: var(--dispatch-state-todo);
+	--dispatch-ease-out: cubic-bezier(0, 0, 0.2, 1);
+	--dispatch-ease-std: cubic-bezier(0.32, 0.72, 0, 1);
+	--dispatch-ease-spring: linear(0, 0.26, 0.6, 0.86, 1.02, 1.08, 1.07, 1.03, 1, 0.99, 1);
+}
+
+
+/* the state glyphs carry their colour wherever they are used as a product icon */
+.codicon.codicon-dispatch-working { color: var(--dispatch-state-working); }
+.codicon.codicon-dispatch-waiting { color: var(--dispatch-state-waiting); }
+.codicon.codicon-dispatch-done { color: var(--dispatch-state-done); }
+.codicon.codicon-dispatch-handoff { color: var(--dispatch-state-handoff); }
+.codicon.codicon-dispatch-stopped { color: var(--dispatch-state-stopped); }
+.codicon.codicon-dispatch-sub-agent,
+.codicon.codicon-dispatch-step-now { color: var(--dispatch-state-plan); }
+.codicon.codicon-dispatch-todo { color: var(--dispatch-block-idle); }
+
+/* ---------------------------------------------------------------- the SVG state block (stateBlock()) */
+
+.dispatch-block {
+	display: inline-block;
+	flex: none;
+	vertical-align: middle;
+	line-height: 0;
+}
+
+.dispatch-block > svg {
+	display: block;
+	overflow: visible;
+}
+
+.dispatch-block .b { fill: var(--c); transform-box: fill-box; transform-origin: center; }
+.dispatch-block .ol { fill: none; stroke: var(--c); stroke-width: 1.4; }
+.dispatch-block .pin { fill: var(--c); transform-box: fill-box; transform-origin: center; }
+.dispatch-block .mk { fill: none; stroke: #000; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dispatch-block .mkd { fill: #000; }
+
+.dispatch-block.working { --c: var(--dispatch-state-working); }
+.dispatch-block.waiting { --c: var(--dispatch-state-waiting); }
+.dispatch-block.done { --c: var(--dispatch-state-done); }
+.dispatch-block.handoff { --c: var(--dispatch-state-handoff); }
+.dispatch-block.stopped { --c: var(--dispatch-state-stopped); }
+.dispatch-block.sub-agent,
+.dispatch-block.step-now,
+.dispatch-block.step-done { --c: var(--dispatch-state-plan); }
+.dispatch-block.todo { --c: var(--dispatch-block-idle); }
+
+/* 1 Done: the block fills in (350ms spring, .5 to 1) and the check draws itself after 150ms (200ms) */
+.dispatch-block.play-done .b { animation: dispatch-block-fill 350ms var(--dispatch-ease-spring) both; }
+.dispatch-block.play-done .mk { stroke-dasharray: 12; animation: dispatch-block-draw 200ms var(--dispatch-ease-out) 150ms both; }
+
+@keyframes dispatch-block-fill {
+	from { opacity: 0; transform: scale(0.5); }
+	to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes dispatch-block-draw {
+	from { stroke-dashoffset: 12; }
+	to { stroke-dashoffset: 0; }
+}
+
+/* 2 Working: green blocks breathe, 2.4s each way; every breath on one clock (breathe() sets the delay) */
+.dispatch-breathe,
+.dispatch-block.working.breathe .b,
+.dispatch-block.sub-agent.breathe .b,
+.dispatch-block.step-now .pin {
+	animation: dispatch-block-breath 2.4s var(--dispatch-ease-std) var(--dispatch-breath-delay, 0s) infinite alternate;
+}
+
+@keyframes dispatch-block-breath {
+	from { opacity: 0.5; transform: scale(0.84); }
+	to { opacity: 1; transform: scale(1); }
+}
+
+/* 3 Waiting for you: two 2px lifts in about 600ms, three times 4s apart, then still */
+.dispatch-knock {
+	animation: dispatch-block-knock 4s var(--dispatch-ease-out) 3;
+}
+
+@keyframes dispatch-block-knock {
+	0%, 32%, 100% { transform: translateY(0); }
+	8% { transform: translateY(-2px); }
+	16% { transform: translateY(0); }
+	24% { transform: translateY(-2px); }
+}
+
+/* 4 A delivery arriving: it drops 8px with a fade (200ms), the ones below slide down (arrive()), its
+   dot pops after 150ms (350ms spring), the count rolls (150ms) */
+.dispatch-arrive {
+	animation: dispatch-block-drop 200ms var(--dispatch-ease-out) both;
+}
+
+.dispatch-arrive .dispatch-new-dot,
+.dispatch-arrive .codicon-dispatch-delivery-new {
+	animation: dispatch-block-pop 350ms var(--dispatch-ease-spring) 150ms both;
+}
+
+.dispatch-roll {
+	display: inline-block;
+	animation: dispatch-block-roll 150ms var(--dispatch-ease-out) both;
+}
+
+@keyframes dispatch-block-drop {
+	from { opacity: 0; transform: translateY(-8px); }
+	to { opacity: 1; transform: none; }
+}
+
+@keyframes dispatch-block-pop {
+	from { transform: scale(0); }
+	to { transform: scale(1); }
+}
+
+@keyframes dispatch-block-roll {
+	from { opacity: 0; transform: translateY(60%); }
+	to { opacity: 1; transform: none; }
+}
+
+.dispatch-new-dot {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--dispatch-state-done);
+	flex: none;
+}
+
+/* 5 Handoff: a blue block travels from the old session to the new one (200ms), the old one dims, one
+   ring on the new one (600ms). The handoff line in a conversation keeps a block going left to right. */
+.dispatch-handoff-traveller {
+	position: fixed;
+	z-index: 30;
+	width: 10px;
+	height: 10px;
+	border-radius: 3px;
+	background: var(--dispatch-state-handoff);
+	pointer-events: none;
+	transition: transform 200ms var(--dispatch-ease-std);
+}
+
+.dispatch-handoff-from {
+	opacity: 0.5;
+	transition: opacity 150ms var(--dispatch-ease-out) 200ms;
+}
+
+.dispatch-handoff-ring {
+	position: relative;
+}
+
+.dispatch-handoff-ring::after {
+	content: "";
+	position: absolute;
+	inset: -3px;
+	border-radius: 5px;
+	box-shadow: 0 0 0 1.5px var(--dispatch-state-handoff);
+	opacity: 0;
+	pointer-events: none;
+	animation: dispatch-block-ring 600ms var(--dispatch-ease-out) 200ms;
+}
+
+@keyframes dispatch-block-ring {
+	from { transform: scale(1); opacity: 0.7; }
+	to { transform: scale(1.9); opacity: 0; }
+}
+
+.dispatch-handoff-line {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+
+.dispatch-handoff-line::before,
+.dispatch-handoff-line::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 20%, transparent);
+}
+
+.dispatch-handoff-track {
+	position: relative;
+	width: 52px;
+	height: 16px;
+	flex: none;
+}
+
+.dispatch-handoff-track > i {
+	position: absolute;
+	top: 2px;
+	width: 12px;
+	height: 12px;
+	border-radius: 3.5px;
+	box-shadow: inset 0 0 0 1.4px var(--vscode-descriptionForeground);
+}
+
+.dispatch-handoff-track > i:nth-child(1) { left: 0; opacity: 0.6; }
+.dispatch-handoff-track > i:nth-child(2) { right: 0; opacity: 0.9; }
+
+.dispatch-handoff-track > b {
+	position: absolute;
+	top: 3px;
+	left: 1px;
+	width: 10px;
+	height: 10px;
+	border-radius: 3px;
+	background: var(--dispatch-state-handoff);
+	animation: dispatch-block-hand 3.2s var(--dispatch-ease-std) infinite;
+}
+
+@keyframes dispatch-block-hand {
+	0%, 20% { transform: translateX(0); opacity: 1; }
+	32%, 86% { transform: translateX(40px); opacity: 1; }
+	100% { transform: translateX(40px); opacity: 0; }
+}
+
+/* 6 Phone connecting: three blocks light in turn (1.2s loop), then join into a line (200ms) and the
+   phone gets its green dot (350ms spring) */
+.dispatch-link {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 52px;
+	height: 8px;
+	vertical-align: middle;
+}
+
+.dispatch-link.small { width: 17px; height: 3px; }
+
+.dispatch-link > i {
+	width: 8px;
+	height: 8px;
+	border-radius: 2.5px;
+	background: var(--vscode-descriptionForeground);
+	opacity: 0.25;
+}
+
+.dispatch-link.small > i { width: 3px; height: 3px; border-radius: 1px; }
+
+.dispatch-link.connecting > i { animation: dispatch-block-link 1.2s linear infinite; }
+.dispatch-link.connecting > i:nth-child(2) { animation-delay: 0.2s; }
+.dispatch-link.connecting > i:nth-child(3) { animation-delay: 0.4s; }
+
+.dispatch-link > b {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(50% - 1px);
+	height: 2px;
+	border-radius: 1px;
+	background: var(--dispatch-state-working);
+	transform: scaleX(0);
+	transform-origin: left;
+}
+
+.dispatch-link.connected > i { opacity: 0; transition: opacity 200ms var(--dispatch-ease-out); }
+.dispatch-link.connected > b { transform: scaleX(1); transition: transform 200ms var(--dispatch-ease-out); }
+
+@keyframes dispatch-block-link {
+	0%, 100% { opacity: 0.25; }
+	40% { opacity: 1; }
+}
+
+.dispatch-online-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--dispatch-state-working);
+	transform: scale(0);
+	transition: transform 350ms var(--dispatch-ease-spring) 100ms;
+}
+
+.dispatch-online-dot.on { transform: scale(1); }
+
+/* 7 The Assistant's mark (assistantMark()): the Dock icon's blocks and its white-centred dot in a glow
+   (base/common/dispatchIcon.ts, which also breathes the glow). Its blocks drop in by script (base/browser/dispatchIcon.ts,
+   design/icon-motion's 落块); the dot shows when the last one has landed, waiting knocks the amber block, thinking lifts
+   the blocks in a diagonal wave (1.6s loop, 110ms a diagonal). */
+.dispatch-assistant-mark {
+	display: inline-block;
+	flex: none;
+	line-height: 0;
+}
+
+.dispatch-assistant-mark > svg { display: block; }
+.dispatch-assistant-mark .slot { transform-box: fill-box; transform-origin: center; }
+.dispatch-assistant-mark:not(.lit) .now { visibility: hidden; }
+
+.dispatch-assistant-mark.waiting:not(.think) .slot.c-amber { animation: dispatch-block-knock 4s var(--dispatch-ease-out) 1.2s 3; }
+.dispatch-assistant-mark.think .slot { animation: dispatch-assistant-wave 1.6s linear infinite; animation-delay: calc(var(--d) * 110ms); }
+
+@keyframes dispatch-assistant-wave {
+	0%, 60%, 100% { transform: translateY(0); }
+	30% { transform: translateY(-22%); }
+}
+
+/* ---------------------------------------------------------------- an engine's small block (engineBlock()) */
+
+.dispatch-engine-block {
+	display: inline-grid;
+	place-items: center;
+	width: 18px;
+	height: 18px;
+	border-radius: 5px;
+	background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+	color: var(--vscode-foreground);
+	flex: none;
+}
+
+.dispatch-engine-block > .codicon {
+	font-size: 12px !important;
+	width: 12px;
+	height: 12px;
+	line-height: 12px;
+}
+
+/* ---------------------------------------------------------------- reduced motion: all still */
+
+.monaco-reduce-motion :is(.dispatch-block, .dispatch-block *, .dispatch-breathe, .dispatch-knock, .dispatch-arrive, .dispatch-arrive *, .dispatch-roll, .dispatch-handoff-track > b, .dispatch-handoff-ring::after, .dispatch-link > i, .dispatch-assistant-mark *) {
+	animation: none !important;
+	transition: none !important;
+}
+
+.monaco-reduce-motion .dispatch-handoff-traveller { display: none; }
+.monaco-reduce-motion .dispatch-link > *,
+.monaco-reduce-motion .dispatch-online-dot { transition: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-block, .dispatch-block *, .dispatch-breathe, .dispatch-knock, .dispatch-arrive, .dispatch-arrive *,
+	.dispatch-roll, .dispatch-handoff-track > b, .dispatch-handoff-ring::after, .dispatch-link > *, .dispatch-assistant-mark *, .dispatch-online-dot {
+		animation: none !important;
+		transition: none !important;
+	}
+	.dispatch-handoff-traveller { display: none; }
+}

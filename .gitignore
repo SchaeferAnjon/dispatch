@@ -1,0 +1,16 @@
+.DS_Store
+.playwright-mcp/
+phone-home.png
+*.log
+# node / vite
+# tooling noise
+app/dist/
+app/node_modules/
+__pycache__/
+*.pyc
+
+# UX review reports: screenshots of a personal board, keep them local
+design/
+
+# Working records with real machine names, paths and screenshots stay on this Mac (Dispatch still lists them under the project's 文档).
+

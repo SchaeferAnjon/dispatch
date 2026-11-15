@@ -1,0 +1,951 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the Docs tab (patches/435-docs.patch), direction A of kanban
+ *  design/docs-tab/redesign. Flat like the rest of the window (kanban DESIGN.md): two fills and
+ *  space, no shadows, no outline around the pane, and no colour in the tab itself (the red boxes
+ *  inside a screenshot are the screenshot). The values are the prototype's token list:
+ *  switch 28 high / 13px; group head 28 high 12/600; row 32 high, radius 6, inset 12; reader head
+ *  36; second line 12px; title 17/600; h2 15/600; body 13/1.65; text 20 from the pane's edge;
+ *  viewport 208 (372 from 720 wide), radius 8; legend 12/1.5; number dot 16.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-docs {
+	--dd-text: var(--vscode-foreground);
+	--dd-text-2: var(--vscode-descriptionForeground);
+	--dd-sel: var(--modern-ui-editor-tab-active-background, var(--vscode-list-activeSelectionBackground));
+	--dd-hover: var(--modern-ui-editor-tab-hover-background, var(--vscode-list-hoverBackground));
+	--dd-bg: var(--vscode-editor-background);
+	--dd-bg-2: var(--vscode-sideBar-background);
+	--dd-hair: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	--dd-ease-std: cubic-bezier(.32, .72, 0, 1);
+	--dd-radius-switch: var(--vscode-cornerRadius-small, 4px);
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--dd-text);
+	outline: none;
+	position: relative;
+	overflow: hidden;
+}
+
+.dispatch-docs.entering {
+	animation: dispatch-docs-in 120ms ease-out;
+}
+
+@keyframes dispatch-docs-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+:where(.dispatch-docs button) {
+	font: inherit;
+	color: inherit;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	margin: 0;
+}
+
+.dispatch-docs .codicon {
+	font-size: 16px;
+}
+
+/* ---- the list's top row: This session | the project, then Search (the Tasks tab's switch) ---- */
+
+.dispatch-docs-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 8px 8px;
+	flex: none;
+	min-width: 0;
+}
+
+.dispatch-docs-scope {
+	display: inline-flex;
+	gap: 2px;
+	min-width: 0;
+}
+
+.dispatch-docs-pill {
+	display: inline-flex;
+	align-items: center;
+	height: 28px;
+	padding: 0 10px;
+	border-radius: var(--dd-radius-switch);
+	color: var(--dd-text-2) !important;
+	font-size: 13px;
+	max-width: 180px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	transition: background-color 150ms ease, color 150ms ease;
+}
+
+/* hover only fills, like the tabs above: the text stays grey, so it never reads as the selected one */
+.dispatch-docs-pill:hover {
+	background: var(--dd-hover) !important;
+	color: var(--dd-text-2) !important;
+}
+
+.dispatch-docs-pill.on,
+.dispatch-docs-pill.on:hover {
+	background: var(--dd-sel) !important;
+	color: var(--dd-text) !important;
+}
+
+.dispatch-docs-scope.small .dispatch-docs-pill {
+	height: 24px;
+	padding: 0 8px;
+	font-size: 12px;
+}
+
+.dispatch-docs-ghost {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 8px;
+	border-radius: var(--dd-radius-switch);
+	color: var(--dd-text-2) !important;
+	font-size: 12px;
+	white-space: nowrap;
+	flex: none;
+	transition: background-color 150ms ease, color 150ms ease;
+}
+
+.dispatch-docs-spacer {
+	flex: 1;
+}
+
+/* the picker (All ⌄): a ghost button, its words, then a small chevron; a choice other than All reads in --text */
+.dispatch-docs-filter {
+	gap: 4px;
+	max-width: 120px;
+}
+
+.dispatch-docs-filter span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-docs-filter .codicon {
+	font-size: 12px !important;
+}
+
+.dispatch-docs-filter.on {
+	color: var(--dd-text) !important;
+}
+
+.dispatch-docs-ghost .codicon {
+	font-size: 14px;
+}
+
+.dispatch-docs-ghost:hover,
+.dispatch-docs-icon:hover,
+.dispatch-docs-back:hover {
+	background: var(--dd-hover) !important;
+	color: var(--dd-text) !important;
+}
+
+/* always over the list: the open documents and all the others (design/right-tabs/redesign B4) */
+.dispatch-docs-search-box {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	padding: 0 10px;
+	margin: 0 8px 8px;
+	border: 1px solid var(--dd-hair);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+	color: var(--dd-text-2);
+	cursor: text;
+	flex: none;
+}
+
+.dispatch-docs-search-box:focus-within {
+	border-color: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+}
+
+.dispatch-docs-kbd {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	height: 18px;
+	padding: 0 5px;
+	border: 1px solid var(--dd-hair);
+	border-radius: 4px;
+	font-size: 11px;
+	color: var(--dd-text-2);
+}
+
+.dispatch-docs-search-box .codicon {
+	font-size: 14px;
+}
+
+.dispatch-docs-search-input {
+	flex: 1;
+	min-width: 0;
+	height: 26px;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: var(--dd-text);
+	font: inherit;
+	font-size: 13px;
+}
+
+.dispatch-docs-search-input::placeholder {
+	color: var(--dd-text-2);
+}
+
+/* ---- groups and rows ---- */
+
+.dispatch-docs-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 0 8px 12px;
+}
+
+.dispatch-docs-group + .dispatch-docs-group {
+	margin-top: 8px;
+}
+
+.dispatch-docs-group-head {
+	display: flex !important;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	height: 28px;
+	padding: 0 12px !important;
+	border-radius: 6px;
+	color: var(--dd-text-2) !important;
+	font-size: 12px !important;
+	font-weight: 600;
+	text-align: left;
+}
+
+.dispatch-docs-group-head:hover {
+	color: var(--dd-text) !important;
+}
+
+.dispatch-docs-group-head .codicon {
+	font-size: 12px !important;
+	transition: transform 200ms ease;
+}
+
+.dispatch-docs-group.collapsed .dispatch-docs-group-head .codicon {
+	transform: rotate(-90deg);
+}
+
+.dispatch-docs-group-head .cnt {
+	margin-left: auto;
+	font-weight: 400;
+	font-size: 11px;
+	opacity: .7;
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-docs-rows {
+	display: grid;
+	grid-template-rows: 1fr;
+	transition: grid-template-rows 200ms var(--dd-ease-std);
+}
+
+.dispatch-docs-group.collapsed .dispatch-docs-rows {
+	grid-template-rows: 0fr;
+}
+
+.dispatch-docs-rows > ul {
+	overflow: hidden;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.dispatch-docs-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	padding: 0 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	min-width: 0;
+	outline: none;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-docs-row:hover {
+	background: var(--dd-hover);
+}
+
+.dispatch-docs-row.fresh {
+	animation: dispatch-docs-row-in 120ms ease-out;
+}
+
+@keyframes dispatch-docs-row-in {
+	from { opacity: 0; transform: translateY(4px); }
+	to { opacity: 1; transform: none; }
+}
+
+.dispatch-docs-row .format {
+	display: inline-flex;
+	color: var(--dd-text-2);
+	flex: none;
+}
+
+.dispatch-docs-row .t {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-docs-row .t.unseen {
+	font-weight: 500;
+}
+
+.dispatch-docs-acc {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 4px;
+	color: var(--dd-text-2) !important;
+	flex: none;
+}
+
+.dispatch-docs-acc .codicon {
+	font-size: 14px !important;
+}
+
+.dispatch-docs-acc:hover {
+	background: var(--dd-sel) !important;
+	color: var(--dd-text) !important;
+}
+
+.dispatch-docs-row .time {
+	flex: none;
+	min-width: 26px;
+	text-align: right;
+	font-size: 11px;
+	color: var(--dd-text-2);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Open (task-fif4i, direction B): every document open next to the fixed tabs, by project, on a faint fill of its own. */
+.dispatch-docs-open {
+	background: color-mix(in srgb, var(--dd-sel) 35%, transparent);
+	border-radius: 10px;
+	padding: 2px 0 6px;
+	margin-bottom: 8px;
+}
+
+.dispatch-docs-open-top {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.dispatch-docs-open-top .dispatch-docs-group-head {
+	flex: 1;
+	min-width: 0;
+}
+
+.dispatch-docs-close-all {
+	height: 22px;
+	padding: 0 8px !important;
+	border-radius: 6px;
+	color: var(--dd-text-2) !important;
+	font-size: 12px !important;
+	opacity: 0;
+	transition: opacity 200ms ease, background-color 150ms ease;
+	flex: none;
+}
+
+.dispatch-docs-open-top:hover .dispatch-docs-close-all,
+.dispatch-docs-open-project:hover .dispatch-docs-close-all,
+.dispatch-docs-close-all:focus-visible {
+	opacity: 1;
+}
+
+.dispatch-docs-close-all:hover {
+	background: var(--dd-sel) !important;
+	color: var(--dd-text) !important;
+}
+
+.dispatch-docs-open-project {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	padding: 0 10px 0 12px;
+	margin-top: 4px;
+	color: var(--dd-text-2);
+	font-size: 12px;
+}
+
+.dispatch-docs-open-project .codicon {
+	font-size: 14px !important;
+}
+
+.dispatch-docs-open-project .pn {
+	color: var(--dd-text);
+	font-size: 13px;
+	font-weight: 500;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-docs-open-project .cnt {
+	margin-left: auto;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-docs-open-row.child {
+	padding-left: 36px;
+}
+
+.dispatch-docs-open-row.child .t {
+	color: var(--dd-text-2);
+}
+
+.dispatch-docs-open-row.on {
+	background: var(--dd-sel);
+}
+
+/* the time gives way to the close button under the pointer */
+.dispatch-docs-open-x {
+	display: none !important;
+}
+
+.dispatch-docs-open-row:hover .dispatch-docs-open-x,
+.dispatch-docs-open-row:focus-within .dispatch-docs-open-x {
+	display: inline-flex !important;
+}
+
+.dispatch-docs-open-row:hover .time,
+.dispatch-docs-open-row:focus-within .time {
+	display: none;
+}
+
+.dispatch-docs-open-none {
+	padding: 8px 12px;
+	color: var(--dd-text-2);
+	font-size: 12px;
+}
+
+.dispatch-docs-more {
+	display: flex !important;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 12px !important;
+	color: var(--dd-text-2) !important;
+	font-size: 12px !important;
+	font-weight: 600;
+	opacity: .7;
+}
+
+.dispatch-docs-more:hover {
+	opacity: 1;
+}
+
+.dispatch-docs-more .codicon {
+	font-size: 12px !important;
+}
+
+/* the Tasks tab's empty state: two lines, top left, no picture */
+.dispatch-docs-empty {
+	padding: 4px 12px;
+}
+
+.dispatch-docs-empty .et {
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 20px;
+	color: var(--dd-text);
+}
+
+.dispatch-docs-empty .ed {
+	font-size: 12px;
+	line-height: 18px;
+	margin-top: 2px;
+	color: var(--dd-text-2);
+	max-width: 46ch;
+	overflow-wrap: anywhere;
+}
+
+/* ---- the reader ---- */
+
+.dispatch-docs-reader {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	position: relative;
+}
+
+.dispatch-docs-reader-head {
+	height: 36px;
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0 8px;
+}
+
+.dispatch-docs-reader-head .sp {
+	flex: 1;
+}
+
+.dispatch-docs-back {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	height: 28px;
+	padding: 0 8px 0 4px;
+	border-radius: 4px;
+	color: var(--dd-text-2) !important;
+	font-size: 13px;
+	white-space: nowrap;
+}
+
+.dispatch-docs-back .codicon {
+	font-size: 14px;
+}
+
+.dispatch-docs-icon {
+	width: 28px;
+	height: 28px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 4px;
+	color: var(--dd-text-2) !important;
+	flex: none;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-docs-icon.small {
+	width: 24px;
+	height: 24px;
+}
+
+.dispatch-docs-icon.small .codicon {
+	font-size: 14px;
+}
+
+.dispatch-docs-reader-scroll {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 4px 20px 24px;
+}
+
+.dispatch-docs.wide .dispatch-docs-reader-scroll {
+	padding: 4px 24px 24px;
+}
+
+.dispatch-docs-context {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 22px;
+	min-width: 0;
+	font-size: 12px;
+	color: var(--dd-text-2);
+}
+
+.dispatch-docs-context .codicon {
+	font-size: 14px !important;
+	flex: none;
+}
+
+.dispatch-docs-context .li {
+	flex: none;
+	white-space: nowrap;
+}
+
+.dispatch-docs-context .li.quiet {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-docs-context a.task {
+	color: var(--dd-text);
+	font-weight: 500;
+	text-decoration: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+	cursor: pointer;
+}
+
+.dispatch-docs-context a.task:hover {
+	text-decoration: underline;
+}
+
+.dispatch-docs-plus {
+	flex: none;
+	font-size: 11px !important;
+	color: var(--dd-text-2) !important;
+	padding: 0 4px !important;
+	height: 20px;
+	border-radius: 4px;
+}
+
+.dispatch-docs-plus:hover {
+	background: var(--dd-hover) !important;
+	color: var(--dd-text) !important;
+}
+
+.dispatch-docs-title {
+	font-size: 17px;
+	font-weight: 600;
+	line-height: 1.35;
+	margin: 6px 0 16px;
+	overflow-wrap: anywhere;
+}
+
+/* ---- Where to look: the shared viewer (dispatchCommon/browser/dispatchWhere.ts), the delivery page's 在哪 ---- */
+
+.dispatch-docs-where {
+	margin: 0 0 20px;
+	min-width: 0;
+}
+
+/* ---- the Markdown ---- */
+
+.dispatch-docs-md {
+	font-size: 13px;
+	line-height: 1.65;
+	overflow-wrap: anywhere;
+	user-select: text;
+	cursor: auto;
+}
+
+.dispatch-docs.wide .dispatch-docs-md,
+.dispatch-docs.wide .dispatch-docs-title {
+	max-width: 640px;
+}
+
+.dispatch-docs-md h1,
+.dispatch-docs-md h2 {
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.35;
+	margin: 24px 0 8px;
+}
+
+.dispatch-docs-md h3,
+.dispatch-docs-md h4 {
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.35;
+	margin: 18px 0 6px;
+}
+
+.dispatch-docs-md p {
+	margin: 0 0 12px;
+}
+
+.dispatch-docs-md ol,
+.dispatch-docs-md ul {
+	margin: 0 0 12px;
+	padding-left: 20px;
+}
+
+.dispatch-docs-md li {
+	margin: 0 0 6px;
+}
+
+.dispatch-docs-md a {
+	color: var(--vscode-textLink-foreground);
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.dispatch-docs-md a:hover {
+	text-decoration: underline;
+}
+
+.dispatch-docs-md img.fig {
+	display: block;
+	max-width: 100%;
+	border-radius: 6px;
+	border: 1px solid var(--dd-hair);
+	margin: 6px 0;
+}
+
+.dispatch-docs-md code {
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+	background: var(--vscode-textCodeBlock-background);
+	border-radius: 4px;
+	padding: 0 4px;
+}
+
+.dispatch-docs-md pre {
+	background: var(--vscode-textCodeBlock-background);
+	border-radius: 6px;
+	padding: 8px 12px;
+	overflow-x: auto;
+	margin: 0 0 12px;
+}
+
+.dispatch-docs-md pre code {
+	background: transparent;
+	padding: 0;
+}
+
+.dispatch-docs-md blockquote {
+	margin: 0 0 12px;
+	padding: 0 0 0 12px;
+	border-left: 2px solid var(--dd-hair);
+	color: var(--dd-text-2);
+}
+
+.dispatch-docs-md table {
+	border-collapse: collapse;
+	margin: 0 0 12px;
+	font-size: 12px;
+	display: block;
+	overflow-x: auto;
+	max-width: 100%;
+}
+
+.dispatch-docs-md th,
+.dispatch-docs-md td {
+	border-bottom: 1px solid var(--dd-hair);
+	padding: 5px 10px 5px 0;
+	text-align: left;
+	vertical-align: top;
+}
+
+.dispatch-docs-md th {
+	font-weight: 600;
+	color: var(--dd-text-2);
+}
+
+.dispatch-docs-md hr {
+	border: none;
+	border-top: 1px solid var(--dd-hair);
+	margin: 16px 0;
+}
+
+.dispatch-docs-ask {
+	z-index: 20;
+}
+
+/* ---- the prototype page ---- */
+
+.dispatch-docs-proto-head {
+	padding: 2px 20px 8px;
+	flex: none;
+}
+
+/* the page's title, right after "‹ Docs" on the head row; it gives way first when the pane is narrow */
+.dispatch-docs-reader-head .ht {
+	flex: 0 1 auto;
+	min-width: 0;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* the head row has the title: this row only says what the page is for, and goes when it has nothing to say */
+.dispatch-docs-proto-head:has(> .dispatch-docs-context:empty) {
+	display: none;
+}
+
+.dispatch-docs-browser-bar {
+	height: 32px;
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0 8px;
+	border-top: 1px solid var(--dd-hair);
+	border-bottom: 1px solid var(--dd-hair);
+}
+
+.dispatch-docs-browser-bar .addr {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 6px;
+	height: 24px;
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.dispatch-docs-browser-bar .addr .codicon {
+	font-size: 14px;
+	color: var(--dd-text-2);
+}
+
+.dispatch-docs-browser-bar .addr .f {
+	color: var(--dd-text);
+	font-size: 13px;
+	flex: none;
+}
+
+.dispatch-docs-browser-bar .addr .d {
+	color: var(--dd-text-2);
+	font-size: 12px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+.dispatch-docs-frame {
+	flex: 1;
+	min-height: 0;
+	position: relative;
+	overflow: hidden;
+	background: #fff;
+}
+
+.dispatch-docs-frame > .webview,
+.dispatch-docs-frame > iframe {
+	width: 100% !important;
+	height: 100% !important;
+	border: none;
+	display: block;
+}
+
+.dispatch-docs-pill:focus-visible,
+.dispatch-docs-group-head:focus-visible,
+.dispatch-docs-row:focus-visible,
+.dispatch-docs-acc:focus-visible,
+.dispatch-docs-more:focus-visible,
+.dispatch-docs-back:focus-visible,
+.dispatch-docs-icon:focus-visible,
+.dispatch-docs-ghost:focus-visible,
+.dispatch-docs-context a.task:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+/* DESIGN.md scrollbar: 6px, slider --text-2 25% (40% on hover), radius 3 */
+.dispatch-docs-list::-webkit-scrollbar,
+.dispatch-docs-reader-scroll::-webkit-scrollbar {
+	width: 6px;
+}
+
+.dispatch-docs-list::-webkit-scrollbar-track,
+.dispatch-docs-reader-scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.dispatch-docs-list::-webkit-scrollbar-thumb,
+.dispatch-docs-reader-scroll::-webkit-scrollbar-thumb {
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 25%, transparent);
+}
+
+.dispatch-docs-list::-webkit-scrollbar-thumb:hover,
+.dispatch-docs-reader-scroll::-webkit-scrollbar-thumb:hover {
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 40%, transparent);
+}
+
+/* the Docs (or Tasks) tab flashes once when something opens there (DESIGN.md: a hit flashes, 2s) */
+.tabs-container .tab.dispatch-docs-flash {
+	animation: dispatch-docs-flash 2s ease-out;
+}
+
+.dispatch-docs-flash-card {
+	animation: dispatch-docs-flash 2s ease-out;
+}
+
+/* a layer over the tab's own fill (an active tab keeps its fill under it) */
+@keyframes dispatch-docs-flash {
+	0%, 25% { box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--vscode-foreground) 16%, transparent); }
+	100% { box-shadow: inset 0 0 0 999px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-docs.entering,
+	.dispatch-docs-row.fresh,
+	.tabs-container .tab.dispatch-docs-flash,
+	.dispatch-docs-flash-card {
+		animation: none;
+	}
+
+	.dispatch-docs-rows,
+	.dispatch-docs-group-head .codicon {
+		transition: none;
+	}
+}
+
+/* the workbench rings every focused [tabindex] and button; here only a keyboard focus is ringed */
+.monaco-workbench .dispatch-docs:focus,
+.monaco-workbench .dispatch-docs :is(button, [tabindex]):focus:not(:focus-visible) {
+	outline: none !important;
+}
+
+/* the search box is the rounded fill around it; the input itself has no box of its own */
+.monaco-workbench .dispatch-docs .dispatch-docs-search-input,
+.monaco-workbench .dispatch-docs .dispatch-docs-search-input:focus {
+	border: none !important;
+	outline: none !important;
+	background: transparent !important;
+	box-shadow: none !important;
+	padding: 0;
+}
+
+/* DESIGN.md: a selection is the main colour at 30%, not the system blue (colour only in three places) */
+.dispatch-docs ::selection {
+	background-color: color-mix(in srgb, var(--vscode-foreground) 30%, transparent);
+}
+
+
+/* Docs controls participate in the header layout, never in a picture hover overlay. */
+.dispatch-docs-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.dispatch-docs-bar > .dispatch-docs-scope { flex: 1; overflow: hidden; }
+.dispatch-docs-bar > .dispatch-docs-scope .dispatch-docs-pill { min-width: 0; }
+.dispatch-docs-reader-head { gap: 4px; }
+.dispatch-docs-reader-head .sp { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dispatch-docs-md img.fig { cursor: zoom-in; }
+.dispatch-docs-picture { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; background: var(--vscode-editor-background); }
+.dispatch-docs-picture-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+.dispatch-docs-picture-scroll > img { display: block; max-width: none; }
+
+/* A document's own tab in the side pane's strip (DispatchDocTabInput): a long title ends in "…" like a VS Code
+   tab with shrinking sizing; the whole title and its path are in the tab's hover. */
+.agent-sessions-workbench .part.editor .tabs-container > .tab > .tab-label.dispatch-doc-tab > .monaco-icon-label-container {
+	display: inline-block;
+	max-width: 128px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	vertical-align: top;
+}
+
+.dispatch-docs-open-row .format img.favicon {
+	width: 16px;
+	height: 16px;
+	filter: grayscale(1);
+}

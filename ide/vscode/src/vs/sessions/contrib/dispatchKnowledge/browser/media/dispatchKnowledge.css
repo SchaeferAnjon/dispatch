@@ -1,0 +1,21 @@
+/* Dispatch IDE: the Knowledge page's webview fills the Customizations content area. */
+.dispatch-knowledge {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
+
+/* Contributed pages (Codex, Claude, Editor, Knowledge) sit on the same panel as Skills and Overview:
+   the panel colour, a 1px border, radius 6 (prompts-content-container in aiCustomizationManagement.css). */
+.ai-customization-management-editor .contributed-section-container {
+	background: var(--vscode-agentsPanel-background);
+	border: 1px solid var(--vscode-agentsPanel-border);
+	border-radius: 6px;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.ai-customization-management-editor .contributed-section-container .agent-global-configuration-settings-content {
+	max-width: 840px;
+	padding-top: var(--vscode-spacing-size400);
+}

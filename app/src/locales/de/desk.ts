@@ -1,0 +1,33 @@
+import type { Dict } from "../../i18n";
+// Agent 窗口 (components/AgentDesk.tsx). Keys are the Chinese source text.
+const desk: Dict = {
+  "（无标题）": "(ohne Titel)",
+  "还没有 Agent。在右边说一句想做什么，就会开一个。": "Noch keine Agenten. Sagen Sie rechts, was erledigt werden soll, dann startet einer.",
+  "在 {name} 里新建 Agent": "Neuer Agent in {name}",
+  "本机": "Dieser Mac",
+  "收起右栏": "Seitenleiste ausblenden",
+  "看改动和 Agent 跑的命令": "Änderungen und die Befehle des Agenten anzeigen",
+  "改动与命令": "Änderungen und Befehle",
+  "这个 Agent 在 {host} 上，终端去那台电脑开": "Dieser Agent läuft auf {host}; öffnen Sie dort ein Terminal",
+  "读不到改动：{err}": "Änderungen nicht lesbar: {err}",
+  "读取改动…": "Lese Änderungen…",
+  "这个 Agent 还没改文件。": "Dieser Agent hat noch keine Dateien geändert.",
+  "目录里还没提交的改动 · {n} 个文件": "Nicht committete Änderungen im Ordner · {n} Dateien",
+  "Agent": "Agent",
+  "先选一个 Agent 或项目": "Wählen Sie zuerst einen Agenten oder ein Projekt",
+  "在跑": "Läuft",
+  "有新回复": "Neue Antwort",
+  "后台空闲": "Im Hintergrund, untätig",
+  "{n} 个后台空闲": "{n} im Hintergrund untätig",
+  "后台空闲：Dispatch 里开着、没在干活的会话。右键一行选「关掉后台会话」": "Im Hintergrund untätig: Unterhaltungen, die in Dispatch noch offen sind, aber nichts tun. Rechtsklick auf eine Zeile, dann „Hintergrund-Unterhaltung schließen“",
+  "结束 Dispatch 里这个会话的进程，后台不再留着；记录还在，再打开能续上": "Den Prozess dieser Unterhaltung in Dispatch beenden, damit im Hintergrund nichts offen bleibt; das Protokoll bleibt, erneutes Öffnen setzt sie fort",
+  "新建 Agent": "Neuer Agent",
+  "显示更多": "Mehr anzeigen",
+  "拖动调整宽度，双击恢复": "Ziehen zum Ändern der Breite, Doppelklick setzt zurück",
+  "拖动调整宽度": "Breite ändern",
+  "收起左栏": "Liste ausblenden",
+  "展开左栏": "Liste einblenden",
+  "收起左栏（{mod}⇧B）": "Liste ausblenden ({mod}⇧B)",
+  "展开左栏（{mod}⇧B）": "Liste einblenden ({mod}⇧B)",
+};
+export default desk;

@@ -1,0 +1,234 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the hover card (dispatchHoverCard.ts), one style for every page of ours: the left
+ *  sidebar's cards (Waiting for you, a project, a session's tasks), the Projects page, the side pane's
+ *  Tasks and Docs, the Task graph, the machines panel. 360 wide, 13px; rows 28 high; a head in 600, grey
+ *  words after it; the whole text wrapped; grey 12px lines at the bottom.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-hover-card {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	width: 360px;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 2px 0;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--vscode-foreground);
+}
+/* a card of text only (what a row cut off): as wide as the text, 360 at most */
+.dispatch-hover-card.dispatch-text-card {
+	width: max-content;
+	max-width: 360px;
+}
+/* a detail card says everything: nothing on it is cut off with an ellipsis; a long title or line wraps */
+.dispatch-hover-head {
+	min-height: 28px;
+	box-sizing: border-box;
+	padding: 4px 8px;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+.dispatch-hover-head .dispatch-hover-head-counts {
+	font-weight: 400;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-hover-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	min-height: 28px;
+	min-width: 0;
+	padding: 4px 8px;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	box-sizing: border-box;
+	width: 100%;
+}
+button.dispatch-hover-row.clickable {
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+button.dispatch-hover-row.clickable:hover,
+button.dispatch-hover-row.clickable.linked {
+	background-color: var(--vscode-list-hoverBackground);
+}
+button.dispatch-hover-row.clickable:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+/* the icon or dot sits on the first line of the text */
+.dispatch-hover-lead {
+	flex: none;
+	width: 16px;
+	height: 1.5em;
+	display: grid;
+	place-items: center;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-hover-lead .codicon {
+	font-size: 16px;
+}
+/* the title and its grey detail flow as one text */
+.dispatch-hover-body {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.dispatch-hover-detail {
+	color: var(--vscode-descriptionForeground);
+}
+/* what a row cuts off, whole: wrapped, a long path or command broken anywhere */
+.dispatch-hover-text {
+	padding: 4px 8px;
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+	user-select: text;
+	-webkit-user-select: text;
+}
+.dispatch-hover-text.code {
+	font-family: var(--monaco-monospace-font, ui-monospace, "SF Mono", Menlo, monospace);
+	font-size: 12px;
+}
+.dispatch-hover-note {
+	padding: 0 8px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	overflow-wrap: anywhere;
+	user-select: text;
+	-webkit-user-select: text;
+}
+.dispatch-hover-note:last-child {
+	padding-bottom: 4px;
+}
+/* the card's buttons (Allow / Deny, a direction to pick): a row at the bottom, the page's own buttons */
+.dispatch-hover-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 8px 6px;
+}
+.dispatch-hover-actions .dispatch-hover-sp {
+	flex: 1 1 auto;
+}
+.dispatch-hover-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	min-height: 24px;
+	padding: 0 8px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	overflow-wrap: anywhere;
+}
+.dispatch-hover-foot .dispatch-hover-link {
+	border: 0;
+	padding: 0 4px;
+	margin: 0 -4px;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.dispatch-hover-foot .dispatch-hover-link:hover {
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-hover-foot .dispatch-hover-link .codicon {
+	font-size: 12px;
+}
+
+/* Detail A: the existing hover surface, attached to its row. */
+.dispatch-hover-detail-panel {
+	position: fixed;
+	z-index: 100;
+	box-sizing: border-box;
+	padding: 16px;
+	overflow: auto;
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	border-radius: var(--vscode-cornerRadius-large, 8px);
+	background: var(--vscode-editorHoverWidget-background);
+	color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+	box-shadow: var(--vscode-shadow-lg, 0 2px 8px var(--vscode-widget-shadow));
+	font-size: 13px;
+	line-height: 1.5;
+	animation: dispatch-detail-in 100ms ease;
+	transition: left 150ms ease, top 150ms ease;
+}
+.dispatch-detail-seam { position: fixed; z-index: 99; width: 4px; }
+.dispatch-hover-detail-panel .dispatch-hover-card {
+	width: 100%;
+	max-width: none;
+	padding: 0;
+	gap: 16px;
+}
+.dispatch-hover-detail-panel :is(.dispatch-hover-head, .dispatch-hover-text, .dispatch-hover-note, .dispatch-hover-actions) {
+	padding: 0;
+	min-height: 0;
+}
+.dispatch-hover-detail-panel :is(.dispatch-hover-title, .dispatch-hover-head, .dispatch-hover-text, button, .dispatch-detail-value) {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	text-overflow: clip;
+	-webkit-line-clamp: unset;
+	max-height: none;
+}
+.dispatch-detail-meta { color: var(--vscode-descriptionForeground); font-size: 12px; }
+.dispatch-detail-fields { margin: 0; }
+.dispatch-detail-field { display: grid; grid-template-columns: 88px minmax(0, 1fr); min-height: 28px; gap: 8px; }
+.dispatch-detail-field + .dispatch-detail-field { margin-top: 8px; }
+.dispatch-detail-field dt { white-space: normal; overflow-wrap: anywhere; padding-right: 4px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+.dispatch-detail-field dd { margin: 0; min-width: 0; }
+.dispatch-detail-field ol { margin: 4px 0 0; padding-left: 20px; }
+.dispatch-detail-field li { color: var(--vscode-descriptionForeground); }
+.dispatch-detail-field li.active { color: var(--vscode-foreground); }
+.dispatch-detail-btn {
+	border: 0; border-radius: 999px; min-height: 32px; padding: 4px 12px;
+	background: transparent; color: inherit; font: inherit; cursor: pointer;
+}
+.dispatch-detail-btn:hover { background: var(--vscode-list-hoverBackground); }
+.dispatch-detail-btn.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.dispatch-detail-btn.primary:hover { background: var(--vscode-button-hoverBackground); }
+.dispatch-detail-btn.outline { border: 1px solid color-mix(in srgb, var(--vscode-foreground) 14%, transparent); }
+.dispatch-detail-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.dispatch-detail-btn:disabled { opacity: .5; cursor: default; }
+.dispatch-detail-options { display: flex; flex-direction: column; gap: 8px; }
+.dispatch-detail-options button { text-align: left; }
+.dispatch-detail-link { border: 0; padding: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.dispatch-detail-link:hover { text-decoration: underline; }
+[data-dispatch-detail-row].detail-active { background: var(--vscode-list-hoverBackground); }
+.dispatch-hover-card .dispatch-hover-row[data-dispatch-detail-row] .dispatch-hover-body { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dispatch-reason-attached { border-top: 1px solid var(--vscode-editorHoverWidget-border); padding-top: 16px !important; }
+.dispatch-detail-feedback { color: var(--vscode-descriptionForeground); font-size: 12px; }
+@keyframes dispatch-detail-in { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .dispatch-hover-detail-panel { animation: none; transition: none; } }
+.dispatch-picture-detail-head { display: flex; justify-content: space-between; gap: 16px; font-weight: 500; }
+.dispatch-picture-detail-head .dispatch-detail-meta { flex: none; font-weight: 400; }
+.dispatch-picture-detail .dispatch-where .vp { max-height: var(--detail-image-height); }
+
+.dispatch-hover-detail-panel[data-side="inline"] { position: static; margin: 4px 0; box-shadow: none; }
+
+.dispatch-hover-detail-panel.detached { position: fixed; margin: 0; animation: none; transition: none; }
+.dispatch-hover-card[aria-busy="true"] .dispatch-detail-btn:disabled { animation: dispatch-detail-busy 1s ease-in-out infinite alternate; }
+@keyframes dispatch-detail-busy { from { opacity: .5; } to { opacity: .85; } }
+@media (prefers-reduced-motion: reduce) { .dispatch-hover-card[aria-busy="true"] .dispatch-detail-btn:disabled { animation: none; } }
+
+.dispatch-detail-loading { color: var(--vscode-descriptionForeground); animation: dispatch-detail-busy 1s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .dispatch-detail-loading { animation: none; } }
+
+.dispatch-detail-feedback:focus { outline: none; }
+/* Decide: the reason is a second card of its own under the details, same width and frame */
+.dispatch-reason-attached.dispatch-reason-second { position: fixed; z-index: 2600; box-sizing: border-box; padding: 12px 16px !important; border: 1px solid var(--vscode-editorHoverWidget-border); border-radius: 8px; background: var(--vscode-editorHoverWidget-background); box-shadow: 0 4px 16px color-mix(in srgb, var(--vscode-widget-shadow) 60%, transparent); }
+.dispatch-projects-session-tasks { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 8px; }
+.dispatch-projects-session-tasks .dispatch-projects-session-task { text-align: left; }

@@ -1,0 +1,29 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: a model menu grouped by provider (220-opencode.patch)
+ *--------------------------------------------------------------------------------------------*/
+
+/* Dispatch IDE: in a model menu grouped by provider (OpenCode's), a provider's title reads like the
+   menu's own section titles (Thinking Level): 11px semibold, grey, starting where they start */
+.action-widget .actionList.chat-model-picker-dropdown.provider-groups .monaco-scrollable-element .monaco-list-rows .monaco-list-row.separator.has-label {
+	font-size: 11px;
+	font-weight: var(--vscode-fontWeight-semiBold);
+	color: var(--vscode-descriptionForeground);
+	padding-left: 0;
+}
+
+.action-widget .actionList.chat-model-picker-dropdown.provider-groups .monaco-list-row.separator.has-label > span:not(:empty) {
+	padding-left: 0;
+}
+
+/* Dispatch IDE: the hover card of such a model: the name on one line, the provider under it */
+.chat-model-hover.chat-model-hover-with-provider {
+	min-width: 200px;
+	max-width: 320px;
+}
+
+.chat-model-hover.chat-model-hover-with-provider .chat-model-hover-name {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}

@@ -1,0 +1,53 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the engine version row (engineVersionRow.ts) on the Claude and Codex pages. The row is
+ *  the page's own .agent-global-configuration-settings-row; only its button (auto width, like the
+ *  page's other buttons) and a failed update's command (mono, the one thing a person copies) differ.
+ *--------------------------------------------------------------------------------------------*/
+
+.engine-version-row .agent-global-configuration-settings-action .monaco-button {
+	width: auto;
+	white-space: nowrap;
+}
+
+.engine-version-row .engine-version-command {
+	font-family: var(--monaco-monospace-font);
+	font-size: 11px;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+/* Dispatch IDE: installing or updating (DESIGN.md「安装或更新」): a 4px capsule (--chip) with a --fill band
+   sweeping across in 1.5s, then the step in words */
+.engine-version-row .engine-version-progress {
+	position: relative;
+	display: inline-block;
+	width: 96px;
+	height: 4px;
+	margin-right: var(--vscode-spacing-size80);
+	vertical-align: middle;
+	border-radius: 999px;
+	overflow: hidden;
+	background: var(--vscode-button-secondaryBackground);
+}
+
+.engine-version-row .engine-version-progress-band {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: 40%;
+	border-radius: 999px;
+	background: var(--vscode-progressBar-background);
+	animation: engine-version-sweep 1.5s linear infinite;
+}
+
+@keyframes engine-version-sweep {
+	from { transform: translateX(-100%); }
+	to { transform: translateX(250%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.engine-version-row .engine-version-progress-band {
+		animation-duration: 4s;
+	}
+}

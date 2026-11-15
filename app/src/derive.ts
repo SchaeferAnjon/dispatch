@@ -1,0 +1,405 @@
+import { t } from "./i18n";
+import type { Column, Comment, HistoryEntry, Issue, Session, SourceKind } from "./types";
+
+export function durSince(epochSec: number): string {
+  if (!epochSec) return "";
+  const m = Math.max(0, Math.round((Date.now() / 1000 - epochSec) / 60));
+  if (m < 1) return t("刚刚");
+  if (m < 60) return t("{m} 分钟", { m });
+  const h = Math.floor(m / 60);
+  if (h < 24) return t("{h} 小时 {m} 分", { h, m: m % 60 });
+  return t("{d} 天", { d: Math.floor(h / 24) });
+}
+
+export type AgentKind = "claude" | "codex" | "zcode" | "opencode" | "hermes" | "gemini" | "cursor" | "human" | "pi" | "checker";
+export interface Actor { id: string; name: string; kind: AgentKind; glyph: string }
+
+const KNOWN: Record<string, Omit<Actor, "id">> = {
+  "claude-code": { name: "Claude Code", kind: "claude", glyph: "C" },
+  claude: { name: "Claude Code", kind: "claude", glyph: "C" },
+  codex: { name: "Codex", kind: "codex", glyph: "X" },
+  zcode: { name: "ZCode", kind: "zcode", glyph: "Z" },
+  opencode: { name: "OpenCode", kind: "opencode", glyph: "O" },
+  hermes: { name: "Hermes", kind: "hermes", glyph: "H" },
+  gemini: { name: "Gemini CLI", kind: "gemini", glyph: "G" },
+  pi: { name: "pi", kind: "pi", glyph: "π" },
+  cursor: { name: "Cursor", kind: "cursor", glyph: "U" },
+  // Historical actor, retained only to render old comments.
+  "dispatch-checker": { name: "Historical review", kind: "checker", glyph: "✓" },
+};
+export const DEFAULT_AGENTS = ["claude-code", "codex", "pi", "zcode", "opencode", "hermes", "gemini"];
+// Ignore retired integrations in old task and presence records.
+const RETIRED_AGENTS = new Set(["qoder", "qoder-ide", "qodercli"]);
+// Desktop-only agents: no CLI to resume from, the app has to be brought up instead.
+export const NO_RESUME = new Set(["zcode"]);
+
+// Old records carry the git user.name, and two Macs can have two account names: every alias the
+// person listed (设置 → 「也算你的署名」, shared through the board) counts as "me", so the board shows
+// one person, not one per spelling. Empty until they say so: nobody's name is built in.
+export const HUMAN_ALIASES = new Set<string>();
+export function setHumanAliases(names: string[]) { HUMAN_ALIASES.clear(); for (const n of names) { const x = n.trim().toLowerCase(); if (x) HUMAN_ALIASES.add(x); } }
+export function isMe(raw: string | undefined, me: string): boolean {
+  if (!raw) return false;
+  return raw === me || HUMAN_ALIASES.has(raw.toLowerCase());
+}
+export function actorOf(raw: string | undefined, me: string): Actor | null {
+  if (!raw) return null;
+  const k = KNOWN[raw.toLowerCase()];
+  if (k) return { id: raw, ...k, name: t(k.name) };
+  // The person at the keyboard. The app addresses them as 你, never 我.
+  if (isMe(raw, me)) return { id: me, name: t("你"), kind: "human", glyph: t("你") };
+  return { id: raw, name: raw, kind: "human", glyph: raw.slice(0, 1).toUpperCase() };
+}
+
+export const PROJECT_PREFIX = "project:";
+export function projectOf(i: Issue): string {
+  const l = (i.labels ?? []).find((x) => x.startsWith(PROJECT_PREFIX));
+  return l ? l.slice(PROJECT_PREFIX.length) : "";
+}
+// Who handed a task to whom (`dispatch agent start --task`).
+export const delegatedBy = (i: Issue) => (i.labels ?? []).find((l) => l.startsWith("delegated-by:"))?.slice(13) ?? "";
+export const delegatedTo = (i: Issue) => (i.labels ?? []).find((l) => l.startsWith("delegated-to:"))?.slice(13) ?? "";
+export function isReviewed(i: Issue): boolean {
+  return i.status === "closed" && (i.labels ?? []).includes("reviewed");
+}
+export function needsReview(i: Issue): boolean {
+  return i.status === "closed" && !isReviewed(i) && (i.labels ?? []).includes("review-requested");
+}
+export function columnOf(i: Issue): Column {
+  if (i.status === "closed") return "done";
+  if (i.status === "in_progress") return "prog";
+  return "todo";
+}
+export const COLUMNS: { key: Column; label: string; cls: string }[] = [
+  { key: "todo", label: "待办", cls: "open" },
+  { key: "prog", label: "进行中", cls: "prog" },
+  { key: "done", label: "已完成", cls: "done" },
+];
+export function statusLabel(i: Issue): { text: string; cls: string } {
+  if (i.labels?.includes("dispatch:trashed")) return { text: t("回收站"), cls: "open" };
+  if (isReviewed(i)) return { text: t("已复核"), cls: "rev" };
+  switch (i.status) {
+    case "closed": return { text: needsReview(i) ? t("待 Agent 复核") : t("已完成"), cls: "done" };
+    case "in_progress": return { text: t("进行中"), cls: "prog" };
+    case "blocked": return { text: t("阻塞"), cls: "block" };
+    case "deferred": return { text: t("搁置"), cls: "open" };
+    default: return { text: t("待办"), cls: "open" };
+  }
+}
+
+const PALETTE = ["#1D5FD1", "#C28A12", "#2E8B57", "#6E56CF", "#C43D3D", "#2F6F73", "#B5488A", "#7A6A2F"];
+/** A project square's colours: its hue at tag strength behind the letter in the full hue (never a saturated block). */
+export function glyphStyle(name: string): { background: string; color: string } {
+  const hue = projectColor(name);
+  return { background: `color-mix(in srgb, ${hue} 22%, var(--bg))`, color: hue };
+}
+export function projectColor(name: string): string {
+  if (!name) return "#9B968C";
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+
+/** durSince with the "前" suffix, except "刚刚" which already is a point in time. Use this instead of `${durSince(x)}前`. */
+export function ago(epochSec: number): string {
+  const d = durSince(epochSec);
+  return !d || d === t("刚刚") ? d : t("{d}前", { d });
+}
+
+export function relTime(iso?: string): string {
+  if (!iso) return "";
+  const d = Date.now() - new Date(iso).getTime();
+  const m = Math.max(0, Math.round(d / 60_000));
+  if (m < 1) return t("刚刚");
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+}
+export function fmtTime(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+export interface AgentPresence {
+  actor: Actor;
+  online: boolean;
+  lastActive?: string;
+  current: Issue[];
+  sessions: Session[];
+  bySource: { kind: SourceKind; label: string; count: number; working: number }[];
+  // A resident process that keeps the agent online between conversations (Hermes gateway).
+  daemon?: string;
+}
+export const SOURCE_LABEL: Record<SourceKind, string> = { terminal: "终端", desktop: "桌面端", editor: "编辑器", chat: "聊天", cron: "定时任务", unknown: "来源未知" };
+const ONLINE_WINDOW_MIN = 30;
+export function agentsFrom(issues: Issue[], me: string, sessions: Session[] = []): AgentPresence[] {
+  const map = new Map<string, AgentPresence>();
+  const ensure = (raw: string) => {
+    const a = actorOf(raw, me)!;
+    if (!map.has(a.id)) map.set(a.id, { actor: a, online: false, current: [], sessions: [], bySource: [] });
+    return map.get(a.id)!;
+  };
+  // Agents always get a lane; the human only appears if they actually hold or wrote tasks.
+  DEFAULT_AGENTS.forEach(ensure);
+  for (const i of issues) {
+    const seen = new Set<string>();
+    for (const raw of [i.assignee, i.created_by]) {
+      if (!raw || RETIRED_AGENTS.has(raw) || seen.has(raw)) continue;
+      seen.add(raw);
+      // Creating a task from Dispatch shouldn't turn the user into an "agent" lane.
+      if (isMe(raw, me) && raw !== i.assignee) continue;
+      const p = ensure(raw);
+      const ts = raw === i.assignee ? i.updated_at : i.created_at;
+      if (!p.lastActive || ts > p.lastActive) p.lastActive = ts;
+    }
+    if (i.assignee && !RETIRED_AGENTS.has(i.assignee)) {
+      const p = ensure(i.assignee);
+      if (i.status === "in_progress") p.current.push(i);
+    }
+  }
+  for (const s of sessions) {
+    if (!s.alive || RETIRED_AGENTS.has(s.agent)) continue;
+    const p = ensure(s.agent);
+    if (s.daemon) { p.daemon = s.source_app || t("常驻"); continue; }
+    p.sessions.push(s);
+  }
+  for (const p of map.values()) {
+    const bs = new Map<string, { kind: SourceKind; label: string; count: number; working: number }>();
+    for (const s of p.sessions) {
+      const key = `${s.source_kind}:${s.source_app}`;
+      const b = bs.get(key) ?? { kind: s.source_kind, label: s.source_kind === "unknown" ? SOURCE_LABEL.unknown : s.source_app || SOURCE_LABEL[s.source_kind], count: 0, working: 0 };
+      b.count++;
+      if (s.state === "working") b.working++;
+      bs.set(key, b);
+    }
+    p.bySource = [...bs.values()].sort((a, b) => b.count - a.count);
+    if (p.daemon) p.bySource.push({ kind: "chat", label: t("{app} · 常驻", { app: p.daemon }), count: 0, working: 0 });
+    p.sessions.sort((a, b) => Number(b.state === "working") - Number(a.state === "working") || b.last_at - a.last_at);
+    const recentWrite = !!p.lastActive && Date.now() - new Date(p.lastActive).getTime() < ONLINE_WINDOW_MIN * 60_000;
+    // A live process is the truth; bd write recency only covers agents without hooks.
+    p.online = p.sessions.length > 0 || !!p.daemon || (p.actor.kind !== "human" && p.sessions.length === 0 && recentWrite && p.actor.kind === "cursor");
+    p.current.sort((a, b) => a.priority - b.priority);
+  }
+  const order: Record<AgentKind, number> = { claude: 0, codex: 1, pi: 2, zcode: 3, opencode: 4, hermes: 5, gemini: 6, human: 7, cursor: 8, checker: 9 };
+  // The human is not an agent: only list them while they actually hold an in-progress task. The
+  // acceptance checker writes to the board but never works on a task: it is not on the roster.
+  return [...map.values()]
+    .filter((p) => (p.actor.kind !== "human" || p.current.length > 0) && p.actor.kind !== "checker")
+    .sort((a, b) => Number(b.online) - Number(a.online) || order[a.actor.kind] - order[b.actor.kind]);
+}
+
+export interface Event { ts: string; actor?: string; kind: "created" | "claimed" | "status" | "closed" | "reviewed" | "comment" | "edited"; text: string; cmd?: string }
+export interface Interaction { id: string; kind: string; created_at: string; actor: string; issue_id: string; extra?: Record<string, unknown> }
+// bd history has no per-commit actor; infer it from the fields that changed,
+// then overlay the audit log (interactions.jsonl) which does record the actor.
+export function eventsFrom(history: HistoryEntry[], comments: Comment[], audit: Interaction[] = []): Event[] {
+  const ev: Event[] = [];
+  const auditNear = (ts: string, field?: string) => {
+    const t = new Date(ts).getTime();
+    return audit.find((a) => Math.abs(new Date(a.created_at).getTime() - t) < 5000 && (!field || a.extra?.field === field));
+  };
+  const h = [...history].sort((a, b) => a.CommitDate.localeCompare(b.CommitDate));
+  let prev: Issue | null = null;
+  for (const e of h) {
+    const cur = e.Issue;
+    const ts = new Date(e.CommitDate).toISOString();
+    if (!prev) {
+      ev.push({ ts, actor: cur.created_by, kind: "created", text: t("创建"), cmd: `bd create "${cur.title}"` });
+    } else {
+      if (cur.assignee !== prev.assignee && cur.assignee) ev.push({ ts, actor: auditNear(ts, "assignee")?.actor ?? cur.assignee, kind: "claimed", text: prev.assignee ? t("改派给 {who}", { who: cur.assignee }) : t("认领"), cmd: `bd update ${cur.id} --claim` });
+      if (cur.status !== prev.status) {
+        const who = auditNear(ts, "status")?.actor ?? cur.assignee;
+        if (cur.status === "closed") ev.push({ ts, actor: who, kind: "closed", text: t("完成"), cmd: `bd close ${cur.id}${cur.close_reason ? ` --reason "${cur.close_reason}"` : ""}` });
+        else if (!(cur.status === "in_progress" && cur.assignee !== prev.assignee)) ev.push({ ts, actor: who, kind: "status", text: t("状态 → {status}", { status: statusLabel(cur).text }), cmd: `bd update ${cur.id} --status ${cur.status}` });
+      }
+      const wasRev = (prev.labels ?? []).includes("reviewed"), isRev = (cur.labels ?? []).includes("reviewed");
+      if (isRev && !wasRev) ev.push({ ts, actor: auditNear(ts)?.actor, kind: "reviewed", text: t("审核通过"), cmd: `bd update ${cur.id} --add-label reviewed` });
+      if (cur.title !== prev.title || cur.description !== prev.description || cur.priority !== prev.priority || cur.acceptance_criteria !== prev.acceptance_criteria) ev.push({ ts, actor: auditNear(ts)?.actor, kind: "edited", text: t("编辑") });
+    }
+    prev = cur;
+  }
+  for (const c of comments) ev.push({ ts: c.created_at, actor: c.author, kind: "comment", text: c.text });
+  return ev.sort((a, b) => b.ts.localeCompare(a.ts));
+}
+
+export type WikiKind = "pit" | "win" | "retro" | "howto";
+// The wiki is ordinary bd memories following one convention: key `<kind>-<slug>`,
+// content `<head>text <label>field… #project:<name> #task:<id>`. Four kinds.
+export const WIKI_KINDS: Record<WikiKind, { prefix: string; head: string; label: string; fields: { name: string; label: string; hint: string }[] }> = {
+  pit: { prefix: "pit-", head: "【坑】", label: "坑", fields: [{ name: "fix", label: "【解法】", hint: "怎么解的" }] },
+  win: { prefix: "win-", head: "【做对】", label: "做对", fields: [{ name: "why", label: "【为什么】", hint: "为什么这是对的做法" }] },
+  retro: { prefix: "retro-", head: "【复盘】", label: "复盘", fields: [{ name: "tech", label: "【技术】", hint: "用了什么技术 / 工具" }, { name: "good", label: "【做对】", hint: "哪里做对了" }, { name: "bad", label: "【做错】", hint: "哪里做错了、下次怎么避免" }] },
+  howto: { prefix: "howto-", head: "【方法】", label: "方法", fields: [] },
+};
+const ALL_LABELS = [...new Set(Object.values(WIKI_KINDS).flatMap((k) => [k.head, ...k.fields.map((f) => f.label)]))].sort((a, b) => b.length - a.length);
+export interface Pitfall { key: string; raw: string; kind: WikiKind | null; text: string; fields: Record<string, string>; trap: string; fix: string; project: string; task: string; isPit: boolean }
+export function wikiKindOf(key: string, value: string): WikiKind | null {
+  for (const k of Object.keys(WIKI_KINDS) as WikiKind[]) {
+    if (key.startsWith(WIKI_KINDS[k].prefix) || value.trimStart().startsWith(WIKI_KINDS[k].head)) return k;
+  }
+  return null;
+}
+export function parsePitfall(m: { key: string; value: string }): Pitfall {
+  const v = m.value;
+  const tag = (name: string) => (v.match(new RegExp(`#${name}:(\\S+)`)) ?? [])[1] ?? "";
+  const body = v.replace(/#(project|task):\S+/g, "").trim();
+  const kind = wikiKindOf(m.key, v);
+  const fields: Record<string, string> = {};
+  let text = body;
+  if (kind) {
+    const re = new RegExp("(" + ALL_LABELS.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")");
+    let cur: string | null = null;
+    for (const piece of body.split(re)) {
+      if (ALL_LABELS.includes(piece)) { cur = piece; fields[cur] = fields[cur] ?? ""; }
+      else if (cur !== null) fields[cur] = (fields[cur] + piece).trim();
+    }
+    const head = WIKI_KINDS[kind].head;
+    if (head in fields) { text = fields[head]; delete fields[head]; }
+  }
+  return { key: m.key, raw: v, kind, text, fields, trap: text, fix: fields["【解法】"] ?? "", project: tag("project"), task: tag("task"), isPit: kind === "pit" };
+}
+export function composeWiki(kind: WikiKind, text: string, fields: Record<string, string>, project: string, task: string): string {
+  let s = `${WIKI_KINDS[kind].head}${text.trim()}`;
+  for (const f of WIKI_KINDS[kind].fields) if (fields[f.name]?.trim()) s += ` ${f.label}${fields[f.name].trim()}`;
+  if (project.trim()) s += ` #project:${project.trim()}`;
+  if (task.trim()) s += ` #task:${task.trim()}`;
+  return s;
+}
+export function composePitfall(trap: string, fix: string, project: string, task: string): string {
+  return composeWiki("pit", trap, { fix }, project, task);
+}
+export function slugify(s: string): string {
+  const ascii = s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  return ascii || Math.random().toString(36).slice(2, 8);
+}
+
+// Root of the thread a task sits on: follow lineage edges (discovered-from,
+// parent-child) upstream until nothing else points at it. `blocks` is ordering,
+// not lineage, so it is ignored.
+export function rootsOf(edges: { from: string; to: string; type: string }[]): Map<string, string> {
+  const up = new Map<string, string[]>();
+  for (const e of edges) {
+    if (e.type === "blocks" || e.type === "related" || e.type === "relates_to") continue;
+    (up.get(e.to) ?? up.set(e.to, []).get(e.to)!).push(e.from);
+  }
+  const memo = new Map<string, string>();
+  const root = (id: string, seen: Set<string>): string => {
+    if (memo.has(id)) return memo.get(id)!;
+    const parents = (up.get(id) ?? []).filter((p) => !seen.has(p));
+    if (parents.length === 0) return id;
+    seen.add(id);
+    const r = root(parents[0], seen);
+    memo.set(id, r);
+    return r;
+  };
+  const out = new Map<string, string>();
+  for (const id of up.keys()) { const r = root(id, new Set()); if (r !== id) out.set(id, r); }
+  return out;
+}
+
+// Acceptance items keep two boxes only, `- [ ]` and `- [x]`; the finer state rides at the end of
+// the line so every old reader still counts them (see app/cli/checker.py):
+//   - [ ] text                               todo       未开始
+//   - [ ] text #claimed:claude-code          claimed    待验收 (an Agent says it is done; evidence in a comment)
+//   - [x] text @dispatch-checker #sig:…      verified   已验证 (only the independent checker signs like this)
+//   - [ ] text #failed:dispatch-checker      failed     未通过
+//   - [ ] text #ask:dispatch-checker         ask        需要你确认
+//   - [x] text @me #sig:…                    human      你核对
+//   - [x] text @me #waived #sig:…            waived     免验
+//   - [x] text @claude-code #sig:…           self       自审 (the Agent's own tick, made when 验收方式 is Agent 自审; counted)
+//   - [x] text (no #sig)                     unsigned   没签名 (written straight into the board: not counted)
+// `#sig:` is an HMAC only the CLI can make and check; the app trusts its presence for list
+// progress and asks `dispatch check --status` for the verdict on the task page. Tasks closed
+// before signatures existed (AC_SIG_EPOCH) read the old way. Only box lines are items when the
+// text has any: headings and indented notes next to them are not numbered.
+export type AcState = "todo" | "done";
+export interface AcItem { done: boolean; text: string; by?: string; tags?: Record<string, string>; state: AcState }
+const BOX_LINE = /^[-*]\s*\[( |x|X)\]/;
+/** Read checklist items, stripping retired metadata from old task records. */
+export function parseAcceptance(s?: string): AcItem[] {
+  if (!s) return [];
+  const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const anyBox = lines.some((l) => BOX_LINE.test(l));
+  return lines.filter((l) => !anyBox || BOX_LINE.test(l)).map((l) => {
+    const m = l.match(/^[-*]\s*(\[( |x|X)\])?\s*(.*)$/);
+    if (!m) return { done: false, text: l, tags: {}, state: "todo" as AcState };
+    const done = (m[2] ?? " ").toLowerCase() === "x";
+    let rest = m[3];
+    const tags: Record<string, string> = {};
+    let by: string | undefined;
+    for (;;) {
+      if (done) {
+        const tm = rest.match(/\s+#(?:(waived)|sig:([0-9a-f]{8,64}))\s*$/);
+        if (tm) { if (tm[1]) { if (!("waived" in tags)) tags.waived = ""; } else if (!("sig" in tags)) tags.sig = tm[2]; rest = rest.slice(0, tm.index); continue; }
+        const sm = by === undefined ? rest.match(/\s+@([\w.-]+)\s*$/) : null;
+        if (sm) { by = sm[1]; rest = rest.slice(0, sm.index); continue; }
+      } else {
+        // an open line's `@name` belongs to its text, and a state tag always names who
+        const tm = rest.match(/\s+#(claimed|failed|ask):([\w.-]+)\s*$/);
+        if (tm) { if (!(tm[1] in tags)) tags[tm[1]] = tm[2]; rest = rest.slice(0, tm.index); continue; }
+      }
+      break;
+    }
+    const item: AcItem = { done, text: rest.trim(), tags, state: done ? "done" : "todo" };
+    if (by) item.by = by;
+    return item;
+  });
+}
+/** A task's checklist, counted exactly as recorded by its completing agent. */
+export function issueAcceptance(i: { acceptance_criteria?: string; status?: string; closed_at?: string }): AcItem[] {
+  return parseAcceptance(i.acceptance_criteria);
+}
+export function serializeAcceptance(items: AcItem[]): string {
+  return items.map((i) => `- [${i.done ? "x" : " "}] ${i.text}${i.done && i.by ? ` @${i.by}` : ""}`).join("\n");
+}
+export function acceptanceProgress(items: AcItem[]): { total: number; done: number; todo: number } {
+  const done = items.filter((i) => i.done).length;
+  return { total: items.length, done, todo: items.length - done };
+}
+/** Toggle a checklist item while editing its text. */
+export function toggleAcceptance(items: AcItem[], idx: number, me: string): AcItem[] {
+  return items.map((a, i) => {
+    if (i !== idx) return a;
+    const done = !a.done;
+    return done ? { ...a, done, by: me, tags: {}, state: "done" as AcState } : { ...a, done, by: undefined, tags: {}, state: "todo" as AcState };
+  });
+}
+
+// Which Mac a task runs on: the explicit host:<name> label (dispatch begin adds it), else the
+// most recent session that mentioned the task, else unknown ("").
+export function hostOfIssue(i: { labels?: string[]; id: string }, refs: Map<string, { host_name?: string; last_at: number; tasks?: Record<string, number> }>): string {
+  const lab = (i.labels ?? []).find((l) => l.startsWith("host:"));
+  if (lab) return lab.slice(5);
+  let best: { host: string; at: number } | null = null;
+  for (const r of refs.values()) {
+    if (r.tasks && r.tasks[i.id] && r.host_name && (!best || r.last_at > best.at)) best = { host: r.host_name, at: r.last_at };
+  }
+  return best?.host ?? "";
+}
+
+// Process presence and execution state are different signals. Never infer a request from idle.
+export function needsAttention(s: Session): boolean {
+  return s.alive && s.registered && s.attention === "input";
+}
+export function sessionStatus(s: Session): string {
+  if (!s.alive) return t("已结束");
+  if (needsAttention(s)) return t("等待确认");
+  if (s.state === "unknown" || !s.registered) return t("状态未知");
+  return s.state === "working" ? t("在跑") : t("空闲");
+}
+export function sessionEvidence(s: Session): string {
+  const source = s.state_source === "transcript" ? t("实际会话记录") : s.state_source === "hook" || s.last_event ? `${t("事件上报")}${s.last_event ? ` · ${s.last_event}` : ""}` : s.registered ? t("会话检测") : t("仅检测到进程，未接入执行状态");
+  return `${source} · ${s.last_at ? t("最后活动 {ago}", { ago: ago(s.last_at) }) : t("无活动时间")}`;
+}
+
+// A discussion's conclusion: one block in the task description (`## 讨论结论（when · model）`),
+// replaced each time it is written; older threads keep it as the last 【结论】 comment.
+export function discussionConclusion(description: string | undefined, comments: { text: string; created_at: string; author: string }[]): { text: string; when: string; by: string } | null {
+  const m = /(?:^|\n\n)## 讨论结论（([^）]*?) · ([^）]*?)）\n([\s\S]*?)(?=\n\n## |$)/.exec(description ?? "");
+  if (m) return { text: m[3].trim(), when: m[1], by: m[2] };
+  const c = comments.filter((x) => x.text.trimStart().startsWith("【结论】")).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  return c ? { text: c.text.trimStart().slice(4).trim(), when: c.created_at, by: c.author } : null;
+}

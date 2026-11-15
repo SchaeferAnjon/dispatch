@@ -1,0 +1,71 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the OpenCode harness page (opencodeCustomizationSettings.contribution.ts). The page is
+ *  the Claude page's layout (agentGlobalConfigurationSettings.css, claudeCustomizationSettings.css);
+ *  here only the default model control (closed it is drawn like the page's selects: 168 wide at least,
+ *  as wide as the name up to 320, a chevron-down on the right)
+ *  and a provider's allowance on the right of its row (grey, right-aligned, figures in columns).
+ *--------------------------------------------------------------------------------------------*/
+
+.opencode-settings .opencode-settings-model-select {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	box-sizing: border-box;
+	min-width: 168px;
+	max-width: 320px;
+	min-height: 26px;
+	margin: 0;
+	padding: var(--vscode-spacing-size20) var(--vscode-spacing-size240) var(--vscode-spacing-size20) var(--vscode-spacing-size80);
+	border: 1px solid var(--vscode-dropdown-border, transparent);
+	border-radius: var(--vscode-cornerRadius-small);
+	background: var(--vscode-dropdown-background);
+	color: var(--vscode-dropdown-foreground);
+	font-family: inherit;
+	font-size: inherit;
+	line-height: 18px;
+	text-align: left;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.opencode-settings .opencode-settings-model-select:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.opencode-settings .opencode-settings-model-select:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.opencode-settings .opencode-settings-model-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.opencode-settings .opencode-settings-model-select .codicon {
+	position: absolute;
+	right: var(--vscode-spacing-size40);
+	top: 50%;
+	transform: translateY(-50%);
+	color: var(--vscode-dropdown-foreground);
+}
+
+.opencode-settings .opencode-settings-quota {
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 17px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.opencode-settings .monaco-button.opencode-settings-add-provider {
+	margin-top: var(--vscode-spacing-size80);
+}
+
+.opencode-settings.narrow .opencode-settings-quota {
+	margin-left: 0;
+	text-align: left;
+}

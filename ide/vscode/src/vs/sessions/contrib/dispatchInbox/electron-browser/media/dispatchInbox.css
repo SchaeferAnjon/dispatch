@@ -1,0 +1,353 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the bell in the title bar and its panel (dispatchInbox.contribution.ts). Built like the
+ *  phone and account buttons next to it (dispatchMobile.css): the title bar's own icon button, a panel as
+ *  round as theirs, flat, one colour. Colour only in the status icons (DESIGN.md: the session's blocks,
+ *  the coral dot for a stop), never on the count or the rows.
+ *--------------------------------------------------------------------------------------------*/
+
+/* the button */
+/* a fixed 22 x 22: a new count never moves the buttons to its left */
+.monaco-workbench .dispatch-inbox-button .dispatch-inbox-button-label {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 22px !important;
+	height: 22px;
+	padding: 0;
+	border-radius: 5px;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+.monaco-workbench .dispatch-inbox-button .dispatch-inbox-button-label:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+.monaco-workbench .dispatch-inbox-button .dispatch-inbox-button-label.open {
+	background-color: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-foreground);
+}
+.monaco-workbench .dispatch-inbox-button .dispatch-inbox-button-label.has-unread {
+	color: var(--vscode-foreground);
+}
+.monaco-workbench .dispatch-inbox-button .dispatch-inbox-button-icon {
+	font-size: 16px;
+	color: inherit;
+}
+/* the count: a one-colour badge on the bell's top right corner, over it rather than beside it */
+.monaco-workbench .dispatch-inbox-button .dispatch-inbox-count {
+	position: absolute;
+	top: -3px;
+	left: 12px;
+	box-sizing: border-box;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 4px;
+	border-radius: 999px;
+	background: var(--vscode-foreground);
+	color: var(--vscode-editor-background);
+	font-size: 11px;
+	font-weight: 500;
+	font-variant-numeric: tabular-nums;
+	line-height: 14px;
+	text-align: center;
+	pointer-events: none;
+}
+.monaco-workbench .dispatch-inbox-button .dispatch-inbox-count:empty {
+	display: none;
+}
+
+/* the panel */
+.monaco-hover.workbench-hover.dispatch-inbox-panel-hover,
+.monaco-hover.workbench-hover.dispatch-inbox-panel-hover:focus,
+.monaco-hover.workbench-hover.dispatch-inbox-panel-hover:focus-within {
+	border: 1px solid var(--vscode-menu-border, var(--vscode-editorHoverWidget-border));
+	border-radius: 12px;
+	overflow: hidden;
+	outline: none;
+}
+/* held 8px off the window's right edge, like a menu */
+.monaco-hover.workbench-hover.dispatch-inbox-panel-hover.right-aligned {
+	transform: translateX(-7px);
+}
+/* a click inside locks the hover, which draws its own outline around the border: one line is enough */
+.workbench-hover-container.locked .monaco-hover.workbench-hover.dispatch-inbox-panel-hover,
+.workbench-hover-container:focus-within.locked .monaco-hover.workbench-hover.dispatch-inbox-panel-hover {
+	outline: none;
+}
+.monaco-hover.workbench-hover.dispatch-inbox-panel-hover .hover-contents {
+	padding: 0 !important;
+}
+.dispatch-inbox-panel {
+	display: flex;
+	flex-direction: column;
+	width: 340px;
+	max-width: calc(100vw - 16px);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.dispatch-inbox-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 24px;
+	margin: 12px 16px 4px;
+}
+.dispatch-inbox-title {
+	font-size: 13px;
+	font-weight: 600;
+}
+.dispatch-inbox-sp {
+	flex: 1;
+}
+.dispatch-inbox-text-button {
+	height: 24px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+.dispatch-inbox-text-button:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-inbox-text-button:focus-visible,
+.dispatch-inbox-row:focus-visible,
+.dispatch-inbox-row-toggle:focus-visible,
+.dispatch-inbox-switch:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: -2px;
+}
+
+.dispatch-inbox-list {
+	display: flex;
+	flex-direction: column;
+	/* one height from the moment it opens: rows marked read or a switched foot never move what is under the mouse */
+	height: min(360px, 55vh);
+	overflow-y: auto;
+	padding: 0 6px 6px;
+}
+.dispatch-inbox-section {
+	height: 28px;
+	line-height: 28px;
+	padding: 0 10px;
+	font-size: 12px;
+	font-weight: 600;
+	color: color-mix(in srgb, var(--vscode-descriptionForeground) 70%, transparent);
+}
+
+/* a row: [status 16] 8 [title / kind · project · last words] … [time | mark] */
+.dispatch-inbox-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 44px;
+	padding: 4px 10px;
+	border-radius: 10px;
+	cursor: pointer;
+	transition: background-color 150ms ease-out;
+}
+.dispatch-inbox-row:hover {
+	background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 60%, transparent);
+}
+.dispatch-inbox-row-icon {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	color: var(--vscode-descriptionForeground);
+}
+/* a stop already seen: the row's own grey, not a faded coral */
+.dispatch-inbox-stop {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background-color: currentColor;
+	opacity: 0.45;
+}
+.dispatch-inbox-row-icon .dispatch-status-dot {
+	margin: 0;
+}
+.dispatch-inbox-row-body {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+.dispatch-inbox-row-title {
+	font-size: 13px;
+	font-weight: 500;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.dispatch-inbox-row.read .dispatch-inbox-row-title {
+	font-weight: 400;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-inbox-row-line {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.dispatch-inbox-row-end {
+	flex: none;
+	position: relative;
+	width: 38px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+}
+.dispatch-inbox-row-time {
+	font-size: 11px;
+	color: color-mix(in srgb, var(--vscode-descriptionForeground) 70%, transparent);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-inbox-row-toggle {
+	position: absolute;
+	right: 0;
+	top: 0;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+.dispatch-inbox-row-toggle:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-inbox-row:hover .dispatch-inbox-row-toggle,
+.dispatch-inbox-row:focus-within .dispatch-inbox-row-toggle {
+	display: inline-flex;
+}
+.dispatch-inbox-row:hover .dispatch-inbox-row-time,
+.dispatch-inbox-row:focus-within .dispatch-inbox-row-time {
+	visibility: hidden;
+}
+
+.dispatch-inbox-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	flex: 1;
+	gap: 4px;
+	padding: 20px 16px 22px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-inbox-empty .dispatch-status-blocks {
+	transform: scale(1.5);
+	margin-bottom: 8px;
+}
+.dispatch-inbox-empty-title {
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+.dispatch-inbox-empty-line {
+	max-width: 46ch;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	padding: 8px 10px;
+}
+.dispatch-inbox-empty .dispatch-inbox-empty-line {
+	padding: 0;
+}
+
+/* the foot: who is asleep, and the switch */
+.dispatch-inbox-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+	padding: 10px 16px 12px;
+	border-top: 1px solid var(--vscode-menu-separatorBackground, var(--vscode-editorHoverWidget-border));
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+/* the foot's room is kept from the first frame: the panel does not grow when the sleep line arrives */
+.dispatch-inbox-foot {
+	box-sizing: border-box;
+	min-height: 84px;
+}
+.dispatch-inbox-foot-line {
+	flex-basis: 100%;
+	min-height: 36px;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+.dispatch-inbox-foot-line .dispatch-status-blocks {
+	flex: none;
+	margin-top: 1px;
+}
+/* a square-cornered switch (the person's choice: no pill ends) */
+.dispatch-inbox-switch {
+	position: relative;
+	flex: none;
+	width: 28px;
+	height: 16px;
+	margin-left: 24px;
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	cursor: pointer;
+	transition: background-color 150ms ease-out;
+}
+.dispatch-inbox-switch-thumb {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	background: var(--vscode-descriptionForeground);
+	transition: transform 150ms ease-out, background-color 150ms ease-out;
+}
+.dispatch-inbox-switch[aria-checked="true"] {
+	background: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+}
+.dispatch-inbox-switch[aria-checked="true"] .dispatch-inbox-switch-thumb {
+	transform: translateX(12px);
+	background: var(--vscode-foreground);
+}
+.dispatch-inbox-switch:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+.dispatch-inbox-switch-label {
+	cursor: pointer;
+	color: var(--vscode-foreground);
+}
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-inbox-switch-thumb,
+	.dispatch-inbox-row,
+	.dispatch-inbox-switch {
+		transition: none;
+	}
+}
+.dispatch-inbox-list > * {
+	flex: none;
+}
+.dispatch-inbox-list > .dispatch-inbox-empty {
+	flex: 1;
+}

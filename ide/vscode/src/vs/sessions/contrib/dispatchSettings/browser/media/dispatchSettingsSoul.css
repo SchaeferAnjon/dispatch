@@ -1,0 +1,25 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Settings › Soul. The text sits in VS Code's editor on the input fill, in the same 12 radius block
+ *  as the page's rows; nothing else is new. Off: the text stays editable and is shown quieter.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-settings-page .dset-soul-kind { margin-left: 8px; }
+.dispatch-settings-page .dset-soul-editor {
+	background: var(--dset-chip-2);
+	border-radius: 12px;
+	padding: 0 4px 0 12px;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dset-hair) 60%, transparent);
+	transition: box-shadow 150ms var(--dset-ease-out), opacity 150ms var(--dset-ease-out);
+}
+.dispatch-settings-page .dset-soul-editor:focus-within { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
+.dispatch-settings-page .dset-soul-editor.off { opacity: 0.6; }
+.dispatch-settings-page .dset-soul-editor.off:focus-within { opacity: 1; }
+.dispatch-settings-page .dset-soul-host { height: 420px; }
+.dispatch-settings-page .dset-soul-editor .monaco-editor,
+.dispatch-settings-page .dset-soul-editor .monaco-editor .margin,
+.dispatch-settings-page .dset-soul-editor .monaco-editor-background {
+	background-color: var(--dset-chip-2);
+}
+.dispatch-settings-page .dset-soul-status:empty { display: none; }
+
+.monaco-workbench.monaco-reduce-motion .dispatch-settings-page .dset-soul-editor { transition: none; }

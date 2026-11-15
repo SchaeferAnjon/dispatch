@@ -1,0 +1,166 @@
+/* The conversation column (DESIGN.md 组件: 消息, 工具行, 命令块, 权限卡; 动效; 留白), for the live chat
+   (ChatPage: .turn.you / .turn.bot) and the transcript before it (SessionThread: .chat .tl.*), in the
+   app and in the Dispatch IDE panel. Loaded after styles.css, so these rules are the last word. */
+
+/* ---- messages: yours a faint bubble on the right, only as wide as its text; the agent's plain prose ---- */
+.turn.you,.chat .tl.user{display:flex;flex-direction:column;align-items:flex-end;align-self:stretch;max-width:none;margin:40px 0 0;padding:0;border:0}
+.turn.you:first-child,.chat .tl.user:first-child{margin-top:0}
+.turn.you .bubble-row,.chat .tl.user .bubble-row{max-width:80%;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+.turn.you .bubble,.chat .tl.user .tl-t{flex:0 1 auto;min-width:0;max-width:100%;text-align:left;background:var(--msg-bg);border-radius:var(--r-win);padding:12px 16px;font-size:14px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+.chat .tl.user .tl-t .md{font-size:inherit;line-height:inherit}
+.queued-note{font-size:12px;color:var(--text-2)}
+
+/* 40 between messages, nothing drawn between them; inside one turn the steps sit 8 apart */
+.chat{display:flex;flex-direction:column;gap:0}
+.chat .tl.assistant,.chat .tl.tool,.chat .tl.system,.chat .tl.gap{margin-top:8px}
+.chat .tl.user+.tl.assistant,.chat .tl.user+.tl.tool,.chat .tl.user+.tl.system{margin-top:40px}
+.chat .tl.assistant{align-self:stretch;border:0;padding:0;max-width:100%}
+.turn.bot{margin:40px 0 0}
+.turn.bot:empty{display:none}
+.turn.bot>*+*{margin-top:8px}
+.turn.bot>.mid,.turn.bot>.fin{margin-bottom:0}
+.turn-meta{font-size:12px;color:var(--text-2)}
+
+/* the agent's prose: 14 / 1.7, paragraphs 10 apart, headings 600 (18 above, 7 below), list items 4 apart */
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md{font-size:14px;line-height:1.7;color:var(--text);max-width:none;white-space:normal}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md :is(p,ul,ol,blockquote,table,.codeblk){margin:10px 0}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md>:first-child{margin-top:0}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md>:last-child{margin-bottom:0}
+/* a streaming reply is drawn as several .md blocks (ChatPage splitStream): they keep the paragraph gap between them */
+:is(.turn.bot>.mid,.turn.bot>.fin)>.md+.md:not(:empty){margin-top:10px}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md :is(h1,h2,h3,h4){font-weight:600;line-height:1.35;margin:18px 0 7px;padding:0;border:0;color:var(--text)}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md :is(h1,h2){font-size:15px}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md :is(h3,h4){font-size:14px}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md :is(ul,ol){padding-left:1.4em}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md li{margin:4px 0}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md li>p{margin:0}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md :not(pre)>code{font-family:var(--mono);font-size:12px;background:var(--chip);border-radius:var(--r-kbd);padding:1px 5px}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md blockquote{padding:0 0 0 12px;border-left:2px solid color-mix(in oklch,var(--fill) 40%,transparent);color:var(--text-2)}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md a{color:var(--blue);border-bottom:0;text-decoration:underline;text-underline-offset:2px}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md table{font-size:13px;border-radius:var(--r-card);overflow:hidden}
+
+/* ---- code blocks (every Markdown): 16 corners, a 28 top strip with the language and 复制 ---- */
+.md .codeblk{border-radius:var(--r-card);background:color-mix(in oklch,var(--chip) 35%,var(--bg));box-shadow:inset 0 0 0 1px color-mix(in oklch,var(--hair) 70%,transparent);overflow:hidden;margin:10px 0}
+.md .codeblk .cb-h{display:flex;align-items:center;height:28px;padding:0 4px 0 12px;background:color-mix(in oklch,var(--chip) 60%,transparent);font-family:var(--mono);font-size:11px;color:var(--text-2)}
+.md .codeblk .cb-h .lang{flex:1;min-width:0}
+.md .codeblk .cb-copy{height:24px;padding:0 8px;border:0;border-radius:var(--r-chip);background:transparent;color:var(--text-2);font:500 12px var(--sans);cursor:pointer;transition:background-color 150ms ease,color 150ms ease}
+.md .codeblk .cb-copy:hover{background:var(--chip);color:var(--text)}
+.md .codeblk pre{margin:0;padding:12px 16px;font-size:12px;line-height:1.6;border:0;border-radius:0;background:none;overflow-x:auto}
+.md .codeblk pre code{font-family:var(--mono);font-size:12px;line-height:1.6;background:none;padding:0}
+
+/* ---- waiting (DESIGN.md 动效): the last line of the conversation while the agent works, right under the last message;
+   words shimmer (2s, the band sweeps right to left), the seconds tick; no caret on streaming text ---- */
+.shimmer{animation:shimmer 2s linear infinite}
+.spin{animation-duration:1s}
+.working.live{display:flex;align-items:center;gap:8px;min-height:28px;margin:16px 0 0;font-size:12px;color:var(--text-2)}
+.working.live .spin{width:14px;height:14px}
+.working.live .secs{font-variant-numeric:tabular-nums;margin-left:-4px}
+.working.live .slow{color:var(--orange)}
+.think.live>summary .lbl{color:var(--text-2)}
+
+/* a message you just sent: on screen at once; if it did not go out, a red line under it with 重发 */
+.turn.you.failed .bubble{opacity:.6}
+.send-failed{display:flex;align-items:center;gap:12px;margin-top:8px;font-size:12px;color:var(--red)}
+.send-failed .lk{color:var(--text);font-weight:500}
+.send-failed .lk.quiet{color:var(--text-2);font-weight:400}
+
+/* ---- tool rows (DESIGN.md 工具行): 28 high, 12px, the whole column wide, 4 apart; hover --chip 30%, 12 corners.
+   [14 icon] [verb 500] [argument, mono 60%] … [path, mono 11 40%] [measure 11] [state 14] ---- */
+.calls{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+.turn.bot>.calls{margin-top:16px;margin-bottom:16px}
+.turn.bot>.calls:first-child{margin-top:0}
+.turn.bot>.calls+*{margin-top:0}
+.callx{display:flex;flex-direction:column;align-self:stretch;max-width:100%;min-width:0}
+:is(.call,.tool-card>summary,.tool-fold>summary,.think>summary){display:flex;align-items:center;gap:8px;height:28px;min-height:28px;padding:0 8px;margin:0 -8px;width:calc(100% + 16px);max-width:none;border:0;border-radius:12px;background:none;font-size:12px;line-height:1.5;color:var(--text-2);text-align:left;cursor:pointer;list-style:none;min-width:0;transition:background-color 150ms ease}
+:is(.call,.tool-card>summary,.tool-fold>summary,.think>summary):hover{background:color-mix(in oklch,var(--chip) 30%,transparent)}
+.callx>.call{align-self:stretch}
+:is(.call,.tool-card>summary) .ci,.tool-fold>summary .ci,.think>summary .ci{width:14px;flex:none;color:var(--text-2)}
+:is(.call,.tool-card>summary) b{font-weight:500;color:var(--text-2);min-width:0;flex:none}
+:is(.call,.tool-card>summary) b.bad{color:var(--red)}
+:is(.call,.tool-card>summary) .arg{font-family:var(--mono);font-size:12px;color:color-mix(in oklch,var(--text-2) 60%,transparent);background:none;padding:0;min-width:0;flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:is(.call,.tool-card>summary) .arg.count{font-family:var(--sans);color:var(--text-2)}
+:is(.call,.tool-card>summary) .arg.shimmer{background:linear-gradient(90deg,color-mix(in oklch,var(--text-2) 60%,transparent) 0%,var(--text) 45%,color-mix(in oklch,var(--text-2) 60%,transparent) 90%) 0 0/200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation-duration:1.5s}
+:is(.call,.tool-card>summary,.tool-fold>summary) .sp{flex:1 1 0;min-width:8px}
+:is(.call,.tool-card>summary) .path{font-family:var(--mono);font-size:11px;color:color-mix(in oklch,var(--text-2) 40%,transparent);background:none;padding:0;min-width:0;flex:0 1 auto;max-width:50%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:is(.call,.tool-card>summary) .meta{display:inline-flex;gap:8px;flex:none;font-size:11px;color:color-mix(in oklch,var(--text-2) 70%,transparent);font-variant-numeric:tabular-nums}
+:is(.call,.tool-card>summary,.tool-fold>summary) .st{width:14px;height:14px;flex:none;display:grid;place-items:center}
+:is(.call,.tool-card>summary,.tool-fold>summary) .st .spin{width:12px;height:12px}
+:is(.call,.tool-card>summary,.tool-fold>summary) .st .ok{color:var(--green)}
+:is(.call,.tool-card>summary,.tool-fold>summary) .st .bad{color:var(--red)}
+/* the spinner goes, the check springs in: 350ms, scale .5 → 1 with a little overshoot */
+.st .pop{animation:tool-pop 350ms var(--ease-spring)}
+@keyframes tool-pop{from{transform:scale(.5);opacity:0}}
+.call .chev,.tool-card>summary .chev{display:none}
+.think>summary .peek{min-width:0;flex:0 1 auto}
+/* a run of one kind: one line that opens (150ms, grid rows) to its calls, indented under the icon */
+.callgrp{display:flex;flex-direction:column}
+.callgrp>.grp-body{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows 150ms var(--ease-std),opacity 150ms var(--ease-out)}
+.callgrp.open>.grp-body{grid-template-rows:1fr;opacity:1}
+.callgrp>.grp-body>div{min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:4px;padding-left:22px}
+.callgrp.open>.grp-body>div{padding-top:4px}
+.callgrp:not(.open)>.grp-body{visibility:hidden}
+
+/* ---- what a row opens to: a command on black (DESIGN.md 命令块), anything else on a quiet card; 16 corners ---- */
+.callbody,.tool-card>.tool-body{margin:4px 0 8px 22px;border-radius:var(--r-card);overflow:hidden}
+.callbody{background:var(--bg-2);box-shadow:inset 0 0 0 1px color-mix(in oklch,var(--hair) 50%,transparent);font-family:var(--mono);font-size:12px;line-height:1.6}
+.callbody.term{background:var(--term-bg);box-shadow:none;color:color-mix(in oklch,white 88%,transparent);padding:4px 0}
+.callbody.term .cmd{border:0;color:color-mix(in oklch,white 92%,transparent);padding:8px 16px 4px}
+.callbody.term .cmd::before{content:"$ ";color:color-mix(in oklch,white 45%,transparent)}
+.callbody.term .out{color:color-mix(in oklch,white 70%,transparent);padding:4px 16px 8px}
+.callbody.term .ft{border:0;color:color-mix(in oklch,white 50%,transparent);padding:4px 16px 8px}
+.callbody.term .ft .lk{color:color-mix(in oklch,white 80%,transparent)}
+.callbody.term .ft .ok{color:var(--green)}
+.callbody .ft{border-top-color:color-mix(in oklch,var(--hair) 50%,transparent)}
+
+/* ---- permission card (DESIGN.md 权限卡): 16 corners, --bg-2, a hairline, 16 inside; title 14/500; the command
+   on a --chip ground in mono; right-aligned 32 pills, 拒绝 / 允许一次 outlined, the third one filled ---- */
+.perm{margin:8px 0;padding:16px;border-radius:var(--r-card);background:var(--bg-2);box-shadow:inset 0 0 0 1px var(--hair)}
+.perm .k{display:flex;align-items:center;gap:8px;margin:0 0 8px;min-width:0;font-size:14px;font-weight:500;color:var(--text)}
+.perm .k .dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex:none}
+.perm .k .ttl{flex:none}
+.perm .k .tool{font-size:12px;font-weight:400;color:var(--text-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.perm .why{font-size:13px;color:var(--text-2);margin:0 0 8px}
+.perm pre{margin:0 0 16px;padding:8px 12px;border-radius:var(--r-ctl);background:var(--chip);box-shadow:none;font-family:var(--mono);font-size:12px;color:var(--text);white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto}
+.perm .mini{margin:0 0 16px}
+.perm .acts{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.perm .acts .hint{margin:0 auto 0 0;font-size:12px;color:var(--text-2)}
+.perm .acts .btn{height:32px;min-height:32px;padding:0 12px;border-radius:var(--r-chip);font-size:13px;transition:background-color 150ms ease,transform 150ms ease}
+.perm .acts .btn:active:not(:disabled){transform:translateY(1px)}
+.perm .acts .btn.outline{background:transparent;color:var(--text);box-shadow:inset 0 0 0 1px var(--hair-2)}
+.perm .acts .btn.outline:hover:not(:disabled){background:color-mix(in oklch,var(--chip) 60%,transparent)}
+.perm .acts .btn .kbd{height:18px;min-width:18px;font-size:11px;background:var(--chip-2);color:var(--text-2)}
+.perm .acts .btn.primary .kbd{background:color-mix(in oklch,var(--fill-text) 18%,transparent);color:inherit}
+
+/* ---- problems (DESIGN.md: no red boxes in the page): a red dot and one line of text; one-off errors go to the toast ---- */
+.chat-page .chat-error{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0 0;padding:0;border-radius:0;background:none;color:var(--red);font-size:12px}
+.chat-page .chat-error::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+
+/* ---- pictures in the conversation (DESIGN.md 5D): yours are 96 squares over your bubble, right-aligned; the agent's
+   keep their shape, at most 320 wide and 256 high, 14 corners, a faint hairline; several sit in a row 8 apart ---- */
+.chat .tl.user .img-grid,.chat .tl.user .img-grid.n1{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin:0 0 8px;max-width:80%}
+.chat .tl.user .img-grid .inline-image,.chat .tl.user .img-grid.n1 .inline-image{width:96px;height:96px;max-height:none;aspect-ratio:auto;padding:0;border:0;border-radius:14px;background:var(--chip);outline:1px solid color-mix(in oklch,var(--hair) 50%,transparent);outline-offset:-1px}
+.chat .tl.user .img-grid .inline-image img,.chat .tl.user .img-grid.n1 .inline-image img{width:100%;height:100%;max-width:none;max-height:none;object-fit:cover}
+.chat .tl.user .img-grid-open{flex-basis:100%;text-align:right}
+.chat :is(.tl.tool,.tl.system) .img-grid,.chat :is(.tl.tool,.tl.system) .img-grid.n1{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+.chat :is(.tl.tool,.tl.system) .img-grid .inline-image{width:auto;height:auto;max-width:320px;aspect-ratio:auto;padding:0;border:0;border-radius:14px;background:none;outline:1px solid color-mix(in oklch,var(--hair) 50%,transparent);outline-offset:-1px}
+.chat :is(.tl.tool,.tl.system) .img-grid .inline-image img{display:block;width:auto;height:auto;max-width:320px;max-height:256px;object-fit:contain}
+.chat :is(.tl.tool,.tl.system) .img-grid .inline-image.loading{width:320px;height:180px;background:var(--chip)}
+.chat .tl.tool{align-self:flex-start}
+.chat .tl.tool .tl-t{font-size:12px;color:var(--text-2)}
+:is(.turn.bot>.mid,.turn.bot>.fin,.chat .tl.assistant .tl-t)>.md img{max-width:min(320px,100%);max-height:256px;border-radius:14px;outline:1px solid color-mix(in oklch,var(--hair) 50%,transparent);outline-offset:-1px}
+
+/* ---- 回到最新: a 36 round button 16 above the bottom of the conversation, only while you have scrolled up;
+   it fades in and rises 4px (150ms) ---- */
+.to-latest-dock{position:sticky;bottom:16px;height:0;display:flex;justify-content:center;align-items:flex-end;pointer-events:none;z-index:3}
+.to-latest{position:relative;width:36px;height:36px;padding:0;display:grid;place-items:center;border:0;border-radius:50%;background:var(--bg);color:var(--text);box-shadow:inset 0 0 0 1px var(--hair-2),var(--shadow-diffuse);cursor:pointer;opacity:0;transform:translateY(4px);transition:opacity 150ms var(--ease-out),transform 150ms var(--ease-out),background-color 150ms ease;pointer-events:none}
+.to-latest.on{opacity:1;transform:none;pointer-events:auto}
+.to-latest:hover{background:var(--bg-2)}
+.to-latest .dot{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:var(--blue)}
+.sess-body{position:relative}
+
+.ns-pending{max-width:var(--conv-w);width:100%;margin:0 auto}
+
+/* your pictures: 96 squares over the bubble, right-aligned */
+.msg-pics{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;max-width:80%;margin-bottom:8px}
+.msg-pics>img,.msg-pics>.ph{width:96px;height:96px;border-radius:14px;object-fit:cover;outline:1px solid color-mix(in oklch,var(--hair) 50%,transparent);outline-offset:-1px}
+.msg-pics>.ph{display:grid;place-items:center;background:var(--chip);color:var(--text-2)}

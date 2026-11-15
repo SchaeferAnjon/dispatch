@@ -1,0 +1,124 @@
+{
+  "name": "dispatch-bridge",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "publisher": "dispatch",
+  "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "repository": { "type": "git", "url": "https://github.com/SchaeferAnjon/dispatch" },
+  "engines": { "vscode": "^1.95.0" },
+  "enabledApiProposals": ["agentSessionsWorkspace"],
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "extensionKind": ["workspace"],
+  "l10n": "./l10n",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:dispatch.tasks", "onCommand:dispatch.history", "onCommand:dispatch.projects", "onCommand:dispatch.waiting", "onCommand:dispatch.inbox", "onCommand:dispatch.docsQuick", "onCommand:dispatch.docsList",
+    "onCommand:dispatch.attributionShow", "onCommand:dispatch.attributionFiles", "onCommand:dispatch.attributionMark", "onCommand:dispatch.attributionSteps", "onCommand:dispatch.attributionConfig", "onCommand:dispatch.attributionEdit",
+    "onCommand:dispatch.claudeStatus", "onCommand:dispatch.claudeSignIn", "onCommand:dispatch.claudeSignOut",
+    "onCommand:dispatch.codeSearch", "onCommand:dispatch.knowledge", "onCommand:dispatch.env", "onCommand:dispatch.editorSettings",
+    "onCommand:dispatch.switchAgent", "onCommand:dispatch.openCommit",
+    "onCommand:dispatch.usage",
+    "onCommand:dispatch.automations",
+    "onCommand:dispatch.machines",
+    "onCommand:dispatch.mobile",
+    "onCommand:dispatch.assistant", "onCommand:dispatch.turbo",
+    "onCommand:dispatch.onboarding",
+    "onCommand:dispatch.terminal"
+  ],
+  "capabilities": { "untrustedWorkspaces": { "supported": true } },
+  "contributes": {
+    "commands": [
+      { "command": "dispatch.inlineEdit", "title": "%cmd.inlineEdit%", "category": "Dispatch" },
+      { "command": "dispatch.acceptEdit", "title": "%cmd.acceptEdit%", "category": "Dispatch", "icon": "$(check)" },
+      { "command": "dispatch.rejectEdit", "title": "%cmd.rejectEdit%", "category": "Dispatch", "icon": "$(close)" },
+      { "command": "dispatch.tabMenu", "title": "%cmd.tabMenu%", "category": "Dispatch" },
+      { "command": "dispatch.toggleTab", "title": "%cmd.toggleTab%", "category": "Dispatch" },
+      { "command": "dispatch.setTabCap", "title": "%cmd.setTabCap%", "category": "Dispatch" },
+      { "command": "dispatch.acceptHunk", "title": "%cmd.acceptHunk%", "category": "Dispatch" },
+      { "command": "dispatch.undoHunk", "title": "%cmd.undoHunk%", "category": "Dispatch" },
+      { "command": "dispatch.acceptAllHunks", "title": "%cmd.acceptAllHunks%", "category": "Dispatch" },
+      { "command": "dispatch.undoAllHunks", "title": "%cmd.undoAllHunks%", "category": "Dispatch" },
+      { "command": "dispatch.nextHunk", "title": "%cmd.nextHunk%", "category": "Dispatch" },
+      { "command": "dispatch.prevHunk", "title": "%cmd.prevHunk%", "category": "Dispatch" },
+      { "command": "dispatch.refreshCheckpoints", "title": "%cmd.refresh%", "category": "Dispatch", "icon": "$(refresh)" },
+      { "command": "dispatch.restoreCheckpoint", "title": "%cmd.restoreCheckpoint%", "category": "Dispatch", "icon": "$(discard)" },
+      { "command": "dispatch.showCheckpoints", "title": "%cmd.showCheckpoints%", "category": "Dispatch" },
+      { "command": "dispatch.searchCodebase", "title": "%cmd.searchCodebase%", "category": "Dispatch" },
+      { "command": "dispatch.recommendExtensions", "title": "%cmd.recommendExtensions%", "category": "Dispatch" },
+      { "command": "dispatch.focusChat", "title": "%cmd.focusChat%", "category": "Dispatch" },
+      { "command": "dispatch.addToChat", "title": "%cmd.addToChat%", "category": "Dispatch" },
+      { "command": "dispatch.backToChat", "title": "%cmd.backToChat%", "category": "Dispatch" },
+      { "command": "dispatch.openAgentsWindow", "title": "%cmd.openAgentsWindow%", "category": "Dispatch" },
+      { "command": "dispatch.openEditorWindow", "title": "%cmd.openEditorWindow%", "category": "Dispatch" },
+      { "command": "dispatch.openPreview", "title": "%cmd.openPreview%", "category": "Dispatch" },
+      { "command": "dispatch.showSessions", "title": "%cmd.showSessions%", "category": "Dispatch" },
+      { "command": "dispatch.refreshSessions", "title": "%cmd.refresh%", "category": "Dispatch", "icon": "$(refresh)" },
+      { "command": "dispatch.openSession", "title": "%cmd.openSession%", "category": "Dispatch" }
+    ],
+    "keybindings": [
+      { "command": "dispatch.inlineEdit", "key": "ctrl+k", "mac": "cmd+k", "when": "editorTextFocus && !editorReadonly && !isInDiffEditor" },
+      { "command": "dispatch.acceptEdit", "key": "ctrl+enter", "mac": "cmd+enter", "when": "dispatch.proposalActive" },
+      { "command": "dispatch.rejectEdit", "key": "escape", "when": "dispatch.proposalActive && !findWidgetVisible && !suggestWidgetVisible && !inlineSuggestionVisible" },
+      { "command": "dispatch.acceptHunk", "key": "ctrl+y", "mac": "cmd+y", "when": "editorTextFocus && dispatch.hasHunks" },
+      { "command": "dispatch.undoHunk", "key": "ctrl+n", "mac": "cmd+n", "when": "editorTextFocus && dispatch.hasHunks" },
+      { "command": "dispatch.acceptAllHunks", "key": "ctrl+shift+y", "mac": "cmd+shift+y", "when": "editorTextFocus && dispatch.hasHunks" },
+      { "command": "dispatch.undoAllHunks", "key": "ctrl+shift+n", "mac": "cmd+shift+n", "when": "editorTextFocus && dispatch.hasHunks" },
+      { "command": "dispatch.nextHunk", "key": "f7", "when": "editorTextFocus && dispatch.hasHunks && !isInDiffEditor" },
+      { "command": "dispatch.prevHunk", "key": "shift+f7", "when": "editorTextFocus && dispatch.hasHunks && !isInDiffEditor" },
+      { "command": "dispatch.focusChat", "key": "ctrl+l", "mac": "cmd+l" },
+      { "command": "dispatch.addToChat", "key": "ctrl+shift+l", "mac": "cmd+shift+l", "when": "editorTextFocus && !isSessionsWindow" },
+      { "command": "dispatch.backToChat", "key": "ctrl+e", "mac": "cmd+e", "when": "!dispatch.native && !isSessionsWindow" },
+      { "command": "dispatch.openAgentsWindow", "key": "ctrl+e", "mac": "cmd+e", "when": "dispatch.native && !isSessionsWindow" },
+      { "command": "dispatch.openEditorWindow", "key": "ctrl+e", "mac": "cmd+e", "when": "isSessionsWindow" },
+      { "command": "dispatch.searchCodebase", "key": "ctrl+shift+;", "mac": "cmd+shift+;" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "dispatch.acceptEdit", "when": "dispatch.proposalActive", "group": "navigation@1" },
+        { "command": "dispatch.rejectEdit", "when": "dispatch.proposalActive", "group": "navigation@2" }
+      ],
+      "editor/context": [
+        { "command": "dispatch.inlineEdit", "when": "editorTextFocus && !editorReadonly", "group": "dispatch@1" },
+        { "command": "dispatch.addToChat", "when": "editorHasSelection", "group": "dispatch@2" }
+      ],
+      "commandPalette": [
+        { "command": "dispatch.acceptEdit", "when": "dispatch.proposalActive" },
+        { "command": "dispatch.rejectEdit", "when": "dispatch.proposalActive" },
+        { "command": "dispatch.restoreCheckpoint", "when": "false" },
+        { "command": "dispatch.openSession", "when": "false" },
+        { "command": "dispatch.backToChat", "when": "!dispatch.native && !isSessionsWindow" },
+        { "command": "dispatch.openAgentsWindow", "when": "dispatch.native && !isSessionsWindow" },
+        { "command": "dispatch.openEditorWindow", "when": "isSessionsWindow" }
+      ]
+    },
+    "views": {
+      "search": [
+        { "id": "dispatch.search", "name": "%view.askCodebase%", "type": "webview" }
+      ]
+    },
+    "themes": [
+      { "label": "Dispatch Light", "uiTheme": "vs", "path": "./themes/dispatch-light.json" },
+      { "label": "Dispatch Dark", "uiTheme": "vs-dark", "path": "./themes/dispatch-dark.json" }
+    ],
+    "configuration": {
+      "title": "Dispatch",
+      "properties": {
+        "dispatch.commandLocation": { "type": "string", "default": "", "scope": "machine-overridable", "description": "%cfg.commandLocation%" },
+        "dispatch.keepAwake": { "type": "string", "enum": ["system", "display", "off"], "default": "system", "scope": "application", "description": "%cfg.keepAwake%" },
+        "dispatch.tab.delay": { "type": "number", "default": 250, "minimum": 50, "description": "%cfg.tabDelay%" }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "~1.95.0",
+    "typescript": "~5.8.3"
+  }
+}

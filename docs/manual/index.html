@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Dispatch 用户说明书 · User Manual · Handbuch</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+  <meta name="description" content="Dispatch 调度台的用户说明书：安装、首次设置、每个页面怎么用、手机访问、两台电脑、Agent 侧约定、命令行参考、排错。中文 / English / Deutsch。">
+  <link rel="icon" href="../assets/icon.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
+  <style>
+    :root { --theme-color: #2f6fed; }
+    .sidebar > h1 { margin: 0 auto 0.6rem; }
+    .sidebar > h1 a { font-size: 1.15rem; }
+    .sidebar ul li a { font-size: 14px; }
+    .sidebar ul li ul li a { font-size: 13px; }
+    .lang-switch { font-size: 13px; text-align: center; margin: 0 0 12px; }
+    .lang-switch a { margin: 0 4px; }
+    .markdown-section { max-width: 860px; }
+    .markdown-section img { border: 1px solid #e3e3e3; border-radius: 6px; }
+    .markdown-section table { display: table; width: 100%; }
+    .markdown-section code { font-size: 0.88em; }
+    .markdown-section blockquote { border-left-color: var(--theme-color); }
+    kbd { border: 1px solid #ccc; border-radius: 3px; padding: 1px 5px; font-size: 0.85em; background: #f7f7f7; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1c1e22; color: #d8d8d8; }
+      .sidebar { background: #1c1e22; color: #c8c8c8; border-right-color: #2c2f36; }
+      .sidebar ul li a, .sidebar-toggle { color: #c8c8c8; }
+      .sidebar ul li.active > a { color: var(--theme-color); }
+      .markdown-section h1, .markdown-section h2, .markdown-section h3, .markdown-section strong { color: #f0f0f0; }
+      .markdown-section code { background: #2a2d33; color: #e6a86a; }
+      .markdown-section pre { background: #2a2d33; }
+      .markdown-section pre > code { color: #d8d8d8; background: transparent; }
+      .markdown-section tr:nth-child(2n) { background: #24272d; }
+      .markdown-section th, .markdown-section td { border-color: #33363d; }
+      .markdown-section blockquote { background: #24272d; }
+      .markdown-section img { border-color: #33363d; }
+      .search input { background: #1c1e22; color: #d8d8d8; }
+      .search .results-panel { background: #1c1e22; }
+      .search .matching-post { border-bottom-color: #33363d; }
+      .search h2 { color: #d8d8d8; }
+      .sidebar-toggle { background: rgba(28,30,34,0.8); }
+      kbd { background: #2a2d33; border-color: #444; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">正在加载说明书 · Loading · Wird geladen …</div>
+  <script>
+    window.$docsify = {
+      name: 'Dispatch',
+      nameLink: { '/en/': '#/en/', '/de/': '#/de/', '/': '#/' },
+      repo: 'https://github.com/SchaeferAnjon/dispatch',
+      basePath: './',
+      routerMode: 'hash',
+      relativePath: true,
+      loadSidebar: true,
+      subMaxLevel: 2,
+      sidebarDisplayLevel: 0,
+      auto2top: true,
+      notFoundPage: true,
+      alias: {
+        '/en/_sidebar.md': '/en/_sidebar.md',
+        '/de/_sidebar.md': '/de/_sidebar.md',
+        '/.*/_sidebar.md': '/_sidebar.md'
+      },
+      search: {
+        paths: 'auto',
+        depth: 3,
+        maxAge: 600000,
+        hideOtherSidebarContent: false,
+        pathNamespaces: ['/en', '/de'],
+        placeholder: { '/en/': 'Search the manual', '/de/': 'Handbuch durchsuchen', '/': '搜索说明书' },
+        noData: { '/en/': 'No results', '/de/': 'Keine Treffer', '/': '没有结果' }
+      },
+      copyCode: {
+        buttonText: { '/en/': 'Copy', '/de/': 'Kopieren', '/': '复制' },
+        errorText: { '/en/': 'Error', '/de/': 'Fehler', '/': '出错' },
+        successText: { '/en/': 'Copied', '/de/': 'Kopiert', '/': '已复制' }
+      },
+      plugins: [
+        function (hook, vm) {
+          // 语言切换条：放在正文顶部，三种语言互相跳转，落到对应语言的首页。
+          hook.beforeEach(function (content) {
+            var p = vm.route.path || '/';
+            var zh = p.indexOf('/en/') !== 0 && p.indexOf('/de/') !== 0;
+            var bar = '<p class="lang-switch">' +
+              (zh ? '<b>中文</b>' : '<a href="#/">中文</a>') + ' · ' +
+              (p.indexOf('/en/') === 0 ? '<b>English</b>' : '<a href="#/en/">English</a>') + ' · ' +
+              (p.indexOf('/de/') === 0 ? '<b>Deutsch</b>' : '<a href="#/de/">Deutsch</a>') + '</p>\n\n';
+            return bar + content;
+          });
+          hook.doneEach(function () {
+            var p = vm.route.path || '/';
+            document.documentElement.lang = p.indexOf('/en/') === 0 ? 'en' : p.indexOf('/de/') === 0 ? 'de' : 'zh-CN';
+            // 侧栏顶部也放一条语言切换（不进 sidebar-nav，免得被当成当前页标题）。
+            var side = document.querySelector('.sidebar');
+            if (side) {
+              var bar = side.querySelector('.lang-switch');
+              if (!bar) { bar = document.createElement('div'); bar.className = 'lang-switch'; var nav = side.querySelector('.sidebar-nav'); side.insertBefore(bar, nav || side.firstChild); }
+              var zh = p.indexOf('/en/') !== 0 && p.indexOf('/de/') !== 0;
+              bar.innerHTML = (zh ? '<b>中文</b>' : '<a href="#/">中文</a>') + ' · ' +
+                (p.indexOf('/en/') === 0 ? '<b>English</b>' : '<a href="#/en/">English</a>') + ' · ' +
+                (p.indexOf('/de/') === 0 ? '<b>Deutsch</b>' : '<a href="#/de/">Deutsch</a>');
+            }
+          });
+        }
+      ]
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/zoom-image.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@2/dist/docsify-copy-code.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,624 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: "From other apps" on the Automations page (dispatchFoundAutomations.ts). Same band,
+ *  card border, radius and type as the automations cards above it (automationsCards.css), so the two
+ *  read as one page; colour only where a run failed (DESIGN.md: colour marks an agent's state).
+ *  Hermes and OpenClaw marks: glyphs of dispatch-agent-marks.ttf, drawn from hermes.svg and
+ *  openclaw.svg by dispatch-ide's make-icon-font.py (silhouettes after the icons Orca ships,
+ *  github.com/stablyai/orca, MIT, Copyright (c) 2026 Lovecast Inc.).
+ *--------------------------------------------------------------------------------------------*/
+
+@font-face {
+	font-family: "dispatch-agent-marks";
+	font-display: block;
+	src: url("./dispatch-agent-marks.ttf") format("truetype");
+}
+
+.codicon.codicon-dispatch-hermes::before {
+	font-family: "dispatch-agent-marks" !important;
+	content: "\e900" !important;
+}
+
+.codicon.codicon-dispatch-openclaw::before {
+	font-family: "dispatch-agent-marks" !important;
+	content: "\e901" !important;
+}
+
+.dispatch-found {
+	width: 100%;
+	max-width: 900px;
+	margin-top: 32px;
+	text-align: left;
+}
+
+/* buttons of this section: a ring only for the keyboard */
+.monaco-workbench .dispatch-found button:focus {
+	outline: none;
+}
+
+.monaco-workbench .dispatch-found button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-found-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.dispatch-found-title {
+	margin: 0;
+	font-size: var(--vscode-fontSize-heading3);
+	font-weight: var(--vscode-fontWeight-semiBold);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-count {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-found-refresh {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	margin-left: auto;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+
+.dispatch-found-refresh:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-description {
+	margin: 4px 0 12px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-found-quiet {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 0;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* One Mac's jobs: the machine tag (DESIGN.md 机器标签) and how many, or why it has none to show now */
+.dispatch-found-machine {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 16px 0 8px;
+}
+
+.dispatch-found-machine:first-child {
+	margin-top: 0;
+}
+
+.dispatch-found-machine-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 20px;
+	padding: 0 8px;
+	border-radius: 999px;
+	border: 1px solid var(--vscode-editorWidget-border);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font-size: 12px;
+	font-weight: 500;
+}
+
+.dispatch-found-machine-tag .codicon {
+	font-size: 14px;
+}
+
+.dispatch-found-offline {
+	width: 8px;
+	height: 8px;
+	box-sizing: border-box;
+	border-radius: 50%;
+	border: 1.5px solid var(--vscode-descriptionForeground);
+}
+
+.dispatch-found-machine-note {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Cards: the grid and card of automationsCards.css */
+.dispatch-found-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+	grid-auto-rows: 1fr;
+	gap: 12px;
+}
+
+.dispatch-found-card {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+	padding: 12px 16px;
+	border: 1px solid var(--vscode-editorWidget-border);
+	border-radius: 6px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.dispatch-found-card:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.dispatch-found-card:focus {
+	outline: none;
+}
+
+.dispatch-found-card:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-found-card-name {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.dispatch-found-agent.codicon {
+	flex: none;
+	font-size: 16px;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-agent.codicon.large {
+	font-size: 20px;
+}
+
+.dispatch-found-card-title {
+	flex: 1 1 0;
+	min-width: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* Which app runs it: grey words, like the template cards' source */
+.dispatch-found-app {
+	flex: none;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+
+.dispatch-found-card-meta {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0 6px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	min-width: 0;
+}
+
+.dispatch-found-meta-item {
+	white-space: nowrap;
+}
+
+.dispatch-found-meta-item:first-child {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-found-meta-item + .dispatch-found-meta-item {
+	flex: none;
+}
+
+.dispatch-found-meta-item + .dispatch-found-meta-item::before {
+	content: '·';
+	margin-right: 6px;
+	opacity: 0.6;
+}
+
+.dispatch-found-card-does {
+	margin-top: 2px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	word-break: break-word;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+
+.dispatch-found-card-last {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: auto;
+	padding-top: 4px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-found-card-last .codicon,
+.dispatch-found-run-status.codicon {
+	font-size: 14px;
+}
+
+.dispatch-found-card-last.failed,
+.dispatch-found-run-row.failed .dispatch-found-run-status {
+	color: var(--vscode-errorForeground);
+}
+
+/* Detail: breadcrumb back to the list, then what it is, when, where, and its runs */
+.dispatch-found-crumbs {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-bottom: 12px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	min-width: 0;
+}
+
+.dispatch-found-back {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 24px;
+	padding: 0 8px 0 4px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.dispatch-found-back:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-crumb-sep.codicon {
+	font-size: 12px;
+	opacity: 0.6;
+}
+
+.dispatch-found-crumb-here {
+	color: var(--vscode-foreground);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.dispatch-found-detail {
+	padding: 0;
+}
+
+.dispatch-found-detail-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.dispatch-found-detail-title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-detail-sub {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-found-detail-does {
+	margin: 12px 0 0;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-facts {
+	display: grid;
+	grid-template-columns: 112px 1fr;
+	gap: 0 12px;
+	margin: 16px 0 0;
+	font-size: 13px;
+}
+
+.dispatch-found-facts dt {
+	min-height: 28px;
+	display: flex;
+	align-items: center;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-found-facts dd {
+	margin: 0;
+	min-height: 28px;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	color: var(--vscode-foreground);
+	word-break: break-word;
+}
+
+.dispatch-found-where {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.dispatch-found-file {
+	flex: none;
+	font-size: 13px;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-dir {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-found .dispatch-found-small-button.monaco-button {
+	flex: none;
+	width: auto;
+	height: 24px;
+	padding: 0 8px;
+	font-size: 12px;
+	border-radius: 999px;
+}
+
+/* The page-top note of DESIGN.md (说明行): who runs it and where to change it */
+.dispatch-found-manage {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin-top: 16px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	background: var(--vscode-textBlockQuote-background);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-found-manage .codicon {
+	flex: none;
+	margin-top: 2px;
+	font-size: 14px;
+}
+
+.dispatch-found-manage strong {
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-prompt {
+	margin-top: 12px;
+}
+
+.dispatch-found-prompt > summary {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 24px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	list-style: none;
+}
+
+.dispatch-found-prompt > summary::-webkit-details-marker {
+	display: none;
+}
+
+.dispatch-found-prompt > summary:hover {
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-chevron.codicon {
+	font-size: 12px;
+	transition: transform 150ms ease;
+}
+
+.dispatch-found-fold {
+	margin-top: 12px;
+}
+
+.dispatch-found-fold > summary {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 24px;
+	margin-bottom: 8px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	list-style: none;
+}
+
+.dispatch-found-fold > summary::-webkit-details-marker {
+	display: none;
+}
+
+.dispatch-found-fold > summary:hover {
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-fold[open] > summary .dispatch-found-chevron,
+.dispatch-found-prompt[open] > summary .dispatch-found-chevron,
+.dispatch-found-run.open .dispatch-found-chevron {
+	transform: rotate(90deg);
+}
+
+.dispatch-found-text {
+	margin: 8px 0 0;
+	max-height: 320px;
+	overflow: auto;
+	padding: 10px 12px;
+	border-radius: 6px;
+	background: var(--vscode-textBlockQuote-background);
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-found-runs-head {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin-top: 20px;
+}
+
+.dispatch-found-runs-head h5 {
+	margin: 0 0 4px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-found-run + .dispatch-found-run {
+	border-top: 1px solid var(--vscode-editorWidget-border);
+}
+
+.dispatch-found-run-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	height: 32px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.dispatch-found-run-row:hover:not(:disabled) {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.dispatch-found-run-row:disabled {
+	cursor: default;
+	opacity: 1;
+}
+
+.dispatch-found-run-status {
+	flex: none;
+	width: 14px;
+}
+
+.dispatch-found-run-when {
+	flex: none;
+	width: 150px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.dispatch-found-run-preview {
+	flex: 1 1 0;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.dispatch-found-output {
+	padding: 0 8px 12px 30px;
+}
+
+.dispatch-found-output-bar {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+/* An agent's answer, read as Markdown */
+.dispatch-found-reply {
+	margin-top: 8px;
+	max-height: 360px;
+	overflow: auto;
+	padding: 10px 12px;
+	border-radius: 6px;
+	background: var(--vscode-textBlockQuote-background);
+	font-size: 13px;
+	line-height: 1.6;
+	color: var(--vscode-foreground);
+	word-break: break-word;
+}
+
+.dispatch-found-reply > :first-child {
+	margin-top: 0;
+}
+
+.dispatch-found-reply > :last-child {
+	margin-bottom: 0;
+}
+
+.dispatch-found-reply h1,
+.dispatch-found-reply h2,
+.dispatch-found-reply h3 {
+	font-size: 13px;
+	font-weight: 600;
+	margin: 12px 0 4px;
+}
+
+.dispatch-found-reply p,
+.dispatch-found-reply ul,
+.dispatch-found-reply ol {
+	margin: 4px 0;
+}
+
+.dispatch-found-reply code {
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+}
+
+.dispatch-found-reply pre {
+	white-space: pre-wrap;
+	font-size: 12px;
+}

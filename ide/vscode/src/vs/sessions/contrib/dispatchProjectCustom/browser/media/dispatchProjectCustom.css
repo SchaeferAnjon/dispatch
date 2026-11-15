@@ -1,0 +1,304 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: a project's Customize page (dispatchProjectCustom.ts). It is the project page's sibling:
+ *  the same breadcrumb, section heads, rows and tab-shaped switches (dispatchProjects.css); what is new
+ *  here is only the choice grid (a 32 px square per symbol, emoji or picture) and the colour swatches.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-pc-section {
+	gap: 8px;
+}
+.dispatch-pc-section > .dispatch-projects-group-head {
+	margin-bottom: -4px;
+}
+.dispatch-pc-note {
+	padding: 0 12px;
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-pc-modes {
+	padding: 0 12px;
+}
+
+/* the project's row as the sessions list draws it */
+.dispatch-pc-preview {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 0 12px;
+	padding: 8px 12px;
+	border-radius: 8px;
+	background: var(--vscode-sideBar-background);
+	border: 1px solid var(--dispatch-projects-hair);
+}
+.dispatch-pc-preview-label {
+	flex: none;
+	width: 88px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-pc-preview-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	min-width: 0;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+.dispatch-pc-preview-caret {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-pc-preview-icon {
+	flex: none;
+	width: 16px;
+	height: 16px;
+	font-size: 16px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-pc-preview-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* the choices: symbols, emoji, pictures */
+.dispatch-pc-grid,
+.dispatch-pc-swatches {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding: 0 12px;
+}
+.dispatch-pc-choice {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: none;
+	border-radius: 10px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	transition: background-color 150ms ease, color 150ms ease;
+}
+.dispatch-pc-choice:hover:not(:disabled) {
+	background-color: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-pc-choice.selected {
+	background-color: var(--dispatch-projects-sel);
+	color: var(--vscode-foreground);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 25%, transparent);
+}
+.dispatch-pc-choice:focus-visible,
+.dispatch-pc-choose:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+.dispatch-pc-choice:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+.dispatch-pc-choice-icon {
+	width: 16px;
+	height: 16px;
+	font-size: 16px;
+}
+.dispatch-pc-choice-icon.dispatch-project-look-emoji {
+	font-size: 16px;
+}
+.dispatch-pc-grid.pictures .dispatch-pc-choice {
+	width: 40px;
+	height: 40px;
+}
+.dispatch-pc-choice-icon.picture,
+.dispatch-pc-choice-icon.picture > img {
+	width: 24px;
+	height: 24px;
+}
+.dispatch-pc-choose {
+	align-self: center;
+	height: 24px;
+	margin-left: 4px;
+	padding: 0 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-pc-choose:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+/* colours: a dot per colour, "No color" a slashed circle */
+.dispatch-pc-swatch.none .codicon {
+	font-size: 16px;
+}
+.dispatch-pc-swatch-dot {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--dispatch-project-color);
+}
+.monaco-workbench.vs-dark .dispatch-pc-swatch-dot {
+	background: color-mix(in srgb, var(--dispatch-project-color) 78%, white);
+}
+
+/* the page-top note (DESIGN.md「页顶说明」, as Customizations has it) */
+.dispatch-pc-callout {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin: 0 12px 4px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	background: var(--vscode-textCodeBlock-background);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-widget-border, var(--dispatch-projects-hair)) 60%, transparent);
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-pc-callout > .codicon {
+	flex: none;
+	margin-top: 2px;
+	font-size: 14px;
+}
+.dispatch-pc-callout strong {
+	color: var(--vscode-foreground);
+	font-weight: 600;
+}
+
+/* a tool: icon, name, where it is set up, then a pill per engine (DESIGN.md「引擎胶囊」) */
+.dispatch-pc-tool .dispatch-pc-tool-name {
+	flex: 0 1 auto;
+}
+.dispatch-pc-tag {
+	flex: none;
+	padding: 0 6px;
+	border-radius: 4px;
+	font-size: 11px;
+	line-height: 18px;
+	color: var(--vscode-descriptionForeground);
+	box-shadow: inset 0 0 0 1px var(--dispatch-projects-hair);
+}
+.dispatch-pc-engines {
+	display: inline-flex;
+	gap: 4px;
+	margin-left: auto;
+	flex: none;
+}
+.dispatch-pc-engine {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	height: 22px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 15%, transparent);
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 11px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 150ms ease, color 150ms ease;
+}
+.dispatch-pc-engine .codicon {
+	font-size: 12px;
+}
+.dispatch-pc-engine.on {
+	background: var(--dispatch-projects-sel);
+	box-shadow: none;
+	color: var(--vscode-foreground);
+}
+.dispatch-pc-engine:hover:not(:disabled) {
+	background-color: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-pc-engine:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+.dispatch-pc-engine:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+/* its own instructions and hooks */
+.dispatch-pc-subhead {
+	padding: 8px 12px 0;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-pc-warning {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 4px 12px;
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--vscode-foreground);
+}
+.dispatch-pc-warning > .codicon {
+	flex: none;
+	margin-top: 2px;
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* copies for parallel work: one switch (DESIGN.md「单色开关」) and what it does here */
+.dispatch-pc-switch {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	border-radius: 4px;
+	background: var(--vscode-input-background);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 15%, transparent);
+	color: var(--vscode-foreground);
+	transition: background-color 150ms ease;
+}
+.dispatch-pc-switch .codicon {
+	font-size: 14px;
+}
+.dispatch-pc-switch-row:hover .dispatch-pc-switch {
+	background: var(--dispatch-projects-sel);
+}
+.dispatch-pc-switch-row:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+.dispatch-pc-steps {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 0 12px 0 38px;
+}
+.dispatch-pc-step {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 24px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-pc-step > .codicon {
+	flex: none;
+	font-size: 14px;
+}
+.dispatch-pc-last {
+	padding-left: 38px;
+}

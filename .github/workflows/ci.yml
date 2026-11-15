@@ -1,0 +1,106 @@
+name: CI
+on:
+  push:
+    branches: [main, "win/**", "ui/**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Monaco and its workers need more than the runners' default 2 GB heap to bundle.
+  NODE_OPTIONS: --max-old-space-size=6144
+
+jobs:
+  cli:
+    # The bundled CLI must run on the Python a fresh Mac has (3.9 from the Command Line Tools).
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Every CLI module compiles on this Python
+        run: python -m py_compile app/cli/*.py
+      # Compiling is not running: Python 3.9 reads a *script* through a different decoder, which once
+      # rejected a long non-ASCII line that py_compile and import accepted. The app, the hooks and the
+      # phone service all run these files as scripts.
+      - name: The entry points run as scripts
+        run: |
+          python app/cli/dispatch.py --help > /dev/null
+          BEADS_DIR="$RUNNER_TEMP/board/.beads" python app/cli/dispatch.py prime > /dev/null
+          python -c "import runpy; [runpy.run_path(f'app/cli/{f}', run_name='ci') for f in ('serve.py','presence.py','notify.py','updater.py','edit-guard.py')]"
+      - name: Every CLI module is in the package list (cli/bundle.json)
+        run: cd app/cli && python -m unittest -q test_bundle
+      - name: ARCHITECTURE.md names every module and nothing that is gone
+        run: cd app/cli && python -m unittest -q test_architecture
+
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: cd app && npm ci
+      - run: cd app && npx tsc --noEmit
+      - run: cd app && npm test
+      - run: cd app && npx vite build
+
+  # Native Windows port. Test modules with a module-level `WINDOWS_READY = True` are strict; the rest
+  # run and only log "not yet windows-ready: ..." (app/scripts/ci-py-windows.py).
+  cli-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Every CLI module compiles
+        run: python -m py_compile app/cli/*.py
+      - name: The entry points run as scripts
+        run: |
+          python app/cli/dispatch.py --help > /dev/null
+          BEADS_DIR="$RUNNER_TEMP/board/.beads" python app/cli/dispatch.py prime > /dev/null
+      - name: Unit tests (strict for windows-ready modules)
+        run: python app/scripts/ci-py-windows.py
+      # Without UTF-8 mode, so the CLI's own utf8_stdio() is what keeps redirected Chinese output valid.
+      - name: CLI smoke on Windows (sessions / skills / prime / resume, UTF-8 when redirected)
+        env:
+          PYTHONUTF8: "0"
+        run: |
+          export BEADS_DIR="$RUNNER_TEMP/board/.beads" DISPATCH_DIR="$RUNNER_TEMP/dispatch" DISPATCH_SKILL_POOL="$RUNNER_TEMP/pool"
+          mkdir -p "$DISPATCH_SKILL_POOL/demo"
+          printf -- '---\nname: demo\ndescription: 中文描述的技能\n---\n正文\n' > "$DISPATCH_SKILL_POOL/demo/SKILL.md"
+          python app/cli/dispatch.py sessions --json > "$RUNNER_TEMP/sessions.json"
+          python app/cli/dispatch.py skills list --json > "$RUNNER_TEMP/skills.json"
+          python app/cli/dispatch.py prime > "$RUNNER_TEMP/prime.txt"
+          python app/cli/dispatch.py moves mark claude-code:s --to mini --json > "$RUNNER_TEMP/unsupported.json"
+          python app/cli/dispatch.py project-moves --json > "$RUNNER_TEMP/project-moves.json"
+          python -c 'import sys; sys.path.insert(0, "app/cli"); import dispatch; print(dispatch.resume_command("claude-code", "abc", "C:\\Users\\x\\p"))' > "$RUNNER_TEMP/resume.txt"
+          python app/cli/dispatch.py resume abc > "$RUNNER_TEMP/resume-missing.txt" 2>&1 || test $? -eq 1
+          python - <<'PY'
+          import json, os
+          t = os.environ["RUNNER_TEMP"]
+          sessions = json.load(open(os.path.join(t, "sessions.json"), encoding="utf-8"))
+          skills = json.load(open(os.path.join(t, "skills.json"), encoding="utf-8"))
+          assert any(s["description"] == "中文描述的技能" for s in skills), skills
+          assert all("\\" not in s["path"] for s in skills), skills
+          uns = json.load(open(os.path.join(t, "unsupported.json"), encoding="utf-8"))
+          assert uns["unsupported"] is True and "Windows 版暂不支持" in uns["message"], uns
+          # The app calls .some() on this during render: it must be a list.
+          assert json.load(open(os.path.join(t, "project-moves.json"), encoding="utf-8")) == []
+          prime = open(os.path.join(t, "prime.txt"), encoding="utf-8").read()
+          assert "任务板" in prime, prime[:300]
+          resume = open(os.path.join(t, "resume.txt"), encoding="utf-8").read().strip()
+          assert resume == "Set-Location -LiteralPath 'C:\\Users\\x\\p'; claude --resume abc", resume
+          print("smoke ok:", len(sessions), "sessions,", len(skills), "skills")
+          PY

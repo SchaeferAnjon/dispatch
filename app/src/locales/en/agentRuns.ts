@@ -1,0 +1,35 @@
+import type { Dict } from "../../i18n";
+// The Agent window's 命令 tab (components/AgentRunsPanel.tsx), the chat's compact drawer and the
+// 在 VS Code / Cursor 里打开 menu items. Keys are the Chinese source text; leave a key out and t() shows the Chinese.
+const agentRuns: Dict = {
+  "关闭": "Close",
+  "打开": "Open",
+  "搜索": "Search",
+  "文件": "Files",
+  "正在读取…": "Reading…",
+  "第 {n} 处": "Change {n}",
+  "在 VS Code 里打开": "Open in VS Code",
+  "图片": "Image",
+  "表格": "Spreadsheet",
+  "输出": "Output",
+  "Agent · {cmd} 在跑": "Agent · {cmd} running",
+  "关掉": "Close",
+  "Agent 跑完了 · {d}，只读": "Agent finished · {d}, read-only",
+  "Agent 的命令失败了（{code}），只读": "The agent's command failed ({code}), read-only",
+  "Agent 在跑 · {s}s，只读；Claude 跑完才给输出": "Agent running · {s}s, read-only; Claude shows the output when it finishes",
+  "Agent 在跑 · {s}s，只读": "Agent running · {s}s, read-only",
+  "跑完了，{m} 分钟后收起": "Finished, goes away in {m} min",
+  "这段会话还没有 Agent 事件。": "No agent events in this session yet.",
+  "这里只显示应用内对话的 Agent 事件；这段会话现在不在 Dispatch 里跑。": "Only agent events of an in-app chat show here; this session is not running in Dispatch now.",
+  "Agent 跑的命令": "The agent's commands",
+  "Agent 跑的命令会列在这里，只读。": "The commands the agent runs show up here, read-only.",
+  "这里显示应用内对话里 Agent 跑的命令；这段会话现在不在 Dispatch 里跑。": "This shows the commands the agent runs in an in-app chat; this session is not running in Dispatch now.",
+  "任务 / 改动 / 产物": "Tasks / changes / artifacts",
+  "收起聊天（{mod}L）": "Hide chat ({mod}L)",
+  "这一段还没改文件": "No files changed in this stretch yet",
+  "没有关联的任务": "No linked tasks",
+  "产物": "Artifacts",
+  "还没有图片或文件": "No images or files yet",
+  "在 Cursor 里打开": "Open in Cursor",
+};
+export default agentRuns;

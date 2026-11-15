@@ -1,0 +1,24 @@
+import type { Dict } from "../i18n";
+import common from "./en/common";
+import app from "./en/app";
+import project from "./en/project";
+import task from "./en/task";
+import session from "./en/session";
+import settings from "./en/settings";
+import shell from "./en/shell";
+import lists from "./en/lists";
+import detailSessions from "./en/detailSessions";
+import projectsSettings from "./en/projectsSettings";
+import thread from "./en/thread";
+import timeline from "./en/timeline";
+import knowledge from "./en/knowledge";
+import checker from "./en/checker";
+import chat from "./en/chat";
+import agentRuns from "./en/agentRuns";
+import ide from "./en/ide";
+import desk from "./en/desk";
+import modes from "./en/modes";
+import idechat from "./en/idechat";
+// One flat dictionary; the groups only mirror which components own the strings.
+const en: Dict = { ...common, ...app, ...project, ...task, ...session, ...settings, ...shell, ...lists, ...detailSessions, ...projectsSettings, ...thread, ...timeline, ...knowledge, ...checker, ...chat, ...agentRuns, ...ide, ...desk, ...modes, ...idechat };
+export default en;

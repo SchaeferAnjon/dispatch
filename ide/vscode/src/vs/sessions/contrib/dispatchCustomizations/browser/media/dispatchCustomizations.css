@@ -1,0 +1,53 @@
+.dispatch-customizations { margin: 0 0 20px; color: var(--vscode-foreground); }
+.dispatch-customizations > h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.dispatch-customization-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--vscode-widget-border); }
+.dispatch-customization-text { flex: 1; min-width: 0; }
+.dispatch-customization-name { font-size: 13px; line-height: 1.5; }
+.dispatch-customization-description { color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.dispatch-customization-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; flex-shrink: 0; }
+.dispatch-customization-actions .monaco-button { width: auto; white-space: nowrap; }
+.dispatch-hook-agent { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.dispatch-hook-agent.unsupported { color: var(--vscode-disabledForeground); }
+.dispatch-rule-targets { margin-top: 6px; font-size: 12px; }
+.dispatch-rule-targets summary { cursor: pointer; }
+.dispatch-rule-target { display: flex; flex-direction: column; gap: 2px; padding: 5px 0; }
+.dispatch-customizations-status { color: var(--vscode-descriptionForeground); font-size: 12px; }
+.dispatch-overview { width: 100%; }
+.dispatch-overview .dispatch-customization-row { padding: 6px 0; }
+.dispatch-overview .dispatch-customization-text { display: flex; gap: 16px; align-items: baseline; }
+.dispatch-overview .dispatch-customization-name { flex: 0 0 100px; }
+.dispatch-overview-count { margin-left: auto; font-size: 12px; color: var(--vscode-descriptionForeground); }
+@container (max-width: 620px) {
+ .dispatch-hooks .dispatch-customization-row { flex-wrap: wrap; }
+ .dispatch-hooks .dispatch-customization-actions { width: 100%; }
+}
+
+.dispatch-skill-engines { display: flex; align-items: center; gap: 4px; flex-shrink: 0; order: 1; }
+.dispatch-skill-engines .monaco-button { font-size: 11px; width: auto; padding: 2px 6px; min-width: 0; border-radius: 4px; }
+.dispatch-skill-engines .monaco-button[aria-pressed="false"] { opacity: .65; background: transparent; }
+
+.dispatch-hooks { container-type: inline-size; flex: 0 0 auto; }
+.ai-customization-list-item:has(> .dispatch-skill-engines) > .item-right { order: 2; }
+
+/* MCP Servers, Plugins, Agents (direction A): a one-line note, then Dispatch's list above the native one */
+.dispatch-customizations-note { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; margin: 0 0 16px; border-radius: 8px;
+ background: var(--vscode-textCodeBlock-background); border: 1px solid var(--vscode-widget-border); font-size: 12px; line-height: 1.5; color: var(--vscode-descriptionForeground); }
+.dispatch-customizations-note .codicon { flex: none; margin-top: 2px; font-size: 14px; }
+.dispatch-customizations-note strong { color: var(--vscode-foreground); font-weight: 600; }
+.dispatch-customization-tag { display: inline-block; margin-left: 8px; padding: 0 6px; border-radius: 4px; font-size: 11px; line-height: 18px; vertical-align: 1px;
+ color: var(--vscode-descriptionForeground); border: 1px solid var(--vscode-widget-border); }
+.dispatch-mcp-row .dispatch-customization-description:first-of-type { font-family: var(--vscode-editor-font-family); }
+.dispatch-mcp-add { margin: 0 0 12px; }
+.dispatch-mcp-add .dispatch-skill-engines { order: 0; }
+.dispatch-mcp-add .dispatch-skill-engines .monaco-button { cursor: pointer; }
+.dispatch-mcp-add .dispatch-skill-engines .monaco-button[aria-pressed="false"] { opacity: .65; }
+.dispatch-mcp-note:empty { display: none; }
+.dispatch-mcp-note { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.dispatch-mcp-note .monaco-button { width: auto; padding: 0 8px; line-height: 20px; font-size: 12px; }
+.dispatch-skill-engines .monaco-button.dispatch-pill-on { opacity: 1; cursor: default; }
+.dispatch-skill-engines .monaco-button .codicon { font-size: 12px; margin-right: 2px; }
+.dispatch-mcp-files { margin-top: 8px; }
+.dispatch-mcp, .dispatch-plugins, .dispatch-agents { container-type: inline-size; flex: 0 0 auto; }
+@container (max-width: 620px) {
+ .dispatch-mcp .dispatch-customization-row, .dispatch-plugins .dispatch-customization-row { flex-wrap: wrap; }
+}

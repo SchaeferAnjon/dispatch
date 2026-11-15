@@ -1,0 +1,17 @@
+/* 新建 Agent: the 项目或文件夹 popover (PlacePicker.tsx). It opens upward, the composer sits at the bottom. */
+.pp{position:relative;display:inline-flex}
+.pp-pop{position:absolute;left:0;bottom:calc(100% + 8px);width:420px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;border-radius:var(--r-win);background:var(--bg-2);box-shadow:var(--shadow-diffuse),0 0 0 1px var(--hair);padding:6px;z-index:20;font-size:13px;color:var(--text)}
+.pp-q{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;color:var(--text-2);border-bottom:1px solid var(--hair);margin:0 -6px 4px;padding-left:16px}
+.pp-q input,.pp-q input:focus-visible{flex:1;min-width:0;border:0;background:none;outline:none;font:inherit;font-size:13px;color:var(--text)}
+.pp-list{max-height:220px;overflow-y:auto;overscroll-behavior:contain}
+.pp-row{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:4px 10px;border:0;border-radius:var(--r-row);background:none;color:inherit;font:inherit;text-align:left;cursor:default}
+.pp-row>svg{flex:none;color:var(--text-2)}
+.pp-row.on{background:var(--chip)}
+.pp-row.cur .pp-n{font-weight:500}
+.pp-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pp-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+.pp-d{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--text-2)}
+.pp-none{padding:14px 10px;color:var(--text-2);font-size:12px}
+.pp-foot{border-top:1px solid var(--hair);margin:4px -6px 0;padding:4px 6px 0}
+.pp-foot .pp-row{min-height:34px}
+.pp-foot .pp-row:hover{background:var(--chip)}

@@ -1,0 +1,464 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: 「在哪」 (dispatchWhere.ts). Values from kanban design/docs-tab/redesign and
+ *  design/annotations/redesign 第 1 节; colours are theme colours standing for DESIGN.md's tokens
+ *  (Dispatch Light / Dark are generated from them): --bg editor, --bg-2 side bar, --sel list
+ *  selection, --text-2 description, --hair hover border, --hair-2 input border. Red and green are
+ *  only the boxes and their numbers drawn on a picture (DESIGN.md 「第四处颜色」); the interface's own
+ *  numbers are neutral dots.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-where,
+.dispatch-where-thumb,
+.dispatch-where-leg,
+.dispatch-where-card {
+	--dw-bg: var(--vscode-editor-background);
+	--dw-bg-2: var(--vscode-sideBar-background);
+	--dw-sel: var(--vscode-list-activeSelectionBackground);
+	--dw-text: var(--vscode-foreground);
+	--dw-text-2: var(--vscode-descriptionForeground);
+	--dw-hair: var(--vscode-editorHoverWidget-border);
+	--dw-hair-2: var(--vscode-input-border);
+	--dw-ease-std: cubic-bezier(.32, .72, 0, 1);
+	--dw-box-red: #dc2626;
+	--dw-box-green: #16a34a;
+}
+
+/* ---- thumbnail: 3:2, the picture as a background cropped to the marks ---- */
+
+.dispatch-where-thumb {
+	position: relative;
+	display: block;
+	flex: none;
+	overflow: hidden;
+	border-radius: 6px;
+	background-color: var(--dw-bg-2);
+	background-repeat: no-repeat;
+	box-shadow: 0 0 0 1px var(--dw-hair);
+}
+
+.dispatch-where-thumb.selected {
+	box-shadow: 0 0 0 2px var(--dw-text);
+}
+
+/* a raw picture's boxes, outlined in the thumbnail */
+.dispatch-where-thumb .rb {
+	position: absolute;
+	box-sizing: border-box;
+	border: 1.5px solid var(--dw-box-red);
+	border-radius: 3px;
+	pointer-events: none;
+}
+
+.dispatch-where-thumb .rb.g {
+	border-color: var(--dw-box-green);
+}
+
+.dispatch-where-thumb .zoom {
+	position: absolute;
+	right: 6px;
+	bottom: 6px;
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+	display: grid;
+	place-items: center;
+	color: var(--dw-text);
+	background: color-mix(in srgb, var(--dw-bg) 92%, transparent);
+	box-shadow: 0 0 0 1px var(--dw-hair);
+	opacity: 0;
+	transition: opacity 200ms ease;
+}
+
+.dispatch-where-thumb .zoom .codicon {
+	font-size: 14px;
+}
+
+.dispatch-where-thumb:hover .zoom {
+	opacity: 1;
+}
+
+/* ---- viewer: head, viewport, numbered lines ---- */
+
+.dispatch-where {
+	min-width: 0;
+}
+
+.dispatch-where .wh {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--dw-text-2);
+}
+
+.dispatch-where .wh .cnt {
+	font-weight: 400;
+	font-size: 11px;
+	opacity: .7;
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-where .wh .sp {
+	flex: 1;
+}
+
+.dispatch-where .vp {
+	position: relative;
+	/* until the picture is in: then the whole picture at this width, or the viewer's fixed height */
+	height: 160px;
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--dw-bg-2);
+	border: 1px solid var(--dw-hair);
+	touch-action: none;
+}
+
+.dispatch-where .vp[hidden] {
+	display: none;
+}
+
+.dispatch-where .vp.pannable,
+.dispatch-where .vp.on-box {
+	cursor: zoom-in;
+}
+
+.dispatch-where.zoomed .vp.pannable:not(.on-box) {
+	cursor: grab;
+}
+
+.dispatch-where .vp.dragging {
+	cursor: grabbing;
+}
+
+.dispatch-where .vp img {
+	position: absolute;
+	left: 0;
+	top: 0;
+	max-width: none;
+	transform-origin: 0 0;
+	transition: transform 200ms var(--dw-ease-std), width 200ms var(--dw-ease-std), height 200ms var(--dw-ease-std);
+	user-select: none;
+	-webkit-user-drag: none;
+	pointer-events: none;
+}
+
+.dispatch-where .vp .mask {
+	position: absolute;
+	border-radius: 6px;
+	/* everything outside the picked box is dimmed with the background at 45% */
+	box-shadow: 0 0 0 3000px color-mix(in srgb, var(--dw-bg) 45%, transparent);
+	transition: left 200ms var(--dw-ease-std), top 200ms var(--dw-ease-std), width 200ms var(--dw-ease-std), height 200ms var(--dw-ease-std);
+	pointer-events: none;
+}
+
+.dispatch-where .vp .mask[hidden] {
+	display: none;
+}
+
+/* the boxes of a raw screenshot, drawn by the viewer: 2px, radius 6, the number on the corner */
+.dispatch-where .vp .rb {
+	position: absolute;
+	box-sizing: border-box;
+	border: 2px solid var(--dw-box-red);
+	border-radius: 6px;
+	pointer-events: none;
+	transition: left 200ms var(--dw-ease-std), top 200ms var(--dw-ease-std), width 200ms var(--dw-ease-std), height 200ms var(--dw-ease-std), box-shadow 150ms ease;
+}
+
+.dispatch-where .vp .rb.g {
+	border-color: var(--dw-box-green);
+}
+
+/* the box of the line under the pointer (DESIGN.md 「联动悬停」) */
+.dispatch-where .vp .rb.hover {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--dw-box-red) 30%, transparent);
+}
+
+.dispatch-where .vp .rb.g.hover {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--dw-box-green) 30%, transparent);
+}
+
+.dispatch-where .vp .rb .k {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 20px;
+	height: 20px;
+	transform: translate(-50%, -50%);
+	border-radius: 50%;
+	background: var(--dw-box-red);
+	color: #fff;
+	font-size: 11px;
+	font-weight: 600;
+	font-style: normal;
+	line-height: 20px;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+	box-shadow: 0 0 0 2px #fff;
+	z-index: 2;
+}
+
+.dispatch-where .vp .rb.g .k {
+	background: var(--dw-box-green);
+}
+
+.dispatch-where .vp.instant img,
+.dispatch-where .vp.instant .mask,
+.dispatch-where .vp.instant .rb,
+.dispatch-where .vp.dragging img,
+.dispatch-where .vp.dragging .mask,
+.dispatch-where .vp.dragging .rb {
+	transition: none;
+}
+
+.dispatch-where > .dispatch-where-leg {
+	margin-top: 8px;
+}
+
+.dispatch-where.side {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 268px;
+	column-gap: 16px;
+	align-items: start;
+}
+
+.dispatch-where.side .wh {
+	grid-column: 1 / -1;
+}
+
+.dispatch-where.side > .dispatch-where-leg {
+	margin: 0;
+	align-content: start;
+}
+
+.dispatch-where-ghost {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 6px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--dw-text-2, var(--vscode-descriptionForeground));
+	font: inherit;
+	font-size: 12px;
+	font-weight: 400;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-where-ghost[hidden] {
+	display: none;
+}
+
+.dispatch-where-ghost:hover {
+	background: color-mix(in srgb, var(--dw-sel, var(--vscode-list-activeSelectionBackground)) 60%, transparent);
+	color: var(--dw-text, var(--vscode-foreground));
+}
+
+.dispatch-where-ghost:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+.dispatch-where-ghost .codicon {
+	font-size: 14px;
+}
+
+/* ---- numbered lines: a neutral dot, then what · where · how, or the note ---- */
+
+.dispatch-where-leg {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.dispatch-where-leg li {
+	display: grid;
+	grid-template-columns: 16px minmax(0, 1fr);
+	column-gap: 8px;
+	padding: 5px 8px;
+	border-radius: 6px;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--dw-text-2);
+	transition: background-color 150ms ease;
+}
+
+.dispatch-where-leg[role="listbox"] li {
+	cursor: pointer;
+}
+
+.dispatch-where-leg[role="listbox"] li:hover,
+.dispatch-where-leg li.hover {
+	background: color-mix(in srgb, var(--dw-sel) 60%, transparent);
+}
+
+.dispatch-where-leg li.on {
+	background: var(--dw-sel);
+}
+
+.dispatch-where-leg li:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-where-leg .n {
+	width: 16px;
+	height: 16px;
+	margin-top: 1px;
+	border-radius: 50%;
+	background: var(--dw-text);
+	color: var(--dw-bg);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 16px;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-where-leg .x {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.dispatch-where-leg em {
+	font-style: normal;
+	font-weight: 500;
+	color: var(--dw-text);
+}
+
+.dispatch-where-leg.one-line .x {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* ---- snippet card: 320 wide, --bg-2, radius 14, one light shadow (a floating layer) ---- */
+
+.dispatch-where-card {
+	width: 320px;
+	box-sizing: border-box;
+	padding: 8px;
+	display: grid;
+	gap: 8px;
+	border-radius: 14px;
+	background: var(--dw-bg-2);
+	border: 1px solid var(--dw-hair);
+	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
+	color: var(--dw-text);
+	font-size: 13px;
+	line-height: 1.5;
+	text-align: left;
+}
+
+.dispatch-where-card.bare {
+	/* inside a snippet holder (320 with its own padding 8): the holder's width, not 320 more */
+	width: auto;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.dispatch-where-card .dispatch-where .vp {
+	border-radius: 8px;
+}
+
+.dispatch-where-card .dispatch-where > .dispatch-where-leg {
+	margin-top: 4px;
+}
+
+.dispatch-where-card .dispatch-where-leg li {
+	padding: 3px 6px;
+}
+
+.dispatch-where-card .hh {
+	display: grid;
+	gap: 2px;
+	padding: 4px 6px 0;
+}
+
+.dispatch-where-card .ht {
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.4;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.dispatch-where-card .hs {
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--dw-text-2);
+}
+
+.dispatch-where-card .hf {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0 2px;
+}
+
+.dispatch-where-card .hf .sp {
+	flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-where .vp img,
+	.dispatch-where .vp .mask,
+	.dispatch-where .vp .rb,
+	.dispatch-where-thumb .zoom,
+	.dispatch-where-leg li,
+	.dispatch-where-ghost {
+		transition: none;
+	}
+}
+
+.dispatch-where .vp .rb[hidden] {
+	display: none;
+}
+
+/* 「带框的图」 (renderDispatchWhereIcon): a line icon like the codicons around it */
+.dispatch-where-icon {
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.3;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* ---- a hover that holds a snippet card (IHoverService, additionalClasses dispatch-where-hover): the hover's own frame is the card's ---- */
+
+.monaco-hover.dispatch-where-hover {
+	border-radius: 14px;
+	background-color: var(--vscode-sideBar-background);
+	border-color: var(--vscode-editorHoverWidget-border);
+	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
+}
+
+.monaco-hover.dispatch-where-hover .monaco-hover-content {
+	padding: 0 !important;
+	max-width: none !important;
+}
+
+.monaco-hover.dispatch-where-hover .hover-contents {
+	padding: 0 !important;
+}
+
+.dispatch-where-snippet {
+	width: 320px;
+	box-sizing: border-box;
+	padding: 8px;
+}

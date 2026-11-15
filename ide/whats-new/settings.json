@@ -1,0 +1,24 @@
+{
+ "v": 1,
+ "image": "settings.png",
+ "size": [
+  1400,
+  940
+ ],
+ "scale": 2,
+ "marks": [
+  {
+   "n": 1,
+   "box": [
+    0,
+    0,
+    560,
+    940
+   ],
+   "color": "red",
+   "what": "Settings",
+   "where": "The side bar turns into Settings",
+   "how": "Press \u2318, or click Settings at the bottom left"
+  }
+ ]
+}

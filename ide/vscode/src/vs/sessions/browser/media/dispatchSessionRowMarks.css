@@ -1,0 +1,48 @@
+/* Dispatch IDE: the agent's mark at the end of a session row, and ">_" for a terminal (dispatchSessionRowMarks.ts). */
+/* Hidden until the row is hovered or has the keyboard's focus: a column of the same mark on every row said nothing
+   (blurt DIS-11, 10-31). It keeps its place while hidden, so the title does not move when it shows. */
+.session-item .dispatch-row-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 3px;
+	margin-left: 6px;
+	color: var(--vscode-descriptionForeground);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+.session-item .dispatch-row-mark.empty {
+	display: none;
+}
+
+.session-item .dispatch-row-mark .dispatch-row-mark-icon {
+	font-size: 12px;
+	line-height: 1;
+}
+
+.session-item .dispatch-row-mark .dispatch-row-mark-terminal {
+	font-family: var(--monaco-monospace-font);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1;
+	letter-spacing: -0.5px;
+}
+
+.session-item:hover .dispatch-row-mark,
+.monaco-list:focus-within .monaco-list-row.focused .session-item .dispatch-row-mark {
+	opacity: 1;
+}
+
+.monaco-reduce-motion .session-item .dispatch-row-mark {
+	transition: none;
+}
+
+/* The mark stays put when the row's buttons (Pin, Mark as Done) appear on hover or selection: they come in on its
+   left, it keeps the row's end. */
+.session-item .session-title-row > .session-title-toolbar {
+	order: 1;
+}
+.session-item .session-title-row > .dispatch-row-mark {
+	order: 2;
+}

@@ -1,0 +1,654 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Talk's small cards in the side pane's corner and the terminal's Ask Question box (direction B
+ *  「Talk while new」, user 2026-11-15, task-q9x2r, design/learn-scene; DESIGN.md「组件」边干边学). The cards are the
+ *  side chat card's family (dispatchSideChat.css): corner 12, the side pane's background, a 1px border, the same faint
+ *  shadow, 13px words. Places are set in dispatchTalkCards.ts (talkCardBottoms).
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-talk-card {
+	--dtc-bg: var(--vscode-agentsPanel-background, var(--vscode-editor-background));
+	--dtc-hair-2: var(--vscode-input-border, var(--vscode-editorWidget-border));
+	--dtc-text-2: var(--vscode-descriptionForeground);
+	--dtc-shadow: 0 12px 40px -8px var(--vscode-widget-shadow), 0 4px 12px -4px var(--vscode-widget-shadow);
+	position: absolute;
+	z-index: 19;
+	box-sizing: border-box;
+	padding: 10px 12px 10px 14px;
+	border: 1px solid var(--dtc-hair-2);
+	border-radius: 12px;
+	background: var(--dtc-bg);
+	box-shadow: var(--dtc-shadow);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	cursor: pointer;
+	animation: dtc-up 0.2s cubic-bezier(0, 0, 0.2, 1);
+	transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1), bottom 0.2s cubic-bezier(0, 0, 0.2, 1), background-color 0.15s ease;
+}
+
+.dispatch-talk-card:hover {
+	background: color-mix(in srgb, var(--dtc-bg) 92%, var(--vscode-foreground));
+}
+
+.dispatch-talk-card.leaving {
+	opacity: 0;
+	pointer-events: none;
+}
+
+@keyframes dtc-up {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: none; }
+}
+
+/* line one: the icon, the name 13/500, its tag 11px, × at the end */
+.dispatch-talk-card .dtc-l1 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	height: 20px;
+}
+
+/* 14px: over VS Code's own `.codicon[class*='codicon-']` 16px, so the name sits 22 in, over line two */
+.dispatch-talk-card .dtc-ic.codicon {
+	flex: none;
+	width: 14px;
+	font-size: 14px;
+	color: var(--dtc-text-2);
+}
+
+.dispatch-talk-card .dtc-name {
+	min-width: 0;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-talk-card .dtc-tag {
+	flex: none;
+	font-size: 11px;
+	color: var(--dtc-text-2);
+	white-space: nowrap;
+}
+
+.dispatch-talk-card .dtc-x {
+	flex: none;
+	margin-left: auto;
+	width: 20px;
+	height: 20px;
+	display: grid;
+	place-items: center;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: none;
+	color: var(--dtc-text-2);
+	cursor: pointer;
+}
+
+.dispatch-talk-card .dtc-x .codicon.codicon {
+	font-size: 14px;
+}
+
+.dispatch-talk-card .dtc-x:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+/* line two: what the agent said, at most two lines, under the name */
+.dispatch-talk-card .dtc-l2 {
+	margin-top: 4px;
+	padding-left: 22px;
+	font-size: 13px;
+	line-height: 1.55;
+	color: var(--dtc-text-2);
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+/* the time left: a 2px line that runs out in 7 s and stops while the pointer is on the card */
+.dispatch-talk-card .dtc-bar {
+	height: 2px;
+	margin: 8px 0 0 22px;
+	border-radius: 1px;
+	background: color-mix(in srgb, var(--dtc-text-2) 18%, transparent);
+	overflow: hidden;
+}
+
+.dispatch-talk-card .dtc-bar > i {
+	display: block;
+	height: 100%;
+	background: color-mix(in srgb, var(--dtc-text-2) 55%, transparent);
+	animation: dtc-drain 7s linear forwards;
+}
+
+.dispatch-talk-card.paused .dtc-bar > i {
+	animation-play-state: paused;
+}
+
+@keyframes dtc-drain {
+	from { width: 100%; }
+	to { width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-talk-card {
+		animation: none;
+		transition: none;
+	}
+
+	.dispatch-talk-card .dtc-bar {
+		display: none;
+	}
+}
+
+/* the terminal's Ask Question box: the feedback box over the window, placed by the mouse (dispatchTerminalAsk.ts) */
+.dispatch-terminal-ask {
+	position: fixed;
+	left: 0;
+	top: 0;
+	width: 0;
+	height: 0;
+	z-index: 10000;
+}
+
+/* ---- Walk me through (task-fktjx, design/learn-scene frames 5 and 6): the pill, the card, the lit lines --------- */
+
+.dispatch-walk-pill,
+.dispatch-walk-card {
+	--dwk-bg: var(--vscode-agentsPanel-background, var(--vscode-editor-background));
+	--dwk-hair: var(--vscode-editorWidget-border);
+	--dwk-hair-2: var(--vscode-input-border, var(--vscode-editorWidget-border));
+	--dwk-chip: var(--vscode-toolbar-hoverBackground);
+	--dwk-text-2: var(--vscode-descriptionForeground);
+	--dwk-shadow: 0 12px 40px -8px var(--vscode-widget-shadow), 0 4px 12px -4px var(--vscode-widget-shadow);
+	position: absolute;
+	z-index: 21;
+	box-sizing: border-box;
+	background: var(--dwk-bg);
+	border: 1px solid var(--dwk-hair-2);
+	box-shadow: var(--dwk-shadow);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	animation: dtc-up 0.2s cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* the pill: the side chat's pill, with the count and × */
+.dispatch-walk-pill {
+	height: 32px;
+	padding: 0 4px 0 12px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	border-radius: 999px;
+}
+
+.dispatch-walk-pill.hidden {
+	display: none;
+}
+
+.dispatch-walk-pill .dwp-go {
+	height: 100%;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.dispatch-walk-pill .dwp-ic.codicon,
+.dispatch-walk-card .dwk-ic.codicon,
+.dispatch-walk-card .dwk-file-ic.codicon {
+	flex: none;
+	font-size: 14px;
+	color: var(--dwk-text-2);
+}
+
+.dispatch-walk-pill .dwp-k {
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--dwk-text-2);
+}
+
+.dispatch-walk-pill:hover {
+	background: color-mix(in srgb, var(--dwk-bg) 92%, var(--vscode-foreground));
+}
+
+.dispatch-walk-pill .dwp-x,
+.dispatch-walk-card .dwk-ib {
+	flex: none;
+	width: 24px;
+	height: 24px;
+	display: grid;
+	place-items: center;
+	padding: 0;
+	border: 0;
+	border-radius: 999px;
+	background: none;
+	color: var(--dwk-text-2);
+	cursor: pointer;
+}
+
+.dispatch-walk-card .dwk-ib {
+	border-radius: 6px;
+}
+
+.dispatch-walk-pill .dwp-x .codicon,
+.dispatch-walk-card .dwk-ib .codicon {
+	font-size: 14px;
+}
+
+.dispatch-walk-pill .dwp-x:hover,
+.dispatch-walk-card .dwk-ib:hover {
+	background: var(--dwk-chip);
+	color: var(--vscode-foreground);
+}
+
+/* the card: the side chat card's head, a body that fits its words, the stop's place and Back / Next at the foot */
+.dispatch-walk-card {
+	display: flex;
+	flex-direction: column;
+	border-radius: 12px;
+	overflow: hidden;
+	outline: none;
+}
+
+/* the card itself never draws a focus ring over its border: the keyboard sits on Next, whose ring shows */
+.dispatch-walk-card:focus,
+.dispatch-walk-card:focus-visible {
+	outline: none;
+}
+
+.dispatch-walk-card .dwk-head {
+	flex: none;
+	height: 40px;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 6px 0 12px;
+	border-bottom: 1px solid color-mix(in srgb, var(--dwk-hair) 40%, transparent);
+}
+
+.dispatch-walk-card .dwk-t {
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.dispatch-walk-card .dwk-from {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+	color: var(--dwk-text-2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-walk-card .dwk-body {
+	flex: 0 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 12px 12px 8px;
+}
+
+.dispatch-walk-card .dwk-file {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	margin-bottom: 6px;
+}
+
+.dispatch-walk-card .dwk-name {
+	min-width: 0;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-walk-card .dwk-k {
+	flex: none;
+	font-size: 12px;
+	color: var(--dwk-text-2);
+	white-space: nowrap;
+}
+
+.dispatch-walk-card .dwk-say {
+	margin: 0 0 10px;
+	font-size: 14px;
+	line-height: 1.7;
+	overflow-wrap: anywhere;
+}
+
+/* only its lines are known (yet): said in the quieter colour */
+.dispatch-walk-card .dwk-say.lines {
+	color: var(--dwk-text-2);
+}
+
+.dispatch-walk-card .dwk-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin: 0 -8px 2px;
+}
+
+.dispatch-walk-card .dwk-chip {
+	height: 24px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 999px;
+	background: none;
+	color: var(--dwk-text-2);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.dispatch-walk-card .dwk-chip:hover {
+	background: var(--dwk-chip);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-walk-card .dwk-nav {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px 12px;
+}
+
+.dispatch-walk-card .dwk-pg {
+	font-size: 12px;
+	color: var(--dwk-text-2);
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-walk-card .dwk-sp {
+	flex: 1;
+}
+
+/* Back and Next: 28 high pills, 12/500; Next is the one solid button */
+.dispatch-walk-card .dwk-btn {
+	height: 28px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 999px;
+	background: none;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.dispatch-walk-card .dwk-btn.ghost:hover {
+	background: var(--dwk-chip);
+}
+
+.dispatch-walk-card .dwk-btn.solid {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.dispatch-walk-card .dwk-btn.solid:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.dispatch-walk-card .dwk-btn:focus-visible,
+.dispatch-walk-card .dwk-chip:focus-visible,
+.dispatch-walk-card .dwk-ib:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+/* the stop's lines in the editor: lit softly, a 2px line beside their numbers; they come in over 200ms */
+.monaco-editor .dispatch-walk-line {
+	background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 70%, transparent);
+	animation: dwk-lit 0.2s cubic-bezier(0, 0, 0.2, 1);
+}
+
+.monaco-editor .dispatch-walk-gutter {
+	border-left: 2px solid var(--vscode-editorLineNumber-activeForeground);
+	margin-left: 2px;
+}
+
+@keyframes dwk-lit {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+.monaco-editor .dispatch-walk-line.still {
+	animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-walk-pill,
+	.dispatch-walk-card,
+	.monaco-editor .dispatch-walk-line {
+		animation: none;
+	}
+}
+
+/* ---- Why and More on a block of Changes (task-39x97, design/learn-scene frame 4) ---------------------------------
+   The prototype's `.wbtn`: 22 high pills, 12/500 in the description colour, the chip under them when pointed at. Over
+   the code they sit on the editor's own background in a 1px border (VS Code's hunk toolbar sits on the lines the same
+   way), shown only while the block is pointed at, has the cursor or the keyboard, or its Why is open. */
+.monaco-editor .dispatch-hunk-why {
+	--dhw-chip: var(--vscode-toolbar-hoverBackground);
+	display: flex;
+	gap: 2px;
+	padding: 0 1px;
+	height: 24px;
+	box-sizing: border-box;
+	align-items: center;
+	border: 1px solid var(--vscode-editorWidget-border);
+	border-radius: 999px;
+	background: var(--vscode-editor-background);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+}
+
+.monaco-editor .dispatch-hunk-why.on,
+.monaco-editor .dispatch-hunk-why:focus-within {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+/* the block's Why is open: the buttons step aside, the box has More and ⌃ */
+.monaco-editor .dispatch-hunk-why.hidden {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.monaco-editor .dispatch-hunk-why .dispatch-hunk-btn {
+	height: 20px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font-family: var(--vscode-font-family);
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 20px;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.monaco-editor .dispatch-hunk-why .dispatch-hunk-btn:hover,
+.monaco-editor .dispatch-hunk-why .dispatch-hunk-btn.active {
+	background: var(--dhw-chip);
+	color: var(--vscode-foreground);
+}
+
+.monaco-editor .dispatch-hunk-why .dispatch-hunk-btn:focus {
+	outline: none;
+}
+
+.monaco-editor .dispatch-hunk-why .dispatch-hunk-btn:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+/* the Why under its block: the prototype's `.expl` (bg-2, 1px hair, corner 8, 13px words at 1.6) */
+.monaco-editor .dispatch-hunk-expl {
+	position: absolute;
+	box-sizing: border-box;
+	padding: 4px 0 8px 4px;
+	font-family: var(--vscode-font-family);
+	white-space: normal;
+	cursor: default;
+}
+
+.monaco-editor .dispatch-hunk-expl .dispatch-hunk-box {
+	box-sizing: border-box;
+	padding: 8px 8px 10px 12px;
+	border: 1px solid color-mix(in srgb, var(--vscode-editorWidget-border) 70%, transparent);
+	border-radius: 8px;
+	background: var(--vscode-sideBar-background);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.6;
+	animation: dhw-open 0.2s cubic-bezier(0, 0, 0.2, 1);
+}
+
+@keyframes dhw-open {
+	from { opacity: 0; transform: translateY(-4px); }
+	to { opacity: 1; transform: none; }
+}
+
+.monaco-editor .dispatch-hunk-expl.still .dispatch-hunk-box {
+	animation: none;
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-head {
+	display: flex;
+	align-items: center;
+	height: 20px;
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-label {
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 20px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* More in the box's head, 4 left of ⌃: 20 high, 12/500 in the description colour */
+.monaco-editor .dispatch-hunk-expl .dhw-more {
+	margin-left: auto;
+	margin-right: 4px;
+	height: 20px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font-family: var(--vscode-font-family);
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 20px;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-more:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-more:focus {
+	outline: none;
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-more:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-hide {
+	width: 20px;
+	height: 20px;
+	display: grid;
+	place-items: center;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-hide .codicon {
+	font-size: 14px;
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-hide:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-hide:focus {
+	outline: none;
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-hide:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-text {
+	padding-right: 4px;
+	overflow-wrap: anywhere;
+}
+
+/* while the reason is looked for, and when there is none: the description colour; looking shimmers (2 s, as Now's
+   "Right now") */
+.monaco-editor .dispatch-hunk-expl .dhw-text.none,
+.monaco-editor .dispatch-hunk-expl .dhw-text.asking {
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-editor .dispatch-hunk-expl .dhw-text.asking {
+	background: linear-gradient(90deg, var(--vscode-descriptionForeground) 0 40%, var(--vscode-foreground) 50%, var(--vscode-descriptionForeground) 60% 100%);
+	background-size: 200% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: dhw-shimmer 2s linear infinite;
+}
+
+@keyframes dhw-shimmer {
+	from { background-position: 100% 0; }
+	to { background-position: -100% 0; }
+}
+
+.monaco-editor .dispatch-hunk-expl.still .dhw-text.asking {
+	background: none;
+	color: var(--vscode-descriptionForeground);
+	animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.monaco-editor .dispatch-hunk-why {
+		transition: none;
+	}
+	.monaco-editor .dispatch-hunk-expl .dispatch-hunk-box,
+	.monaco-editor .dispatch-hunk-expl .dhw-text.asking {
+		animation: none;
+	}
+}

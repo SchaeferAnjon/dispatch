@@ -1,0 +1,1100 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the Task graph, the task page and a project's Archive (patches/430-tasks.patch).
+ *
+ *  The graph is direction A「泳道脉络」of kanban design/task-graph/redesign/: one 32 px row per thing
+ *  (name 160 | chart | where it stands 360, 16 apart), grey lines and grey marks on a day axis that slides
+ *  sideways in the chart column (the day the focus is on open by the hour, the rest folded, its band a
+ *  shade darker; task-e1qsa); the one colour is the mark at the end of a
+ *  thing that is not done (kanban DESIGN.md: 彩色只在三处, the task graph's end dots). This session /
+ *  project is the Tasks tab's square switch (DESIGN.md 例外: 开关用页签同款方角).
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-graph-page,
+.dispatch-task-page {
+	outline: none;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding-bottom: 24px;
+	font-size: 13px;
+	color: var(--vscode-foreground);
+}
+
+/* the host focuses the content when the page opens: no rectangle around the whole page */
+.custom-view-content.dispatch-graph-page:focus,
+.custom-view-content.dispatch-graph-page:focus-visible,
+.custom-view-content.dispatch-task-page:focus,
+.custom-view-content.dispatch-task-page:focus-visible {
+	outline: none !important;
+}
+
+.dispatch-graph-page {
+	--tg-bg: var(--session-view-background, var(--vscode-editor-background));
+	--tg-bg2: var(--vscode-sideBar-background, var(--tg-bg));
+	--tg-sel: var(--vscode-list-inactiveSelectionBackground);
+	--tg-text: var(--vscode-foreground);
+	--tg-text2: var(--vscode-descriptionForeground);
+	--tg-hair: var(--vscode-editorHoverWidget-border, color-mix(in srgb, var(--vscode-foreground) 10%, transparent));
+	--tg-line: color-mix(in srgb, var(--tg-text2) 38%, transparent);
+	--tg-mark: color-mix(in srgb, var(--tg-text2) 78%, transparent);
+	--tg-link: color-mix(in srgb, var(--tg-text2) 55%, transparent);
+	--tg-green: var(--dispatch-state-working);
+	--tg-amber: var(--dispatch-state-waiting);
+	--tg-teal: var(--dispatch-state-done);
+	--tg-gray: var(--dispatch-state-todo);
+	/* today's stretch: a shade off the page (light: the sidebar's colour; dark: halfway to the editor's, a shade
+	   darker than the page, so a row pointed at still shows over it) */
+	--tg-band: var(--tg-bg2);
+	--tg-name: 160px;
+	--tg-now: 360px;
+	gap: 0;
+	font-variant-numeric: tabular-nums;
+	user-select: none;
+}
+.monaco-workbench.vs-dark .dispatch-graph-page {
+	--tg-band: color-mix(in oklch, var(--vscode-editor-background) 50%, var(--tg-bg));
+}
+
+/* "‹ session" above the switch: gone when the graph was not opened over a session */
+.dispatch-graph-back:empty {
+	display: none;
+}
+.dispatch-graph-page .dispatch-graph-back {
+	margin: 0 0 4px;
+}
+
+/* ---- This session | project and the legend, one line ---- */
+.dispatch-tg-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	min-height: 28px;
+	margin-top: 4px;
+}
+.dispatch-tg-seg {
+	display: inline-flex;
+	gap: 2px;
+	min-width: 0;
+}
+.dispatch-tg-seg-btn {
+	height: 28px;
+	max-width: 220px;
+	padding: 0 10px;
+	border: none;
+	border-radius: var(--vscode-cornerRadius-small, 4px);
+	background: transparent;
+	color: var(--tg-text2);
+	font: inherit;
+	font-size: 13px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 150ms ease, color 150ms ease;
+}
+.dispatch-tg-seg-btn:hover {
+	background: var(--modern-ui-editor-tab-hover-background, var(--vscode-list-hoverBackground));
+	color: var(--tg-text);
+}
+.dispatch-tg-seg-btn.on,
+.dispatch-tg-seg-btn.on:hover {
+	background: var(--modern-ui-editor-tab-active-background, var(--tg-sel));
+	color: var(--tg-text);
+}
+.dispatch-tg-seg-btn:focus-visible,
+.dispatch-tg-now:focus-visible,
+.dispatch-tg-fold:focus-visible,
+.dispatch-tg-empty-btn:focus-visible,
+.dispatch-tg-hit:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+.dispatch-tg-legend {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 14px;
+	font-size: 12px;
+	color: var(--tg-text2);
+}
+.dispatch-tg-legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	white-space: nowrap;
+}
+.dispatch-tg-glyph {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	box-sizing: border-box;
+}
+.dispatch-tg-glyph.open {
+	width: 7px;
+	height: 7px;
+	border: 1.5px solid var(--tg-text2);
+}
+.dispatch-tg-glyph.done {
+	width: 6px;
+	height: 6px;
+	background: var(--tg-mark);
+}
+.dispatch-tg-glyph.in_progress {
+	background: var(--tg-green);
+}
+.dispatch-tg-glyph.waiting {
+	background: var(--tg-amber);
+}
+/* the three kinds of line between rows, 16 apart */
+.dispatch-tg-legend-lines {
+	display: inline-flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 16px;
+	margin-left: 2px;
+}
+.dispatch-tg-line-glyph {
+	flex: none;
+}
+.dispatch-tg-line-glyph path {
+	fill: none;
+	stroke: color-mix(in srgb, var(--tg-text2) 70%, transparent);
+	stroke-width: 1.2;
+}
+.dispatch-tg-line-glyph path.dashed {
+	stroke-dasharray: 2.5 2;
+}
+
+/* ---- the graph ---- */
+.dispatch-tg {
+	position: relative;
+	margin-top: 20px;
+}
+
+/* the day axis (dispatchTaskGraphView.ts draws it, dispatchDayAxis.ts says where): it stays on top while the rows
+   scroll, and slides sideways with the chart; its edges fade where there is more to slide to */
+.dispatch-tg-axis {
+	position: sticky;
+	top: 0;
+	z-index: 3;
+	height: 44px;
+	background: var(--tg-bg);
+}
+.dispatch-tg-axisview,
+.dispatch-tg-plot {
+	-webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--tg-fl, 0px), #000 calc(100% - var(--tg-fr, 0px)), transparent 100%);
+	mask-image: linear-gradient(90deg, transparent 0, #000 var(--tg-fl, 0px), #000 calc(100% - var(--tg-fr, 0px)), transparent 100%);
+}
+.dispatch-tg-axisview {
+	position: relative;
+	height: 44px;
+	overflow: hidden;
+}
+.dispatch-tg-axistrack {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 0;
+	height: 44px;
+	will-change: transform;
+}
+/* a day's cell: the whole head over the day; a click opens the day */
+.dispatch-tg-daycell {
+	position: absolute;
+	left: 0;
+	top: 0;
+	height: 44px;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-tg-daycell:not(.open):hover {
+	background: color-mix(in srgb, var(--tg-sel) 55%, transparent);
+}
+.dispatch-tg-daycell.open {
+	cursor: default;
+}
+.dispatch-tg-axis-title {
+	position: absolute;
+	left: 0;
+	top: 0;
+	font-size: 12px;
+	line-height: 16px;
+	color: var(--tg-text2);
+	white-space: nowrap;
+	pointer-events: none;
+}
+.dispatch-tg-axis-tick {
+	position: absolute;
+	left: 0;
+	top: 20px;
+	width: 0;
+	height: 24px;
+	pointer-events: none;
+}
+.dispatch-tg-axis-tick i {
+	position: absolute;
+	left: 0;
+	bottom: 0;
+	width: 1px;
+	height: 5px;
+	background: color-mix(in srgb, var(--tg-text2) 45%, transparent);
+}
+.dispatch-tg-axis-tick.edge i,
+.dispatch-tg-axis-tick.hour i {
+	height: 3px;
+	background: color-mix(in srgb, var(--tg-text2) 30%, transparent);
+}
+.dispatch-tg-axis-tick.day i {
+	display: none;
+}
+.dispatch-tg-axis-tick b {
+	position: absolute;
+	left: 0;
+	top: 0;
+	transform: translateX(-50%);
+	font-size: 11px;
+	line-height: 14px;
+	font-weight: 400;
+	white-space: nowrap;
+	color: var(--tg-text2);
+}
+.dispatch-tg-axis-tick.now b {
+	transform: translateX(-100%);
+	font-weight: 500;
+	color: var(--tg-text);
+}
+
+/* rows: absolutely placed by the layout (32 high, the fold 28 with 8 above) */
+.dispatch-tg-lanes {
+	position: relative;
+}
+.dispatch-tg-lane {
+	position: absolute;
+	left: 0;
+	right: 0;
+	height: 32px;
+	display: grid;
+	grid-template-columns: var(--tg-name) minmax(0, 1fr) var(--tg-now);
+	column-gap: 16px;
+	align-items: center;
+	border-radius: 8px;
+	transition: background-color 150ms ease, opacity 200ms ease;
+}
+.dispatch-tg.no-now .dispatch-tg-lane {
+	grid-template-columns: var(--tg-name) minmax(0, 1fr);
+}
+.dispatch-tg-lane:hover,
+.dispatch-tg-lane.hot {
+	background: color-mix(in srgb, var(--tg-sel) 60%, transparent);
+}
+.dispatch-tg-lane.dim {
+	opacity: .28;
+}
+/* a row leaving on a switch of scope or fold: its old self fading where it was */
+.dispatch-tg-lane.leaving,
+.dispatch-tg-fold.leaving {
+	pointer-events: none;
+}
+.dispatch-tg.dragging,
+.dispatch-tg.dragging * {
+	cursor: grabbing !important;
+}
+.dispatch-tg-name {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	padding-left: 12px;
+}
+.dispatch-tg-name-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dispatch-tg-count {
+	flex: none;
+	font-size: 11px;
+	color: color-mix(in srgb, var(--tg-text2) 70%, transparent);
+}
+.dispatch-tg-chart {
+	height: 32px;
+	cursor: grab;
+}
+.dispatch-tg-now {
+	min-width: 0;
+	height: 32px;
+	padding: 0 12px 0 0;
+	border: none;
+	background: transparent;
+	color: var(--tg-text2);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.dispatch-tg.no-now .dispatch-tg-now {
+	display: none;
+}
+.dispatch-tg-now-title {
+	color: var(--tg-text);
+}
+.dispatch-tg-now.done .dispatch-tg-now-title {
+	color: var(--tg-text2);
+}
+.dispatch-tg-now.lit,
+.dispatch-tg-now.lit .dispatch-tg-now-title {
+	color: var(--tg-text);
+}
+
+/* the fold: "No activity in 7 days" / "Not in this session" */
+.dispatch-tg-fold {
+	position: absolute;
+	left: 0;
+	height: 28px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 10px 0 12px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	color: color-mix(in srgb, var(--tg-text2) 85%, transparent);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-tg-fold:hover {
+	background: color-mix(in srgb, var(--tg-sel) 60%, transparent);
+}
+.dispatch-tg-fold .dispatch-tg-caret {
+	font-size: 12px;
+	transition: transform 200ms ease;
+}
+.dispatch-tg-fold.open .dispatch-tg-caret {
+	transform: rotate(90deg);
+}
+.dispatch-tg-fold-count {
+	margin-left: 2px;
+	font-size: 11px;
+	font-weight: 400;
+	color: color-mix(in srgb, var(--tg-text2) 70%, transparent);
+}
+
+/* the drawing over the chart column, and the marks' hover targets over it: a box that clips what slides out of
+   the column, 8 px taller than the rows each way (the pages draw it so; PLOT_BLEED) */
+.dispatch-tg-plot {
+	position: absolute;
+	top: -8px;
+	left: calc(var(--tg-name) + 16px);
+	overflow: hidden;
+	pointer-events: none;
+}
+.dispatch-tg-svg {
+	position: absolute;
+	left: 0;
+	top: 0;
+	overflow: visible;
+}
+.dispatch-tg-svg .band {
+	fill: var(--tg-band);
+}
+/* while rows open and close on a switch of scope or fold, nothing under them answers the pointer */
+.dispatch-tg-lanes.moving {
+	pointer-events: none;
+}
+.dispatch-tg-lanes.moving .dispatch-tg-hit {
+	pointer-events: none;
+}
+/* where the card on a mark hangs from: the row, 4 px over and under it, beside the mark */
+.dispatch-tg-anchor {
+	position: absolute;
+	width: 1px;
+	visibility: hidden;
+	pointer-events: none;
+}
+.dispatch-tg-svg .nowl {
+	stroke: color-mix(in srgb, var(--tg-text2) 45%, transparent);
+	stroke-width: 1;
+}
+.dispatch-tg-svg .ln {
+	stroke: var(--tg-line);
+	stroke-width: 1;
+	fill: none;
+	transition: stroke 150ms ease;
+}
+.dispatch-tg-svg .ln.idle {
+	stroke-dasharray: 2 3;
+}
+.dispatch-tg-svg .ln.hot {
+	stroke: color-mix(in srgb, var(--tg-text2) 80%, transparent);
+}
+.dispatch-tg-svg .dim {
+	opacity: .22;
+}
+/* a day opening cross-fades its one mark into its hours: --f is how visible this mark is */
+.dispatch-tg-svg .mk {
+	opacity: var(--f, 1);
+}
+.dispatch-tg-svg .mk.dim {
+	opacity: calc(.22 * var(--f, 1));
+}
+.dispatch-tg-svg .lk {
+	stroke: var(--tg-link);
+	stroke-width: 1;
+	fill: none;
+	transition: opacity 150ms ease, stroke 150ms ease;
+}
+.dispatch-tg-svg .lk.m {
+	opacity: 0;
+}
+.dispatch-tg-svg .lk.hot {
+	opacity: 1;
+	stroke: color-mix(in srgb, var(--tg-text2) 90%, transparent);
+}
+/* a line nobody wrote down (the order of the session's tasks): dashed, a step lighter */
+.dispatch-tg-svg .lk.inferred {
+	stroke: color-mix(in srgb, var(--tg-text2) 42%, transparent);
+	stroke-dasharray: 3 2;
+}
+.dispatch-tg-svg .route {
+	stroke: var(--tg-text);
+	stroke-width: 1.5;
+	fill: none;
+}
+.dispatch-tg-svg .mk {
+	fill: var(--tg-mark);
+	stroke: var(--tg-bg);
+	stroke-width: 1.5;
+	paint-order: stroke;
+}
+.dispatch-tg-svg .mk.o {
+	fill: var(--tg-bg);
+	stroke: var(--tg-text2);
+	stroke-width: 1.5;
+}
+.dispatch-tg-svg .mk.ctx {
+	opacity: calc(.22 * var(--f, 1));
+}
+.dispatch-tg-svg .mk.me {
+	fill: var(--tg-text);
+	stroke: var(--tg-bg);
+}
+.dispatch-tg-svg .mk.me.o {
+	fill: var(--tg-bg);
+	stroke: var(--tg-text);
+	stroke-width: 1.75;
+}
+.dispatch-tg-svg .end {
+	stroke: var(--tg-bg);
+	stroke-width: 2;
+	paint-order: stroke;
+}
+.dispatch-tg-svg .end.in_progress {
+	fill: var(--tg-green);
+}
+.dispatch-tg-svg .end.waiting {
+	fill: var(--tg-amber);
+}
+.dispatch-tg-svg .end.todo {
+	fill: var(--tg-bg);
+	stroke: var(--tg-gray);
+	stroke-width: 1.5;
+}
+/* on the focus day's band the ring round a mark and the inside of an open one are the stretch's colour, not the page's */
+.dispatch-tg-svg .mk.inb,
+.dispatch-tg-svg .mk.me.inb,
+.dispatch-tg-svg .end.inb:not(.todo) {
+	stroke: var(--tg-band);
+}
+.dispatch-tg-svg .mk.o.inb,
+.dispatch-tg-svg .mk.me.o.inb,
+.dispatch-tg-svg .end.todo.inb {
+	fill: var(--tg-band);
+}
+.dispatch-tg-svg .mk.o.inb {
+	stroke: var(--tg-text2);
+}
+.dispatch-tg-svg .mk.me.o.inb {
+	stroke: var(--tg-text);
+}
+/* the row pointed at (or its task anywhere on the page): the end a size up, a ring on the task's mark */
+.dispatch-tg-svg .end {
+	transition: r 150ms ease;
+}
+.dispatch-tg-svg .end.hot {
+	r: 5.5;
+}
+.dispatch-tg-svg .focus .ring {
+	fill: none;
+	stroke: color-mix(in srgb, var(--tg-text2) 70%, transparent);
+	stroke-width: 1.5;
+}
+/* an agent at work on it now: the in-progress ping (DESIGN.md: 1 s, scale 1 to 2, .75 to 0) */
+.dispatch-tg-svg .ping {
+	fill: none;
+	stroke: var(--tg-green);
+	stroke-width: 1.5;
+	transform-box: fill-box;
+	transform-origin: center;
+	animation: dispatch-tg-ping 1s cubic-bezier(0, 0, .2, 1) infinite;
+}
+@keyframes dispatch-tg-ping {
+	0% { transform: scale(1); opacity: .75; }
+	100% { transform: scale(2); opacity: 0; }
+}
+.dispatch-tg-hits {
+	position: absolute;
+	left: 0;
+	top: 8px;
+	width: 0;
+	height: 0;
+	will-change: transform;
+}
+.dispatch-tg-hit {
+	position: absolute;
+	left: 0;
+	top: 0;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+/* ---- the card on a mark: the sidebar's session card (sessionSummaryHover.css) with a status dot; a detail
+   card, so nothing on it is cut off: long titles wrap ---- */
+.dispatch-tg-card {
+	width: 340px;
+	cursor: default;
+}
+.dispatch-tg-card-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+.dispatch-tg-card-head > .dispatch-task-mark {
+	margin-top: 2px;
+}
+.dispatch-tg-card-text {
+	min-width: 0;
+}
+.dispatch-tg-card-title {
+	font-weight: 500;
+	overflow-wrap: anywhere;
+}
+.dispatch-tg-card-meta {
+	margin-top: 2px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-tg-card-icon-row .session-summary-hover-text {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.dispatch-tg-hash {
+	font-family: var(--monaco-monospace-font);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-tg-card-list {
+	gap: 2px;
+}
+.dispatch-tg-card-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: calc(100% + 12px);
+	min-height: 22px;
+	margin: 0 -6px;
+	padding: 0 6px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+/* the row pointed at: the focus look of a row, no colour (DESIGN.md「联动悬停」) */
+.dispatch-tg-card-row:hover {
+	background: color-mix(in srgb, var(--tg-sel, var(--vscode-list-inactiveSelectionBackground)) 60%, transparent);
+}
+.dispatch-tg-card-row-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.dispatch-tg-card-row-at {
+	flex: none;
+	margin-left: 8px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-tg-card-more {
+	padding-left: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-tg-card-why {
+	display: flex;
+	gap: 4px;
+	min-width: 0;
+	padding-left: 22px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-tg-card-why-text {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.dispatch-tg-card-inferred {
+	flex: none;
+}
+
+/* a task's details next to the graph (a row of a mark's card; the right-hand line): the hover card's look,
+   placed by the page in the nearest free spot, gone when the pointer leaves (kanban DESIGN.md「联动悬停」) */
+.dispatch-tg-detail {
+	position: absolute;
+	z-index: 2;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding: 8px 12px;
+	background: var(--vscode-editorHoverWidget-background);
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	border-radius: 5px;
+	box-shadow: var(--vscode-shadow-lg);
+	color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+	font-size: 12px;
+	line-height: 18px;
+	pointer-events: none;
+	opacity: 0;
+	transform: scale(.97);
+	transform-origin: right center;
+	visibility: hidden;
+	transition: opacity 100ms ease, transform 100ms ease, visibility 0s linear 100ms;
+}
+.dispatch-tg-detail.show {
+	opacity: 1;
+	transform: none;
+	visibility: visible;
+	transition: opacity 100ms ease, transform 100ms ease;
+}
+.dispatch-tg-detail.measure {
+	visibility: hidden;
+	transition: none;
+}
+/* in the right-hand column: from its left edge, whole rows tall, over the rows it covers (6 px above and below,
+   so a title of two lines, who and when and one more line are three rows) */
+.dispatch-tg-detail.column {
+	padding-top: 6px;
+	padding-bottom: 6px;
+	transform-origin: left top;
+}
+/* the card's head: the status dot, then the title (two lines at most) and one line of who and when */
+.dispatch-tg-detail-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	min-width: 0;
+}
+.dispatch-tg-detail-head > .dispatch-task-mark {
+	margin-top: 2.5px;
+}
+.dispatch-tg-detail-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+.dispatch-tg-detail-title {
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 19px;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+.dispatch-tg-detail-meta {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-tg-detail-row span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dispatch-tg-detail-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	margin-top: 1px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-tg-detail-row .codicon {
+	flex: none;
+	font-size: 14px;
+}
+.dispatch-tg-detail-deliverables {
+	gap: 10px;
+}
+.dispatch-tg-detail-deliverable {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+}
+/* ---- waiting and empty ---- */
+.dispatch-tg-skel {
+	display: flex;
+	flex-direction: column;
+	margin-top: 20px;
+	padding-top: 44px;
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+.dispatch-tg-skel.show {
+	opacity: 1;
+}
+.dispatch-tg-skel-row {
+	height: 32px;
+	display: grid;
+	grid-template-columns: var(--tg-name) minmax(0, 1fr) var(--tg-now);
+	column-gap: 16px;
+	align-items: center;
+	padding-left: 12px;
+}
+.dispatch-tg-skel-row i {
+	display: block;
+	height: 10px;
+	border-radius: 5px;
+	background: linear-gradient(90deg, var(--vscode-list-inactiveSelectionBackground) 0%,
+		color-mix(in srgb, var(--vscode-list-inactiveSelectionBackground) 30%, var(--session-view-background, var(--vscode-editor-background))) 50%,
+		var(--vscode-list-inactiveSelectionBackground) 100%);
+	background-size: 200% 100%;
+	animation: dispatch-tg-shimmer 2s linear infinite;
+}
+@keyframes dispatch-tg-shimmer {
+	0% { background-position: 100% 0; }
+	100% { background-position: -100% 0; }
+}
+.dispatch-tg-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	padding: 40px 0 16px;
+}
+.dispatch-tg-empty-icon.codicon {
+	font-size: 24px;
+	color: var(--vscode-descriptionForeground);
+	opacity: .6;
+	margin-bottom: 8px;
+}
+.dispatch-tg-empty-title {
+	font-size: 13px;
+	font-weight: 500;
+}
+.dispatch-tg-empty-text {
+	max-width: 46ch;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-tg-empty-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	margin-top: 12px;
+	padding: 0 12px;
+	border: none;
+	border-radius: 999px;
+	background: var(--vscode-list-inactiveSelectionBackground);
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-tg-empty-btn:hover {
+	background: color-mix(in srgb, var(--vscode-foreground) 10%, var(--vscode-list-inactiveSelectionBackground));
+}
+.dispatch-tg-empty-btn:active {
+	transform: translateY(1px);
+}
+.dispatch-tg-empty-btn .codicon {
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-tg-error {
+	padding: 24px 12px;
+	color: var(--vscode-descriptionForeground);
+}
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-tg-svg .ping {
+		animation: none;
+		opacity: .3;
+	}
+	.dispatch-tg-detail,
+	.dispatch-tg-detail.show,
+	.dispatch-tg-svg .end {
+		transition: none;
+	}
+	.dispatch-tg-skel-row i {
+		animation: none;
+	}
+	.dispatch-tg-skel {
+		transition: none;
+	}
+}
+
+/* the task page */
+.dispatch-task-crumbs {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-task-crumbs .codicon {
+	font-size: 12px;
+}
+
+.dispatch-task-crumb {
+	height: 24px;
+	padding: 0 8px;
+	margin-left: -8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.dispatch-task-crumb:hover {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-task-crumb-here {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-task-meta {
+	display: flex;
+	flex-direction: column;
+	padding: 0 12px;
+}
+
+.dispatch-task-meta-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	color: var(--vscode-foreground);
+	font-size: 13px;
+}
+
+.dispatch-task-meta-row {
+	display: flex;
+	align-items: center;
+	height: 28px;
+	font-size: 13px;
+}
+
+.dispatch-task-meta-key {
+	flex: none;
+	width: 88px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-task-section {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.dispatch-task-section-head {
+	height: 28px;
+	line-height: 28px;
+	padding: 0 12px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-task-request {
+	padding: 0 12px;
+	white-space: pre-wrap;
+	line-height: 1.6;
+	font-size: 13px;
+	user-select: text;
+}
+
+.dispatch-task-page-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 32px;
+	padding: 0 12px;
+	border-radius: 20px;
+	font-size: 13px;
+}
+
+.dispatch-task-page-row .codicon {
+	flex: none;
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-task-page-row .text {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-task-page-row .kind {
+	flex: none;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-task-page-row .hash {
+	flex: none;
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-task-page-row.link {
+	cursor: pointer;
+	outline: none;
+}
+
+.dispatch-task-page-row.link:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.dispatch-task-page-row.link:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-task-page-row.step {
+	min-height: 28px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-task-page-row.step.active {
+	color: var(--vscode-foreground);
+}
+
+/* a step's circle (planMark, DESIGN.md「符号表」): the grey filled check done, the large ring where it is and not started */
+.dispatch-task-page-row.step .dispatch-plan-circle {
+	display: inline-flex;
+	flex: none;
+}
+
+.dispatch-task-page-row.step.done .text {
+	text-decoration: line-through;
+	text-decoration-color: color-mix(in srgb, var(--vscode-descriptionForeground) 50%, transparent);
+}
+
+.dispatch-task-page-none {
+	padding: 4px 12px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* a project's Archive (dispatchTaskArchive.ts): the Waiting for you page's rows (dispatchWaiting.css),
+   the task's status dot where a session has its status grid, the date where it has the age */
+.dispatch-task-archive-page .dispatch-projects-breadcrumb {
+	margin-bottom: -4px;
+}
+.custom-view-content.dispatch-task-archive-page:focus,
+.custom-view-content.dispatch-task-archive-page:focus-visible {
+	outline: none !important;
+}
+.dispatch-task-archive-row {
+	cursor: pointer;
+	outline: none;
+}
+.dispatch-task-archive-row:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+.dispatch-task-archive-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+.dispatch-waiting-time.dispatch-task-archive-time {
+	width: auto;
+	min-width: 32px;
+	padding-right: 4px;
+}
+
+/* a deliverable with a Where to look: the row, then the whole block under it (DispatchWhereViewer) */
+.dispatch-task-page-row .dispatch-where-icon {
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-task-page-where {
+	padding: 4px 12px 12px;
+}
+
+/* One task's details on a point (task-p0za2, 「卡片别贴边」): the date line, title, thing, the field list and Open task
+   share one left edge, 12 in from the card's border on every side (DESIGN.md: a small card's padding is 12), the
+   same as Open task's distance to the right and bottom border. The hover gives HTML content no padding of its own. */
+.dispatch-hover-card.dispatch-tg-task-card {
+	padding: 12px;
+	gap: 8px;
+}
+.dispatch-tg-task-card > :is(.dispatch-detail-meta, .dispatch-hover-head, .dispatch-hover-note, .dispatch-detail-fields, .dispatch-hover-actions) {
+	padding-left: 0;
+	padding-right: 0;
+}
+.dispatch-tg-task-card > .dispatch-hover-head {
+	min-height: 0;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+.dispatch-tg-task-card > .dispatch-hover-note:last-child {
+	padding-bottom: 0;
+}
+.dispatch-tg-task-card > .dispatch-hover-actions {
+	padding-top: 4px;
+	padding-bottom: 0;
+}

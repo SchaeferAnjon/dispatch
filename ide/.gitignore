@@ -1,0 +1,15 @@
+VSCode-darwin-*/
+vscode-reh-darwin-*/
+.cache/
+updates/
+__pycache__/
+staging/
+.build.lock
+# Dispatch's parts in the development build (parts.sh --dev puts them into the source tree it runs from)
+vscode/extensions/dispatch-bridge/
+vscode/extensions/theme-dispatch/
+vscode/extensions/open-remote-ssh/
+vscode/agent-sdks/
+vscode/tools/
+vscode/dispatch-cli/
+vscode/whats-new/

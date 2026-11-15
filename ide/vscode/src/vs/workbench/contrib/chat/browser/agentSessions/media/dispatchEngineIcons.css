@@ -1,0 +1,15 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Dispatch's icon font (dispatchEngineIcons.ts). The icon registry gives
+ *  `dispatch-opencode` a codicon fallback; this points it at the glyph instead.
+ *--------------------------------------------------------------------------------------------*/
+
+@font-face {
+	font-family: "dispatch-icons";
+	font-display: block;
+	src: url("./dispatch-icons.ttf") format("truetype");
+}
+
+.codicon.codicon-dispatch-opencode::before {
+	font-family: "dispatch-icons" !important;
+	content: "\e900" !important;
+}

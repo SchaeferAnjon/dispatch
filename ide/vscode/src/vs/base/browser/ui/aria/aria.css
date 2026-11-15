@@ -1,0 +1,20 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Dispatch IDE: hidden as the standalone editor hides it (standalone-tokens.css). With only left:-999em a long
+   message (a whole chat reply, chatAccessibilityService) lays out wider than 999em and its lines run back into the
+   window; in the Agents window they showed across and under the bottom bar (kanban task-5gpxm). */
+.monaco-aria-container {
+	position: absolute; /* try to hide from window but not from screen readers */
+	left:-999em;
+	top: 0;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}

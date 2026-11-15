@@ -1,0 +1,122 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the error notice above the input (OpenCode version, dispatchOpenCodeVersion.contribution.ts).
+ *  DESIGN.md (designer review 2026-09-29):
+ *   1. one shell: the notice and the input are one rounded rectangle, top corners --r-win (24), one 1px
+ *      line in the input's own colour (focus colour while the input is focused), nothing drawn between them
+ *   2. title 13/500, text 12 --text-2, the icon stays --text-2 grey
+ *   3. the button is the xs capsule: 24 high, 8 on the sides, 12/500
+ *   4. the input does not move when the notice comes or goes: it grows upward (--dispatch-notice-height)
+ *   5. "install or update" wait: a 4px capsule bar with a band sweeping to and fro (1.5s linear)
+ *  The workbench tints an error notice's border and wash red and rounds its top corners with the
+ *  workbench radius; this file overrides that for every error notice above the chat input.
+ *--------------------------------------------------------------------------------------------*/
+
+/* 1. the notice is the top of the input's shell */
+.chat-input-notice.chat-input-notification-widget.severity-error {
+	padding: 12px 16px;
+	border-color: var(--vscode-agentsChatInput-border, var(--vscode-input-border, transparent));
+	border-radius: 24px 24px 0 0;
+	background-color: var(--vscode-agentsChatInput-background, var(--vscode-input-background));
+}
+
+/* the notice takes focus back after a click on its button; the workbench's inset focus ring ([tabindex]:focus) would draw a
+   line along its bottom edge, on the seam. The button has its own ring and the line follows the input's focus. */
+.chat-input-notice.chat-input-notification-widget.severity-error:focus {
+	outline: none;
+}
+
+/* on the new-session page the input paints its fill as a solid layer (the side bar colour under the input
+   colour, aquarium-active) so the page's gradient does not shine through; the notice paints the same two
+   layers, or in the dark theme (fill 4% white) it would show the page and not match the input */
+.monaco-workbench .part.sessionspart.aquarium-active .new-chat-input-container .chat-input-notice.chat-input-notification-widget.severity-error {
+	background-color: var(--vscode-sideBar-background);
+	background-image: linear-gradient(var(--vscode-agentsChatInput-background, var(--vscode-input-background)), var(--vscode-agentsChatInput-background, var(--vscode-input-background)));
+}
+
+.chat-input-stack.chat-input-stack-input-focused > .chat-input-notification-container .chat-input-notice.chat-input-notification-widget.severity-error {
+	border-color: var(--vscode-agentsChatInput-focusBorder, var(--vscode-focusBorder));
+}
+
+.chat-input-stack.chat-input-stack-input-focused.chat-input-stack-input-working > .chat-input-notification-container .chat-input-notice.chat-input-notification-widget.severity-error {
+	border-color: color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
+}
+
+/* ... and the input below it gives up its top corners and its top line. The top border is dropped with a
+   1px top padding in its place (the input keeps its height; a transparent top border would leave a notch
+   where the side lines start, the mitre of a drawn and an undrawn side). */
+.agent-sessions-workbench .chat-input-stack:has(> .chat-input-notification-container.chat-input-stack-docked .severity-error) .new-chat-input-area,
+.agent-sessions-workbench .chat-input-stack:has(> .chat-input-notification-container.chat-input-stack-docked .severity-error) .chat-input-container {
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+	border-top-width: 0;
+	padding-top: 1px;
+}
+
+/* 2. type: the icon glyph is already --text-2 grey, the workbench only tints its box */
+.chat-input-notice.chat-input-notification-widget.severity-error .chat-input-notification-title {
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.chat-input-notice.chat-input-notification-widget.severity-error .chat-input-notification-description {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* 3. xs button; the border is drawn inline by the workbench button, so it is dropped with !important
+   to get 8 on the sides */
+.chat-input-notice.chat-input-notification-widget.severity-error .chat-input-notification-action-button {
+	box-sizing: border-box;
+	height: 24px;
+	min-height: 24px;
+	padding: 0 8px;
+	border-width: 0 !important;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 24px;
+}
+
+/* 4. the new-session page centres its content: a notice above the input would push the input down by
+   half its height. The contribution publishes the notice's height; a negative top margin of that height
+   moves the content up by all of it, the notice takes the room, and the input stays where it was, the
+   picker and the notice make room above. (`top` is taken: newChatInput.ts sets it inline for the
+   attachment row.) */
+.agent-sessions-workbench .new-chat-widget-content {
+	margin-top: calc(-1 * var(--dispatch-notice-height, 0px));
+}
+
+/* 5. wait bar (DESIGN.md "install or update": 4 high, capsule, --fill on a track, 1.5s linear loop) */
+.chat-input-notification-widget .chat-input-notification-progress {
+	position: relative;
+	flex-shrink: 0;
+	height: 4px;
+	margin: 6px 0 0 22px;
+	overflow: hidden;
+	border-radius: 999px;
+	/* --hair: --chip (f2f1f0) is nearly the notice's own fill (f5f5f4) and the track would disappear */
+	background-color: var(--vscode-input-border, var(--vscode-toolbar-hoverBackground));
+}
+
+.chat-input-notification-widget .chat-input-notification-progress-band {
+	position: absolute;
+	inset-block: 0;
+	left: 0;
+	width: 30%;
+	border-radius: 999px;
+	background-color: var(--vscode-progressBar-background, var(--vscode-button-background));
+	animation: dispatch-notice-sweep 1.5s linear infinite alternate;
+}
+
+/* the band is 30% of the track: 70% of the track is 7/3 of its own width */
+@keyframes dispatch-notice-sweep {
+	from { transform: translateX(0); }
+	to { transform: translateX(calc(100% * 7 / 3)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.chat-input-notification-widget .chat-input-notification-progress-band {
+		animation: none;
+		left: 35%;
+	}
+}

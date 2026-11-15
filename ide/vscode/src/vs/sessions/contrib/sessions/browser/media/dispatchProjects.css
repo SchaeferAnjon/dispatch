@@ -1,0 +1,751 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Projects (dispatchProjects.ts), after kanban DESIGN.md and the Waiting for you page
+ *  next to it: flat, capsules for filters and buttons, rows with a radius like the session list,
+ *  12px grey group heads. Colour only where DESIGN.md allows it: a project's state (the green / amber
+ *  dot, the timeline's end). The timeline's marks are grey and dark.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-projects-page {
+	outline: none;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding-bottom: 24px;
+	--dispatch-projects-green: var(--dispatch-state-working);
+	--dispatch-projects-amber: var(--dispatch-state-waiting);
+	--dispatch-projects-hair: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	--dispatch-projects-sel: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--vscode-foreground) 6%, transparent));
+	--dispatch-projects-band: color-mix(in srgb, var(--dispatch-projects-sel) 40%, transparent);
+	--dispatch-projects-hover: color-mix(in srgb, var(--dispatch-projects-sel) 60%, transparent);
+}
+
+/* ---- toolbar: List / Timeline on the left, filters on the right ---- */
+.dispatch-projects-toolbar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.dispatch-projects-modes,
+.dispatch-projects-filters {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 2px;
+}
+.dispatch-projects-spacer {
+	flex: 1 1 auto;
+}
+/* List / Timeline and the filters: "one of several" switches, shaped like the side pane's tabs and the
+   Tasks tab's This session | project (DESIGN.md 例外: the tab's small radius, not a capsule) */
+.dispatch-projects-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 8px;
+	border-radius: var(--vscode-cornerRadius-small, 4px);
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+	transition: background-color 150ms ease, color 150ms ease;
+}
+.dispatch-projects-chip:hover {
+	background-color: var(--modern-ui-editor-tab-hover-background, var(--vscode-list-hoverBackground));
+	color: var(--vscode-foreground);
+}
+.dispatch-projects-chip.selected,
+.dispatch-projects-chip.selected:hover {
+	background-color: var(--modern-ui-editor-tab-active-background, var(--vscode-list-inactiveSelectionBackground));
+	color: var(--vscode-foreground);
+}
+.dispatch-projects-chip-count {
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-projects-chip:focus-visible,
+.dispatch-projects-btn:focus-visible,
+.dispatch-projects-more:focus-visible,
+.dispatch-projects-crumb:focus-visible,
+.dispatch-projects-row:focus-visible,
+.dispatch-project-item.clickable:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+.dispatch-projects-empty {
+	padding: 24px 12px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 13px;
+}
+.dispatch-projects-empty.small {
+	padding: 4px 12px 8px;
+	font-size: 12px;
+}
+
+/* Keep this slot when the initial read finishes so the project rows stay still. */
+.dispatch-projects-index {
+	min-height: 28px;
+	padding: 0 12px;
+	visibility: hidden;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+.dispatch-projects-index.visible { visibility: visible; }
+.dispatch-projects-index-track {
+	height: 2px;
+	margin-top: 8px;
+	background: var(--vscode-widget-border);
+	overflow: hidden;
+}
+.dispatch-projects-index-track > span {
+	display: block;
+	height: 100%;
+	background: var(--vscode-descriptionForeground);
+	transition: width 150ms ease;
+}
+.dispatch-projects-index-track.indeterminate > span {
+	width: 30%;
+	animation: dispatch-projects-reading 1s ease-in-out infinite alternate;
+}
+.dispatch-projects-index-skeleton { display: flex; flex-direction: column; gap: 16px; padding: 12px; }
+.dispatch-projects-index-skeleton > span {
+	height: 12px;
+	width: 60%;
+	background: var(--vscode-descriptionForeground);
+	opacity: .12;
+	border-radius: var(--vscode-cornerRadius-small, 4px);
+}
+.dispatch-projects-index-skeleton > span:nth-child(2) { width: 45%; }
+@keyframes dispatch-projects-reading { to { transform: translateX(230%); } }
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-projects-index-track > span { animation: none; transition: none; }
+}
+
+/* ---- the list ---- */
+.dispatch-projects-body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.dispatch-projects-group {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.dispatch-projects-group-head {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	height: 28px;
+	line-height: 28px;
+	padding: 0 12px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-head-count {
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-projects-row {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 7px 12px 8px;
+	border-radius: 14px;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-projects-row:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-projects-row.single {
+	padding-top: 5px;
+	padding-bottom: 5px;
+}
+.dispatch-projects-row.archived {
+	opacity: 0.6;
+}
+.dispatch-projects-row-line {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	height: 22px;
+	font-size: 13px;
+}
+.dispatch-projects-state {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+}
+.dispatch-projects-page .dispatch-dot {
+	--dispatch-dot-size: 8px;
+}
+.dispatch-projects-name {
+	flex: none;
+	max-width: 40%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+.dispatch-projects-path {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-counts,
+.dispatch-projects-time {
+	flex: none;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.dispatch-projects-time {
+	width: 48px;
+	text-align: right;
+}
+.dispatch-projects-machine {
+	flex: none;
+	height: 18px;
+	line-height: 18px;
+	padding: 0 8px;
+	border-radius: 999px;
+	background-color: var(--vscode-list-hoverBackground);
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+	font-weight: 500;
+	white-space: nowrap;
+}
+.dispatch-projects-row:hover .dispatch-projects-machine {
+	background-color: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+}
+.dispatch-projects-now {
+	padding-left: 22px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-btn,
+.dispatch-projects-more {
+	flex: none;
+	height: 24px;
+	padding: 0 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-projects-btn:hover,
+.dispatch-projects-more:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-projects-btn:active,
+.dispatch-projects-more:active {
+	transform: translateY(1px);
+}
+.dispatch-projects-btn:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+.dispatch-projects-more {
+	align-self: flex-start;
+	margin: 4px 0 0 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ---- the timeline (kanban design/projects-page/timeline-v2/): the shared axis head, a 32 px row per
+   project (name | track | one line), grey session dots above the line, dark commit squares below it,
+   the end green or amber; today's stretch a shade darker, the zones' edges and Now as hairlines ---- */
+.dispatch-projects-tl {
+	position: relative;
+	user-select: none;
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-projects-tl-zones {
+	position: absolute;
+	top: 40px;
+	bottom: 0;
+	pointer-events: none;
+}
+.dispatch-projects-tl-today {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	background-color: var(--dispatch-projects-band);
+}
+.dispatch-projects-tl-bound,
+.dispatch-projects-tl-nowline {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background-color: var(--dispatch-projects-hair);
+}
+.dispatch-projects-tl-nowline {
+	left: 100%;
+	background-color: color-mix(in srgb, var(--vscode-descriptionForeground) 45%, transparent);
+}
+.dispatch-projects-tl-axis {
+	height: 44px;
+}
+.dispatch-projects-tl-rows,
+.dispatch-projects-tl-quiet-rows {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.dispatch-projects-tl-rows {
+	margin-top: 4px;
+}
+.dispatch-projects-tl-row {
+	display: grid;
+	column-gap: 12px;
+	align-items: center;
+	height: 32px;
+	border-radius: 20px;
+	transition: background-color 150ms ease;
+}
+.dispatch-projects-tl-row[role="button"] {
+	cursor: pointer;
+}
+.dispatch-projects-tl-row[role="button"]:hover,
+.dispatch-projects-tl-row[role="button"].hot {
+	background-color: var(--dispatch-projects-hover);
+}
+.dispatch-projects-tl-row:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: -2px;
+}
+.dispatch-projects-tl-row.archived {
+	opacity: 0.6;
+}
+.dispatch-projects-tl-name {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	padding-left: 12px;
+	font-size: 13px;
+	color: var(--vscode-foreground);
+}
+.dispatch-projects-tl-row.unregistered .dispatch-projects-tl-label {
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-tl-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dispatch-projects-tl-track {
+	position: relative;
+	height: 32px;
+}
+.dispatch-projects-tl-line {
+	position: absolute;
+	top: 15px;
+	height: 1px;
+	background-color: color-mix(in srgb, var(--vscode-descriptionForeground) 35%, transparent);
+}
+.dispatch-projects-tl-mk {
+	position: absolute;
+	transform: translate(-50%, -50%);
+	transition: box-shadow 150ms ease;
+}
+/* the mark's hover target is a few px bigger than the mark */
+.dispatch-projects-tl-mk::before {
+	content: '';
+	position: absolute;
+	inset: -6px;
+}
+.dispatch-projects-tl-mk.dot {
+	top: 10px;
+	border-radius: 50%;
+	background-color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-tl-mk.sq {
+	top: 22px;
+	border-radius: 1.5px;
+	background-color: var(--vscode-foreground);
+}
+.dispatch-projects-tl-mk.s1 { width: 4px; height: 4px; }
+.dispatch-projects-tl-mk.s2 { width: 6px; height: 6px; }
+.dispatch-projects-tl-mk.s3 { width: 8px; height: 8px; }
+.dispatch-projects-tl-mk:hover,
+.dispatch-projects-tl-mk.ring {
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-descriptionForeground) 25%, transparent);
+}
+.dispatch-projects-tl-end {
+	position: absolute;
+	top: 16px;
+	left: 100%;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	transform: translate(-50%, -50%);
+}
+.dispatch-projects-tl-end.running {
+	background-color: var(--dispatch-projects-green);
+}
+.dispatch-projects-tl-end.ring {
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-descriptionForeground) 25%, transparent);
+}
+.dispatch-projects-tl-end.waiting {
+	background-color: var(--dispatch-projects-amber);
+}
+/* an agent at work: the in-progress ping (DESIGN.md: 1 s, scale 1 to 2, .75 to 0) */
+.dispatch-projects-tl-end.running::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
+	background-color: var(--dispatch-projects-green);
+	opacity: 0.75;
+	animation: dispatch-projects-ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes dispatch-projects-ping {
+	to { transform: scale(2); opacity: 0; }
+}
+.dispatch-projects-tl-status {
+	min-width: 0;
+	padding: 0 12px 0 16px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	transition: color 150ms ease;
+}
+.dispatch-projects-tl-status.lit {
+	color: var(--vscode-foreground);
+}
+
+/* "No activity in 14 days": the rows with nothing in the window, folded (the Task graph's fold) */
+.dispatch-projects-tl-quiet {
+	margin-top: -4px;
+}
+.dispatch-projects-tl-fold {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	padding: 0 12px 0 10px;
+	border: none;
+	border-radius: 20px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.dispatch-projects-tl-fold:disabled {
+	cursor: default;
+}
+/* a click keeps no ring (the workbench outlines every focused button) */
+.dispatch-projects-tl-fold:focus:not(:focus-visible) {
+	outline: none;
+}
+.dispatch-projects-tl-fold:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: -2px;
+}
+.dispatch-projects-tl-caret {
+	font-size: 12px;
+	transition: transform 200ms ease;
+}
+.dispatch-projects-tl-quiet.open .dispatch-projects-tl-caret {
+	transform: rotate(90deg);
+}
+.dispatch-projects-tl-fold-count {
+	font-size: 11px;
+	font-weight: 400;
+	opacity: 0.7;
+}
+.dispatch-projects-tl-quiet-body {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+.dispatch-projects-tl-quiet.open .dispatch-projects-tl-quiet-body {
+	grid-template-rows: 1fr;
+}
+.dispatch-projects-tl-quiet-rows {
+	min-height: 0;
+	overflow: hidden;
+}
+.dispatch-projects-tl-quiet.open .dispatch-projects-tl-quiet-rows {
+	padding-top: 4px;
+}
+
+.dispatch-projects-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px;
+	margin-top: 8px;
+	padding: 0 12px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.dispatch-projects-legend-mark {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+}
+.dispatch-projects-legend-mark.session { background-color: var(--vscode-descriptionForeground); }
+.dispatch-projects-legend-mark.commit { width: 6px; height: 6px; border-radius: 1.5px; background-color: var(--vscode-foreground); }
+.dispatch-projects-legend-mark.running { background-color: var(--dispatch-projects-green); }
+.dispatch-projects-legend-mark.waiting { background-color: var(--dispatch-projects-amber); }
+
+/* the card on a mark: when and how many, then a line per session or commit */
+.dispatch-projects-card {
+	min-width: 220px;
+	max-width: 360px;
+	cursor: default;
+}
+.dispatch-projects-card-head {
+	padding: 8px 12px 4px;
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-card-list {
+	display: flex;
+	flex-direction: column;
+	padding: 0 12px 8px;
+	font-size: 12px;
+}
+.dispatch-projects-card-row {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	min-width: 0;
+	line-height: 1.5;
+}
+.dispatch-projects-card-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	color: var(--vscode-foreground);
+}
+.dispatch-projects-card-title.muted {
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-card-hash {
+	flex: none;
+	font-family: var(--monaco-monospace-font);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-card-at {
+	flex: none;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-projects-card-more {
+	margin-top: -4px;
+	padding: 0 12px 8px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ---- a project's page ---- */
+.dispatch-projects-breadcrumb {
+	display: flex;
+	align-items: center;
+	height: 28px;
+	margin-top: -8px;
+	padding: 0 12px;
+}
+.dispatch-projects-crumb {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	height: 24px;
+	padding: 0 6px 0 2px;
+	margin-left: -2px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: color 150ms ease;
+}
+.dispatch-projects-crumb:hover {
+	color: var(--vscode-foreground);
+}
+.dispatch-projects-crumb-sep {
+	font-size: 12px;
+	opacity: 0.4;
+}
+.dispatch-projects-crumb:hover .dispatch-projects-crumb-sep {
+	opacity: 1;
+}
+.dispatch-project-body {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+.dispatch-project-section {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.dispatch-project-columns {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+	gap: 20px 24px;
+}
+.dispatch-project-nowline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 12px;
+	font-size: 13px;
+	line-height: 22px;
+	color: var(--vscode-foreground);
+}
+.dispatch-project-summary {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	overflow: hidden;
+	padding: 2px 12px 4px;
+	font-size: 14px;
+	line-height: 1.7;
+	color: var(--vscode-foreground);
+}
+.dispatch-project-chart {
+	padding: 4px 12px 0;
+}
+.dispatch-project-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 32px;
+	padding: 0 12px;
+	border-radius: 20px;
+	font-size: 13px;
+	transition: background-color 150ms ease;
+}
+.dispatch-project-item.clickable {
+	cursor: pointer;
+}
+.dispatch-project-item.clickable:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-project-item-icon {
+	flex: none;
+	width: 16px;
+	font-size: 14px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-project-item .dispatch-projects-state {
+	margin: 0 1px;
+}
+.dispatch-project-item-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-foreground);
+}
+.dispatch-project-item-meta,
+.dispatch-project-item-time {
+	flex: none;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+.dispatch-project-item-time {
+	width: 48px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+/* the "Projects" row under Automations in the sessions list (sessionsList.ts): the list's own section row; its
+   toolbar is + (Add Project) on hover, as Automations' */
+.agent-sessions-viewpane .session-section.dispatch-projects-section .session-section-count {
+	display: none;
+}
+/* a project's Tasks: All N and Archive N side by side (the Archive is the tasks before the last 30 days) */
+.dispatch-project-more-row {
+	display: flex;
+	gap: 8px;
+}
+.dispatch-project-more-row > .dispatch-projects-more + .dispatch-projects-more {
+	margin-left: 0;
+}
+
+/* the projects under the Projects row sit one level in (dispatchProjectIndent.ts, task-e1qsa): the whole row
+   moves (its hover and selection with it), 12px past the rows above. The sessions under a project then give back 6px
+   of their own left padding, so the indent does not pile up into a blank strip left of every title. */
+.agent-sessions-viewpane .sessions-list-control .monaco-list-row.dispatch-in-project {
+	padding-left: 20px;
+	background-clip: content-box;
+}
+.agent-sessions-viewpane .sessions-list-control .monaco-list-row.dispatch-in-project .session-item {
+	padding-left: 6px;
+}
+.agent-sessions-viewpane .sessions-list-control .monaco-list-row.dispatch-in-project .session-chat-item {
+	padding-left: 30px;
+}
+
+/* a task's circle on the project page is a checkbox: hover shows the check, a click closes the task */
+.dispatch-project-item-check {
+	flex: none;
+	display: inline-flex;
+	width: 16px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+}
+.dispatch-project-item-check .dispatch-project-item-icon.hover,
+.dispatch-project-item-check:hover .dispatch-project-item-icon:not(.hover),
+.dispatch-project-item.done .dispatch-project-item-check .dispatch-project-item-icon:not(.hover) {
+	display: none;
+}
+.dispatch-project-item-check:hover .dispatch-project-item-icon.hover,
+.dispatch-project-item.done .dispatch-project-item-check .dispatch-project-item-icon.hover {
+	display: inline-block;
+	color: var(--vscode-foreground);
+}
+.dispatch-project-item.done .dispatch-project-item-title {
+	text-decoration: line-through;
+	color: var(--vscode-descriptionForeground);
+}

@@ -1,0 +1,14 @@
+.dispatch-machine-connecting {
+ position: absolute; z-index: 100; display: flex; align-items: center; justify-content: center; flex-direction: column;
+ gap: 12px; box-sizing: border-box; padding: 32px; color: var(--vscode-foreground); background: var(--vscode-editor-background);
+}
+.dispatch-machine-connecting > .codicon { font-size: 24px; color: var(--vscode-descriptionForeground); }
+.dispatch-machine-connecting h2 { margin: 0; font: inherit; font-size: 17px; font-weight: 600; }
+.dispatch-machine-step { margin: 0; font-size: 12px; line-height: 1.5; color: var(--vscode-descriptionForeground); max-width: 480px; overflow-wrap: anywhere; text-align: center; }
+.dispatch-machine-actions { display: flex; gap: 8px; }
+.dispatch-remote-lost { position: absolute; z-index: 101; display: flex; align-items: center; gap: 12px; box-sizing: border-box; height: 36px; padding: 0 16px; background: var(--vscode-sideBar-background); color: var(--vscode-descriptionForeground); font-size: 12px; }
+.dispatch-remote-lost > span { flex: 1; }
+.dispatch-machine-connecting button, .dispatch-remote-lost button { height: 24px; padding: 0 12px; border: 1px solid color-mix(in srgb, var(--vscode-foreground) 16%, transparent); border-radius: 999px; background: transparent; color: var(--vscode-foreground); font: inherit; font-size: 12px; cursor: pointer; }
+.dispatch-machine-connecting button:hover, .dispatch-remote-lost button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.dispatch-machine-connecting button:focus-visible, .dispatch-remote-lost button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.dispatch-machine-unavailable > .monaco-grid-view .part:not(.titlebar):not(.statusbar) { opacity: .5; pointer-events: none; }

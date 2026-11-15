@@ -1,0 +1,92 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Find Skills on the Customizations overview. The input is the overview's own input
+ *  row; the results are the Skills list's rows in the Skills list's bordered box.
+ *--------------------------------------------------------------------------------------------*/
+
+.ai-customization-management-editor .dispatch-find-skills-input-row {
+	margin-top: 0;
+	gap: 8px;
+}
+
+.ai-customization-management-editor .dispatch-find-skills-search-icon {
+	flex-shrink: 0;
+	color: var(--vscode-descriptionForeground);
+}
+
+.ai-customization-management-editor .dispatch-find-skills-results {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size60);
+}
+
+.ai-customization-management-editor .dispatch-find-skills-results:empty {
+	display: none;
+}
+
+.ai-customization-management-editor .dispatch-find-skills-status {
+	margin: 0;
+	font-size: var(--vscode-agents-fontSize-body2);
+	line-height: 16px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* a group header like the Skills page's (Workspace, User, Built-in), one step smaller */
+.ai-customization-management-editor .dispatch-find-skills-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: var(--vscode-spacing-size60);
+	font-size: var(--vscode-fontSize-body1);
+	font-weight: var(--vscode-fontWeight-semiBold);
+	color: var(--vscode-foreground);
+}
+
+.ai-customization-management-editor .dispatch-find-skills-group:first-child {
+	margin-top: 0;
+}
+
+.ai-customization-management-editor .dispatch-find-skills-group-count {
+	font-size: var(--vscode-fontSize-label3);
+	font-weight: normal;
+	color: var(--vscode-descriptionForeground);
+	background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+	border-radius: 8px;
+	padding: 0 6px;
+	line-height: 16px;
+}
+
+/* the Skills list's box: one border, rows separated by a hairline */
+.ai-customization-management-editor .dispatch-find-skills-list {
+	display: flex;
+	flex-direction: column;
+	border: var(--vscode-strokeThickness) solid var(--vscode-agentsPanel-border);
+	border-radius: var(--vscode-cornerRadius-medium);
+	overflow: hidden;
+}
+
+.ai-customization-management-editor .dispatch-find-skills-list .ai-customization-list-item {
+	border-radius: 0;
+	min-height: 44px;
+	box-sizing: border-box;
+}
+
+.ai-customization-management-editor .dispatch-find-skills-list .ai-customization-list-item:not(:first-child) {
+	box-shadow: inset 0 var(--vscode-strokeThickness) var(--vscode-widget-border, var(--vscode-agentsPanel-border));
+}
+
+/* always shown, not only on hover like the list's own actions: one more class than VS Code's
+   .ai-customization-list-item .item-right { opacity: 0 }, so the order the two sheets load in does not decide
+   ("Enabled" and Enable were invisible until the pointer was on the row, 10-08) */
+.ai-customization-management-editor .ai-customization-list-item .dispatch-find-skills-actions {
+	opacity: 1;
+}
+
+/* the native secondary button (New Skill on the Skills page), only not stretched to the row */
+.ai-customization-management-editor .dispatch-find-skills-actions .monaco-button {
+	width: auto;
+}
+
+.ai-customization-management-editor .dispatch-find-skills-state {
+	font-size: var(--vscode-fontSize-body2);
+	color: var(--vscode-descriptionForeground);
+}

@@ -1,0 +1,34 @@
+{
+  "version": 3,
+  "theme": {
+    "window.autoDetectColorScheme": true,
+    "workbench.preferredLightColorTheme": "Dispatch Light",
+    "workbench.preferredDarkColorTheme": "Dispatch Dark",
+    "workbench.colorTheme": "Dispatch Dark"
+  },
+  "settings": {
+    "editor.fontFamily": "ui-monospace,\"SF Mono\",Menlo,\"Cascadia Mono\",Consolas,monospace",
+    "terminal.integrated.fontFamily": "ui-monospace,\"SF Mono\",Menlo,\"Cascadia Mono\",Consolas,monospace",
+    "editor.fontSize": 13,
+    "editor.lineHeight": 20,
+    "workbench.iconTheme": "vs-minimal",
+    "workbench.tree.renderIndentGuides": "onHover",
+    "window.titleBarStyle": "custom",
+    "workbench.activityBar.location": "default",
+    "window.commandCenter": true
+  },
+  "replaces": {
+    "window.commandCenter": false,
+    "sessions.developerJoy.enabled": false
+  },
+  "agents": {
+    "chat.disableAIFeatures": false,
+    "chat.agentHost.allowSignedOutWhenUsable": true,
+    "chat.agentHost.codexAgent.enabled": true,
+    "chat.agentHost.byokModels.enabled": false,
+    "chat.automations.enabled": true,
+    "chat.agentSessions.showExternal": "last7Days",
+    "workbench.hover.delay": 500,
+    "sessions.developerJoy.enabled": true
+  }
+}

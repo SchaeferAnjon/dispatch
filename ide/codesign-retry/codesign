@@ -1,0 +1,20 @@
+#!/bin/bash
+# codesign with a second chance: Apple's timestamp service fails a signature now and then ("A timestamp was expected
+# but was not found"; twice on 10-09, the second time half way through the app, kanban task-7mmi3). sign.sh puts this
+# folder first on PATH, so every codesign of a signing run, @electron/osx-sign's included, comes through here: that
+# one file is signed again after 10 s, at most 3 more times, and only then does the run stop.
+# CODESIGN_REAL and CODESIGN_RETRY_WAIT are for trying it out with a stand-in.
+real="${CODESIGN_REAL:-/usr/bin/codesign}"
+wait="${CODESIGN_RETRY_WAIT:-10}"
+err="$(mktemp)"
+trap 'rm -f "$err"' EXIT
+for try in 1 2 3 4; do
+  "$real" "$@" 2>"$err"
+  rc=$?
+  if [ "$rc" -eq 0 ] || [ "$try" -eq 4 ] || ! grep -qi "timestamp" "$err"; then
+    cat "$err" >&2
+    exit "$rc"
+  fi
+  echo "codesign: Apple's timestamp service did not answer for ${*: -1}; trying again in ${wait} s ($try of 3)" >&2
+  sleep "$wait"
+done

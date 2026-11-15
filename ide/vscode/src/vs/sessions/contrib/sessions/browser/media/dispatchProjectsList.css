@@ -1,0 +1,19 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the sessions list grouped by project (dispatchProjectsModel.ts). A session in a git
+ *  worktree of its project ends its row with a grey "worktree" (no colour: kanban DESIGN.md).
+ *--------------------------------------------------------------------------------------------*/
+
+.agent-sessions-viewpane .session-item .dispatch-worktree-tag {
+	flex: none;
+	margin-left: 8px;
+	font-size: 11px;
+	line-height: 16px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+/* where the row's toolbar shows (sessionsList.css), the tag makes room for it */
+.agent-sessions-viewpane .monaco-list-row:hover .session-item .dispatch-worktree-tag,
+.agent-sessions-viewpane .monaco-list-row.focused:not(.selected) .session-item .dispatch-worktree-tag,
+.agent-sessions-viewpane .monaco-list:focus-within .monaco-list-row.focused .session-item .dispatch-worktree-tag {
+	display: none !important;
+}

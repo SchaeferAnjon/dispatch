@@ -1,0 +1,195 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: What's new (dispatchWhatsNew.contribution.ts). Values from kanban
+ *  design/annotations/redesign 第 3 节; the NEW badge copies the outline style of the badge VS Code
+ *  puts next to Automations (sessionsList.css .session-section-new-badge-outline), so both are the
+ *  same thing. No colour: the title bar entry is outlined, the card is --bg-2 like every floating
+ *  layer, and the flash is the search-hit flash (DESIGN.md 动效: --fill 40% to 20% to nothing, 2 s).
+ *--------------------------------------------------------------------------------------------*/
+
+/* ---- NEW: next to an entry point, exactly the Automations badge ---- */
+
+.dispatch-new-badge {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	height: var(--vscode-spacing-size160, 16px);
+	margin-left: auto;
+	padding: 0 var(--vscode-spacing-size40, 4px);
+	box-sizing: border-box;
+	border: var(--vscode-strokeThickness, 1px) solid var(--vscode-descriptionForeground);
+	border-radius: var(--vscode-cornerRadius-circle, 999px);
+	color: var(--vscode-foreground);
+	font-size: var(--vscode-fontSize-label3, 10px);
+	font-weight: var(--vscode-fontWeight-semiBold, 600);
+	line-height: 1;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	cursor: default;
+}
+
+.hc-black .dispatch-new-badge,
+.hc-light .dispatch-new-badge {
+	border-color: var(--vscode-contrastBorder);
+}
+
+/* in a Customizations row the badge takes the count's place at the right end */
+.customization-link-button.dispatch-has-new-badge {
+	display: flex;
+	align-items: center;
+}
+
+.customization-link-button.dispatch-has-new-badge > .dispatch-new-badge {
+	margin-left: auto;
+	margin-right: 6px;
+}
+
+/* in a tab: after the label, clear of the tab's close button (the Agents window lays it over the
+   tab's right end, so without the room it covers the badge and a hover finds the tab, not the badge) */
+.tab.dispatch-has-new-badge > .dispatch-new-badge,
+.tab .dispatch-has-new-badge > .dispatch-new-badge {
+	margin-left: 6px;
+}
+.tab.tab-actions-right.dispatch-has-new-badge > .dispatch-new-badge {
+	margin-right: 22px;
+}
+
+/* ---- the flash after Show me ---- */
+
+@keyframes dispatch-whats-new-flash {
+	0% { background-color: color-mix(in srgb, var(--vscode-button-background) 40%, transparent); }
+	50% { background-color: color-mix(in srgb, var(--vscode-button-background) 20%, transparent); }
+	100% { background-color: transparent; }
+}
+
+.dispatch-whats-new-flash {
+	animation: dispatch-whats-new-flash 2s ease-in-out 1;
+	border-radius: 6px;
+}
+
+/* ---- hovers that hold a card: the hover's own frame becomes the card's (radius 14, --bg-2, padding 8) ---- */
+
+.monaco-hover.dispatch-whats-new-hover {
+	border-radius: 14px;
+	background-color: var(--vscode-sideBar-background);
+	border-color: var(--vscode-editorHoverWidget-border);
+	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
+}
+
+.monaco-hover.dispatch-whats-new-hover .monaco-hover-content {
+	padding: 0 !important;
+	max-width: none !important;
+}
+
+.monaco-hover.dispatch-whats-new-hover .hover-contents {
+	padding: 0 !important;
+}
+
+.dispatch-whats-new-snippet {
+	width: 320px;
+	box-sizing: border-box;
+	padding: 8px;
+}
+
+/* ---- the card: VS Code's post-update widget, flat ---- */
+
+.dispatch-whats-new-card {
+	width: 420px;
+	box-sizing: border-box;
+	padding: 16px 8px 8px;
+	display: grid;
+	gap: 4px;
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.dispatch-whats-new-card .wt {
+	padding: 0 8px 4px;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.dispatch-whats-new-card .wt b {
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.35;
+}
+
+.dispatch-whats-new-card .wt span {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-whats-new-card .wnrows {
+	display: grid;
+	gap: 2px;
+}
+
+.dispatch-whats-new-card .wnrow {
+	display: grid;
+	grid-template-columns: 96px minmax(0, 1fr);
+	column-gap: 12px;
+	align-items: center;
+	padding: 8px;
+	border: 0;
+	border-radius: 10px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-whats-new-card .wnrow:hover,
+.dispatch-whats-new-card .wnrow:focus-visible {
+	background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground) 60%, transparent);
+	outline: none;
+}
+
+.dispatch-whats-new-card .wntext {
+	min-width: 0;
+}
+
+.dispatch-whats-new-card .wntext .a {
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.dispatch-whats-new-card .wntext .b {
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-whats-new-card .wntext .c {
+	margin-top: 2px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-whats-new-card .wntext .c .codicon {
+	font-size: 12px;
+}
+
+.dispatch-whats-new-card .wnf {
+	display: flex;
+	align-items: center;
+	padding: 4px 4px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-whats-new-flash {
+		animation: none;
+	}
+
+	.dispatch-whats-new-card .wnrow {
+		transition: none;
+	}
+}
+

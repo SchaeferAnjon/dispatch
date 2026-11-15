@@ -1,0 +1,97 @@
+import { useEffect, useState } from "react";
+import type { View } from "../types";
+import { useT } from "../i18n";
+
+// The tour follows the product's one axis: a project has conversations, a
+// conversation spins off tasks, tasks add up to outcomes.
+const STEPS: { title: string; body: string; view: View }[] = [
+  { title: "一切从项目开始", body: "工作台按项目排列。每张卡片是这个项目此刻的情况：等你回的会话、在跑的会话、进行中的任务和最新成果。☆ 收藏置顶，做完的项目可以归档。", view: "home" },
+  { title: "项目里有会话、任务、成果和目录", body: "点进一个项目：会话是工作发生的地方，任务由会话延伸出来并明确关联，多个任务和会话汇成一项成果。目录页能打开文件夹或在那里新建会话。", view: "projects" },
+  { title: "「等我」只放需要你动手的事", body: "未读回复读到最新后自动移出，在原 Agent 里继续回复也会被识别；明确的确认请求单独列出。被卡住的任务和 Agent 互审不算在红点里。", view: "inbox" },
+  { title: "会话页：对话、操作、文件和回复", body: "对话持续刷新，向上翻历史不会被拉回底部。连续的工具调用折成一行「跑了 N 条命令 ›」，点开展开；右上角「实时活动」可以打开一条操作流水；「文件」是工作区差异，底部可直接回复原会话。", view: "sessions" },
+  { title: "任务和知识给下一次用", body: "任务由 Agent 建、认领、记进展、收尾；看板只是全局视角。技能、规则、踩坑记录所有 Agent 共用。{mod}K 随时搜项目、会话、任务。", view: "board" },
+];
+
+export function Tour({ onClose, onGo }: { onClose: () => void; onGo: (v: View) => void }) {
+  const t = useT();
+  const [i, setI] = useState(0);
+  const s = STEPS[i];
+  useEffect(() => { onGo(s.view); }, [i]);
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog tour" role="dialog" aria-label={t("导览")} onKeyDown={(e) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowRight" || e.key === "Enter") setI(Math.min(STEPS.length - 1, i + 1)); if (e.key === "ArrowLeft") setI(Math.max(0, i - 1)); }}>
+        <div className="tour-step muted small">{i + 1} / {STEPS.length}</div>
+        <h3>{t(s.title)}</h3>
+        <p>{t(s.body)}</p>
+        <div className="tour-dots">{STEPS.map((_, k) => <i key={k} className={k === i ? "on" : ""} onClick={() => setI(k)} />)}</div>
+        <div className="foot">
+          <button className="btn ghost" onClick={onClose}>{t("跳过")}</button>
+          {i > 0 && <button className="btn" onClick={() => setI(i - 1)}>{t("上一步")}</button>}
+          {i < STEPS.length - 1 ? <button className="btn primary" autoFocus onClick={() => setI(i + 1)}>{t("下一步")}</button> : <button className="btn primary" autoFocus onClick={onClose}>{t("开始用")}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// Every page in one screen: what it is for, one line each. Click to go.
+const PAGES: { view: View; icon: string; title: string; body: string }[] = [
+  { view: "home", icon: "home", title: "工作台", body: "按项目看此刻：等你回的、在跑的、进行中的任务、最新成果。" },
+  { view: "projects", icon: "project", title: "项目", body: "一个项目的全部记录：会话、任务、成果、目录。" },
+  { view: "inbox", icon: "inbox", title: "等我", body: "只放需要你动手的：未读回复、等待确认、被卡住的任务。" },
+  { view: "sessions", icon: "chat", title: "会话", body: "每段对话的全文、工具操作、改过的文件、产出；可直接回复或迁到另一台。" },
+  { view: "board", icon: "board", title: "全部任务", body: "看板与表格。任务由 Agent 建和收尾，这里是全局视角；右键有全部操作。" },
+  { view: "graph", icon: "graph", title: "脉络", body: "一个项目一页：走到哪、剩下什么，每条线一章，按时间往下读。" },
+  { view: "agents", icon: "agent", title: "Agent 状态", body: "哪个 Agent 在哪台机器上做什么；派活、手机看屏幕。" },
+  { view: "stats", icon: "chart", title: "统计与额度", body: "各 Agent 的额度、用量、工具、模型，以及跨 Agent 的复盘洞察。" },
+  { view: "skills", icon: "skill", title: "技能", body: "所有 Agent 共用的技能池，给谁挂、改内容。" },
+  { view: "rules", icon: "rule", title: "规则与资料", body: "一份 GLOBAL.md 同步到每个 Agent；常用资料和密钥入口。" },
+  { view: "pitfalls", icon: "pit", title: "知识库", body: "坑、做对的事、方法、复盘；Agent 开工前会查。" },
+  { view: "settings", icon: "gear", title: "设置", body: "工作区根目录、外观、手机与屏幕访问、更新、接入另一台电脑。" },
+];
+
+export interface OverviewStats { projects: number; inbox: number; sessions: number; running: number; tasks: number; open: number; agentsOnline: number; agentsTotal: number; skills: number; wiki: number; hosts: number; rulesSynced: boolean | null; version: string }
+
+// A page, not a dialog: every section of Dispatch with what it is for and its live numbers.
+export function OverviewView({ stats, onGo, onTour }: { stats: OverviewStats; onGo: (v: View) => void; onTour: () => void }) {
+  const t = useT();
+  const live: Partial<Record<View, string>> = {
+    home: t("{running} 个会话在跑 · {open} 项未完成", { running: stats.running, open: stats.open }),
+    projects: t("{n} 个项目", { n: stats.projects }),
+    inbox: stats.inbox ? t("{n} 项等你", { n: stats.inbox }) : t("暂时没有等你的事"),
+    sessions: t("{n} 段会话", { n: stats.sessions }),
+    board: t("{tasks} 项任务 · {open} 项未完成", { tasks: stats.tasks, open: stats.open }),
+    agents: t("{online}/{total} 在线 · {hosts} 台机器", { online: stats.agentsOnline, total: stats.agentsTotal, hosts: stats.hosts }),
+    skills: t("{n} 个技能", { n: stats.skills }),
+    rules: stats.rulesSynced === null ? "" : stats.rulesSynced ? t("共同规则已同步") : t("共同规则有待同步"),
+    pitfalls: t("{n} 条记录", { n: stats.wiki }),
+    settings: stats.version ? `v${stats.version}` : "",
+  };
+  return (
+    <div className="overview-page">
+      <header className="setup-head">
+        <div>
+          <h2>{t("Dispatch 总览")}</h2>
+          <p>{t("一条线贯穿所有页面：项目里发生会话，会话延伸出任务，任务汇成成果。Agent 在下面干活，你在上面看、回复、派活。每张卡是一个页面，点进去。")}</p>
+        </div>
+        <div className="setup-head-actions">
+          <button className="btn" onClick={onTour}>{t("看一遍导览")}</button>
+        </div>
+      </header>
+      <div className="overview-grid page">
+        {PAGES.map((p) => <button key={p.view} className="overview-card" onClick={() => onGo(p.view)}><b>{t(p.title)}</b><span>{t(p.body)}</span>{live[p.view] && <em className="mono">{live[p.view]}</em>}</button>)}
+      </div>
+      <section className="overview-howto">
+        <h4>{t("怎么用")}</h4>
+        <ul>
+          <li>{t("右键任何东西：任务、会话、项目、技能、文件、机器，都有它自己的操作；空白处右键是本页的操作。")}</li>
+          <li>{t("{mod}K 搜项目、会话、任务；{mod}N 新建会话；{mod}T 新任务；{mod}R 刷新。")}</li>
+          <li>{t("手机：连上 Tailscale 后，用相机扫设置页「手机访问」里的二维码，或复制那里的链接用浏览器打开，可添加到主屏幕；「看屏幕」能看并操作这台电脑。")}</li>
+          <li>{t("两台电脑：第二台装好后在首次设置里「接入」第一台，任务板、规则、技能就是同一份；会话可以右键「迁移到另一台」接着做。")}</li>
+          <li>{t("Agent 怎么知道这些：每个新会话开头会收到 dispatch prime 注入的身份、当前项目任务和相关知识；它用 dispatch begin / log / done 记任务，用 dispatch wiki 记坑。")}</li>
+        </ul>
+      </section>
+    </div>
+  );
+}

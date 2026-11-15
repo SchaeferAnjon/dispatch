@@ -1,0 +1,158 @@
+import { t } from "./i18n";
+import type { Block, SessionDetail, SessionTail, TimelineMsg, ToolStatus } from "./types";
+
+// The conversation as the session page shows it: which turns and which steps are visible, and
+// how a live tail (`dispatch session --since`) folds into what is already on screen.
+
+// Older CLIs (and the fixtures) only give text + tool chips; make blocks out of them.
+export function blocksOf(m: TimelineMsg): Block[] {
+  if (m.blocks) return m.blocks;
+  const out: Block[] = [];
+  if (m.text) out.push({ type: "text", text: m.text });
+  for (const t of m.tools) out.push({ type: "tool_call", id: t.id ?? "", name: t.name, summary: t.summary, input: {}, status: "done" });
+  return out;
+}
+
+/** A hook's report (「sessionStart: …」「SessionStart:startup hook success」) or an injected reminder: the agent's
+ *  own bookkeeping, never a line of the conversation. */
+const BOOKKEEPING = /^\s*(<system-reminder>|<environment_context>|<ide_\w|<local-command-(stdout|stderr|caveat)|<command-(name|message|args)>|# AGENTS\.md instructions|Base directory for this skill:|The TodoWrite|[A-Za-z]*(Start|Stop|Submit|ToolUse|Compact|End)\s*(:|hook\b)|钩子 )/;
+export const isBookkeeping = (text: string | undefined): boolean => BOOKKEEPING.test(text || "");
+
+export interface ViewOptions { brief: boolean; showTools: boolean; showUser: boolean; showAssistant: boolean; running: boolean }
+
+// Which turns to draw, with the steps each keeps. 只看结论 keeps your messages and the last reply
+// of every turn, without thinking or tool cards; otherwise tool cards follow the 工具调用 switch,
+// thinking stays folded under the text it led to, and a running session always shows its
+// latest turn so "思考中 / 正在调用" has somewhere to appear.
+export type ToolBlock = Extract<Block, { type: "tool_call" }>;
+
+const SHELL = new Set(["Bash", "bash", "exec_command", "shell", "run_command", "PowerShell"]);
+const READ = new Set(["Read", "read_file", "read", "view", "cat", "NotebookRead"]);
+const SEARCH = new Set(["Grep", "Glob", "grep", "glob", "search", "find", "list_dir", "LS", "ls"]);
+const EDIT = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "edit_file", "write_file", "edit", "write", "patch"]);
+const WEB = new Set(["WebFetch", "WebSearch", "fetch", "web_search"]);
+const AGENT = new Set(["Agent", "Task", "agent", "task"]);
+// "跑了 6 条命令、读了 2 个文件": what a run of calls did, in the order it did it.
+export function foldLabel(tools: ToolBlock[]): string {
+  const counts = new Map<string, number>();
+  const kind = (n: string) => SHELL.has(n) ? "跑了 %d 条命令" : READ.has(n) ? "读了 %d 个文件" : SEARCH.has(n) ? "搜了 %d 次" : EDIT.has(n) ? "改了 %d 处" : WEB.has(n) ? "查了 %d 个网页" : AGENT.has(n) ? "派了 %d 个子 Agent" : `${n} × %d`;
+  for (const t of tools) { const k = kind(t.name.split(".").pop() || t.name); counts.set(k, (counts.get(k) ?? 0) + 1); }
+  const parts = [...counts].map(([k, n]) => t(k).replace("%d", String(n)).replace(/ × 1$/, ""));
+  const errors = tools.filter((x) => x.status === "error").length;
+  return parts.join(t("、")) + (errors ? ` · ${t("{n} 个出错", { n: errors })}` : "");
+}
+
+// Which turns to draw, with the steps each keeps. 只看结论 keeps your messages and the last reply
+// of every turn, without thinking or tool cards. With 工具调用 off, a run of finished calls folds
+// into one line (a tool-only turn joins the fold of the turn before it) and the call that is
+// running right now still shows as a card; with it on, every call is a card. A running session
+// always shows its latest turn so "思考中 / 正在调用" has somewhere to appear.
+export function visibleTurns(messages: TimelineMsg[], o: ViewOptions): TimelineMsg[] {
+  const shown: TimelineMsg[] = [];
+  const last = messages[messages.length - 1];
+  const fold = !o.showTools && !o.brief;
+  for (const x of messages) {
+    if (x.role === "gap") { shown.push(x); continue; }
+    if (x.role === "user") { if (x.synthetic && isBookkeeping(x.text)) continue; if (x.synthetic ? o.showTools && !o.brief : o.showUser) shown.push(x); continue; }
+    if (x.role === "tool") { if (o.showTools && !o.brief) shown.push(x); else if (fold && x.images?.length) shown.push(x); continue; }
+    const blocks = blocksOf(x);
+    const hasText = blocks.some((b) => b.type === "text" && b.text.trim());
+    const live = o.running && x === last && !o.brief;
+    const hasCalls = blocks.some((b) => b.type === "tool_call");
+    const visible = hasText ? o.showAssistant : (o.showTools && !o.brief) || live || (fold && hasCalls);
+    if (!visible) continue;
+    let keep: Block[];
+    if (fold) {
+      keep = [];
+      let run: ToolBlock[] | null = null;
+      for (const b of blocks) {
+        // An edit is what you want to see (the terminal prints its diff): it stays a card of its own.
+        if (b.type === "tool_call" && EDIT.has(b.name.split(".").pop() || b.name)) { run = null; keep.push(b); continue; }
+        if (b.type === "tool_call" && !(live && b.status === "running")) { if (!run) { run = []; keep.push({ type: "tool_fold", tools: run }); } run.push(b); continue; }
+        run = null;
+        // Real thinking stays (folded); a signature-only thinking line says nothing and goes.
+        if (b.type === "text" || b.type === "tool_call" || (b.type === "thinking" && b.text.trim())) keep.push(b);
+      }
+      const prev = shown[shown.length - 1];
+      const pl = prev?.role === "assistant" ? prev.blocks?.[prev.blocks.length - 1] : undefined;
+      if (!hasText && !live && keep[0]?.type === "tool_fold" && pl?.type === "tool_fold" && prev.blocks) {
+        // A tool-only turn after a fold joins it: one "跑了 N 条命令" under the paragraph, not two.
+        const merged: ToolBlock[] = [...pl.tools, ...keep[0].tools];
+        shown[shown.length - 1] = { ...prev, blocks: [...prev.blocks.slice(0, -1), { type: "tool_fold", tools: merged }, ...keep.slice(1)] };
+        continue;
+      }
+    } else {
+      // With tool cards off, the live turn still shows the call that is running right now.
+      keep = blocks.filter((b) => b.type === "text" || (!o.brief && b.type === "thinking") || (!o.brief && b.type === "tool_call" && (o.showTools || (live && b.status === "running"))));
+    }
+    shown.push({ ...x, blocks: keep });
+  }
+  if (!o.brief) return shown;
+  const keep: TimelineMsg[] = [];
+  let lastReply: TimelineMsg | null = null;
+  for (const x of shown) {
+    if (x.role === "user") { if (lastReply) keep.push(lastReply); lastReply = null; keep.push(x); }
+    else if (x.role === "assistant" && x.text.trim()) lastReply = x;
+    else if (x.role === "gap") keep.push(x);
+  }
+  if (lastReply) keep.push(lastReply);
+  return keep;
+}
+
+const withResult = (b: Block, r: { status: ToolStatus; result?: string; result_ts?: string }): Block => b.type === "tool_call" ? { ...b, status: r.status, result: r.result ?? b.result, result_ts: r.result_ts ?? b.result_ts } : b;
+const textOf = (blocks: Block[]) => blocks.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+const toolsOf = (blocks: Block[]) => blocks.filter((b): b is Extract<Block, { type: "tool_call" }> => b.type === "tool_call").map((b) => ({ name: b.name, summary: b.summary, id: b.id }));
+
+// Fold a tail into the detail: results land on the cards already drawn, a step that continues
+// the last turn (same transcript message) joins it, a card the agent re-emitted (OpenCode
+// rewrites a tool part as it runs) updates in place instead of appearing twice.
+export function mergeTail(d: SessionDetail, t: SessionTail): SessionDetail {
+  if (t.since !== (d.offset ?? 0)) return d; // a stale tail (the detail was replaced meanwhile)
+  let msgs = d.messages.slice();
+  const patch = (id: string, r: { status: ToolStatus; result?: string; result_ts?: string }) => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const bs = msgs[i].blocks;
+      const j = bs?.findIndex((b) => b.type === "tool_call" && b.id === id) ?? -1;
+      if (bs && j >= 0) { msgs[i] = { ...msgs[i], blocks: bs.map((b, k) => (k === j ? withResult(b, r) : b)) }; return true; }
+    }
+    return false;
+  };
+  for (const r of t.resolved) patch(r.id, r);
+  for (const m of t.messages) {
+    let blocks = blocksOf(m);
+    blocks = blocks.filter((b) => {
+      if (b.type === "tool_call" && b.id && patch(b.id, b)) return false;
+      if ((b.type === "text" || b.type === "thinking") && b.id) {
+        // A re-emitted text/thinking part: replace the earlier copy.
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const bs = msgs[i].blocks; const j = bs?.findIndex((x) => x.type === b.type && "id" in x && x.id === b.id) ?? -1;
+          if (bs && j >= 0) { const nb = bs.map((x, k) => (k === j ? b : x)); msgs[i] = { ...msgs[i], blocks: nb, text: textOf(nb) }; return false; }
+        }
+      }
+      return true;
+    });
+    if (!blocks.length && !m.images?.length) continue;
+    const last = msgs[msgs.length - 1];
+    if (m.role === "assistant" && m.mid && last?.role === "assistant" && last.mid === m.mid) {
+      const nb = [...blocksOf(last), ...blocks];
+      msgs[msgs.length - 1] = { ...last, blocks: nb, text: textOf(nb), tools: toolsOf(nb) };
+    } else msgs.push({ ...m, blocks, text: textOf(blocks) || m.text, tools: toolsOf(blocks) });
+  }
+  const files = d.files.slice();
+  for (const f of t.files) { const i = files.findIndex((x) => x.path === f.path); if (i >= 0) files[i] = { path: f.path, changes: [...files[i].changes, ...f.changes] }; else files.push(f); }
+  const tool_counts = { ...d.tool_counts };
+  for (const [k, v] of Object.entries(t.tool_counts)) tool_counts[k] = (tool_counts[k] ?? 0) + v;
+  return { ...d, messages: msgs, files, tool_counts, offset: t.offset };
+}
+
+// The step the agent is on right now, for the status line: the last block of the last turn.
+export function currentStep(messages: TimelineMsg[]): { kind: "thinking" | "tool" | "text" | "idle"; name?: string } {
+  const last = messages[messages.length - 1];
+  if (!last) return { kind: "idle" };
+  if (last.role !== "assistant") return { kind: "thinking" };
+  const blocks = blocksOf(last);
+  const b = blocks[blocks.length - 1];
+  if (!b) return { kind: "thinking" };
+  if (b.type === "tool_call") return b.status === "running" ? { kind: "tool", name: b.name } : { kind: "thinking" };
+  return { kind: b.type === "thinking" ? "thinking" : "text" };
+}

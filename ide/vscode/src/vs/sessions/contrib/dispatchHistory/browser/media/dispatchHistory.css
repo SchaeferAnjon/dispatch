@@ -1,0 +1,508 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the History tab (patches/450-history.patch). It wears the Tasks tab's parts
+ *  (dispatchTasks.css: the square scope switch, group heads, empty lines, skeleton, "Show more") and adds
+ *  the search box (the Docs tab's), the session rows and their opened part. Flat (DESIGN.md): rows only
+ *  get a background under the pointer; the one mark of colour-free identity is the agent's own glyph.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-history-head {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	flex: none;
+	padding-bottom: 8px;
+}
+
+.dispatch-history-bar.dispatch-tasks-bar {
+	padding: 0;
+}
+
+.dispatch-history-bar .dispatch-tasks-pill:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.dispatch-history-bar .dispatch-tasks-pill:disabled:hover {
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-history-tools {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: auto;
+	flex: none;
+}
+
+.dispatch-history-tool {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	min-width: 28px;
+	justify-content: center;
+	padding: 0 6px;
+	border: 0;
+	border-radius: var(--vscode-cornerRadius-small, 4px);
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color 150ms ease, color 150ms ease;
+}
+
+.dispatch-history-tool .codicon {
+	font-size: 14px;
+}
+
+.dispatch-history-tool span {
+	max-width: 120px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-history-tool:hover {
+	background: var(--modern-ui-editor-tab-hover-background, var(--vscode-list-hoverBackground));
+	color: var(--vscode-foreground);
+}
+
+/* the search box: the Docs tab's (28 high, the input's fill, the tab's radius) */
+.dispatch-history-search {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 8px;
+	border-radius: var(--vscode-cornerRadius-small, 4px);
+	background: var(--vscode-input-background);
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-history-search:focus-within {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-history-search .codicon {
+	font-size: 14px;
+	flex: none;
+}
+
+.dispatch-history-search-input {
+	flex: 1;
+	min-width: 0;
+	height: 26px;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 13px;
+}
+
+/* the box is the rounded fill around it; the input has no box of its own (as in the Docs tab) */
+.monaco-workbench .dispatch-history .dispatch-history-search-input,
+.monaco-workbench .dispatch-history .dispatch-history-search-input:focus {
+	border: none !important;
+	outline: none !important;
+	background: transparent !important;
+}
+
+.dispatch-history-search-input::placeholder {
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-history-clear {
+	display: inline-grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+
+.dispatch-history-search:not(.has-text) .dispatch-history-clear {
+	display: none;
+}
+
+.dispatch-history-clear:hover {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+/* how many, and whether the background read still runs: one grey 12px line */
+.dispatch-history-count {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 20px;
+	padding: 0 12px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-history-busy {
+	opacity: 0.8;
+}
+
+.dispatch-history-note {
+	margin-left: auto;
+	font-size: 11px;
+	opacity: 0.7;
+	cursor: default;
+	white-space: nowrap;
+}
+
+/* ---- groups: the Tasks tab's group head; the first one sits right under the count ---- */
+.dispatch-history-group.dispatch-task-group:first-child {
+	margin-top: 0;
+}
+
+.dispatch-history-group-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-history-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+/* ---- a session: title and time, the last message (two lines at most), the grey line ---- */
+.dispatch-history-row {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 2px;
+	padding: 8px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	outline: none;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-history-row:hover,
+.dispatch-history-row.open {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.dispatch-history-row:focus-visible,
+.dispatch-history-tool:focus-visible,
+.dispatch-history-action:focus-visible,
+.dispatch-history-button:focus-visible,
+.dispatch-history-clear:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-history-row-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 20px;
+}
+
+/* the agent's own mark (codicon or Dispatch's icon font), 14px, single colour: the title lines up with the group name */
+.dispatch-history-mark {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	width: 14px;
+	height: 20px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-history-mark .codicon {
+	font-size: 14px;
+}
+
+.dispatch-history-title {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 13px;
+	line-height: 20px;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-history-time {
+	flex: none;
+	min-width: 28px;
+	font-size: 11px;
+	line-height: 20px;
+	text-align: right;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+
+/* the actions take the time's place under the pointer (DESIGN.md: hover swaps the time for the buttons) */
+.dispatch-history-actions {
+	display: none;
+	align-items: center;
+	gap: 2px;
+	flex: none;
+}
+
+.dispatch-history-row:not(.open):hover .dispatch-history-time,
+.dispatch-history-row:not(.open):focus-within .dispatch-history-time {
+	display: none;
+}
+
+.dispatch-history-row:not(.open):hover .dispatch-history-actions,
+.dispatch-history-row:not(.open):focus-within .dispatch-history-actions {
+	display: inline-flex;
+}
+
+.dispatch-history-action {
+	display: inline-grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+
+.dispatch-history-action .codicon {
+	font-size: 14px;
+}
+
+.dispatch-history-action:hover:not(:disabled) {
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+	color: var(--vscode-foreground);
+}
+
+.dispatch-history-action:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.dispatch-history-preview {
+	padding-left: 22px;
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-history-who {
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-history-meta {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	overflow: hidden;
+	padding-left: 22px;
+	min-height: 18px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-history-meta > span {
+	white-space: nowrap;
+}
+
+.dispatch-history-meta > .dispatch-history-model {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-history-in {
+	padding: 0 6px;
+	border-radius: 999px;
+	line-height: 16px;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border) 70%, transparent);
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+	font-weight: 500;
+}
+
+/* opened: the first message, the facts, Continue and Open in New Window (280 ms, the long fold) */
+.dispatch-history-detail {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows 280ms cubic-bezier(0.32, 0.72, 0, 1);
+	cursor: default;
+}
+
+.dispatch-history-row.open .dispatch-history-detail {
+	grid-template-rows: 1fr;
+}
+
+.dispatch-history-detail > div {
+	overflow: hidden;
+	min-height: 0;
+}
+
+.dispatch-history-detail > div {
+	padding-left: 22px;
+}
+
+.dispatch-history-row.open .dispatch-history-detail > div {
+	padding-top: 8px;
+}
+
+.dispatch-history-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 2px;
+}
+
+.dispatch-history-first {
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--vscode-foreground);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 108px;
+	overflow-y: auto;
+	margin-bottom: 8px;
+}
+
+.dispatch-history-facts {
+	display: grid;
+	gap: 2px;
+	margin-bottom: 8px;
+}
+
+.dispatch-history-fact {
+	display: grid;
+	grid-template-columns: 72px minmax(0, 1fr);
+	gap: 8px;
+	font-size: 12px;
+	line-height: 18px;
+}
+
+.dispatch-history-fact .k {
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-history-fact .v {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-foreground);
+}
+
+/* the folder: its name in full, the folders above it in grey and cut when there is no room */
+.dispatch-history-path {
+	display: flex;
+	gap: 6px;
+	align-items: baseline;
+}
+
+.dispatch-history-path .name {
+	flex: none;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-history-path .dir {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	direction: rtl;
+	text-align: left;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-history-buttons {
+	display: flex;
+	gap: 8px;
+}
+
+.dispatch-history-button {
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	min-height: 28px;
+	padding: 0 8px;
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	white-space: nowrap;
+	border-radius: var(--vscode-cornerRadius-small, 4px);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-history-button:hover:not(:disabled) {
+	background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.dispatch-history-button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.dispatch-history-why {
+	margin-top: 6px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-history-more.dispatch-tasks-more {
+	margin-top: 4px;
+}
+
+.dispatch-tasks-skeleton.dispatch-history-rows .dispatch-history-row {
+	gap: 8px;
+	cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-history-detail,
+	.dispatch-history-row {
+		transition: none;
+	}
+}
+
+/* Chat | Terminal next to Continue (the Tasks tab's square switch, at the buttons' height); a narrow pane puts
+   Open in New Window on the next line rather than squeezing the switch */
+.dispatch-history-buttons {
+	flex-wrap: wrap;
+}
+
+.dispatch-history-continue-in.dispatch-tasks-scope {
+	flex: none;
+}
+
+.dispatch-history-continue-in.dispatch-tasks-scope .dispatch-tasks-pill {
+	height: 28px;
+	padding: 0 8px;
+	font-size: 12px;
+}
+
+.dispatch-history-button.busy {
+	opacity: 1;
+	color: var(--vscode-descriptionForeground);
+}

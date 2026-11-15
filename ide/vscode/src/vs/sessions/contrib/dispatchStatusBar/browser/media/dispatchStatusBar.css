@@ -1,0 +1,640 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the Agents window's bottom bar, "Status in blocks" (dispatchStatusBar.contribution.ts, kanban
+ *  design/bars direction B). DESIGN.md: flat, one colour, line icons; what needs you is filled and bold, not coloured.
+ *  The bar has the shell's colour and no line above it: the cards end above it.
+ *--------------------------------------------------------------------------------------------*/
+
+.monaco-workbench .dispatch-status-bar {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0 8px;
+	box-sizing: border-box;
+	font-size: 12px;
+	line-height: 22px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+	overflow: hidden;
+	z-index: 30;
+	user-select: none;
+	-webkit-user-select: none;
+}
+.monaco-workbench.phone-layout .dispatch-status-bar {
+	display: none;
+}
+/* the grid's own box ends where the bar starts (the workbench lays its views out 28 shorter, see dispatchStatusBarSpace.ts;
+   without this the grid element stays 100% tall and runs under the bar) */
+.monaco-workbench.agent-sessions-workbench.dispatch-has-status-bar:not(.phone-layout) > .monaco-grid-view {
+	height: calc(100% - 28px);
+}
+.dispatch-status-bar .dispatch-status-group,
+.dispatch-status-bar .dispatch-status-allowances {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+}
+.dispatch-status-bar .dispatch-status-grow {
+	flex: 1;
+	min-width: 8px;
+}
+
+/* one block: 22 high, round 8, its own hover */
+.dispatch-status-bar .dispatch-status-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 22px;
+	padding: 0 8px;
+	border-radius: 8px;
+	flex: none;
+	color: var(--vscode-descriptionForeground);
+	text-decoration: none;
+	cursor: pointer;
+	outline-offset: -1px;
+	transition: background-color 150ms cubic-bezier(0, 0, 0.2, 1), color 150ms cubic-bezier(0, 0, 0.2, 1);
+	animation: dispatch-status-enter 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+.dispatch-status-bar .dispatch-status-item[hidden] {
+	display: none;
+}
+.dispatch-status-bar .dispatch-status-item:hover,
+.dispatch-status-bar .dispatch-status-item.open {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-status-bar .dispatch-status-item:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+/* needs you: filled and bold, no colour */
+.dispatch-status-bar .dispatch-status-item.hot {
+	background-color: var(--vscode-list-inactiveSelectionBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+.dispatch-status-bar .dispatch-status-item.hot:hover,
+.dispatch-status-bar .dispatch-status-item.hot.open {
+	background-color: var(--vscode-list-activeSelectionBackground, var(--vscode-toolbar-hoverBackground));
+}
+@keyframes dispatch-status-enter {
+	from { opacity: 0; transform: translateY(4px); }
+}
+.dispatch-status-bar .dispatch-status-word,
+.dispatch-status-bar .dispatch-status-text {
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-status-bar .dispatch-status-word {
+	font-weight: 400;
+}
+
+/* a 16 block with the glyph inside; filled while on */
+.dispatch-status-bar .dispatch-status-bk {
+	width: 16px;
+	height: 16px;
+	border-radius: 4.5px;
+	box-shadow: inset 0 0 0 1.3px var(--vscode-descriptionForeground);
+	display: grid;
+	place-items: center;
+	flex: none;
+}
+.dispatch-status-bar .dispatch-status-bk .codicon {
+	font-size: 11px;
+	color: inherit;
+}
+.dispatch-status-bar .dispatch-status-item:hover .dispatch-status-bk {
+	box-shadow: inset 0 0 0 1.3px var(--vscode-foreground);
+}
+.dispatch-status-bar .dispatch-status-bk.on {
+	background-color: var(--vscode-descriptionForeground);
+	box-shadow: none;
+	color: var(--vscode-editor-background);
+}
+.dispatch-status-bar .dispatch-status-item:hover .dispatch-status-bk.on {
+	background-color: var(--vscode-foreground);
+}
+
+/* the build queue: one 12 block per build; the running one fills from the bottom */
+.dispatch-status-queue {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+}
+.dispatch-status-qb {
+	position: relative;
+	width: 12px;
+	height: 12px;
+	border-radius: 3.5px;
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
+	box-shadow: inset 0 0 0 1.3px color-mix(in srgb, var(--vscode-descriptionForeground) 55%, transparent);
+	overflow: hidden;
+	flex: none;
+	display: inline-block;
+}
+.dispatch-status-qb.run {
+	background: none;
+	box-shadow: inset 0 0 0 1.3px var(--vscode-descriptionForeground);
+}
+.dispatch-status-qb.run > i {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: var(--vscode-descriptionForeground);
+	transition: height 400ms cubic-bezier(0, 0, 0.2, 1);
+}
+/* its checks run: full, breathing */
+.dispatch-status-qb.run.checks > i {
+	animation: dispatch-status-breath 2.4s cubic-bezier(0.32, 0.72, 0, 1) infinite alternate;
+}
+@keyframes dispatch-status-breath {
+	from { opacity: 0.45; }
+	to { opacity: 1; }
+}
+.dispatch-status-qb.done {
+	box-shadow: none;
+	background: var(--vscode-descriptionForeground);
+	color: var(--vscode-editor-background);
+	display: inline-grid;
+	place-items: center;
+	animation: dispatch-status-pop 350ms linear(0, 0.26, 0.6, 0.86, 1.02, 1.08, 1.07, 1.03, 1, 0.99, 1);
+}
+.dispatch-status-qb.done .codicon {
+	font-size: 10px;
+	color: inherit;
+}
+.dispatch-status-qb.fail {
+	box-shadow: none;
+	background: var(--vscode-foreground);
+}
+.dispatch-status-qb.fail::after {
+	content: '!';
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	color: var(--vscode-editor-background);
+	font: 700 9px/12px -apple-system, BlinkMacSystemFont, sans-serif;
+	text-align: center;
+}
+/* the agents' test builds while any runs: one quiet block, half-filled and breathing; never a warning (task-7ve7v) */
+.dispatch-status-qb.agents {
+	box-shadow: none;
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 35%, transparent);
+	animation: dispatch-status-breath 2.4s cubic-bezier(0.32, 0.72, 0, 1) infinite alternate;
+}
+@keyframes dispatch-status-pop {
+	from { transform: scale(0.5); }
+}
+.dispatch-status-bar .dispatch-status-item:hover .dispatch-status-qb.run,
+.dispatch-status-bar .dispatch-status-item.open .dispatch-status-qb.run {
+	box-shadow: inset 0 0 0 1.3px var(--vscode-foreground);
+}
+.dispatch-status-bar .dispatch-status-item:hover .dispatch-status-qb.run > i,
+.dispatch-status-bar .dispatch-status-item.open .dispatch-status-qb.run > i {
+	background: var(--vscode-foreground);
+}
+.dispatch-status-count {
+	font-size: 11px;
+	margin-left: 2px;
+	font-variant-numeric: tabular-nums;
+}
+
+/* the cup: steam rises while agents work */
+.dispatch-status-cup {
+	display: block;
+	flex: none;
+	overflow: visible;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.dispatch-status-cup .steam {
+	opacity: 0;
+}
+.working > .dispatch-status-cup .steam {
+	animation: dispatch-status-steam 2.4s ease-in-out infinite;
+}
+.working > .dispatch-status-cup .steam.s2 {
+	animation-delay: 1.2s;
+}
+@keyframes dispatch-status-steam {
+	0% { opacity: 0; transform: translateY(1.5px); }
+	40% { opacity: 0.9; }
+	100% { opacity: 0; transform: translateY(-1.5px); }
+}
+
+/* an allowance: the engine's mark and a ten-cell gauge, as many lit as tenths are left */
+.dispatch-status-bar .dispatch-status-engine {
+	font-size: 14px;
+	color: inherit;
+}
+.dispatch-status-gauge {
+	display: block;
+	flex: none;
+	overflow: visible;
+}
+.dispatch-status-gauge .cell {
+	fill: none;
+	stroke: var(--vscode-descriptionForeground);
+	stroke-opacity: 0.45;
+	stroke-width: 1;
+}
+.dispatch-status-gauge .fill {
+	fill: var(--vscode-descriptionForeground);
+}
+.dispatch-status-gauge.low .fill,
+.dispatch-status-bar .dispatch-status-item:hover .dispatch-status-gauge .fill,
+.dispatch-status-bar .dispatch-status-item.open .dispatch-status-gauge .fill {
+	fill: var(--vscode-foreground);
+}
+.dispatch-status-bar .dispatch-status-item.unknown .dispatch-status-text {
+	opacity: 0.7;
+}
+
+/* the panels over the bar: as round as the Accounts panel */
+.monaco-hover.workbench-hover.dispatch-status-panel-hover {
+	border-color: var(--vscode-menu-border, var(--vscode-editorHoverWidget-border));
+	border-radius: 12px;
+	overflow: hidden;
+	outline: none;
+}
+.monaco-hover.workbench-hover.dispatch-status-panel-hover .hover-contents {
+	padding: 0 !important;
+}
+.dispatch-status-panel {
+	display: flex;
+	flex-direction: column;
+	width: 360px;
+	max-width: calc(100vw - 16px);
+	padding: 6px;
+	box-sizing: border-box;
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.dispatch-status-panel.awake {
+	width: 360px;
+}
+/* the cup takes the switches' width, so the head, the switches' labels and the lid line start on one line */
+.dispatch-status-panel.awake .dispatch-status-prow.top .dispatch-status-plead {
+	display: flex;
+	justify-content: center;
+	width: 28px;
+}
+.dispatch-status-phead {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px 6px;
+	font-weight: 600;
+}
+.dispatch-status-phead-aside {
+	margin-left: auto;
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-status-pbody {
+	display: flex;
+	flex-direction: column;
+	max-height: 420px;
+	overflow-y: auto;
+}
+/* the rows keep their height and the body scrolls: a tall row of yours never runs into the group under it */
+.dispatch-status-pbody > * {
+	flex-shrink: 0;
+}
+.dispatch-status-pempty {
+	padding: 4px 10px 10px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-status-prow {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-height: 40px;
+	padding: 6px 10px;
+	border-radius: 10px;
+	box-sizing: border-box;
+}
+.dispatch-status-prow:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+.dispatch-status-prow.top {
+	align-items: flex-start;
+	padding-top: 10px;
+}
+.dispatch-status-prow.top:hover {
+	background: none;
+}
+.dispatch-status-prow.waiting {
+	min-height: 30px;
+	padding: 4px 10px;
+}
+.dispatch-status-prow.waiting .dispatch-status-prow-title {
+	font-weight: 400;
+}
+.dispatch-status-prow-text {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+.dispatch-status-prow-title {
+	font-weight: 500;
+	line-height: 1.35;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-status-prow-sub {
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-status-prow.top .dispatch-status-prow-title {
+	white-space: normal;
+}
+.dispatch-status-prow-aside {
+	flex: none;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-status-plead {
+	flex: none;
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-status-prow.failed .dispatch-status-plead {
+	color: var(--vscode-foreground);
+}
+.dispatch-status-prow.failed.top {
+	padding-bottom: 10px;
+}
+.dispatch-status-prow.failed.top .dispatch-status-plead {
+	margin-top: 1px;
+}
+.dispatch-status-prow-why {
+	margin-top: 2px;
+	font-family: var(--monaco-monospace-font);
+	font-size: 11px;
+	line-height: 1.45;
+	color: var(--vscode-foreground);
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	word-break: break-word;
+}
+.dispatch-status-prow-log {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* the agents' test builds: a folded group under the person's own */
+.dispatch-status-pgroup {
+	margin-top: 4px;
+	border-top: 1px solid color-mix(in srgb, var(--vscode-menu-border, var(--vscode-widget-border)) 60%, transparent);
+	padding-top: 4px;
+}
+.dispatch-status-pgroup-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	height: 30px;
+	padding: 0 10px;
+	border: none;
+	border-radius: 10px;
+	background: none;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	text-align: left;
+	cursor: pointer;
+}
+.dispatch-status-pgroup-head:focus {
+	outline: none;
+}
+.dispatch-status-pgroup-head:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+.dispatch-status-pgroup-head:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-status-pgroup-head .codicon {
+	font-size: 12px;
+}
+.dispatch-status-pgroup-body[hidden] {
+	display: none;
+}
+.dispatch-status-pnote {
+	padding: 2px 10px 6px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-status-prow.quiet .dispatch-status-prow-title {
+	font-weight: 400;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-status-psub {
+	padding: 10px 10px 4px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-status-pfoot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 4px;
+	padding: 8px 10px 4px;
+	border-top: 1px solid color-mix(in srgb, var(--vscode-menu-border, var(--vscode-widget-border)) 60%, transparent);
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+/* the cup's panel sets Keep awake right there: two square switches (as the Inbox's), the whole row flips one */
+.dispatch-awake-switches {
+	display: flex;
+	flex-direction: column;
+	margin-top: 8px;
+}
+.dispatch-awake-switch-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	min-height: 44px;
+	padding: 6px 10px;
+	border: none;
+	border-radius: 10px;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	box-sizing: border-box;
+}
+.dispatch-awake-switch-row:hover:not(:disabled) {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+.dispatch-awake-switch-row:focus {
+	outline: none;
+}
+.dispatch-awake-switch-row:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+.dispatch-awake-switch-row:disabled {
+	cursor: default;
+}
+.dispatch-awake-switch-row:disabled > * {
+	opacity: 0.45;
+}
+.dispatch-awake-switch {
+	position: relative;
+	flex: none;
+	width: 28px;
+	height: 16px;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	box-sizing: border-box;
+	transition: background-color 150ms ease-out;
+}
+.dispatch-awake-switch-thumb {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	background: var(--vscode-descriptionForeground);
+	transition: transform 150ms ease-out, background-color 150ms ease-out;
+}
+.dispatch-awake-switch-row[aria-checked="true"] .dispatch-awake-switch {
+	background: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+}
+.dispatch-awake-switch-row[aria-checked="true"] .dispatch-awake-switch-thumb {
+	transform: translateX(12px);
+	background: var(--vscode-foreground);
+}
+.dispatch-awake-switch-text {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+.dispatch-awake-switch-label {
+	line-height: 1.35;
+}
+.dispatch-awake-switch-sub {
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-status-pnote.dispatch-awake-lid {
+	padding: 6px 10px 6px 48px;
+	line-height: 1.4;
+}
+.dispatch-status-link {
+	color: var(--vscode-descriptionForeground);
+	text-decoration: none;
+	cursor: pointer;
+	border-radius: 6px;
+	padding: 0 4px;
+}
+.dispatch-status-link:hover {
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+/* the pill: as in the Accounts panel */
+.dispatch-status-pill {
+	flex: none;
+	height: 24px;
+	padding: 0 10px;
+	border-radius: 999px;
+	border: none;
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--vscode-widget-border, var(--vscode-menu-border));
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 150ms cubic-bezier(0, 0, 0.2, 1);
+}
+.dispatch-status-pill:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Busy and Restart: line glyphs in the cup's stroke */
+.dispatch-status-glyph {
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.dispatch-status-glyph .f {
+	fill: currentColor;
+	stroke: none;
+}
+.dispatch-status-bar .dispatch-status-item.hot .dispatch-status-bk {
+	box-shadow: inset 0 0 0 1.3px var(--vscode-foreground);
+}
+
+/* a button that is the panel's main action: filled, as the primary pills elsewhere */
+.dispatch-status-pill.solid {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	box-shadow: none;
+}
+.dispatch-status-pill.solid:hover {
+	background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+}
+.dispatch-status-pfoot.buttons {
+	border-top: none;
+	justify-content: flex-end;
+	padding-top: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-status-bar *,
+	.dispatch-status-bar,
+	.dispatch-status-panel * {
+		animation: none !important;
+		transition: none !important;
+	}
+	.working > .dispatch-status-cup .steam {
+		opacity: 0.6;
+	}
+}
+/* Settings › Appearance › Animations: Reduced (workbench.reduceMotion) stops it too, not only the Mac's setting */
+.monaco-reduce-motion .dispatch-status-bar *,
+.monaco-reduce-motion .dispatch-status-bar,
+.monaco-reduce-motion .dispatch-status-panel *,
+.monaco-workbench.monaco-reduce-motion .dispatch-status-bar *,
+.monaco-workbench.monaco-reduce-motion .dispatch-status-panel * {
+	animation: none !important;
+	transition: none !important;
+}
+.monaco-reduce-motion .working > .dispatch-status-cup .steam {
+	opacity: 0.6;
+}
+.dispatch-status-plead.off .dispatch-status-cup {
+	opacity: 0.5;
+}

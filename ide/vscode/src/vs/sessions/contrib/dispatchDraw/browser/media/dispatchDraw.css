@@ -1,0 +1,695 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the draw tool (dispatchDrawTool.ts), the chat input's picture tiles and the side
+ *  pane's Draw and ask bar (patches/320-draw-and-ask.patch). Values from kanban design/annotations/
+ *  redesign 第 1 节 A4 and 第 4 节; colours are theme colours standing for DESIGN.md's tokens
+ *  (--bg editor, --bg-2 side bar, --sel list selection, --text-2 description, --hair hover border,
+ *  --hair-2 input border, --fill button, --ring focus border). Red #dc2626 and green #16a34a are the
+ *  marks' colours: only on the picture and the numbers that stand for it (DESIGN.md 「第四处颜色」).
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-draw,
+.dispatch-draw-tile,
+.dispatch-draw-slot,
+.dispatch-draw-bar,
+.dispatch-draw-overlay,
+.dispatch-draw-sent,
+.dispatch-draw-bubble,
+.dispatch-draw-bubble-lines,
+.dispatch-draw-sent-viewer {
+	--dd-bg: var(--vscode-editor-background);
+	--dd-bg-2: var(--vscode-sideBar-background);
+	--dd-sel: var(--vscode-list-activeSelectionBackground);
+	--dd-text: var(--vscode-foreground);
+	--dd-text-2: var(--vscode-descriptionForeground);
+	--dd-hair: var(--vscode-editorHoverWidget-border);
+	--dd-hair-2: var(--vscode-input-border);
+	--dd-fill: var(--vscode-button-background);
+	--dd-fill-text: var(--vscode-button-foreground);
+	--dd-ring: var(--vscode-focusBorder);
+	--dd-pop: 0 8px 24px -8px var(--vscode-widget-shadow);
+	--dd-mark: #dc2626;
+	--dd-mark-2: #16a34a;
+	--dd-ease-std: cubic-bezier(.32, .72, 0, 1);
+}
+
+/* ---- the tool ---- */
+
+.dispatch-draw {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	outline: none;
+	font-size: 13px;
+	color: var(--dd-text);
+}
+
+.dispatch-draw .dbar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	height: 32px;
+	min-width: 0;
+	container-type: inline-size;
+}
+
+/* a narrow bar (the side pane) drops the hint before the buttons get tight */
+@container (max-width: 520px) {
+	.dispatch-draw .dhint {
+		display: none;
+	}
+}
+
+.dispatch-draw .sw {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	display: grid;
+	place-items: center;
+	cursor: pointer;
+	flex: none;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-draw .sw i {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	display: block;
+}
+
+.dispatch-draw .sw:hover {
+	background: color-mix(in srgb, var(--dd-sel) 60%, transparent);
+}
+
+.dispatch-draw .sw.on {
+	background: var(--dd-sel);
+}
+
+.dispatch-draw .sw.on i {
+	box-shadow: 0 0 0 2px var(--dd-bg), 0 0 0 3.5px var(--dd-text);
+}
+
+.dispatch-draw .dsep {
+	width: 1px;
+	height: 16px;
+	margin: 0 4px;
+	background: var(--dd-hair);
+	flex: none;
+}
+
+.dispatch-draw .ibtn {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--dd-text-2);
+	display: inline-grid;
+	place-items: center;
+	cursor: pointer;
+	flex: none;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-draw .ibtn:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--dd-sel) 60%, transparent);
+	color: var(--dd-text);
+}
+
+.dispatch-draw .ibtn:disabled {
+	opacity: .4;
+	cursor: default;
+}
+
+.dispatch-draw .ibtn .codicon {
+	font-size: 16px;
+}
+
+.dispatch-draw .dhint {
+	margin-left: 4px;
+	font-size: 12px;
+	color: var(--dd-text-2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+.dispatch-draw .sp {
+	flex: 1;
+}
+
+/* capsules: Cancel is a plain word, the filled one is the only solid button here */
+.dispatch-draw .dpill {
+	height: 24px;
+	padding: 0 8px;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--dd-text-2);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 400;
+	white-space: nowrap;
+	cursor: pointer;
+	flex: none;
+	transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.dispatch-draw .dpill:hover {
+	background: var(--dd-sel);
+	color: var(--dd-text);
+}
+
+.dispatch-draw .dpill.fill {
+	background: var(--dd-fill);
+	color: var(--dd-fill-text);
+	font-weight: 500;
+}
+
+.dispatch-draw .dpill.fill:hover {
+	background: color-mix(in srgb, var(--dd-fill) 88%, var(--dd-bg));
+}
+
+.dispatch-draw .dpill:active {
+	transform: translateY(1px);
+}
+
+.dispatch-draw button:focus-visible {
+	outline: 1px solid var(--dd-ring);
+	outline-offset: 1px;
+}
+
+/* the picture: a box of --bg-2 with a hairline ring; crosshair while drawing */
+.dispatch-draw .canvas {
+	position: relative;
+	overflow: auto;
+	border-radius: 8px;
+	background: var(--dd-bg-2);
+	box-shadow: 0 0 0 1px var(--dd-hair);
+	cursor: crosshair;
+	touch-action: none;
+	overscroll-behavior: contain;
+}
+
+.dispatch-draw.fit-width .canvas {
+	overflow-x: hidden;
+}
+
+.dispatch-draw .stage {
+	position: relative;
+	width: max-content;
+	min-width: 100%;
+}
+
+.dispatch-draw.fit-width .stage {
+	width: 100%;
+}
+
+.dispatch-draw .stage img {
+	display: block;
+	max-width: none;
+	user-select: none;
+	-webkit-user-drag: none;
+	pointer-events: none;
+}
+
+.dispatch-draw .layer {
+	position: absolute;
+	left: 0;
+	top: 0;
+}
+
+.dispatch-draw .mk {
+	position: absolute;
+	box-sizing: border-box;
+	border: 2px solid var(--dd-mark);
+	cursor: move;
+}
+
+.dispatch-draw .mk.g {
+	border-color: var(--dd-mark-2);
+}
+
+.dispatch-draw .mk.draft {
+	cursor: crosshair;
+	pointer-events: none;
+}
+
+.dispatch-draw .mk > i {
+	position: absolute;
+	left: -2px;
+	top: -20px;
+	width: 18px;
+	height: 18px;
+	background: var(--dd-mark);
+	color: #fff;
+	font-style: normal;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 18px;
+	text-align: center;
+	pointer-events: none;
+}
+
+.dispatch-draw .mk.g > i {
+	background: var(--dd-mark-2);
+}
+
+.dispatch-draw .mk.in > i {
+	top: -2px;
+}
+
+.dispatch-draw .mk .h {
+	position: absolute;
+	width: 8px;
+	height: 8px;
+	box-sizing: border-box;
+	background: var(--dd-bg);
+	border: 1px solid var(--dd-text);
+	display: none;
+}
+
+.dispatch-draw .mk.sel .h {
+	display: block;
+}
+
+.dispatch-draw .mk .h.a { left: -5px; top: -5px; cursor: nwse-resize; }
+.dispatch-draw .mk .h.b { right: -5px; top: -5px; cursor: nesw-resize; }
+.dispatch-draw .mk .h.c { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.dispatch-draw .mk .h.d { right: -5px; bottom: -5px; cursor: nwse-resize; }
+
+/* snapping to a page element: a dashed outline in the text colour and the element's name */
+.dispatch-draw .snap {
+	position: absolute;
+	display: none;
+	box-sizing: border-box;
+	border: 1.5px dashed var(--dd-text);
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--dd-text) 6%, transparent);
+	pointer-events: none;
+}
+
+.dispatch-draw .snap::after {
+	content: attr(data-label);
+	position: absolute;
+	left: -1px;
+	bottom: calc(100% + 2px);
+	padding: 0 6px;
+	height: 18px;
+	line-height: 18px;
+	border-radius: 4px;
+	background: var(--dd-text);
+	color: var(--dd-bg);
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+/* one line per box */
+.dispatch-draw .legedit {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 4px;
+}
+
+.dispatch-draw .legedit:empty {
+	display: none;
+}
+
+.dispatch-draw .legedit li {
+	display: grid;
+	grid-template-columns: 18px minmax(0, 1fr) 24px;
+	column-gap: 8px;
+	align-items: center;
+	min-height: 32px;
+	padding: 0 4px 0 8px;
+	border-radius: 8px;
+	background: var(--dd-bg);
+	box-shadow: 0 0 0 1px var(--dd-hair-2);
+	transition: box-shadow 150ms ease;
+}
+
+.dispatch-draw .legedit li.focus,
+.dispatch-draw .legedit li:focus-within {
+	box-shadow: 0 0 0 1px var(--dd-hair-2), 0 0 0 3px var(--dd-ring);
+}
+
+.dispatch-draw .legedit .n {
+	width: 18px;
+	height: 18px;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 18px;
+	text-align: center;
+}
+
+.dispatch-draw .legedit .tx {
+	min-width: 0;
+	height: 30px;
+	border: 0;
+	padding: 0;
+	outline: none;
+	background: transparent;
+	color: var(--dd-text);
+	font: inherit;
+	font-size: 13px;
+}
+
+/* the row shows the focus (its ring above); the workbench's own input focus outline stays off */
+.dispatch-draw .legedit .tx:focus,
+.dispatch-draw .legedit .tx:focus-visible {
+	outline: none;
+}
+
+.dispatch-draw .legedit .tx::placeholder {
+	color: var(--dd-text-2);
+}
+
+.dispatch-draw .legedit .x {
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--dd-text-2);
+	display: grid;
+	place-items: center;
+	cursor: pointer;
+}
+
+.dispatch-draw .legedit .x:hover {
+	background: color-mix(in srgb, var(--dd-sel) 60%, transparent);
+	color: var(--dd-text);
+}
+
+.dispatch-draw .legedit .x .codicon {
+	font-size: 12px;
+}
+
+/* ---- the picture in the input: a thumbnail with a pen (72×48; 144×96 and its lines once it has boxes) ---- */
+
+.agent-sessions-workbench .interactive-session .chat-attached-context .chat-attached-context-attachment.dispatch-draw-tile,
+.agent-sessions-workbench .sessions-chat-attachment-pill.dispatch-composer-picture {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	height: auto;
+	max-width: 100%;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	overflow: visible;
+	margin: 2px 6px 6px 0;
+}
+
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-draw-tile > .chat-attached-context-pill,
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-draw-tile > .chat-attached-context-custom-text,
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-draw-tile > .monaco-icon-label {
+	display: none !important;
+}
+
+.dispatch-draw-thumbwrap {
+	position: relative;
+	flex: none;
+	align-self: flex-start;
+}
+
+.dispatch-draw-thumbwrap > .dispatch-where-thumb {
+	cursor: pointer;
+}
+
+/* the pen: 22 round at the bottom right corner, the one thing to click */
+.dispatch-draw-pen {
+	position: absolute;
+	right: -6px;
+	bottom: -6px;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: var(--dd-bg);
+	box-shadow: 0 0 0 1px var(--dd-hair-2);
+	color: var(--dd-text);
+	display: grid;
+	place-items: center;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-draw-pen:hover {
+	background: var(--dd-sel);
+}
+
+.dispatch-draw-pen .codicon {
+	font-size: 12px;
+}
+
+/* ×: top right, only on hover (the chat's own remove button, or the composer's) */
+.dispatch-draw-rm,
+.agent-sessions-workbench .dispatch-draw-thumbwrap > .monaco-button {
+	position: absolute;
+	right: -6px;
+	top: -6px;
+	width: 18px !important;
+	height: 18px !important;
+	min-width: 0 !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	border: 0 !important;
+	border-radius: 50% !important;
+	background: var(--dd-bg) !important;
+	box-shadow: 0 0 0 1px var(--dd-hair-2);
+	color: var(--dd-text-2);
+	display: grid !important;
+	place-items: center;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 150ms ease;
+}
+
+.dispatch-draw-rm .codicon,
+.agent-sessions-workbench .dispatch-draw-thumbwrap > .monaco-button .codicon {
+	font-size: 10px !important;
+}
+
+.dispatch-draw-tile:hover .dispatch-draw-rm,
+.dispatch-draw-tile:focus-within .dispatch-draw-rm,
+.agent-sessions-workbench .dispatch-draw-tile:hover .dispatch-draw-thumbwrap > .monaco-button,
+.agent-sessions-workbench .dispatch-draw-tile:focus-within .dispatch-draw-thumbwrap > .monaco-button {
+	opacity: 1;
+}
+
+.dispatch-draw-tile-lines {
+	max-width: 340px;
+	min-width: 0;
+	align-self: center;
+}
+
+.dispatch-draw-tile-lines li {
+	padding: 1px 0;
+}
+
+/* ---- drawing in the input: the tool takes the attachment row's place and the box grows (280 ms) ---- */
+
+.dispatch-draw-slot {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows 280ms var(--dd-ease-std);
+}
+
+.dispatch-draw-slot.open {
+	grid-template-rows: 1fr;
+}
+
+.dispatch-draw-slot > .inner {
+	min-height: 0;
+	overflow: hidden;
+}
+
+.dispatch-draw-slot .dispatch-draw {
+	padding: 12px 14px 4px;
+}
+
+.dispatch-drawing > .chat-attachments-container,
+.dispatch-drawing > .sessions-chat-attach-row {
+	display: none !important;
+}
+
+/* ---- the side pane's bar: Draw and ask, Enlarge (top right of what the pointer is on) ---- */
+
+.dispatch-draw-bar {
+	position: fixed;
+	z-index: 45;
+	display: flex;
+	gap: 4px;
+	transform: translateX(-100%);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 200ms ease;
+}
+
+.dispatch-draw-bar.visible {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.dispatch-draw-bar.instant {
+	transition: none;
+}
+
+.dispatch-draw-bar .fbtn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--dd-bg-2) 94%, transparent);
+	box-shadow: 0 0 0 1px var(--dd-hair), var(--dd-pop);
+	color: var(--dd-text);
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.dispatch-draw-bar .fbtn:hover {
+	background: var(--dd-sel);
+}
+
+.dispatch-draw-bar .fbtn.i {
+	width: 28px;
+	padding: 0;
+	justify-content: center;
+}
+
+.dispatch-draw-bar .fbtn .codicon {
+	font-size: 14px;
+}
+
+/* ---- the tool over the side pane: over what was shown, 1:1 ---- */
+
+.dispatch-draw-overlay {
+	position: fixed;
+	z-index: 44;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	padding: 8px 12px 12px;
+	background: var(--dd-bg);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+.dispatch-draw-overlay.open {
+	opacity: 1;
+}
+
+.dispatch-draw-overlay.busy {
+	cursor: progress;
+}
+
+.dispatch-draw-overlay > .dispatch-draw {
+	flex: 1;
+	min-height: 0;
+	grid-template-rows: auto minmax(120px, 1fr) auto;
+}
+
+.dispatch-draw-overlay > .dispatch-draw .legedit {
+	max-height: 38vh;
+	overflow: auto;
+	padding: 3px;
+}
+
+/* ---- a sent picture with boxes: 144×96 cropped to them, above the bubble; its lines in the bubble ---- */
+
+.agent-sessions-workbench .interactive-session .interactive-item-container.interactive-request .value .chat-request-attachment-cards .chat-attached-context-attachment.image-attachment.dispatch-draw-sent {
+	width: 144px !important;
+	height: 96px !important;
+	border: 0 !important;
+	border-radius: 6px !important;
+	background: transparent !important;
+	overflow: visible !important;
+	padding: 0 !important;
+	cursor: pointer;
+}
+
+.agent-sessions-workbench .interactive-item-container.interactive-request .chat-attached-context-attachment.dispatch-draw-sent > .chat-attached-context-pill,
+.agent-sessions-workbench .interactive-item-container.interactive-request .chat-attached-context-attachment.dispatch-draw-sent > .chat-attached-context-custom-text,
+.agent-sessions-workbench .interactive-item-container.interactive-request .chat-attached-context-attachment.dispatch-draw-sent > .monaco-icon-label {
+	display: none !important;
+}
+
+.dispatch-draw-bubble-lines {
+	margin-top: 6px;
+	display: grid;
+	gap: 2px;
+}
+
+.dispatch-draw-bubble-lines .dispatch-where-leg li {
+	padding: 2px 0;
+	background: none !important;
+	color: var(--dd-text);
+	font-size: 13px;
+	line-height: 20px;
+}
+
+.dispatch-draw-bubble-lines .dispatch-where-leg li .n {
+	margin-top: 2px;
+}
+
+/* the chat's markdown indents lists and spaces their items: these lines sit flush with the words above */
+.interactive-item-container .value .rendered-markdown .dispatch-draw-bubble-lines ol.dispatch-where-leg {
+	margin: 0;
+	padding-inline-start: 0;
+}
+
+.interactive-item-container .value .rendered-markdown .dispatch-draw-bubble-lines .dispatch-where-leg li {
+	margin: 0;
+}
+
+.dispatch-draw-bubble-lines .cap {
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--dd-text-2);
+}
+
+/* no text with the picture: the lines make a bubble of their own (the request's bubble class does the look) */
+.dispatch-draw-bubble {
+	align-self: flex-end;
+}
+
+.dispatch-draw-bubble > .dispatch-draw-bubble-lines {
+	margin-top: 0;
+}
+
+.dispatch-draw-sent-viewer {
+	align-self: flex-end;
+	width: min(100%, 560px);
+	margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-draw .sw,
+	.dispatch-draw .ibtn,
+	.dispatch-draw .dpill,
+	.dispatch-draw .legedit li,
+	.dispatch-draw-slot,
+	.dispatch-draw-pen,
+	.dispatch-draw-rm,
+	.dispatch-draw-bar,
+	.dispatch-draw-overlay {
+		transition: none;
+	}
+}

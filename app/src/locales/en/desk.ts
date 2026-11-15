@@ -1,0 +1,33 @@
+import type { Dict } from "../../i18n";
+// Agent 窗口 (components/AgentDesk.tsx). Keys are the Chinese source text.
+const desk: Dict = {
+  "（无标题）": "(untitled)",
+  "还没有 Agent。在右边说一句想做什么，就会开一个。": "No agents yet. Say what you want done on the right and one starts.",
+  "在 {name} 里新建 Agent": "New agent in {name}",
+  "本机": "This Mac",
+  "收起右栏": "Hide the side panel",
+  "看改动和 Agent 跑的命令": "Show changes and the agent's commands",
+  "改动与命令": "Changes and commands",
+  "这个 Agent 在 {host} 上，终端去那台电脑开": "This agent runs on {host}; open a terminal on that Mac",
+  "读不到改动：{err}": "Can't read the changes: {err}",
+  "读取改动…": "Reading changes…",
+  "这个 Agent 还没改文件。": "This agent hasn't changed any files yet.",
+  "目录里还没提交的改动 · {n} 个文件": "Uncommitted changes in the folder · {n} files",
+  "Agent": "Agent",
+  "先选一个 Agent 或项目": "Pick an agent or a project first",
+  "在跑": "Running",
+  "有新回复": "New reply",
+  "后台空闲": "Idle in background",
+  "{n} 个后台空闲": "{n} idle in background",
+  "后台空闲：Dispatch 里开着、没在干活的会话。右键一行选「关掉后台会话」": "Idle in background: conversations still open in Dispatch but not working. Right-click a row and choose “Close background conversation”",
+  "结束 Dispatch 里这个会话的进程，后台不再留着；记录还在，再打开能续上": "End this conversation's process in Dispatch so nothing stays open in the background; the transcript stays and opening it again resumes it",
+  "新建 Agent": "New agent",
+  "显示更多": "Show more",
+  "拖动调整宽度，双击恢复": "Drag to resize, double-click to reset",
+  "拖动调整宽度": "Drag to resize",
+  "收起左栏": "Hide the list",
+  "展开左栏": "Show the list",
+  "收起左栏（{mod}⇧B）": "Hide the list ({mod}⇧B)",
+  "展开左栏（{mod}⇧B）": "Show the list ({mod}⇧B)",
+};
+export default desk;

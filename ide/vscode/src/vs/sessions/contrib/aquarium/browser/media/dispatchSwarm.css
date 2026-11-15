@@ -1,0 +1,46 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the blocks swarm in place of the aquarium (dispatchSwarm.ts). Flat: no glow, no shadow.
+ *--------------------------------------------------------------------------------------------*/
+
+/* the canvas draws its own faint tint: no aquarium glows */
+.agents-aquarium-water.dispatch-swarm::before,
+.agents-aquarium-water.dispatch-swarm::after {
+	display: none;
+}
+
+.agents-aquarium-water.dispatch-swarm > canvas {
+	position: absolute;
+	left: 0;
+	top: 0;
+	pointer-events: none;
+}
+
+.agents-aquarium-water.dispatch-swarm.exiting {
+	opacity: 0;
+	transition: opacity 300ms ease-out;
+}
+
+/* the icon flying to the sessions list, over the whole window for a moment */
+.dispatch-swarm-fly {
+	position: absolute;
+	left: 0;
+	top: 0;
+	pointer-events: none;
+	z-index: 10000;
+}
+
+/* VS Code clears the page's backgrounds while the aquarium shows; the input box itself is a translucent
+   tint, so it gets the page colour under it: the blocks pass behind the input, not through it */
+.monaco-workbench .part.sessionspart.aquarium-active .new-chat-input-area {
+	background-image: linear-gradient(var(--vscode-input-background), var(--vscode-input-background));
+	background-color: var(--vscode-sideBar-background);
+}
+
+/* the switch at the top left: Dispatch's grid instead of the fish */
+.agents-aquarium-toggle .dispatch-swarm-toggle-icon {
+	display: inline-block;
+	width: 16px;
+	height: 16px;
+	background-color: currentColor;
+	mask: url('../../../../browser/media/dispatch-agent-icon.svg') center / contain no-repeat;
+}

@@ -1,0 +1,17 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the setup wizard's "From this network" group (dispatchNetViews.ts). Everything else is the wizard's
+ *  own rows, well, tag and xs button (dispatchOnboarding.css); only the spacing around the group is set here.
+ *--------------------------------------------------------------------------------------------*/
+
+/* the line above the list: the wizard's note, with the group head's distance below it */
+.dispatch-onboarding .dob-note.dnet-say {
+	margin: 0 4px 8px;
+}
+
+/* under the list: the key button, then where a proxy goes, left-aligned like the notes */
+.dispatch-onboarding .dob-r.dnet-foot {
+	justify-content: flex-start;
+	flex-wrap: wrap;
+	margin: 10px 4px 0;
+	white-space: normal;
+}

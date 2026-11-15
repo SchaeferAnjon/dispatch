@@ -1,0 +1,364 @@
+/* Dispatch IDE: the terminal that a terminal session shows where a chat would be (dispatchTerminalView.ts). */
+.chat-view.dispatch-terminal-view {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	background-color: var(--vscode-editor-background);
+}
+
+.dispatch-terminal-view .dispatch-terminal-host {
+	position: relative;
+	flex: none;
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+.dispatch-terminal-host .dispatch-xterm {
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
+	padding: 6px 0 0 14px;
+}
+
+.dispatch-terminal-host .dispatch-xterm .xterm {
+	height: 100%;
+}
+
+/* it kept running while Dispatch was closed (dispatchTerminalView.ts _showAway) */
+.dispatch-terminal-view .dispatch-terminal-banner {
+	position: absolute;
+	top: 42px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 5;
+	max-width: calc(100% - 48px);
+	padding: 4px 12px;
+	border-radius: 999px;
+	background: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	border: 1px solid var(--vscode-widget-border, transparent);
+	font-size: 12px;
+	line-height: 1.5;
+	cursor: default;
+}
+
+/* "Chat / Terminal" above the session (direction A, A4) */
+.dispatch-terminal-view .dispatch-terminal-bar {
+	flex: none;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 12px;
+	padding: 0 12px;
+	box-sizing: border-box;
+}
+
+.dispatch-terminal-view .dispatch-terminal-switch {
+	display: inline-flex;
+	padding: 2px;
+	border-radius: 999px;
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.dispatch-terminal-view .dts-tab {
+	border: 0;
+	padding: 1px 12px;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.dispatch-terminal-view .dts-tab.on {
+	background: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+
+.dispatch-terminal-view .dts-tab:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+/* the conversation read from the agent's own record (dispatchTerminalChat.ts) */
+.dispatch-terminal-view .dispatch-terminal-chat {
+	display: flex;
+	flex-direction: column;
+	background: var(--vscode-editor-background);
+	box-sizing: border-box;
+}
+
+.dispatch-terminal-chat .dtc-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 12px 24px;
+	font-size: 14px;
+	line-height: 1.7;
+}
+
+.dispatch-terminal-chat .dtc-line {
+	max-width: 760px;
+	margin: 0 auto 10px;
+}
+
+.dispatch-terminal-chat .dtc-line.user {
+	padding: 6px 12px;
+	border-radius: 12px;
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.dispatch-terminal-chat .dtc-line.tool {
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	margin-bottom: 4px;
+}
+
+.dispatch-terminal-chat .dtc-line p {
+	margin: 0 0 6px;
+}
+
+.dispatch-terminal-chat .dtc-empty {
+	color: var(--vscode-descriptionForeground);
+	font-size: 13px;
+	text-align: center;
+	margin-top: 40px;
+}
+
+.dispatch-terminal-chat .dtc-composer {
+	flex: none;
+	max-width: 760px;
+	width: calc(100% - 48px);
+	margin: 0 auto 14px;
+}
+
+.dispatch-terminal-chat .dtc-input {
+	width: 100%;
+	box-sizing: border-box;
+	resize: none;
+	padding: 10px 12px;
+	border-radius: 12px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	font-size: 14px;
+	outline: none;
+}
+
+.dispatch-terminal-chat .dtc-where {
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* the sub-agents it sent out (dispatchTerminalView.ts _drawSubAgents): one block each */
+.dispatch-terminal-view .dispatch-terminal-subs {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-right: auto;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-terminal-view .dts-blocks {
+	display: inline-flex;
+	gap: 2px;
+}
+
+/* the blocks are Dispatch's own (dispatchBlocks: sub-agent breathing, done, stopped) */
+.dispatch-terminal-view .dts-blocks .dispatch-block {
+	display: inline-flex;
+}
+
+/* panes: the session split side by side or one above the other (dispatchTerminalPanes.ts) */
+.dispatch-terminal-panes .dispatch-terminal-panes-branch,
+.dispatch-terminal-panes .dispatch-terminal-panes-branch > .monaco-split-view2 {
+	width: 100%;
+	height: 100%;
+}
+
+.dispatch-terminal-panes .dispatch-terminal-pane {
+	position: relative;
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+/* with more than one pane, the ones the keyboard is not in step back a little (Orca: 0.9) */
+.dispatch-terminal-panes.split .dispatch-terminal-pane:not(.focused) .xterm-screen {
+	opacity: 0.9;
+}
+
+/* moving a pane (Orca drags a tab onto a pane's edge): a small grip at the top of each pane while the session is
+   split, shown on hover; dragged onto another pane, the half it lands in is tinted */
+.dispatch-terminal-panes .dispatch-terminal-pane-grip {
+	display: none;
+	position: absolute;
+	top: 4px;
+	left: 50%;
+	z-index: 5;
+	width: 28px;
+	height: 12px;
+	margin-left: -14px;
+	border-radius: 999px;
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-descriptionForeground);
+	cursor: grab;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	transition: opacity 150ms ease-out;
+}
+
+.dispatch-terminal-panes.split .dispatch-terminal-pane-grip {
+	display: flex;
+}
+
+.dispatch-terminal-panes.split .dispatch-terminal-pane:hover .dispatch-terminal-pane-grip,
+.dispatch-terminal-panes .dispatch-terminal-pane-grip:focus-visible {
+	opacity: 1;
+}
+
+.dispatch-terminal-panes .dispatch-terminal-pane-grip .codicon {
+	font-size: 12px;
+}
+
+.dispatch-terminal-panes .dispatch-terminal-pane-drop {
+	position: absolute;
+	z-index: 6;
+	pointer-events: none;
+	border-radius: 8px;
+	/* no colour: DESIGN.md keeps colour for agent states; the window's own greys */
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
+	border: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 35%, transparent);
+	box-sizing: border-box;
+	transition: inset 120ms ease-out;
+}
+
+.dispatch-terminal-panes .dispatch-terminal-pane-drop.left { inset: 4px 50% 4px 4px; }
+.dispatch-terminal-panes .dispatch-terminal-pane-drop.right { inset: 4px 4px 4px 50%; }
+.dispatch-terminal-panes .dispatch-terminal-pane-drop.top { inset: 4px 4px 50% 4px; }
+.dispatch-terminal-panes .dispatch-terminal-pane-drop.bottom { inset: 50% 4px 4px 4px; }
+
+.monaco-reduce-motion .dispatch-terminal-panes .dispatch-terminal-pane-drop,
+.monaco-reduce-motion .dispatch-terminal-panes .dispatch-terminal-pane-grip {
+	transition: none;
+}
+
+/* a sub-agent's own record, read only (dispatchTerminalChat.ts showRecord) */
+.dispatch-terminal-chat .dtc-record-head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 20px;
+	border-bottom: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.dispatch-terminal-chat .dtc-record-text {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.dispatch-terminal-chat .dtc-record-title {
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-terminal-chat .dtc-record-detail {
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+
+.dispatch-terminal-chat .dtc-record-back {
+	flex: none;
+	border: 0;
+	border-radius: 999px;
+	padding: 3px 12px;
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.dispatch-terminal-chat .dtc-record-back:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* the session's own terminals as tabs, "+ Shell", side by side or one at a time (direction A, A5) */
+.dispatch-terminal-view .dispatch-terminal-tabs {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	margin-right: 8px;
+}
+
+.dispatch-terminal-view .dtt-list {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.dispatch-terminal-view .dtt-tab,
+.dispatch-terminal-view .dtt-add,
+.dispatch-terminal-view .dtt-layout {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	height: 22px;
+	border: 0;
+	padding: 0 10px;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.dispatch-terminal-view .dtt-tab:hover,
+.dispatch-terminal-view .dtt-add:hover,
+.dispatch-terminal-view .dtt-layout:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-terminal-view .dtt-tab.on {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+
+.dispatch-terminal-view .dtt-add,
+.dispatch-terminal-view .dtt-layout {
+	padding: 0 8px;
+}
+
+.dispatch-terminal-view .dtt-add .codicon,
+.dispatch-terminal-view .dtt-layout .codicon {
+	font-size: 12px;
+}

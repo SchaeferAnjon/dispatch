@@ -1,0 +1,148 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the quote card (dispatchQuoteWidget.ts; kanban design/quote/redesign 方向 B, 实现清单
+ *  3 and 6). Same family as Draw and ask's picture thumbnails: radius 6, a 1px line, the same × at the
+ *  top right. Theme colours stand for DESIGN.md's tokens: --bg editor, --sel list selection, --text
+ *  foreground, --text-2 description, --hair hover border, --hair-2 input border.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-quote {
+	--dq-bg: var(--vscode-editor-background);
+	--dq-sel: var(--vscode-list-activeSelectionBackground);
+	--dq-text: var(--vscode-foreground);
+	--dq-text-2: var(--vscode-descriptionForeground);
+	--dq-hair: var(--vscode-editorHoverWidget-border);
+	--dq-hair-2: var(--vscode-input-border);
+}
+
+/* dark: --bg is darker than the input box around the card, a hole in it; --bg-2 and the input's --hair-2 line
+   (designer, task-23iin) */
+.vs-dark .dispatch-quote {
+	--dq-bg: var(--vscode-editorHoverWidget-background);
+	--dq-hair: var(--vscode-input-border);
+}
+
+.agent-sessions-workbench .chat-attached-context .chat-attached-context-attachment.dispatch-quote,
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote {
+	position: relative;
+	display: inline-flex !important;
+	align-items: center;
+	box-sizing: border-box;
+	height: 48px !important;
+	max-width: 280px;
+	min-width: 0;
+	padding: 4px 12px !important;
+	margin: 2px 6px 6px 0;
+	border: 1px solid var(--dq-hair) !important;
+	border-radius: 6px !important;
+	background: var(--dq-bg) !important;
+	color: var(--dq-text);
+	overflow: visible !important;
+	cursor: pointer;
+	animation: dispatchQuoteIn 120ms ease-out;
+	transition: background-color 150ms ease;
+}
+
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote:hover,
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote:focus-visible {
+	background: color-mix(in srgb, var(--dq-sel) 70%, var(--dq-bg)) !important;
+	outline: none;
+}
+
+@keyframes dispatchQuoteIn {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.dispatch-quote .dispatch-quote-body {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.dispatch-quote .dispatch-quote-text {
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 20px;
+	color: var(--dq-text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-quote .dispatch-quote-src {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	font-size: 12px;
+	line-height: 16px;
+	color: var(--dq-text-2);
+	white-space: nowrap;
+}
+
+.dispatch-quote .dispatch-quote-src > span:last-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-quote .dispatch-quote-src .codicon {
+	flex: none;
+	font-size: 12px !important;
+}
+
+/* ×: the thumbnails' one (18 round, top right, on hover) */
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote > .monaco-button.dispatch-quote-rm {
+	position: absolute;
+	right: -6px;
+	top: -6px;
+	width: 18px !important;
+	height: 18px !important;
+	min-width: 0 !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	border: 0 !important;
+	border-radius: 50% !important;
+	background: var(--dq-bg) !important;
+	box-shadow: 0 0 0 1px var(--dq-hair-2);
+	color: var(--dq-text-2);
+	display: grid !important;
+	place-items: center;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 150ms ease;
+}
+
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote > .monaco-button.dispatch-quote-rm .codicon {
+	font-size: 10px !important;
+}
+
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote:hover > .monaco-button.dispatch-quote-rm,
+.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote:focus-within > .monaco-button.dispatch-quote-rm {
+	opacity: 1;
+}
+
+/* above a sent bubble: right-aligned like the thumbnails, 360 at most */
+.agent-sessions-workbench .interactive-item-container.interactive-request .value > .chat-request-quote-attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.agent-sessions-workbench .interactive-item-container.interactive-request .chat-attached-context-attachment.dispatch-quote.sent {
+	max-width: 360px;
+	margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote,
+	.agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote > .monaco-button.dispatch-quote-rm {
+		animation: none;
+		transition: none;
+	}
+}

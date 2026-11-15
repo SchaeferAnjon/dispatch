@@ -1,0 +1,44 @@
+/* The icon rail at the far left (components/Sidebar.tsx): 56px, no edge line, 32px buttons with 16px icons,
+   the page name on hover (DESIGN.md「组件」左侧图标栏). */
+.rail{position:relative;z-index:40;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:0;padding:var(--side-top) 0 12px;background:color-mix(in oklch,var(--bg-2) 80%,var(--bg));-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}
+.rail-drag{position:absolute;left:0;right:0;top:0;height:var(--side-top)}
+.rail-nav{display:flex;flex-direction:column;align-items:center;gap:4px}
+.rail-sp{flex:1;align-self:stretch;min-height:8px}
+.rail-anchor{position:relative}
+.rail-logo{width:32px;height:32px;display:grid;place-items:center;border-radius:var(--r-ctl);margin-bottom:8px;flex:none}
+.rail-logo img{width:24px;height:24px;border-radius:var(--r-sm)}
+.rail-btn{position:relative;width:32px;height:32px;display:grid;place-items:center;border-radius:var(--r-ctl);color:var(--text-2);flex:none;transition:background-color 150ms ease,color 150ms ease}
+.rail-btn:hover,.rail-logo:hover,.rail-btn.open{background:color-mix(in oklch,var(--sel) 60%,transparent);color:var(--text)}
+.rail-btn.on{background:var(--sel);color:var(--text)}
+.rail-btn .ic{color:inherit}
+.rail-btn.on .ic{stroke-width:2}
+/* Something waiting (等我): an 8px dot with a ping ring; the count is in the name on hover. */
+.rail-badge{position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:var(--r-chip);background:var(--blue);box-shadow:0 0 0 2px color-mix(in oklch,var(--bg-2) 80%,var(--bg))}
+.rail-badge::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--blue);animation:rail-ping 1s var(--ease-out) infinite}
+@keyframes rail-ping{0%{transform:scale(1);opacity:.75}75%,100%{transform:scale(2);opacity:0}}
+/* The page name, to the right of the icon, as soon as the pointer is on it. */
+.rail-btn::after,.rail-logo::after{content:attr(data-tip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);padding:6px 12px;border-radius:var(--r-menu);background:var(--text);color:var(--bg);font-size:12px;font-weight:500;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 100ms ease;z-index:5}
+.rail-btn:hover::after,.rail-logo:hover::after,.rail-btn:focus-visible::after{opacity:1}
+.rail-btn.open::after{display:none}
+/* Status: which Mac (its initial when one is picked), a dot for anyone online, the quota as a hairline. */
+.rail-host{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--chip-2);color:var(--text);font-size:11px;font-weight:600}
+.rail-status>i{position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 2px color-mix(in oklch,var(--bg-2) 80%,var(--bg))}
+.rail-status>i.off{background:var(--text-2);opacity:.6}
+.rail-meter{position:absolute;left:9px;right:9px;bottom:4px;height:2px;border-radius:1px;background:var(--chip-2);overflow:hidden}
+.rail-meter b{display:block;height:100%;background:var(--text-2)}
+.rail-meter b.hot{background:var(--orange)}
+.rail-meter b.crit{background:var(--red)}
+.rail-shade{position:fixed;inset:0;z-index:1}
+.rail-pop{position:absolute;left:calc(100% + 8px);z-index:2;padding:4px;border-radius:var(--r-menu);background:var(--bg-2);box-shadow:var(--shadow-diffuse),0 0 0 1px var(--hair)}
+.rail-more{top:0;min-width:180px}
+.rail-more button{display:flex;align-items:center;gap:9px;width:100%;height:30px;padding:0 8px;border-radius:var(--r-ctl);color:var(--text);font-size:13px;text-align:left;white-space:nowrap}
+.rail-more button .ic{color:var(--text-2)}
+.rail-more button:hover{background:var(--chip)}
+.rail-more button.on{background:var(--sel);font-weight:500}
+.rail-stat{bottom:0;width:280px;padding:8px;display:flex;flex-direction:column;gap:2px}
+.rs-ws{display:flex;flex-direction:column;padding:2px 8px 8px;border-bottom:1px solid var(--hair);margin-bottom:4px}
+.rs-ws b{font-size:13px}
+.rs-ws span{font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rs-h{height:24px;display:flex;align-items:center;padding:0 8px;font-size:11px;color:var(--text-2);font-weight:500}
+.rs-h .n{margin-left:auto;font-weight:400}
+.rail-stat .hosts{margin:0 6px 6px}

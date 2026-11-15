@@ -1,0 +1,78 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the input box in Dispatch's blocks (dispatchComposer.contribution.ts). Only the shapes
+ *  and glyphs change; every control stays VS Code's own.
+ *--------------------------------------------------------------------------------------------*/
+
+/* the engine: its own mark in a small rounded block (the harness chip, new session and running session) */
+.monaco-workbench.agent-sessions-workbench :is(.dispatch-harness-picker, .sessions-chat-session-type-picker .action-label) > .codicon:not(.sessions-chat-dropdown-chevron):first-child {
+	display: inline-grid;
+	place-items: center;
+	width: 18px;
+	height: 18px;
+	border-radius: 5px;
+	background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+	color: var(--vscode-foreground);
+	font-size: 12px !important;
+	line-height: 18px;
+	flex: none;
+}
+
+/* send: a block, not a circle (32, radius 10) with Dispatch's arrow */
+.monaco-workbench.agent-sessions-workbench .sessions-chat-send-button,
+.monaco-workbench.agent-sessions-workbench .sessions-chat-send-button .monaco-button,
+.monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-submit-button,
+.monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-submit-button .action-label,
+.monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-execute-toolbar .action-item:last-child .action-label {
+	border-radius: 10px;
+}
+
+/* the block reads as a block even while there is nothing to send yet: a quiet stone fill (DESIGN.md 方块发送键),
+   the theme's own button colour once there is something to send */
+.monaco-workbench.agent-sessions-workbench .sessions-chat-send-button .monaco-button.disabled,
+.monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-execute-toolbar .action-item.disabled:last-child .action-label {
+	background-color: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+	opacity: 1;
+}
+
+.monaco-workbench.agent-sessions-workbench .sessions-chat-send-button .monaco-button.disabled .codicon,
+.monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-execute-toolbar .action-item.disabled:last-child .action-label .codicon {
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench.agent-sessions-workbench :is(.sessions-chat-send-button, .interactive-input-part .chat-execute-toolbar) .codicon-arrow-up-compact::before {
+	font-family: "dispatch-blocks" !important;
+	content: "\e920" !important;
+}
+
+/* stop while the agent works: a block that breathes, the same clock as every working block */
+.monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-execute-toolbar .codicon-stop-circle {
+	display: inline-grid;
+	place-items: center;
+}
+
+.monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-execute-toolbar .codicon-stop-circle::before {
+	content: "" !important;
+	display: block;
+	width: 10px;
+	height: 10px;
+	border-radius: 3px;
+	background: currentColor;
+	animation: dispatch-block-breath 2.4s var(--dispatch-ease-std) infinite alternate;
+}
+
+.monaco-workbench.monaco-reduce-motion.agent-sessions-workbench .interactive-input-part .chat-execute-toolbar .codicon-stop-circle::before {
+	animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-execute-toolbar .codicon-stop-circle::before {
+		animation: none;
+	}
+}
+
+/* a narrow input row (Dispatch IDE input-chips-narrow): the harness and agent chips fold to their icon, as the
+   model picker does, instead of running under the send button */
+.monaco-workbench.agent-sessions-workbench .interactive-input-part :is(.dispatch-harness-picker-item, .chat-agent-picker-item).compact-picker .sessions-chat-dropdown-label,
+.monaco-workbench.agent-sessions-workbench .interactive-input-part :is(.dispatch-harness-picker-item, .chat-agent-picker-item).compact-picker .sessions-chat-dropdown-chevron {
+	display: none;
+}

@@ -1,0 +1,125 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: "Terminal" left and "Editor" right of the session title (dispatchEditorEntry.ts): icon buttons, their
+ *  word only on hover. And the title bar's "where you are"
+ *  (dispatchPlace.ts).
+ *--------------------------------------------------------------------------------------------*/
+
+.agent-sessions-compact-new-button.monaco-button.dispatch-title-side {
+	box-sizing: border-box;
+	/* DESIGN.md 动效: hover only fades the fill, a press sinks 1px (both 150ms ease), like the title next to them */
+	transition: background-color 150ms ease, transform 150ms ease;
+}
+.agent-sessions-compact-new-button.monaco-button.dispatch-title-side:active:not(.disabled) { transform: translateY(1px); }
+.monaco-reduce-motion .agent-sessions-compact-new-button.monaco-button.dispatch-title-side { transition: none; }
+.dispatch-editor-top-ic {
+	width: 14px;
+	height: 14px;
+	flex: none;
+	background-color: currentColor;
+	mask: url('../../../../browser/media/dispatch-editor-icon.svg') center / contain no-repeat;
+	-webkit-mask: url('../../../../browser/media/dispatch-editor-icon.svg') center / contain no-repeat;
+}
+.agent-sessions-compact-new-button.monaco-button.dispatch-title-side .dispatch-terminal-top-ic {
+	flex: none;
+	font-size: 14px;
+	color: inherit;
+}
+.dispatch-title-side-t { white-space: nowrap; }
+/* Terminal and Editor are icon buttons like the rest of the title bar's (user 2026-10-21, preferences「图标按钮不带字不带框」
+   「Editor 按钮悬停展开」): the icon alone at rest, no frame; on hover the fill fades in, the word slides out (160 ms, held
+   200 ms before it goes back) and the icon takes a logo colour (DESIGN.md「图标色即图例」): Terminal green, Editor blue,
+   as the editor window's Dispatch Agent button does */
+.agent-sessions-compact-new-button.monaco-button.dispatch-title-side {
+	gap: 0;
+	padding: 0 4px;
+	min-height: 22px;
+	height: 22px;
+	border-color: transparent !important;
+	border-radius: 5px;
+}
+.dispatch-title-side .dispatch-title-side-t {
+	display: inline-block;
+	max-width: 0;
+	opacity: 0;
+	margin-left: 0;
+	overflow: hidden;
+	transition: max-width 160ms ease 200ms, opacity 160ms ease 200ms, margin-left 160ms ease 200ms;
+}
+.dispatch-title-side:hover .dispatch-title-side-t,
+.dispatch-title-side:focus-visible .dispatch-title-side-t {
+	max-width: 80px;
+	opacity: 1;
+	margin-left: 5px;
+	transition-delay: 0ms;
+}
+.dispatch-title-side .dispatch-editor-top-ic { transition: background-color 150ms ease; }
+.dispatch-title-side .dispatch-terminal-top-ic { transition: color 150ms ease; }
+.dispatch-title-side:hover .dispatch-editor-top-ic,
+.dispatch-title-side:focus-visible .dispatch-editor-top-ic { background-color: var(--dispatch-icon-blue); }
+.agent-sessions-compact-new-button.monaco-button.dispatch-title-side:hover .dispatch-terminal-top-ic,
+.agent-sessions-compact-new-button.monaco-button.dispatch-title-side:focus-visible .dispatch-terminal-top-ic { color: var(--dispatch-icon-green) !important; }
+.monaco-reduce-motion .dispatch-title-side .dispatch-title-side-t,
+.monaco-reduce-motion .dispatch-title-side .dispatch-editor-top-ic,
+.monaco-reduce-motion .dispatch-title-side .dispatch-terminal-top-ic { transition: none; }
+.agent-sessions-compact-new-button.monaco-button.dispatch-title-side.disabled { opacity: 0.5; }
+/* Terminal while the terminal is open: pressed, the hover's fill kept */
+.agent-sessions-compact-new-button.monaco-button.dispatch-title-side.on {
+	background-color: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-foreground);
+}
+
+
+/* ---- where you are: "folder › session" with its state block ---------------------------------------------------- */
+
+/* The title box is as wide as its words (a long title is cut at the old 31vw / 600px), so Terminal on its left and
+   Editor on its right sit next to the title instead of the edges of a wide, empty box (task-e1qsa, 「Editor 和 Terminal 挨着标题」). */
+.command-center .agent-sessions-titlebar-container {
+	width: auto;
+	max-width: min(31vw, 600px);
+}
+.command-center .agent-sessions-titlebar-container .agent-sessions-titlebar-pill.dispatch-place {
+	justify-content: center;
+	opacity: 1;
+	border-radius: 8px;
+	transition: background-color 150ms ease, transform 150ms ease;
+}
+.command-center .agent-sessions-titlebar-container .agent-sessions-titlebar-pill.dispatch-place:active { transform: translateY(1px); }
+.command-center .agent-sessions-titlebar-container .agent-sessions-titlebar-pill.dispatch-place:hover,
+.command-center .agent-sessions-titlebar-container .agent-sessions-titlebar-pill.dispatch-place.open {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+.command-center .agent-sessions-titlebar-container .dispatch-place-row {
+	gap: 6px;
+	font-size: 13px;
+}
+.dispatch-place-folder {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	/* the folder keeps its name (up to 160px); a long session title is what gets cut */
+	flex: none;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-place-folder-ic { flex: none; font-size: 14px !important; }
+.dispatch-place-folder-t,
+.dispatch-place-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dispatch-place-folder-t { flex: none; max-width: 160px; }
+.dispatch-place-sep { flex: none; color: var(--vscode-descriptionForeground); opacity: 0.7; }
+.dispatch-place-title { flex: 0 1 auto; color: var(--vscode-titleBar-activeForeground, var(--vscode-foreground)); font-weight: 500; }
+.dispatch-place-state { display: inline-flex; flex: none; }
+.dispatch-place-state:empty { display: none; }
+.dispatch-place-chev {
+	flex: none;
+	font-size: 12px !important;
+	color: var(--vscode-descriptionForeground);
+	transition: transform 150ms ease;
+}
+.dispatch-place-chev[hidden] { display: none; }
+.agent-sessions-titlebar-pill.dispatch-place.open .dispatch-place-chev { transform: rotate(180deg); }
+.monaco-reduce-motion .agent-sessions-titlebar-pill.dispatch-place,
+.monaco-reduce-motion .dispatch-place-chev { transition: none; }

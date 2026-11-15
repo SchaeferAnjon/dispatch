@@ -1,0 +1,33 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the empty editor's icon (dispatchEditorMark.ts, 815-editor-watermark.patch)
+ *--------------------------------------------------------------------------------------------*/
+
+/* Dispatch IDE: the empty editor shows Dispatch's logo as it was before 10-10, 153px wide (dispatchEditorMark.ts lays
+ * it out with base/common/dispatchIcon.ts and drops its blocks in); the big dot shows when the last block has landed
+ * and its glow breathes (base/browser/dispatchIcon.ts). The empty slots take the watermark's text colour, faint. */
+.monaco-workbench .part.editor > .content .editor-group-container .editor-group-watermark .dispatch-mark {
+	flex: 0 0 auto;
+	margin-bottom: 16px;
+	line-height: 0;
+}
+
+.monaco-workbench .part.editor > .content .editor-group-container .editor-group-watermark .dispatch-mark svg {
+	overflow: visible; /* the blocks fall in from well above the icon, as from the top of the design's stage */
+}
+
+.monaco-workbench .part.editor > .content .editor-group-container .editor-group-watermark .dispatch-mark:not(.lit) .now {
+	visibility: hidden;
+}
+
+/* the Agents window's side panel: no icon at all. Its empty editor group can sit under an overlaid pane
+   (before the Changes / Files / Docs tabs load), which cut the icon in half; the drop belongs to the editor
+   window's empty editor and the splash. */
+.monaco-workbench.agent-sessions-workbench .part.editor > .content .editor-group-container .editor-group-watermark .dispatch-mark {
+	display: none;
+}
+
+/* too little room (a split editor, a short window): the shortcuts go (above), the icon goes too */
+.monaco-workbench .part.editor > .content:not(.empty) .editor-group-container .editor-group-watermark .dispatch-mark,
+.monaco-workbench .part.editor > .content .editor-group-container.max-height-478px .editor-group-watermark .dispatch-mark {
+	display: none;
+}

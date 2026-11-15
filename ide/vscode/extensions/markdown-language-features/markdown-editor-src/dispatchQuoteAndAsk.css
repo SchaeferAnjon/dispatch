@@ -1,0 +1,59 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the Quote and Ask Question rows (dispatchQuoteAndAsk.ts, 315-quote.patch)
+ *--------------------------------------------------------------------------------------------*/
+
+/* Dispatch: "Quote" and "Ask Question" are full-width rows under the comment input, inside the same box */
+.md-comment-input {
+	flex-wrap: wrap;
+}
+
+.md-selection-action {
+	display: flex;
+	flex: 1 0 100%;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	margin: 4px 0 0 -3px;
+	padding: 0 4px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.md-selection-action + .md-selection-action {
+	margin-top: 0;
+}
+
+.md-selection-action:hover,
+.md-selection-action:focus-visible {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	outline: none;
+}
+
+.md-selection-action .codicon {
+	flex: none;
+	font-size: 14px;
+	color: var(--vscode-icon-foreground);
+}
+
+.md-selection-action .md-selection-action-label {
+	flex: 1;
+}
+
+/* the key cap: DESIGN.md .kbd (20 high, --chip-2, 11/500, radius 4) */
+.md-selection-action kbd {
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	padding: 0 6px;
+	border-radius: 4px;
+	background: var(--vscode-keybindingLabel-background);
+	color: var(--vscode-keybindingLabel-foreground, var(--vscode-foreground));
+	font: inherit;
+	font-size: 11px;
+	font-weight: 500;
+}

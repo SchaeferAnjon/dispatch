@@ -1,0 +1,925 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Waiting for you (dispatchWaiting.ts, views/dispatchWaitingSidebar.ts), direction A of
+ *  design/home-now (2026-11-11, task-0v1o9), after DESIGN.md: flat, no colour: every row here waits for the person,
+ *  so its first slot says what the thing is with a thin grey icon (DESIGN.md 符号表, 2026-11-12, task-he465); what
+ *  is asked is a word in its own column, not a capsule.
+ *  The DESIGN.md tokens as the Dispatch theme hands them over:
+ *    --bg      the session view's background      card     textCodeBlock.background (the Customizations
+ *                                                          cards: one step off the page in both themes)
+ *    --sel     list.activeSelectionBackground     60 %     list.hoverBackground
+ *    --text    foreground                         --text-2 descriptionForeground
+ *    --hair    editorHoverWidget.border           --chip   button.secondaryBackground
+ *    --chip-2  keybindingLabel.background         --fill   button.background / button.foreground
+ *    --ring    focusBorder (the fill at 30 %)
+ *--------------------------------------------------------------------------------------------*/
+
+.monaco-workbench {
+	--dispatch-waiting-bg-2: var(--vscode-sideBar-background);
+	--dispatch-waiting-card: var(--vscode-textCodeBlock-background);
+	--dispatch-waiting-sel: var(--vscode-list-activeSelectionBackground);
+	--dispatch-waiting-hover: var(--vscode-list-hoverBackground);
+	--dispatch-waiting-text: var(--vscode-foreground);
+	--dispatch-waiting-text-2: var(--vscode-descriptionForeground);
+	--dispatch-waiting-hair: var(--vscode-editorHoverWidget-border);
+	--dispatch-waiting-chip: var(--vscode-button-secondaryBackground);
+	--dispatch-waiting-chip-2: var(--vscode-keybindingLabel-background);
+	--dispatch-waiting-fill: var(--vscode-button-background);
+	--dispatch-waiting-fill-text: var(--vscode-button-foreground);
+	--dispatch-waiting-ring: var(--vscode-focusBorder);
+	--dispatch-waiting-ease-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* ---- Waiting for you at the top of the sessions list (views/dispatchWaitingSidebar.ts; 2026-11-11 direction A,
+   task-0v1o9). The entry: a 36 high ghost row, the codicon's thin 16px bell and the label in --text-2, this week's
+   number at the end in 11px --text-2 with tabular figures (none at 0; no amber on the entry) ---- */
+.agent-sessions-viewpane .session-section.dispatch-waiting-section {
+	height: 36px;
+}
+.agent-sessions-viewpane .session-section .session-section-count.dispatch-waiting-count {
+	margin-left: auto;
+	margin-right: 2px;
+	opacity: 1;
+	font-size: 11px;
+	font-weight: 400;
+	color: var(--dispatch-waiting-text-2);
+	font-variant-numeric: tabular-nums;
+}
+/* no section actions on this row: the count sits where the Customizations counts do */
+.agent-sessions-viewpane .session-section.dispatch-waiting-section .session-section-toolbar {
+	display: none;
+}
+/* this week's newest things under it: 32 high, a 14px thin icon for what it is in a 14px slot, the title 13/400, how
+   long ago in 11px; one step in: the slot and the title start where a project's session rows have theirs (38 and 58) */
+.agent-sessions-viewpane .session-section.dispatch-wait-row {
+	height: 32px;
+	padding-left: 30px;
+	font-size: 13px;
+	font-weight: 400;
+	color: var(--dispatch-waiting-text);
+}
+.agent-sessions-viewpane .session-section.dispatch-wait-row .session-section-icon {
+	width: 14px;
+	height: 14px;
+	margin-right: 6px;
+}
+/* every row here waits for the person: the slot says what the thing is, not the state (DESIGN.md 符号表, task-he465) */
+.agent-sessions-viewpane .session-section.dispatch-wait-row .dispatch-wait-kind {
+	font-size: 14px;
+	color: var(--dispatch-waiting-text-2);
+}
+.agent-sessions-viewpane .session-section.dispatch-wait-row .session-section-count.dispatch-wait-age {
+	margin-left: 8px;
+	margin-right: 2px;
+	opacity: 1;
+	font-size: 11px;
+	color: color-mix(in srgb, var(--dispatch-waiting-text-2) 70%, transparent);
+	font-variant-numeric: tabular-nums;
+}
+/* the group's last row: 8 under it before Automations (DESIGN.md 留白, groups 8 apart), outside its hover and
+   selection (the row's background stops at its content) */
+.agent-sessions-viewpane .sessions-list-control .monaco-list-row.dispatch-group-end {
+	padding-bottom: 8px;
+	box-sizing: border-box;
+	background-clip: content-box;
+}
+/* "Show N more" (12/600) and "N older" (12/400), grey 70 %, at the titles' edge */
+.agent-sessions-viewpane .session-section.dispatch-wait-fold {
+	height: 28px;
+	padding-left: 50px;
+	font-size: 12px;
+	font-weight: 600;
+	color: color-mix(in srgb, var(--dispatch-waiting-text-2) 70%, transparent);
+}
+.agent-sessions-viewpane .session-section.dispatch-wait-fold.older {
+	font-weight: 400;
+}
+/* hover, and pointed at from the same thing elsewhere (DESIGN.md 联动悬停): --sel 60 % */
+.agent-sessions-viewpane .monaco-list-row:has(.dispatch-wait-row, .dispatch-wait-fold):hover,
+.agent-sessions-viewpane .monaco-list-row.dispatch-linked:has(.dispatch-wait-row):not(.selected) {
+	background-color: var(--dispatch-waiting-hover) !important;
+}
+.sessions-list-control .monaco-list-row:hover .session-section.dispatch-wait-row .session-section-label {
+	color: var(--dispatch-waiting-text);
+}
+.sessions-list-control .monaco-list-row:hover .session-section.dispatch-wait-fold .session-section-label {
+	color: var(--dispatch-waiting-text-2);
+}
+
+/* the sidebar's hover cards (this row's, a project's, a session's tasks) share their row style with every
+   card of ours: workbench/browser/media/dispatchHoverCard.css */
+/* a waiting item's buttons on a card (the Projects page's line, a project's Now): the page's buttons, small;
+   a long option wraps (a card cuts nothing off) */
+.dispatch-hover-actions .dispatch-waiting-btn {
+	max-width: 100%;
+	min-width: 0;
+	height: auto;
+	min-height: 24px;
+	padding-top: 2px;
+	padding-bottom: 2px;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	text-align: left;
+}
+
+/* why this direction: the small card right under the one it was picked on (askPickReason) */
+.dispatch-reason-card {
+	width: 360px;
+}
+.dispatch-reason-box {
+	padding: 2px 8px 4px;
+}
+.dispatch-reason-input {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	height: 28px;
+	padding: 0 8px;
+	border: 1px solid var(--vscode-input-border, color-mix(in srgb, var(--dispatch-waiting-text) 14%, transparent));
+	border-radius: 8px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	font-size: 13px;
+	outline: none;
+}
+.dispatch-reason-input::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+.dispatch-reason-input:focus {
+	border-color: var(--vscode-focusBorder);
+}
+
+/* ---- list pieces the Task graph and a project's Archive share (dispatchTaskGraphView.ts, dispatchTaskArchive.ts):
+   a page of groups of 32 high rows, scope chips; the Waiting for you page below has its own ---- */
+/* the host focuses the content: no focus rectangle around the whole list */
+.dispatch-waiting-page {
+	outline: none;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding-bottom: 24px;
+}
+.dispatch-waiting-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.dispatch-waiting-filter {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 12px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-waiting-filter:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-waiting-filter.selected {
+	background-color: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
+	border-color: transparent;
+}
+.dispatch-waiting-filter-count {
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-waiting-filter:focus-visible,
+.dispatch-waiting-more:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+.dispatch-waiting-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.dispatch-waiting-empty {
+	padding: 24px 12px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 13px;
+}
+.dispatch-waiting-group {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.dispatch-waiting-group-head {
+	height: 28px;
+	line-height: 28px;
+	padding: 0 12px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-waiting-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 32px;
+	padding: 0 8px 0 12px;
+	border-radius: 20px;
+	font-size: 13px;
+	transition: background-color 150ms ease, opacity 150ms ease;
+}
+.dispatch-waiting-row:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-waiting-row.busy {
+	opacity: 0.5;
+}
+.dispatch-waiting-icon {
+	flex: none;
+	width: 16px;
+	height: 16px;
+}
+.dispatch-waiting-icon.codicon {
+	font-size: 16px;
+	line-height: 16px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-waiting-text {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dispatch-waiting-title {
+	color: var(--vscode-foreground);
+}
+.dispatch-waiting-phrase {
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-waiting-project {
+	flex: none;
+	max-width: 120px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-waiting-pill {
+	flex: none;
+	height: 18px;
+	line-height: 18px;
+	padding: 0 8px;
+	border-radius: 999px;
+	background-color: var(--vscode-list-hoverBackground);
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+	font-weight: 500;
+}
+.dispatch-waiting-time {
+	flex: none;
+	width: 32px;
+	text-align: right;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-waiting-more {
+	height: 24px;
+	padding: 0 8px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-waiting-more:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-waiting-more:active {
+	transform: translateY(1px);
+}
+.dispatch-waiting-more {
+	align-self: flex-start;
+	margin: 4px 0 0 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ---- the page ---- */
+/* no focus rectangle around the whole page: the row or card in focus shows where the keys act */
+.monaco-workbench .dispatch-waiting-page.dispatch-waiting-a:focus,
+.monaco-workbench .dispatch-waiting-page.dispatch-waiting-a:focus-visible,
+.monaco-workbench .custom-view-content:has(> .dispatch-waiting-a):focus-visible {
+	outline: none;
+}
+.dispatch-waiting-page.dispatch-waiting-a {
+	outline: none;
+	display: flex;
+	flex-direction: column;
+	/* the old page's 12px gap would add to the segments' own 16: 28 is not one of DESIGN.md's steps */
+	gap: 0;
+	padding: 6px 0 16px;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--dispatch-waiting-text);
+}
+.dispatch-waiting-a .dispatch-waiting-sp {
+	flex: 1 1 auto;
+}
+.dispatch-waiting-a .dispatch-waiting-ic.codicon {
+	flex: none;
+	font-size: 16px;
+	color: var(--dispatch-waiting-text-2);
+}
+
+/* ---- the page (2026-11-11 direction A, task-0v1o9): one line on how it is ordered, This week, Older ----
+   (design/home-now notes.md A4: rows 32 high, a 14px icon for what it is, the title 13/400, then three columns: the project
+   12px 112 wide, what is asked 12/500 64 wide, how long ago 11px 38 wide right aligned; no capsules) */
+/* the head line (2026-11-15, task-ccmyi): 28 high, sticky at the top of the view; the line on how the page is ordered
+   and a light "Mark all read" at its end, or "N selected" with Done and Clear. The buttons' words end where the
+   age column ends (the row's 12 less the xs button's 8) */
+.dispatch-waiting-a .dispatch-waiting-head {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 28px;
+	margin: 0 0 8px;
+	padding: 0 4px 0 12px;
+	background: var(--session-view-background, var(--vscode-editor-background));
+}
+.dispatch-waiting-a .dispatch-waiting-intro {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--dispatch-waiting-text-2);
+}
+.dispatch-waiting-a .dispatch-waiting-selinfo {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--dispatch-waiting-text);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-waiting-a .dispatch-waiting-group-head,
+.dispatch-waiting-a .dispatch-waiting-fold {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	line-height: 28px;
+	margin-top: 8px;
+	padding: 0 12px;
+	border-radius: 10px;
+	font-size: 12px;
+	font-weight: 600;
+	color: color-mix(in srgb, var(--dispatch-waiting-text-2) 70%, transparent);
+}
+.dispatch-waiting-a .dispatch-waiting-head + .dispatch-waiting-group-head {
+	margin-top: 0;
+}
+.dispatch-waiting-a .dispatch-waiting-group-count {
+	margin-left: auto;
+	font-size: 11px;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+/* Older folds: the arrow turns 90 degrees in 200ms */
+.dispatch-waiting-a .dispatch-waiting-fold {
+	width: 100%;
+	border: 0;
+	background: transparent;
+	font-family: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 150ms var(--dispatch-waiting-ease-out);
+}
+.dispatch-waiting-a .dispatch-waiting-fold:hover {
+	background-color: var(--dispatch-waiting-hover);
+}
+.dispatch-waiting-a .dispatch-waiting-fold:focus-visible,
+.dispatch-waiting-a .dispatch-waiting-more:focus-visible {
+	outline: 2px solid var(--dispatch-waiting-ring);
+	outline-offset: -2px;
+}
+.dispatch-waiting-a .dispatch-waiting-fold-arrow.codicon {
+	font-size: 12px;
+	transition: transform 200ms var(--dispatch-waiting-ease-out);
+}
+.dispatch-waiting-a .dispatch-waiting-fold.open .dispatch-waiting-fold-arrow.codicon {
+	transform: rotate(90deg);
+}
+.dispatch-waiting-a .dispatch-waiting-rows {
+	display: flex;
+	flex-direction: column;
+}
+.dispatch-waiting-a .dispatch-waiting-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	min-height: 32px;
+	margin-top: 2px;
+	padding: 0 12px;
+	border-radius: 10px;
+	font-size: 13px;
+	cursor: pointer;
+	transition: background-color 150ms var(--dispatch-waiting-ease-out);
+}
+.dispatch-waiting-a .dispatch-waiting-row:hover,
+.dispatch-waiting-a .dispatch-waiting-row.focus,
+.dispatch-waiting-a .dispatch-waiting-row.linked {
+	background-color: var(--dispatch-waiting-hover);
+}
+.dispatch-waiting-a .dispatch-waiting-slot {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 14px;
+	height: 14px;
+}
+/* what the thing is, a 14px thin icon in --text-2; Older's at 45 % */
+.dispatch-waiting-a .dispatch-waiting-slot .dispatch-wait-kind {
+	font-size: 14px;
+	color: var(--dispatch-waiting-text-2);
+}
+.dispatch-waiting-a .dispatch-waiting-row.older .dispatch-wait-kind {
+	color: color-mix(in srgb, var(--dispatch-waiting-text-2) 45%, transparent);
+}
+/* picking several (2026-11-15, task-ccmyi): a row Done can clear (an Only-you task, an unread reply) is picked by its
+   first slot. Its icon turns into the round marks of DESIGN.md 符号表 (dispatchMarks.ts): an empty circle while the
+   slot is hovered or while rows are picked, the grey filled check once picked. The slot's hit area reaches the row's
+   left edge and the gap to the title. A picked row has the selection background. */
+.dispatch-waiting-a .dispatch-waiting-row.selectable .dispatch-waiting-slot {
+	position: relative;
+	cursor: default;
+}
+.dispatch-waiting-a .dispatch-waiting-row.selectable .dispatch-waiting-slot::before {
+	content: '';
+	position: absolute;
+	inset: -9px -8px -9px -12px;
+}
+.dispatch-waiting-a .dispatch-waiting-check {
+	display: none;
+	place-items: center;
+	width: 14px;
+	height: 14px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	cursor: default;
+}
+.dispatch-waiting-a .dispatch-waiting-check .dispatch-mark.seen,
+.dispatch-waiting-a .dispatch-waiting-row.selected .dispatch-waiting-check .dispatch-mark.todo {
+	display: none;
+}
+.dispatch-waiting-a .dispatch-waiting-row.selected .dispatch-waiting-check .dispatch-mark.seen {
+	display: block;
+}
+.dispatch-waiting-a .dispatch-waiting-row.selectable .dispatch-waiting-slot:hover .dispatch-wait-kind,
+.dispatch-waiting-a.selecting .dispatch-waiting-row.selectable .dispatch-wait-kind,
+.dispatch-waiting-a .dispatch-waiting-row.selected .dispatch-wait-kind {
+	display: none;
+}
+.dispatch-waiting-a .dispatch-waiting-row.selectable .dispatch-waiting-slot:hover .dispatch-waiting-check,
+.dispatch-waiting-a.selecting .dispatch-waiting-row.selectable .dispatch-waiting-check,
+.dispatch-waiting-a .dispatch-waiting-row.selected .dispatch-waiting-check {
+	display: grid;
+}
+.dispatch-waiting-a .dispatch-waiting-row.selected,
+.dispatch-waiting-a .dispatch-waiting-row.selected:hover {
+	background-color: var(--dispatch-waiting-sel);
+}
+/* a row or its slot clicked (⌘-click, ⇧-click) takes the DOM focus: no outline (VS Code's [tabindex="-1"]:focus one),
+   the row the keys act on shows by .focus */
+.monaco-workbench .dispatch-waiting-a .dispatch-waiting-row:focus,
+.monaco-workbench .dispatch-waiting-a .dispatch-waiting-row:focus-visible,
+.monaco-workbench .dispatch-waiting-a .dispatch-waiting-check:focus {
+	outline: none;
+}
+.dispatch-waiting-a .dispatch-waiting-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 400;
+	color: var(--dispatch-waiting-text);
+}
+.dispatch-waiting-a .dispatch-waiting-project {
+	flex: none;
+	width: 112px;
+	max-width: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--dispatch-waiting-text-2);
+}
+.dispatch-waiting-a .dispatch-waiting-ask {
+	flex: none;
+	width: 64px;
+	overflow: hidden;
+	white-space: nowrap;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--dispatch-waiting-text-2);
+}
+.dispatch-waiting-a .dispatch-waiting-age {
+	flex: none;
+	width: 38px;
+	text-align: right;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	color: color-mix(in srgb, var(--dispatch-waiting-text-2) 70%, transparent);
+}
+.dispatch-waiting-a .dispatch-waiting-row.older .dispatch-waiting-title {
+	color: var(--dispatch-waiting-text-2);
+}
+/* "Show N more" in Older: 12/600 grey 70%, at the titles' edge */
+.dispatch-waiting-a .dispatch-waiting-more {
+	align-self: stretch;
+	height: 28px;
+	margin: 2px 0 0;
+	padding: 0 12px 0 34px;
+	border: 0;
+	border-radius: 10px;
+	background: transparent;
+	text-align: left;
+	font-size: 12px;
+	font-weight: 600;
+	color: color-mix(in srgb, var(--dispatch-waiting-text-2) 70%, transparent);
+}
+.dispatch-waiting-a .dispatch-waiting-more:hover {
+	background-color: var(--dispatch-waiting-hover);
+}
+
+/* ---- buttons: capsules, 32 high by default, 24 for xs; ghost has no fill, outline a hairline of the text
+   colour (--hair does not show on --bg-2), fill is the one solid button ---- */
+.dispatch-waiting-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	padding: 0 12px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--dispatch-waiting-text);
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	flex: none;
+	transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+.dispatch-waiting-btn:hover {
+	background-color: var(--dispatch-waiting-chip);
+}
+.dispatch-waiting-btn:active {
+	transform: translateY(1px);
+}
+.dispatch-waiting-btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+	transform: none;
+	background: transparent;
+}
+.dispatch-waiting-btn.outline {
+	border-color: color-mix(in srgb, var(--dispatch-waiting-text) 14%, transparent);
+}
+.dispatch-waiting-btn.ghost {
+	color: var(--dispatch-waiting-text-2);
+	font-weight: 400;
+}
+.dispatch-waiting-btn.ghost:hover {
+	color: var(--dispatch-waiting-text);
+}
+.dispatch-waiting-btn.xs {
+	height: 24px;
+	padding: 0 8px;
+	font-size: 12px;
+}
+.dispatch-waiting-btn.fill,
+.dispatch-waiting-btn.fill:hover {
+	background-color: var(--dispatch-waiting-fill);
+	color: var(--dispatch-waiting-fill-text);
+	border-color: transparent;
+}
+.dispatch-waiting-btn .codicon {
+	font-size: 14px;
+	color: inherit;
+}
+.dispatch-waiting-btn:focus-visible {
+	outline: 2px solid var(--dispatch-waiting-ring);
+	outline-offset: 1px;
+}
+
+/* keycaps: 18 high, radius 4, on --chip-2 with a hairline; inside a button only on the focused card */
+.dispatch-waiting-kbd {
+	display: inline-grid;
+	place-items: center;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 4px;
+	box-sizing: border-box;
+	border-radius: 4px;
+	background: var(--dispatch-waiting-chip-2);
+	box-shadow: 0 0 0 1px var(--dispatch-waiting-hair);
+	font: 500 11px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+	color: var(--dispatch-waiting-text-2);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-waiting-btn .dispatch-waiting-kbd {
+	display: none;
+}
+.dispatch-waiting-item.focus .dispatch-waiting-btn .dispatch-waiting-kbd {
+	display: inline-grid;
+}
+
+/* the keys for the row in focus */
+/* the page's last line stays at the bottom of the view while the list scrolls: the keys on the left, the
+   toast at the right end, so a toast never covers a row the person is about to act on */
+.dispatch-waiting-a .dispatch-waiting-bar {
+	position: sticky;
+	bottom: 0;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	min-height: 40px;
+	margin-top: 24px;
+	padding: 0 12px;
+	background: var(--session-view-background, var(--vscode-editor-background));
+}
+.dispatch-waiting-a .dispatch-waiting-keys {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	display: flex;
+	/* one line: a key that does not fit whole goes to a second line, out of sight, instead of being cut off at
+	   the window's edge (kanban task-0hk7) */
+	flex-wrap: wrap;
+	max-height: 18px;
+	align-items: center;
+	gap: 16px;
+	font-size: 12px;
+	color: var(--dispatch-waiting-text-2);
+	white-space: nowrap;
+}
+.dispatch-waiting-a .dispatch-waiting-key {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+/* ---- a row handled: fades and slides 8px (150ms), then folds (150ms); a new one comes up 4px ---- */
+.dispatch-waiting-a .dispatch-waiting-item.leaving {
+	opacity: 0;
+	transform: translateX(8px);
+	transition: opacity 150ms var(--dispatch-waiting-ease-out), transform 150ms var(--dispatch-waiting-ease-out);
+	pointer-events: none;
+}
+.dispatch-waiting-a .dispatch-waiting-item.leaving.collapsing {
+	overflow: hidden;
+	height: 0 !important;
+	min-height: 0;
+	padding-top: 0;
+	padding-bottom: 0;
+	margin-top: -8px;
+	transition: height 150ms var(--dispatch-waiting-ease-out), padding 150ms var(--dispatch-waiting-ease-out), margin 150ms var(--dispatch-waiting-ease-out), opacity 150ms var(--dispatch-waiting-ease-out);
+}
+.dispatch-waiting-a .dispatch-waiting-rows .dispatch-waiting-item.leaving.collapsing {
+	margin-top: -2px;
+}
+.dispatch-waiting-a .dispatch-waiting-item.entering {
+	animation: dispatch-waiting-in 120ms var(--dispatch-waiting-ease-out);
+}
+@keyframes dispatch-waiting-in {
+	from { opacity: 0; transform: translateY(4px); }
+	to { opacity: 1; transform: none; }
+}
+
+/* while the first answer is on its way: grey bars with the shimmer */
+.dispatch-waiting-a .dispatch-waiting-skeleton {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 8px 12px;
+}
+.dispatch-waiting-a .dispatch-waiting-skeleton-bar {
+	height: 12px;
+	border-radius: 4px;
+	background: linear-gradient(90deg, var(--dispatch-waiting-sel) 0%, color-mix(in srgb, var(--dispatch-waiting-sel) 40%, transparent) 50%, var(--dispatch-waiting-sel) 100%);
+	background-size: 200% 100%;
+	animation: dispatch-waiting-shimmer 2s linear infinite;
+}
+@keyframes dispatch-waiting-shimmer {
+	from { background-position: 100% 0; }
+	to { background-position: -100% 0; }
+}
+
+/* ---- the toast: inverted, radius 14, over the page's bottom edge; Undo for 6 s ---- */
+.dispatch-waiting-toast {
+	position: absolute;
+	right: 12px;
+	top: 50%;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	max-width: min(440px, 70%);
+	padding: 6px 8px 6px 12px;
+	border-radius: 14px;
+	background: var(--dispatch-waiting-text);
+	color: var(--vscode-editor-background);
+	font-size: 12px;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transform: translate(0, calc(-50% + 8px));
+	transition: opacity 200ms ease, transform 200ms ease;
+}
+.dispatch-waiting-toast.on {
+	opacity: 1;
+	pointer-events: auto;
+	transform: translate(0, -50%);
+}
+.dispatch-waiting-toast-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+.dispatch-waiting-toast-undo {
+	flex: none;
+	height: 20px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-weight: 500;
+	cursor: pointer;
+}
+.dispatch-waiting-toast-undo:hover {
+	background: color-mix(in srgb, var(--vscode-editor-background) 15%, transparent);
+}
+
+/* ---- the queue bar over a session opened from the page (dispatchWaitingQueue.ts): 32 high, on --bg-2,
+   the whole width of the session view, above its header ---- */
+.dispatch-waiting-queue {
+	container: dispatch-waiting-queue / inline-size;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+	height: 32px;
+	padding: 0 16px 0 10px;
+	box-sizing: border-box;
+	background: var(--dispatch-waiting-bg-2);
+	font-size: 12px;
+	color: var(--dispatch-waiting-text-2);
+	white-space: nowrap;
+}
+.dispatch-waiting-queue .dispatch-waiting-queue-back .codicon {
+	font-size: 14px;
+}
+.dispatch-waiting-queue-pos {
+	font-variant-numeric: tabular-nums;
+}
+/* the way back and where you are on the left; esc, Prev and Next at the right end (the prototype's bar) */
+.dispatch-waiting-queue .dispatch-waiting-sp {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.dispatch-waiting-queue-pos,
+.dispatch-waiting-queue-hint,
+.dispatch-waiting-queue .dispatch-waiting-btn {
+	flex: none;
+}
+/* where to go back to is the first thing the bar says: it never shrinks (the longest is "Waiting for you") */
+.dispatch-waiting-queue .dispatch-waiting-queue-back {
+	flex: none;
+}
+.dispatch-waiting-queue-hint {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+/* Prev: the word; the arrow only when the session is narrow */
+.dispatch-waiting-queue .dispatch-waiting-queue-prev .codicon {
+	display: none;
+	font-size: 14px;
+}
+/* a narrow session (these come after the rules above, which they override): the esc hint goes first, then
+   Prev keeps only its arrow; the way back, the position and Next always stay whole */
+@container dispatch-waiting-queue (max-width: 600px) {
+	.dispatch-waiting-queue-hint {
+		display: none;
+	}
+}
+@container dispatch-waiting-queue (max-width: 400px) {
+	.dispatch-waiting-queue .dispatch-waiting-queue-prev {
+		width: 24px;
+		padding: 0;
+		justify-content: center;
+	}
+	.dispatch-waiting-queue .dispatch-waiting-queue-prev .codicon {
+		display: inline-block;
+	}
+	.dispatch-waiting-queue .dispatch-waiting-queue-prev span {
+		display: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-waiting-item.leaving,
+	.dispatch-waiting-item.leaving.collapsing,
+	.dispatch-waiting-item.entering,
+	.dispatch-waiting-btn,
+	.dispatch-waiting-row,
+	.dispatch-waiting-card,
+	.dispatch-waiting-toast {
+		transition: none;
+		animation: none;
+	}
+	.dispatch-waiting-proj-arrow.codicon,
+	.dispatch-waiting-proj-body.opening,
+	.dispatch-waiting-proj-head {
+		transition: none;
+		animation: none;
+	}
+	.dispatch-waiting-skeleton-bar {
+		animation: none;
+	}
+}
+
+/* ---- session rows in the sidebar: the phrase at the end of a row waiting for an approval or a decision,
+   an unread title one weight up with a small dot at the end (sessionsList.ts) ---- */
+.agent-sessions-viewpane .session-item .dispatch-waiting-row-phrase {
+	display: none;
+	flex: 0 1 auto;
+	max-width: 50%;
+	margin-left: 8px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.agent-sessions-viewpane .session-item.dispatch-waiting .dispatch-waiting-row-phrase {
+	display: block;
+}
+.agent-sessions-viewpane .session-item .dispatch-waiting-row-unread {
+	display: none;
+	flex: none;
+	width: 6px;
+	height: 6px;
+	margin-left: 8px;
+	border-radius: 50%;
+	background-color: var(--vscode-foreground);
+}
+.agent-sessions-viewpane .session-item.unread:not(.needs-input) .session-title {
+	font-weight: 500;
+}
+/* one state mark a row (DESIGN.md「符号表」, task-o01fh): when the slot in front already says it (the teal check of a
+   reply not read yet, the coral circle), the dot at the end does not say it again */
+.agent-sessions-viewpane .session-item.unread:not(.needs-input):not(.dispatch-waiting):not(:has(.dispatch-row-state:not(.empty))) .dispatch-waiting-row-unread {
+	display: block;
+}
+/* where the row's toolbar shows (sessionsList.css), the phrase and the dot make room for it */
+.agent-sessions-viewpane .monaco-list-row:hover .session-item .dispatch-waiting-row-phrase,
+.agent-sessions-viewpane .monaco-list-row:hover .session-item .dispatch-waiting-row-unread,
+.agent-sessions-viewpane .monaco-list-row.focused:not(.selected) .session-item .dispatch-waiting-row-phrase,
+.agent-sessions-viewpane .monaco-list-row.focused:not(.selected) .session-item .dispatch-waiting-row-unread,
+.agent-sessions-viewpane .monaco-list:focus-within .monaco-list-row.focused .session-item .dispatch-waiting-row-phrase,
+.agent-sessions-viewpane .monaco-list:focus-within .monaco-list-row.focused .session-item .dispatch-waiting-row-unread {
+	display: none !important;
+}
+
+/* pointed at on the Waiting for you page (DESIGN.md 联动悬停): the row's own hover look (important: the flat
+   rule below keeps a waiting row transparent when it is not hovered) */
+.agent-sessions-viewpane .monaco-list-row.dispatch-linked:not(.selected) {
+	background-color: var(--vscode-list-hoverBackground) !important;
+}
+
+/* flat (DESIGN.md): a waiting row keeps the list's own background; the amber is its status grid only */
+.agent-sessions-viewpane .monaco-list-row:not(.selected):not(.focused):not(:hover):has(.session-item.needs-input) {
+	animation: none;
+	background-color: transparent;
+}

@@ -1,0 +1,94 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch (patches/260-session-liveness.patch): in the Agents window the question card is the same
+ *  family as the session's permission card (kanban DESIGN.md, 组件 权限卡): 16 radius, --bg-2 fill,
+ *  --hair border, no rules inside, title 14/500, 32 high pill buttons; and the MCP status row reads
+ *  like the other status rows (no italics, two greys, names as plain text, links in the text colour).
+ *--------------------------------------------------------------------------------------------*/
+
+.monaco-workbench.agent-sessions-workbench .chat-card-large {
+	background-color: var(--vscode-panel-background);
+	border-color: var(--vscode-agentsPanel-border, var(--vscode-widget-border));
+	border-radius: 16px;
+}
+.monaco-workbench.agent-sessions-workbench .chat-card-large:focus-within {
+	border-color: var(--vscode-focusBorder);
+}
+.monaco-workbench.agent-sessions-workbench .chat-card-large .chat-card-header {
+	border-bottom: 0;
+	padding: 12px 12px 0 16px;
+	align-items: center;
+}
+.monaco-workbench.agent-sessions-workbench .chat-card-large .chat-card-title {
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 1.35;
+}
+.monaco-workbench.agent-sessions-workbench .chat-card-large .monaco-button.chat-card-icon-button {
+	width: 24px;
+	min-width: 24px;
+	height: 24px;
+	border-radius: 50%;
+}
+.monaco-workbench.agent-sessions-workbench .interactive-session .chat-question-carousel-container .chat-question-input-container {
+	padding: 8px 16px 0;
+}
+.monaco-workbench.agent-sessions-workbench .interactive-session .chat-question-carousel-container .chat-question-list .chat-question-list-item {
+	min-height: 32px;
+	padding: 0 12px;
+	border-radius: 20px;
+}
+.monaco-workbench.agent-sessions-workbench .interactive-session .chat-question-carousel-container .chat-question-list .chat-question-list-item :is(.chat-question-list-label, .chat-question-list-label-title) {
+	font-size: 13px;
+	font-weight: 400;
+}
+.monaco-workbench.agent-sessions-workbench .interactive-session .chat-question-carousel-container .chat-question-input-container .chat-question-list-number {
+	font-size: 12px;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+.monaco-workbench.agent-sessions-workbench .interactive-session .chat-question-carousel-container .chat-question-footer-row {
+	border-top: 0;
+	padding: 8px 16px 16px;
+}
+.monaco-workbench.agent-sessions-workbench .interactive-session .chat-question-carousel-container .chat-question-footer-row .monaco-button.chat-question-submit-button {
+	height: 32px;
+	padding: 0 12px;
+	border-radius: 999px;
+	font-size: 13px;
+	font-weight: 500;
+}
+.monaco-workbench.agent-sessions-workbench .interactive-session .chat-question-carousel-conversation-summary .chat-question-summary-prefix {
+	font-weight: 500;
+}
+.monaco-workbench.agent-sessions-workbench .interactive-input-part > .chat-question-carousel-widget-container {
+	margin-bottom: 4px;
+}
+
+/* One place for a free answer: the chat input under the card (its placeholder says so). OpenCode's
+   question tool marks every question as taking a custom answer; the card does not repeat the box. */
+.monaco-workbench.agent-sessions-workbench .interactive-session .chat-question-carousel-container .chat-question-freeform {
+	display: none;
+}
+
+.monaco-workbench.agent-sessions-workbench .chat-mcp-servers-message {
+	font-style: normal;
+	opacity: 1;
+	color: var(--vscode-descriptionForeground);
+}
+.monaco-workbench.agent-sessions-workbench .chat-mcp-servers-message code {
+	font-family: inherit;
+	font-size: inherit;
+	background: none;
+	padding: 0;
+}
+.monaco-workbench.agent-sessions-workbench .chat-mcp-servers-message a {
+	color: inherit;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+.monaco-workbench.agent-sessions-workbench .chat-mcp-servers-message a:hover {
+	color: var(--vscode-foreground);
+}
+.monaco-workbench.agent-sessions-workbench .chat-mcp-servers-icon {
+	display: none;
+}

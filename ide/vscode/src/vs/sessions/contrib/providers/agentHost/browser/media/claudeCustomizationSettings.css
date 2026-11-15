@@ -1,0 +1,94 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the Claude harness page (claudeCustomizationSettings.contribution.ts). The rest of
+ *  the page is Codex's layout (agentGlobalConfigurationSettings.css); here only the allowed tools
+ *  list: one 32 high row per rule with a remove button on hover, and the add field under the card.
+ *--------------------------------------------------------------------------------------------*/
+
+.claude-settings .claude-settings-tools {
+	padding: var(--vscode-spacing-size40) 0;
+}
+
+.claude-settings .claude-settings-tool {
+	display: flex;
+	align-items: center;
+	gap: var(--vscode-spacing-size80);
+	min-height: 32px;
+	padding: 0 var(--vscode-spacing-size40) 0 var(--vscode-spacing-size120);
+}
+
+.claude-settings .claude-settings-tool:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.claude-settings .claude-settings-tool-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+}
+
+.claude-settings .monaco-button.claude-settings-tool-remove {
+	flex: none;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border-radius: 999px;
+	background: transparent;
+	border: none;
+	color: var(--vscode-descriptionForeground);
+	opacity: 0;
+}
+
+.claude-settings .claude-settings-tool:hover .claude-settings-tool-remove,
+.claude-settings .claude-settings-tool-remove:focus-visible {
+	opacity: 1;
+}
+
+.claude-settings .monaco-button.claude-settings-tool-remove:hover {
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.claude-settings .claude-settings-tools-empty {
+	padding: var(--vscode-spacing-size80) var(--vscode-spacing-size120);
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-label1);
+}
+
+.claude-settings .claude-settings-tool-add {
+	display: flex;
+	align-items: center;
+	gap: var(--vscode-spacing-size80);
+	margin-top: var(--vscode-spacing-size80);
+}
+
+.claude-settings .claude-settings-tool-add .monaco-inputbox {
+	flex: 1;
+	min-width: 0;
+	border-radius: var(--vscode-cornerRadius-xSmall);
+}
+
+.claude-settings .claude-settings-tool-add .monaco-button {
+	flex: none;
+	width: auto;
+}
+
+/* the page scrolls on its own: the theme's thin slider on no track, not the system's white gutter */
+.claude-settings.agent-global-configuration-settings::-webkit-scrollbar {
+	width: 10px;
+	background: transparent;
+}
+
+.claude-settings.agent-global-configuration-settings::-webkit-scrollbar-thumb {
+	border: 2px solid transparent;
+	border-radius: 999px;
+	background-clip: padding-box;
+	background-color: var(--vscode-scrollbarSlider-background);
+}
+
+.claude-settings.agent-global-configuration-settings::-webkit-scrollbar-thumb:hover {
+	background-color: var(--vscode-scrollbarSlider-hoverBackground);
+}

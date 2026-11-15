@@ -1,0 +1,45 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: In this update in the update tooltip (480-whats-new.patch)
+ *--------------------------------------------------------------------------------------------*/
+
+/* Dispatch IDE (patches/480-whats-new.patch): In this update, a row per new feature (48×32 picture, name, where) */
+.update-tooltip .dispatch-in-this-update {
+	display: grid;
+	gap: 4px;
+}
+
+.update-tooltip .dispatch-in-this-update .ulh {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+
+.update-tooltip .dispatch-in-this-update .uli {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	font-size: 12px;
+}
+
+.update-tooltip .dispatch-in-this-update .thumb {
+	flex: none;
+	width: 48px;
+	height: 32px;
+	border-radius: 6px;
+	background: var(--vscode-sideBar-background) center / cover no-repeat;
+	box-shadow: 0 0 0 1px var(--vscode-editorHoverWidget-border);
+}
+
+.update-tooltip .dispatch-in-this-update .t {
+	flex: none;
+	color: var(--vscode-foreground);
+}
+
+.update-tooltip .dispatch-in-this-update .w {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-descriptionForeground);
+}

@@ -1,0 +1,10 @@
+/* Dispatch IDE: the Run on chip (dispatchRunOn.ts). It is one more chip of the new session page's row and takes the
+   row's own look (.sessions-workspace-category-picker-slot .action-label); only what is new is here. */
+.dispatch-run-on .action-label.busy { cursor: progress; }
+.dispatch-run-on .action-label.busy .codicon-loading { animation: codicon-spin 1.25s steps(30) infinite; }
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-run-on .action-label.busy .codicon-loading { animation: none; }
+}
+
+/* a session row of another Mac ends with the machine tag (the one in dispatchPeerWaiting.css, DESIGN.md「机器标签」) */
+.dispatch-run-on-row-tag.dispatch-machine-tag { flex: none; margin-left: 6px; }

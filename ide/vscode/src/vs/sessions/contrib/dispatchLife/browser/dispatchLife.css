@@ -1,0 +1,43 @@
+.dispatch-life { display:flex; flex-wrap:wrap; align-items:center; gap:8px; position:relative; padding:4px 8px; font-size:11px; color:var(--vscode-descriptionForeground); }
+.dispatch-life[hidden], .dispatch-life-detail[hidden] { display:none; }
+.dispatch-life-context, .dispatch-handoff-marker { font:inherit; color:inherit; cursor:pointer; border:0; background:transparent; padding:4px 8px; border-radius:4px; }
+.dispatch-life-context:hover, .dispatch-handoff-marker:hover { background:var(--vscode-list-hoverBackground); }
+.dispatch-life-context:focus-visible, .dispatch-handoff-marker:focus-visible { outline:1px solid var(--vscode-focusBorder); }
+.dispatch-life-detail { position:fixed; z-index:2550; width:420px; max-width:calc(100vw - 16px); box-sizing:border-box; padding:14px 16px; background:var(--vscode-editorWidget-background); color:var(--vscode-foreground); border:1px solid var(--vscode-widget-border); border-radius:12px; box-shadow:0 8px 24px var(--vscode-widget-shadow); font-family:var(--vscode-font-family); font-size:12px; line-height:18px; }
+.dispatch-life-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px; }
+.dispatch-life-title { font-size:13px; font-weight:600; color:var(--vscode-foreground); }
+.dispatch-life-total { color:var(--vscode-descriptionForeground); font-variant-numeric:tabular-nums; }
+.dispatch-life-chart { display:flex; gap:16px; align-items:flex-start; margin-bottom:12px; }
+.dispatch-life-grid { flex:none; display:grid; grid-template-columns:repeat(10, 10px); gap:2px; }
+.dispatch-life-cell { width:10px; height:10px; border-radius:2px; }
+.dispatch-life-legend { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.dispatch-life-row { display:flex; align-items:center; gap:8px; }
+.dispatch-life-swatch { flex:none; width:8px; height:8px; border-radius:2px; }
+.dispatch-life-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--vscode-foreground); }
+.dispatch-life-tokens, .dispatch-life-pct { flex:none; font-variant-numeric:tabular-nums; color:var(--vscode-descriptionForeground); text-align:right; }
+.dispatch-life-tokens { width:44px; }
+.dispatch-life-pct { width:40px; color:var(--vscode-foreground); }
+.dispatch-life-cell.system, .dispatch-life-swatch.system { background:var(--vscode-charts-green); }
+.dispatch-life-cell.mcp, .dispatch-life-swatch.mcp { background:var(--vscode-charts-orange); }
+.dispatch-life-cell.skills, .dispatch-life-swatch.skills { background:var(--vscode-charts-purple); }
+.dispatch-life-cell.conversation, .dispatch-life-swatch.conversation { background:var(--vscode-charts-blue); }
+.dispatch-life-cell.free, .dispatch-life-swatch.free { background:color-mix(in srgb, var(--vscode-foreground) 8%, transparent); }
+.dispatch-life-cell.reserved, .dispatch-life-swatch.reserved { background:color-mix(in srgb, var(--vscode-foreground) 28%, transparent); }
+.dispatch-life-row.free .dispatch-life-name, .dispatch-life-row.reserved .dispatch-life-name { color:var(--vscode-descriptionForeground); }
+.dispatch-life-note { color:var(--vscode-descriptionForeground); margin-bottom:10px; }
+.dispatch-life-share { color:var(--vscode-descriptionForeground); padding:10px 0 6px; border-top:1px solid var(--vscode-widget-border); }
+.dispatch-life-stat { display:flex; justify-content:space-between; gap:24px; padding:4px 0; }
+.dispatch-life-stat span:last-child { color:var(--vscode-foreground); font-variant-numeric:tabular-nums; }
+.dispatch-handoff-marker { display:block; text-align:left; font-size:12px; width:100%; margin:6px 0; background:var(--vscode-list-inactiveSelectionBackground); border-left:2px solid var(--vscode-descriptionForeground); border-radius:0; }
+.dispatch-transcript-handoffs { margin:12px 0; }
+.dispatch-transcript-handoffs .dispatch-handoff-marker { text-align:center; background:transparent; border-left:0; border-top:1px solid var(--vscode-widget-border); color:var(--vscode-descriptionForeground); }
+
+.dispatch-life-input .chat-context-usage-widget { display:none !important; }
+.dispatch-life-status { display:block; padding:4px 8px; font-size:12px; color:var(--vscode-descriptionForeground); }
+.dispatch-life-status:empty { display:none; }
+.dispatch-task-plan li.dispatch-handoff-step { list-style:none; padding:0; }
+.dispatch-task-plan li.dispatch-handoff-step .dispatch-handoff-marker { margin:2px 0; }
+.dispatch-life-context { display:inline-flex; align-items:center; gap:6px; }
+.dispatch-life-meter { width:36px; height:4px; border-radius:2px; background:var(--vscode-widget-border); overflow:hidden; flex:none; }
+.dispatch-life-meter > span { display:block; height:100%; background:var(--vscode-descriptionForeground); }
+.dispatch-life-context.over .dispatch-life-meter > span { background:var(--vscode-foreground); }

@@ -1,0 +1,5 @@
+<!-- OpenCode's mark for Dispatch IDE: its pixel "o" (opencode.ai favicon) in one colour, on codicon's 16 px grid. The glyph of dispatch-icons.ttf (make-icon-font.py). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+  <path fill-rule="evenodd" d="M3 2h10v12H3V2zm1.5 1.5v9h7v-9h-7z"/>
+  <path d="M5.5 6.5h5v5h-5v-5z"/>
+</svg>

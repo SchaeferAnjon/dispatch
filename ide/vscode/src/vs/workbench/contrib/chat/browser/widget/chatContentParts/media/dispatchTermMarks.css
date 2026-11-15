@@ -1,0 +1,43 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Explain terms (task-39x97, kanban design/learn-scene frame 4). A word with a sentence behind it has a
+ *  faint dotted line under it (the prototype's `.term`: 1px dotted, the description colour); nothing else changes, the
+ *  word keeps its colour and weight. The hover is VS Code's own. Off in Settings › Learning: no line, no help cursor.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-term {
+	text-decoration: underline dotted;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 3px;
+	text-decoration-color: color-mix(in srgb, var(--vscode-descriptionForeground) 70%, transparent);
+	cursor: help;
+	border-radius: 2px;
+}
+
+.dispatch-term:hover {
+	text-decoration-color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-term:focus {
+	outline: none;
+}
+
+.dispatch-term:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+.dispatch-term.off {
+	text-decoration: none;
+	cursor: inherit;
+}
+
+/* the hover: the word, a sentence, Ask more; as wide as a sentence reads well (contents 320, the box about 336) */
+.monaco-hover.workbench-hover.dispatch-term-hover {
+	max-width: 336px;
+}
+
+.monaco-hover.workbench-hover.dispatch-term-hover .hover-contents {
+	max-width: 320px;
+	line-height: 1.5;
+	overflow-wrap: break-word;
+}

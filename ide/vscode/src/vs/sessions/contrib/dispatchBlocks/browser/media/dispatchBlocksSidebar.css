@@ -1,0 +1,40 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the left side bar's entries wear Dispatch's symbols instead of VS Code's line icons
+ *  (kanban design/identity/bold A4). Only the glyph changes, by the class each entry already has, so
+ *  the files that build the side bar stay as they are.
+ *--------------------------------------------------------------------------------------------*/
+
+.agent-sessions-workbench .session-section-icon:is(.codicon-calendar, .codicon-comment-discussion, .codicon-folder, .codicon-folder-library)::before,
+.agent-sessions-workbench .ai-customization-toolbar :is(.codicon-code, .codicon-library, .codicon-home)::before {
+	font-family: "dispatch-blocks" !important;
+}
+
+/* Waiting for you keeps the codicon's own thin bell in grey (2026-11-11 direction A, task-0v1o9: no amber block on
+   the entry; the amber is the dots of the things under it) */
+/* Automations: a block with a clock */
+.agent-sessions-workbench .session-section-icon.codicon-calendar::before { content: "\e912" !important; }
+/* Chats: a block that talks */
+.agent-sessions-workbench .session-section-icon.codicon-comment-discussion::before { content: "\e913" !important; }
+/* a folder stays a folder (no initials, no colour picked for you) */
+.agent-sessions-workbench .session-section-icon.codicon-folder::before { content: "\e911" !important; }
+/* Projects */
+.agent-sessions-workbench .session-section-icon.codicon-folder-library::before { content: "\e911" !important; }
+/* the bottom rows: Editor, Knowledge, Overview (settings) */
+.agent-sessions-workbench .ai-customization-toolbar .codicon-code::before { content: "\e916" !important; }
+.agent-sessions-workbench .ai-customization-toolbar .codicon-library::before { content: "\e914" !important; }
+.agent-sessions-workbench .ai-customization-toolbar .codicon-home::before { content: "\e915" !important; }
+
+/* a session row's mark (dispatchBlocks.contribution.ts): a 14px slot holding the state mark (dispatchMarks.ts, DESIGN.md
+   「符号表」, task-o01fh), nothing when there is nothing to say */
+.dispatch-block.dispatch-row-state {
+	display: inline-grid;
+	place-items: center;
+	width: 14px;
+	height: 14px;
+	flex: none;
+}
+/* the session row's icon box lines its contents up at the top of a 20px line (sessionsList.css): the 14px slot goes 3px
+   down so the mark's middle is the title's middle */
+.session-item .session-icon > .dispatch-block.dispatch-row-state {
+	margin-top: 3px;
+}

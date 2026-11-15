@@ -1,0 +1,238 @@
+export type Status = "open" | "in_progress" | "blocked" | "closed" | "deferred";
+export type Column = "todo" | "prog" | "done" | "reviewed";
+export type View = "home" | "inbox" | "list" | "board" | "table" | "graph" | "projects" | "agents" | "settings" | "sessions" | "discuss" | "stats" | "skills" | "rules" | "pitfalls" | "env" | "quota" | "trash" | "archive" | "overview" | "new-chat";
+
+export interface StatsTokens { in: number; out: number; cr: number; cw: number; think: number }
+export interface StatsDay { date: string; msgs: number; tokens: number; in: number; out: number; cr: number; cw: number; by: Record<string, number> }
+export interface StatsRank { name: string; count: number; by: Record<string, number> }
+export interface Stats {
+  range_days: number;
+  agent: string;
+  total: { tokens: StatsTokens; total: number; sub_tokens: number; msgs: number; sessions: number; active_days: number; streak_cur: number; streak_max: number; tools_distinct: number; active_hours: number | null; first_day: string; last_day: string };
+  agents: { agent: string; sessions: number; msgs: number; tokens: StatsTokens; total: number; days: number }[];
+  days: StatsDay[];
+  hours: number[][];
+  models: { model: string; agent: string; msgs: number }[];
+  tools: StatsRank[];
+  skills: StatsRank[];
+  subagents: StatsRank[];
+  projects: { name: string; cwd: string; tokens: number; msgs: number; sessions: number; by: Record<string, number> }[];
+  generated_at: number;
+  hosts?: string[];
+}
+export interface Host {
+  id: string; name: string; aliases?: string[]; ip: string; ssh: string; online: boolean; local: boolean;
+  overlay: { kind: string; ip: string }; lan_ip?: string;
+  screen_sharing: boolean; novnc: string; novnc_up: boolean; novnc_issue?: string; vnc: string;
+  rustdesk: boolean; rustdesk_id: string; sunshine: boolean; sunshine_ui: string; uu: boolean;
+  recommend: "novnc" | "vnc" | "rustdesk" | "moonlight" | "uu" | ""; why: string;
+}
+export interface GraphEdge { from: string; to: string; type: string }
+export interface GraphData { nodes: Issue[]; edges: GraphEdge[] }
+export interface QuotaWindow { used_percent: number | null; resets_at: number | null; label: string }
+export interface Quota { agent: string; plan: string; windows: QuotaWindow[]; updated_at: number | null; source: string; note: string; host?: string; host_name?: string; remote?: boolean }
+export interface RuleTarget { agent: string; path: string; state: "synced" | "stale" | "absent" | "missing"; mode: "import" | "inline" }
+export interface InsightAgent { sessions: number; user_turns: number; approve: number; continue: number; correction: number; asktail: number; ends_on_question: number; long: number; overflow: number; tool_errors: number; no_board: number }
+export interface InsightSession { agent: string; session_id: string; cwd: string; title?: string; last_ts: string; user_turns: number; approve: number; continue: number; correction: number; asktail: number; overflow: number; ends_on_question: boolean; tool_errors: number; no_board: boolean }
+export interface InsightRule { key: string; name: string; how: string }
+export interface InsightReportItem { title: string; detail?: string; metric?: string; action?: string; priority?: string; evidence?: string[] }
+export interface InsightReportSection { key: string; title: string; summary: string; items: InsightReportItem[] }
+export interface InsightReport { id: string; created_at: string; days: number; model: string; session_count: number; digest_sessions?: number; duration_s?: number; error: string; report: { headline: string; sections: InsightReportSection[] } | null; signals?: Record<string, InsightAgent> }
+export interface InsightReportRow { id: string; source: "dispatch" | "claude-code"; created_at: string; days: number | null; model: string; sessions: number; headline: string; path: string; html: string; error: string }
+export interface InsightReportList { running: { started: number; days: number } | null; schedule: { every_days: number; updated_at?: string }; reports: InsightReportRow[] }
+export interface InsightAlert { id: string; kind: string; session_id: string; agent: string; ts: string; text: string; seen: boolean }
+export interface InsightSample { agent: string; session_id: string; ts: string; assistant: string; user: string }
+export interface Insights { days: number; total_sessions: number; per_agent: Record<string, InsightAgent>; sessions: InsightSession[]; samples: { asktail: InsightSample[]; correction: InsightSample[]; overflow: InsightSample[] }; findings: string[]; rules: InsightRule[]; alerts: InsightAlert[]; prompt: string; command: string }
+export interface EnvVar { name: string; note: string; masked: string; length: number; project?: string }
+export interface RulesStatus { hash: string; source: string; targets: RuleTarget[] }
+
+export interface SubagentRef { agent_id: string; type: string; description: string; tool_use_id: string; depth: number; size: number; last_at: number; path: string; running?: boolean }
+export interface SessionRef {
+  scheduled?: boolean; project_override?: string; title_override?: string; starred?: boolean; archived?: boolean; summary?: string;
+  agent: string;
+  session_id: string;
+  cwd: string;
+  project: string;
+  title: string;
+  first_prompt?: string;
+  last_at: number;
+  first_ts: string;
+  last_ts: string;
+  entrypoint: string;
+  branch: string;
+  /** The model it last answered with (a session's detail only). */
+  model?: string;
+  user_msgs: number;
+  assistant_msgs: number;
+  tools: Record<string, number>;
+  tasks: Record<string, number>;
+  mentions: number;
+  current_task: string | null;
+  resume_cmd: string;
+  path: string;
+  size: number;
+  subagents: SubagentRef[];
+  host?: string;
+  host_name?: string;
+  moved_to?: string; moved_to_name?: string; moved_from?: string; moved_from_name?: string; moved_at?: number;
+  /** Set by foldHostCopies (moves.ts): the other Macs' copies folded under this row, and the Macs where it runs too, and the Macs whose copy went on after the move too. */
+  copies?: { host: string; host_name?: string; last_at: number; moved_to_name?: string }[]; twin_live?: string[]; forked?: string[];
+  remote?: boolean;
+}
+// One step of an assistant turn, the same shape for every agent (field names are the CLI contract).
+export type ToolStatus = "running" | "done" | "error" | "incomplete";
+export type Block =
+  | { type: "thinking"; text: string; note?: string; id?: string }
+  | { type: "text"; text: string; id?: string }
+  | { type: "tool_call"; id: string; name: string; summary: string; input: Record<string, unknown>; status: ToolStatus; ts?: string; result?: string; result_ts?: string }
+  // View-only: a run of finished tool calls folded into one line (timeline.ts makes these; the CLI never sends one).
+  | { type: "tool_fold"; tools: Extract<Block, { type: "tool_call" }>[] };
+export interface TimelineMsg { ts: string; role: "user" | "assistant" | "tool" | "gap"; synthetic?: boolean; queued?: boolean; text: string; tools: { name: string; summary: string; id?: string }[]; images?: string[]; blocks?: Block[]; mid?: string }
+// What `dispatch session <id> --since <offset>` returns: only the records appended after `since`.
+export interface SessionTail { partial: true; since: number; offset: number; messages: TimelineMsg[]; resolved: { id: string; status: ToolStatus; result: string; result_ts: string }[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number> }
+export interface FileChange { kind: "edit" | "write" | "patch"; old: string; new: string; ts: string; op?: string; add?: number; del?: number }
+export interface SessionDetail { attachments?: import("./components/Media").Attachment[]; activity_version?: string; reply_id?: string; workspace?: { root: string; files: { path: string; untracked: boolean }[]; total?: number; patch: string; truncated?: boolean; unavailable?: string }; meta: SessionRef; messages: TimelineMsg[]; files: { path: string; changes: FileChange[] }[]; tool_counts: Record<string, number>; offset?: number }
+export interface Memory { key: string; value: string }
+export interface Skill { name: string; path: string; in_pool: boolean; description: string; agents: Record<string, boolean>; mounts?: Record<string, string | null>; usage?: Record<string, number>; last_used?: string }
+export interface SkillImprove { prompt: string; command: string; top: { name: string; usage: Record<string, number>; last_used: string }[] }
+
+export interface Issue {
+  id: string;
+  title: string;
+  description?: string;
+  status: Status;
+  priority: number;
+  issue_type: string;
+  assignee?: string;
+  owner?: string;
+  created_at: string;
+  created_by?: string;
+  updated_at: string;
+  started_at?: string;
+  closed_at?: string;
+  close_reason?: string;
+  labels?: string[];
+  acceptance_criteria?: string;
+  notes?: string;
+  dependency_count?: number;
+  dependent_count?: number;
+  comment_count?: number;
+  dependencies?: (Issue & { dependency_type?: string })[];
+  dependents?: (Issue & { dependency_type?: string })[];
+}
+
+export interface Comment {
+  id: string;
+  issue_id: string;
+  author: string;
+  text: string;
+  created_at: string;
+}
+
+export interface HistoryEntry {
+  CommitHash: string;
+  Committer: string;
+  CommitDate: string;
+  Issue: Issue;
+}
+
+export interface Info {
+  bd_bin: string;
+  beads_dir: string;
+  actor: string;
+  version: string;
+  initial_view?: string | null;
+  initial_task?: string | null;
+}
+
+export type SourceKind = "terminal" | "desktop" | "editor" | "chat" | "cron" | "unknown";
+export interface Session {
+  agent: string;
+  session_id: string;
+  cwd: string;
+  project: string;
+  agent_pid: number | null;
+  source_kind: SourceKind;
+  source_app: string;
+  entrypoint: string;
+  started_at: number;
+  last_at: number;
+  state: "working" | "idle" | "unknown";
+  prompts: number;
+  alive: boolean;
+  registered: boolean;
+  attention?: "input" | "failure" | null;
+  /** ide: the Agent Host's live status; catalog: only its agent-host.db row (ide_sessions.py). */
+  state_source?: "hook" | "transcript" | "ide" | "catalog";
+  last_event?: string;
+  // For a bare pid-… process no hook registered: the transcript it most likely writes.
+  probable_session_id?: string;
+  scheduled?: boolean;
+  title?: string;
+  // A resident process (Hermes gateway) that is online without a conversation in progress.
+  daemon?: boolean;
+  host?: string;
+  host_name?: string;
+  moved_to?: string; moved_to_name?: string; moved_from?: string; moved_from_name?: string; moved_at?: number;
+  /** Set by foldHostCopies (moves.ts): the other Macs' copies folded under this row, and the Macs where it runs too, and the Macs whose copy went on after the move too. */
+  copies?: { host: string; host_name?: string; last_at: number; moved_to_name?: string }[]; twin_live?: string[]; forked?: string[];
+  remote?: boolean;
+  // Files the session touched recently: `editing` from the hook registry (dispatch sessions),
+  // `files` from the transcript activity snapshot. Absolute paths either way.
+  editing?: { path: string; ts: number }[];
+  files?: Record<string, number>;
+  /** A session of the Agents window (Dispatch IDE / VS Code agent host, `dispatch sessions` via ide_sessions.py). */
+  source?: "ide";
+  ide_app?: string;
+  /** The Agent Host's session uri (claude:/<id>), what `dispatch ide archive-session` takes. */
+  ide_key?: string;
+  /** The git worktree checkout it works in; `project` is then the repository's name. */
+  worktree?: string | null;
+  archived?: boolean;
+}
+export interface Presence { sessions: Session[]; apps: string[] }
+
+export interface NewIssue {
+  title: string;
+  description?: string;
+  issue_type?: string;
+  priority?: number;
+  labels?: string[];
+  acceptance?: string;
+  deps?: string[];
+}
+
+export interface UpdateFields {
+  title?: string;
+  description?: string;
+  priority?: number;
+  assignee?: string;
+  acceptance?: string;
+  notes?: string;
+}
+
+export interface ActivityEvent { id: string; ts: number; kind: string; text: string; tool?: string; paths?: string[] }
+export interface Activity {
+  /** "claudian": an Obsidian vault chat through the Agent SDK (shown like any conversation). */
+  app?: string;
+  key: string; agent: string; session_id: string; cwd: string; project: string; title: string;
+  last_at: number; state: string; activity: string; version: string; events: ActivityEvent[];
+  scheduled?: boolean; project_override?: string; title_override?: string; starred?: boolean; archived?: boolean; summary?: string; summary_at?: number; unread_summary?: string; unread_summary_reply?: string; overview?: string; path?: string; entrypoint?: string; files?: Record<string, number>; tasks: string[]; reply_id?: string; reply_at?: number; reply_preview?: string;
+  unread: boolean; stale: boolean; tracking_since: number; source: string;
+  /** What the conversation waits on (CLI snapshot): a permission dialog / picker, or a reply ending on a question. */
+  waiting?: "" | "dialog" | "question"; question?: string;
+  /** The person's first request, shown as 「你当时说」 under a short name. */
+  first_prompt?: string;
+  background_agents?: { id: string; description: string }[];
+  host?: string; host_name?: string; remote?: boolean; moved_to?: string; moved_to_name?: string; moved_from?: string; moved_from_name?: string; moved_at?: number;
+  /** Set by foldHostCopies (moves.ts): the other Macs' copies folded under this row, and the Macs where it runs too, and the Macs whose copy went on after the move too. */
+  copies?: { host: string; host_name?: string; last_at: number; moved_to_name?: string }[]; twin_live?: string[]; forked?: string[];
+  /** "dispatch": chatd holds the agent process (in-app chat); "terminal": a TUI with a live pid; "": nothing runs it. */
+  runner?: "dispatch" | "terminal" | "";
+  /** With runner "dispatch": chatd's lifecycle for it (running, idle, waiting_*, or stopped once the idle timer closed it). */
+  chat_lifecycle?: string;
+}
+export interface ActivitySnapshot { sessions: Activity[]; updated_at: number; unavailable_hosts: string[] }
+
+/** A project move running in the background (`dispatch project-moves`): the app draws it on the project. */
+export interface MoveJob { id: string; project: string; to: string; cwd: string; state: "running" | "done" | "failed"; step: string; label: string; percent: number; detail?: string; started: number; updated: number; error?: string; result?: { to: string; remote_cwd: string; git_ok: boolean; git_checked: boolean; sessions: number; sessions_failed: number; history: number; history_failed: number; owner_error: string; opened?: string | null; open_error?: string } }

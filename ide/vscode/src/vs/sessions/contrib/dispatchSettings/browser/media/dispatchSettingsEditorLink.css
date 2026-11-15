@@ -1,0 +1,7 @@
+/* Dispatch IDE: "Editor window settings" leaves this window: an arrow out at the row's end (dispatchSettingsEditorLink.ts) */
+.dispatch-settings-nav .dsn-row .dsn-out {
+	margin-left: auto;
+	font-size: 12px;
+	opacity: 0.6;
+}
+.dispatch-settings-nav .dsn-row:hover .dsn-out { opacity: 1; }

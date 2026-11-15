@@ -1,0 +1,11 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Agent permissions on Customizations > Overview (dispatchFirstRunSettings.ts): single-choice rows
+ *  like the wizard's, the tick in front and the title over its one line (no name column, no On / Off).
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-autonomy-row { gap: 12px; align-items: flex-start; }
+.dispatch-autonomy-row > :first-child { flex: none; margin: 2px 0 0; }
+.dispatch-overview .dispatch-autonomy-row .dispatch-customization-text,
+.dispatch-autonomy-row .dispatch-customization-text { display: block; cursor: pointer; }
+.dispatch-overview .dispatch-autonomy-row .dispatch-customization-name,
+.dispatch-autonomy-row .dispatch-customization-name { flex: none; }

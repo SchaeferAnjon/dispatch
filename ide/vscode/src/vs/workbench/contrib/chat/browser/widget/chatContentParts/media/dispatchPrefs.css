@@ -1,0 +1,289 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: preferences in a session (patches/335-preferences.patch). The line under a
+ *  reply is one row of grey 12px text, the sentence in the foreground colour; the toast above the
+ *  input is inverted (foreground as its background), radius 14, 38 high, and comes up 8px in 200ms.
+ *  No colour: Like and Avoid are a thumb and a slashed circle in the description colour.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-prefs-remembered {
+	margin: 6px 0 2px;
+	min-width: 0;
+}
+/* the one under a finished reply: a row of the reply, above its footer (copy, feedback) */
+.dispatch-prefs-remembered.dispatch-prefs-footer {
+	margin: 8px 0 4px;
+}
+
+.dispatch-prefs-line {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-prefs-line .icon,
+.dispatch-prefs-row .icon {
+	flex: none;
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-prefs-line .s {
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-prefs-line b,
+.dispatch-prefs-toast b {
+	font-weight: 500;
+}
+.dispatch-prefs-line b {
+	color: var(--vscode-foreground);
+}
+.dispatch-prefs-remembered a.a {
+	flex: none;
+	cursor: pointer;
+	color: var(--vscode-descriptionForeground);
+	text-decoration: none;
+}
+.dispatch-prefs-remembered a.a:hover,
+.dispatch-prefs-remembered a.a:focus-visible {
+	color: var(--vscode-foreground);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+/* several at once, opened: A's rows with the part's thumbnail chip */
+.dispatch-prefs-rows {
+	margin: 6px 0 0 6px;
+	padding-left: 16px;
+	border-left: 1px solid var(--vscode-agentsPanel-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.25)));
+}
+.dispatch-prefs-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 6px 0;
+	font-size: 13px;
+	line-height: 1.55;
+}
+.dispatch-prefs-row .icon.pol {
+	margin-top: 3px;
+	font-size: 16px;
+	color: var(--vscode-foreground);
+}
+.dispatch-prefs-row.done {
+	align-items: center;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-prefs-row .b {
+	flex: 1;
+	min-width: 0;
+}
+.dispatch-prefs-row .m {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 4px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-prefs-row .part {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	max-width: 100%;
+	padding: 0 8px 0 3px;
+	border-radius: 6px;
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+.dispatch-prefs-row .part img {
+	width: 38px;
+	height: 18px;
+	object-fit: cover;
+	object-position: top left;
+	border-radius: 4px;
+	display: block;
+	flex: none;
+}
+.dispatch-prefs-row .part span {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-prefs-row .acts {
+	display: flex;
+	gap: 10px;
+	flex: none;
+	font-size: 12px;
+	opacity: 0;
+	transition: opacity 200ms ease;
+}
+.dispatch-prefs-row:hover .acts,
+.dispatch-prefs-row:focus-within .acts {
+	opacity: 1;
+}
+
+/* Edit in place */
+.dispatch-prefs-edit {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 2px;
+}
+.dispatch-prefs-edit.single {
+	margin: 6px 0 0 22px;
+}
+.dispatch-prefs-edit textarea {
+	min-height: 52px;
+	resize: vertical;
+	padding: 6px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-agentsPanel-border, transparent));
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.5;
+	outline: none;
+}
+.dispatch-prefs-edit textarea:focus {
+	border-color: var(--vscode-focusBorder);
+}
+.dispatch-prefs-edit .bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+}
+.dispatch-prefs-edit .fill {
+	flex: 1;
+}
+/* few choices: the tab's slightly rounded corners, not a capsule (kanban DESIGN.md) */
+.dispatch-prefs-edit .seg {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	border-radius: 4px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-agentsPanel-border, transparent));
+}
+.dispatch-prefs-edit .seg-b {
+	height: 20px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	cursor: pointer;
+}
+.dispatch-prefs-edit .seg-b.on {
+	background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+	color: var(--vscode-foreground);
+}
+.dispatch-prefs-edit .btn {
+	height: 24px;
+	padding: 0 8px;
+	border-radius: 4px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+	font: inherit;
+	cursor: pointer;
+}
+.dispatch-prefs-edit .btn:hover {
+	background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground));
+}
+.dispatch-prefs-edit .btn.primary {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+.dispatch-prefs-edit .btn.primary:hover {
+	background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+}
+
+/* the toast: in the input part's flow, so the conversation above makes room for it */
+.dispatch-prefs-toast-slot {
+	display: flex;
+	justify-content: center;
+	min-width: 0;
+}
+.dispatch-prefs-toast-slot:empty {
+	display: none;
+}
+.dispatch-prefs-toast {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 38px;
+	max-width: 100%;
+	margin: 0 0 10px;
+	padding: 0 6px 0 12px;
+	border-radius: 14px;
+	background: var(--vscode-foreground);
+	color: var(--vscode-editor-background);
+	font-size: 13px;
+	white-space: nowrap;
+	box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.35);
+	animation: dispatchPrefsToastIn 200ms ease;
+}
+.dispatch-prefs-toast .icon {
+	flex: none;
+	font-size: 14px;
+	opacity: 0.75;
+}
+.dispatch-prefs-toast .tt {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-prefs-toast .tb {
+	flex: none;
+	height: 28px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 9px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-weight: 500;
+	cursor: pointer;
+}
+.dispatch-prefs-toast .tb:hover,
+.dispatch-prefs-toast .tb:focus-visible {
+	background: color-mix(in srgb, var(--vscode-editor-background) 18%, transparent);
+	outline: none;
+}
+.dispatch-prefs-toast.out {
+	opacity: 0;
+	transform: translateY(8px);
+	transition: opacity 200ms ease, transform 200ms ease;
+}
+@keyframes dispatchPrefsToastIn {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+/* a preference's short name in a reply */
+.dispatch-pref-link {
+	cursor: pointer;
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+	text-underline-offset: 3px;
+}
+.dispatch-pref-link:hover,
+.dispatch-pref-link:focus-visible {
+	text-decoration-color: currentColor;
+	outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-prefs-toast { animation: none; }
+	.dispatch-prefs-toast.out { transition: none; }
+	.dispatch-prefs-row .acts { transition: none; }
+}

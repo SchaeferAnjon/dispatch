@@ -1,0 +1,24 @@
+{
+ "v": 1,
+ "image": "turbo.png",
+ "size": [
+  1480,
+  320
+ ],
+ "scale": 2,
+ "marks": [
+  {
+   "n": 1,
+   "box": [
+    954,
+    228,
+    122,
+    44
+   ],
+   "color": "red",
+   "what": "Turbo",
+   "where": "Under the message box of a new chat",
+   "how": "Tick Turbo, then send"
+  }
+ ]
+}

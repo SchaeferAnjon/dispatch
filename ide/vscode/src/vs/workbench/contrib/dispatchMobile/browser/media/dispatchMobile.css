@@ -1,0 +1,258 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the phone button in the title bar and its pairing popover (dispatchMobile.ts). Built from the
+ *  machines panel's parts (dispatchMachines.css) and DESIGN.md: flat, no colour, one-colour line icons, the
+ *  panel as round as the account and machine panels next to it. The QR code is black on white (it has to scan).
+ *--------------------------------------------------------------------------------------------*/
+
+/* the button: the title bar's own icon button */
+.monaco-workbench .dispatch-mobile-button .dispatch-mobile-button-label {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 22px;
+	padding: 0 3px;
+	border-radius: 5px;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	width: auto !important;
+}
+.monaco-workbench .dispatch-mobile-button .dispatch-mobile-button-label:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+.monaco-workbench .dispatch-mobile-button .dispatch-mobile-button-label.open {
+	background-color: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-foreground);
+}
+.monaco-workbench .dispatch-mobile-button .dispatch-mobile-button-icon {
+	font-size: 16px;
+	color: inherit;
+}
+
+/* the panel */
+.monaco-hover.workbench-hover.dispatch-mobile-panel-hover {
+	border-color: var(--vscode-menu-border, var(--vscode-editorHoverWidget-border));
+	border-radius: 12px;
+	overflow: hidden;
+	outline: none;
+}
+.monaco-hover.workbench-hover.dispatch-mobile-panel-hover .hover-contents {
+	padding: 0 !important;
+}
+.dispatch-mobile-panel {
+	display: flex;
+	flex-direction: column;
+	width: 320px;
+	max-width: calc(100vw - 16px);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.dispatch-mobile-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 24px;
+	margin: 12px 16px 0;
+}
+.dispatch-mobile-head-icon {
+	flex: none;
+	font-size: 16px !important;
+	color: var(--vscode-descriptionForeground) !important;
+}
+.dispatch-mobile-title {
+	font-size: 13px;
+	font-weight: 600;
+}
+.dispatch-mobile-pair {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 12px 16px 16px;
+}
+
+/* the QR code: a white tile, whatever the theme */
+.dispatch-mobile-tile {
+	position: relative;
+	box-sizing: border-box;
+	width: 240px;
+	height: 240px;
+	border-radius: 12px;
+	background: #ffffff;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.dispatch-mobile-tile svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+	transition: opacity 150ms ease-out;
+}
+.dispatch-mobile-tile.expired svg {
+	opacity: 0.08;
+}
+.dispatch-mobile-tile.loading {
+	background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+	color: var(--vscode-descriptionForeground);
+	font-size: 20px;
+}
+.dispatch-mobile-how {
+	align-self: stretch;
+	margin-bottom: 10px;
+	font-size: 13px;
+	line-height: 1.45;
+}
+.dispatch-mobile-code {
+	margin-top: 12px;
+	font-size: 26px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	font-variant-numeric: tabular-nums;
+	line-height: 32px;
+}
+.dispatch-mobile-note {
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+	text-align: center;
+}
+.dispatch-mobile-note.error {
+	margin-top: 4px;
+	color: var(--vscode-foreground);
+}
+.dispatch-mobile-expiry {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	align-self: stretch;
+	margin-top: 10px;
+	gap: 8px;
+}
+.dispatch-mobile-countdown {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+
+/* the states without a code: the service is down, a phone paired, an error */
+.dispatch-mobile-down,
+.dispatch-mobile-done {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 20px 8px 4px;
+	text-align: center;
+}
+.dispatch-mobile-down-icon,
+.dispatch-mobile-done-icon {
+	font-size: 28px !important;
+	color: var(--vscode-descriptionForeground) !important;
+}
+.dispatch-mobile-done-title {
+	font-size: 13px;
+	font-weight: 500;
+}
+.dispatch-mobile-down .dispatch-mobile-pill,
+.dispatch-mobile-done .dispatch-mobile-pill {
+	margin-top: 8px;
+}
+
+.dispatch-mobile-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	flex: none;
+}
+.dispatch-mobile-pill:hover:not(:disabled) {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-mobile-pill:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+.dispatch-mobile-pill.prominent {
+	background-color: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
+}
+.dispatch-mobile-pill .codicon {
+	font-size: 14px;
+}
+
+/* the paired phones */
+.dispatch-mobile-phones {
+	display: flex;
+	flex-direction: column;
+	padding: 8px 8px 8px;
+	border-top: 1px solid var(--vscode-menu-separatorBackground, var(--vscode-editorHoverWidget-border));
+}
+.dispatch-mobile-section-head {
+	margin: 2px 8px 4px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-mobile-row-empty {
+	margin: 0 8px 4px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-mobile-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	padding: 0 4px 0 8px;
+	border-radius: 6px;
+	min-width: 0;
+}
+.dispatch-mobile-row:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-mobile-row-icon {
+	flex: none;
+	font-size: 14px !important;
+	color: var(--vscode-descriptionForeground) !important;
+}
+.dispatch-mobile-row-name {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-mobile-row-time {
+	flex: none;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-mobile-remove {
+	flex: none;
+	height: 22px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.dispatch-mobile-remove:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-mobile-pill:focus-visible,
+.dispatch-mobile-remove:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}

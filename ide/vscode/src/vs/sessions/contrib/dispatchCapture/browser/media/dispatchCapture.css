@@ -1,0 +1,726 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the line under the person's message (patches/415-next-up.patch; kanban
+ *  design/chat-capture B1, B2). Like the Remembered line (DESIGN.md: 12px, the description colour, the names in
+ *  the foreground colour) but on the right, under the person's own bubble: it is theirs, written the moment they
+ *  sent it. The panel: 16 radius, the side bar's colour, 1px border, rows like the Tasks tab's; buttons are
+ *  ghost capsules that show on hover. No colour of its own: the blocks carry the states.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-capture {
+	white-space: normal;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 6px;
+	width: 100%;
+	margin-top: 6px;
+	min-width: 0;
+	/* the note and the panel lay out by the width the chat gives them, not the window's (task-v0a2f) */
+	container: dispatch-capture / inline-size;
+}
+.dispatch-capture.empty {
+	display: none;
+}
+
+.dispatch-capture-line,
+.dispatch-capture-noting {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: min(640px, 100%);
+	height: 24px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+}
+.dispatch-capture-line {
+	cursor: pointer;
+	transition: background-color 150ms ease-out;
+}
+.dispatch-capture-line:hover {
+	background: color-mix(in srgb, var(--vscode-list-hoverBackground) 80%, transparent);
+	color: var(--vscode-foreground);
+}
+.dispatch-capture-line:focus-visible,
+.dispatch-capture-act:focus-visible,
+.dispatch-capture-title:focus-visible,
+.dispatch-capture-pause:focus-visible,
+.dispatch-capture-gotit:focus-visible,
+.dispatch-capture-more:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+.dispatch-capture-line .codicon,
+.dispatch-capture-noting .codicon {
+	flex: none;
+	font-size: 14px;
+}
+.dispatch-capture-words {
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+.dispatch-capture-blocks {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.dispatch-capture-dot {
+	opacity: 0.6;
+}
+.dispatch-capture-tail {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-capture-line .dispatch-capture-chev {
+	font-size: 12px;
+	opacity: 0.7;
+}
+
+/* while the message is read: the words shimmer (2 s, linear: DESIGN.md's streaming line) */
+.dispatch-capture-shimmer {
+	background: linear-gradient(90deg, var(--vscode-descriptionForeground) 0%, var(--vscode-descriptionForeground) 40%, var(--vscode-foreground) 50%, var(--vscode-descriptionForeground) 60%, var(--vscode-descriptionForeground) 100%);
+	background-size: 300% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: dispatch-capture-shimmer 2s linear infinite;
+}
+@keyframes dispatch-capture-shimmer {
+	from { background-position: 100% 0; }
+	to { background-position: 0 0; }
+}
+
+/* the first time: one sentence, like a page's top note (DESIGN.md) */
+.dispatch-capture-hint {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	width: min(560px, 100%);
+	box-sizing: border-box;
+	padding: 10px 12px;
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 30%, transparent);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-capture-hint .codicon {
+	flex: none;
+	margin-top: 2px;
+	font-size: 14px;
+}
+.dispatch-capture-hint-words {
+	flex: 1;
+	min-width: 0;
+}
+.dispatch-capture-hint-words b {
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+.dispatch-capture-hint-acts {
+	display: flex;
+	flex: none;
+	gap: 6px;
+}
+.dispatch-capture-gotit {
+	flex: none;
+	height: 24px;
+	padding: 0 10px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 55%, transparent);
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+}
+.dispatch-capture-gotit:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* the panel the line opens */
+.dispatch-capture-panel {
+	width: min(560px, 100%);
+	box-sizing: border-box;
+	padding: 4px;
+	border-radius: 16px;
+	background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+	border: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 35%, transparent);
+	animation: dispatch-capture-in 150ms ease-out;
+}
+@keyframes dispatch-capture-in {
+	from { opacity: 0; transform: translateY(-4px); }
+	to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-capture-panel,
+	.dispatch-capture-shimmer {
+		animation: none;
+	}
+	.dispatch-capture-shimmer {
+		color: var(--vscode-descriptionForeground);
+	}
+}
+.dispatch-capture-row {
+	display: grid;
+	grid-template-columns: 16px minmax(0, 1fr) auto;
+	column-gap: 10px;
+	align-items: center;
+	padding: 7px 10px;
+	border-radius: 10px;
+	transition: background-color 150ms ease-out;
+}
+.dispatch-capture-row:hover,
+.dispatch-capture-row:focus-within {
+	background: color-mix(in srgb, var(--vscode-list-hoverBackground) 80%, transparent);
+}
+.dispatch-capture-ic {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-capture-ic .codicon {
+	font-size: 14px;
+}
+.dispatch-capture-title {
+	min-width: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.45;
+	text-align: left;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+.dispatch-capture-title:hover {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+.dispatch-capture-title.new {
+	font-weight: 500;
+}
+.dispatch-capture-title.gone {
+	text-decoration: line-through;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-capture-sub {
+	grid-column: 2 / 4;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+	margin-top: 1px;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-capture-sub-words {
+	flex: 1 1 auto;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* Show all / Show less: a quiet text button at the end of the line, only when something is cut; the row's other
+   buttons' look (DESIGN.md: buttons by background and radius only, no underline) */
+.dispatch-capture-whole {
+	flex: none;
+	padding: 0 6px;
+	margin: 0 -6px 0 0;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 150ms ease, color 150ms ease;
+}
+.dispatch-capture-whole[hidden] {
+	display: none;
+}
+.dispatch-capture-whole:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-capture-whole:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+/* the row shown whole: title and words wrap instead of being cut */
+.dispatch-capture-row.whole .dispatch-capture-title,
+.dispatch-capture-row.whole .dispatch-capture-sub-words {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.dispatch-capture-row.whole .dispatch-capture-sub {
+	align-items: flex-end;
+}
+.dispatch-capture-acts {
+	display: flex;
+	gap: 2px;
+	opacity: 0;
+	transition: opacity 150ms ease-out;
+}
+.dispatch-capture-row:hover .dispatch-capture-acts,
+.dispatch-capture-row:focus-within .dispatch-capture-acts,
+.dispatch-capture-acts.shown {
+	opacity: 1;
+}
+.dispatch-capture-act,
+.dispatch-capture-more,
+.dispatch-capture-pause {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 22px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.dispatch-capture-more {
+	width: 22px;
+	padding: 0;
+	justify-content: center;
+}
+.dispatch-capture-act:hover,
+.dispatch-capture-more:hover,
+.dispatch-capture-pause:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-capture-pause .codicon,
+.dispatch-capture-more .codicon {
+	font-size: 12px;
+}
+.dispatch-capture-edit {
+	min-width: 0;
+	height: 24px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 8px;
+	background: var(--vscode-input-background);
+	box-shadow: inset 0 0 0 1px var(--vscode-input-border, var(--vscode-focusBorder));
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	font-size: 13px;
+	outline: none;
+}
+.dispatch-capture-edit:focus {
+	box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+.dispatch-capture-left {
+	margin: 2px 10px 4px 36px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-capture-left-head {
+	font-weight: 600;
+	margin: 4px 0 2px;
+}
+.dispatch-capture-left-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 24px;
+}
+.dispatch-capture-left-words {
+	flex: 1;
+	min-width: 0;
+	padding: 3px 0;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+.dispatch-capture-left-row .dispatch-capture-act {
+	opacity: 0;
+	transition: opacity 150ms ease-out;
+}
+.dispatch-capture-left-row:hover .dispatch-capture-act,
+.dispatch-capture-left-row:focus-within .dispatch-capture-act {
+	opacity: 1;
+}
+.dispatch-capture-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 2px;
+	padding: 6px 4px 4px 36px;
+	border-top: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 25%, transparent);
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-capture-foot-words {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* a narrow chat (the side pane open, a small window): the note's buttons go on a line of their own under the words,
+   right-aligned like the line; a row's actions show over the end of its title on hover instead of keeping a column
+   of their own, so the title keeps the width; the foot's sentence wraps */
+@container dispatch-capture (max-width: 480px) {
+	.dispatch-capture-hint {
+		flex-wrap: wrap;
+		row-gap: 8px;
+	}
+	.dispatch-capture-hint-words {
+		flex: 1 1 calc(100% - 22px);
+	}
+	.dispatch-capture-hint-acts {
+		flex: 1 1 100%;
+		justify-content: flex-end;
+	}
+	.dispatch-capture-row {
+		position: relative;
+		grid-template-columns: 16px minmax(0, 1fr);
+	}
+	.dispatch-capture-sub {
+		grid-column: 2 / -1;
+	}
+	/* over the whole title line from where the title starts (10 inside + 16 block + 10 gap), so no stray letter
+	   peeks out beside the buttons; the second line (state, their words) stays readable under it */
+	.dispatch-capture-acts {
+		position: absolute;
+		top: 5px;
+		left: 36px;
+		right: 6px;
+		justify-content: flex-end;
+		border-radius: 6px;
+		background: linear-gradient(color-mix(in srgb, var(--vscode-list-hoverBackground) 80%, transparent), color-mix(in srgb, var(--vscode-list-hoverBackground) 80%, transparent)), var(--vscode-sideBar-background, var(--vscode-editor-background));
+		visibility: hidden;
+		pointer-events: none; /* a click beside the buttons still opens the task under them */
+	}
+	.dispatch-capture-acts > * {
+		pointer-events: auto;
+	}
+	.dispatch-capture-row:hover .dispatch-capture-acts,
+	.dispatch-capture-row:focus-within .dispatch-capture-acts {
+		visibility: visible;
+	}
+	/* editing: Save and Cancel under the title box, not over it */
+	.dispatch-capture-acts.shown {
+		position: static;
+		grid-column: 2 / -1;
+		justify-content: flex-end;
+		margin-top: 4px;
+		background: none;
+		visibility: visible;
+	}
+	.dispatch-capture-foot {
+		flex-wrap: wrap;
+		row-gap: 4px;
+	}
+	.dispatch-capture-foot-words {
+		flex: 1 1 100%;
+		white-space: normal;
+	}
+	.dispatch-capture-foot .dispatch-capture-pause {
+		margin-left: auto;
+	}
+}
+
+/* ---- the line in the side pane (dispatchNextUp.ts): Next up and Later in the Tasks tab, Next up under the Now
+   card's line. Flat rows like the Done rows (32 / 26 high, 12 inside), the place in tabular figures, the grey
+   hollow block, actions on hover in place of the time (DESIGN.md「行」「图标色即图例」). ---- */
+.dispatch-nextup-group {
+	display: flex;
+	flex-direction: column;
+	margin-top: 8px;
+	flex: none;
+}
+.dispatch-nextup-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 12px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-nextup-count {
+	font-size: 11px;
+	font-weight: 400;
+	opacity: 0.7;
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-nextup-pause {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 22px;
+	margin-left: auto;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 400;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.dispatch-nextup-pause .codicon {
+	font-size: 12px;
+}
+.dispatch-nextup-note {
+	padding: 0 12px 4px;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+/* a start that did not happen: why, and Try again */
+.dispatch-nextup-note.failed {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	color: var(--vscode-foreground);
+}
+.dispatch-nextup-note.failed > .codicon {
+	flex: none;
+	margin-top: 2px;
+	font-size: 12px;
+	color: var(--vscode-editorWarning-foreground);
+}
+.dispatch-nextup-note.failed > span {
+	flex: 1;
+	min-width: 0;
+}
+.dispatch-nextup-note.failed > .dispatch-nextup-act {
+	flex: none;
+	margin-top: -2px;
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-nextup-source {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	height: 24px;
+	margin-top: 4px;
+	padding: 0 12px 0 34px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+.dispatch-nextup-source .codicon {
+	flex: none;
+	font-size: 12px;
+}
+.dispatch-nextup-source-when {
+	flex: none;
+	font-variant-numeric: tabular-nums;
+	opacity: 0.8;
+}
+.dispatch-nextup-source-said {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-nextup-source-count {
+	flex: none;
+	font-size: 11px;
+	opacity: 0.7;
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-nextup-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	height: 32px;
+	padding: 0 12px 0 4px;
+	border-radius: 6px;
+	font-size: 13px;
+	cursor: pointer;
+	outline: none;
+	transition: background-color 150ms ease;
+}
+.dispatch-nextup-row:hover,
+.dispatch-nextup-row:focus-visible {
+	background: var(--vscode-list-hoverBackground);
+}
+.dispatch-nextup-row:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+.dispatch-nextup-pos {
+	flex: none;
+	width: 14px;
+	text-align: right;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-nextup-row .dispatch-block {
+	flex: none;
+}
+.dispatch-nextup-title {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-foreground);
+}
+.dispatch-nextup-title.new {
+	font-weight: 500;
+}
+.dispatch-nextup-group.later .dispatch-nextup-title,
+.dispatch-nextup-group.idle .dispatch-nextup-title,
+.dispatch-nextup-row.dropped .dispatch-nextup-title {
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-nextup-row.dropped .dispatch-nextup-title {
+	text-decoration: line-through;
+}
+.dispatch-nextup-gone {
+	flex: none;
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-nextup-time,
+.dispatch-nextup-folder {
+	flex: none;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-nextup-folder {
+	max-width: 40%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dispatch-nextup-acts {
+	display: none;
+	flex: none;
+	gap: 2px;
+}
+.dispatch-nextup-row:hover .dispatch-nextup-acts,
+.dispatch-nextup-row:focus-within .dispatch-nextup-acts,
+.dispatch-nextup-acts.shown {
+	display: flex;
+}
+.dispatch-nextup-row:hover .dispatch-nextup-time,
+.dispatch-nextup-row:focus-within .dispatch-nextup-time {
+	display: none;
+}
+.dispatch-nextup-act,
+.dispatch-nextup-more {
+	display: inline-flex;
+	align-items: center;
+	height: 22px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.dispatch-nextup-more {
+	width: 22px;
+	padding: 0;
+	justify-content: center;
+}
+.dispatch-nextup-more .codicon {
+	font-size: 12px;
+}
+.dispatch-nextup-act:hover,
+.dispatch-nextup-more:hover,
+.dispatch-nextup-pause:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-nextup-act:focus-visible,
+.dispatch-nextup-more:focus-visible,
+.dispatch-nextup-pause:focus-visible,
+.dispatch-nextup-fold:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+.dispatch-nextup-edit {
+	flex: 1;
+	min-width: 0;
+	height: 24px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 6px;
+	background: var(--vscode-input-background);
+	box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	font-size: 13px;
+	outline: none;
+}
+
+/* under the Now card's line: a hairline, then the line in 12px rows */
+.dispatch-nextup-now {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 16%, transparent);
+}
+.dispatch-nextup-now .dispatch-nextup-head {
+	height: 24px;
+	padding: 0;
+}
+.dispatch-nextup-now .dispatch-nextup-note {
+	padding: 2px 0 0 22px;
+}
+.dispatch-nextup-row.compact {
+	height: 26px;
+	padding: 0 4px 0 0;
+	font-size: 12px;
+	border-radius: 6px;
+}
+.dispatch-nextup-row.compact .dispatch-nextup-pos {
+	width: 14px;
+}
+.dispatch-nextup-fold {
+	display: block;
+	height: 24px;
+	padding: 0 0 0 22px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.dispatch-nextup-fold:hover {
+	color: var(--vscode-foreground);
+}
+/* noted in the last hour: the hollow block a little darker, as on the home */
+.dispatch-nextup-row .dispatch-block.todo.new {
+	--c: color-mix(in srgb, var(--vscode-foreground) 70%, transparent);
+}

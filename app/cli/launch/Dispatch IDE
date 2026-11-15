@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs a Dispatch LaunchAgent's program (launchd.py puts this file first in ProgramArguments when the CLI is inside
+# Dispatch IDE.app). macOS names a background item after the file launchd starts: this one is inside the app, so
+# Login Items and the "Background Items Added" notice (which names the file) say Dispatch IDE, not python3 from an unknown developer.
+exec "$@"

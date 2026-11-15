@@ -1,0 +1,51 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the session status as Dispatch's icon in miniature (sessionStatusIcon.ts): the Dock icon's
+ *  blocks in a 16px box, laid out by base/common/dispatchIcon.ts (dispatchStatusBlocks.ts); a running one's blocks
+ *  drop in by script (base/browser/dispatchIcon.ts). Flat, no shadow.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-status-blocks {
+	position: relative;
+	display: inline-block;
+	width: 16px;
+	height: 16px;
+	line-height: 0;
+	vertical-align: middle;
+}
+
+.dispatch-status-blocks > svg {
+	display: block;
+}
+
+/* running: the blocks start above the box (design/icon-motion's 落块 height, scaled to them: about 10px over its top
+   edge, task-dw425), so the drawing does not clip them; the row clips them at its own top edge, as the design's
+   stage does */
+.dispatch-status-blocks.running > svg {
+	overflow: visible;
+}
+
+/* idle: still, one colour (the row's foreground, faint) */
+.dispatch-status-blocks.idle .blk {
+	fill: currentColor;
+	opacity: 0.45;
+}
+
+/* waiting for you (needs input): the whole grid amber, still */
+.dispatch-status-blocks.waiting .blk {
+	fill: var(--dispatch-state-waiting);
+}
+
+.dispatch-status-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	margin: 4px;
+	border-radius: 50%;
+	vertical-align: middle;
+}
+.dispatch-status-dot.error { background-color: var(--dispatch-state-stopped); }
+
+/* the dots are the shared dot (sessionStatusIcon.ts adds its rules for .dispatch-status-dot): the glow
+   takes the state's colour too */
+.dispatch-status-dot.input { --dispatch-dot-color: var(--dispatch-state-waiting); }
+.dispatch-status-dot.error { --dispatch-dot-color: var(--dispatch-state-stopped); }

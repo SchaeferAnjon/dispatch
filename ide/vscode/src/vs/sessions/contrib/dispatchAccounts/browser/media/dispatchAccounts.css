@@ -1,0 +1,318 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the usage strip in the title bar and the Accounts panel behind it (dispatchAccounts.contribution.ts).
+ *  Built from the machine and phone buttons next to it (dispatchMachines.css, dispatchMobile.css) and DESIGN.md:
+ *  flat, no colour, one-colour line icons; a warning is a filled part (as the machine button for another Mac), not a colour.
+ *--------------------------------------------------------------------------------------------*/
+
+/* the strip: the title bar's own button, one part per engine as tall and round as the machine button */
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-button-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 22px;
+	padding: 0;
+	border-radius: 5px;
+	font-size: 12px;
+	line-height: 22px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	cursor: pointer;
+	width: auto !important;
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-engine {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 22px;
+	padding: 0 6px;
+	border-radius: 5px;
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-button-label:hover .dispatch-accounts-engine {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-button-label.open .dispatch-accounts-engine {
+	background-color: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-foreground);
+}
+/* past 80 %: filled, as the machine button is for another Mac (no colour) */
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-engine.warn,
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-engine.out {
+	background-color: var(--vscode-list-inactiveSelectionBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-button-label:hover .dispatch-accounts-engine.warn,
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-button-label:hover .dispatch-accounts-engine.out {
+	background-color: var(--vscode-list-activeSelectionBackground, var(--vscode-toolbar-hoverBackground));
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-button-label.open .dispatch-accounts-engine.warn,
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-button-label.open .dispatch-accounts-engine.out {
+	background-color: color-mix(in srgb, var(--vscode-foreground) 9%, var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground)));
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-engine-icon {
+	font-size: 14px;
+	color: inherit;
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-reset {
+	margin-left: 2px;
+	font-weight: 400;
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-sep {
+	opacity: 0.6;
+}
+.monaco-workbench .dispatch-accounts-button .dispatch-accounts-engine.unknown .dispatch-accounts-win {
+	opacity: 0.7;
+}
+
+/* the panel: as wide and as round as the machine panel next to it */
+.monaco-hover.workbench-hover.dispatch-accounts-panel-hover {
+	border-color: var(--vscode-menu-border, var(--vscode-editorHoverWidget-border));
+	border-radius: 12px;
+	overflow: hidden;
+	outline: none;
+}
+.monaco-hover.workbench-hover.dispatch-accounts-panel-hover .hover-contents {
+	padding: 0 !important;
+}
+.dispatch-accounts-panel {
+	display: flex;
+	flex-direction: column;
+	width: 400px;
+	max-width: calc(100vw - 16px);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.dispatch-accounts-body {
+	display: flex;
+	flex-direction: column;
+	padding: 4px 0;
+}
+.dispatch-accounts-body.busy {
+	opacity: 0.6;
+	pointer-events: none;
+	transition: opacity 150ms ease-out;
+}
+.dispatch-accounts-loading,
+.dispatch-accounts-line,
+.dispatch-accounts-limit-none {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-accounts-loading {
+	padding: 8px 16px;
+}
+.dispatch-accounts-line {
+	display: flex;
+	align-items: center;
+	height: 28px;
+}
+.dispatch-accounts-section {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 7px 16px;
+}
+
+/* one saved account: a row as in the machine panel, "icon + name" and the state at the right */
+.dispatch-accounts-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	margin: 0 -4px;
+	padding: 0 4px;
+	border-radius: 6px;
+	min-width: 0;
+}
+.dispatch-accounts-row:not(.active):hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-accounts-row-slot {
+	flex: none;
+	width: 16px;
+	font-size: 16px !important;
+	text-align: center;
+	color: var(--vscode-descriptionForeground) !important;
+}
+.dispatch-accounts-row-text {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+.dispatch-accounts-row-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dispatch-accounts-row.active .dispatch-accounts-row-name {
+	font-weight: 500;
+}
+.dispatch-accounts-row-plan,
+.dispatch-accounts-row-usage {
+	flex: none;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+.dispatch-accounts-row-state {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-accounts-row-state .codicon {
+	font-size: 14px;
+}
+.dispatch-accounts-row-usage {
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-accounts-row-usage.warn,
+.dispatch-accounts-row-usage.out {
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+/* the usage, and the trash can in its place on hover */
+.dispatch-accounts-row-swap {
+	display: grid;
+	flex: none;
+	align-items: center;
+}
+.dispatch-accounts-row-swap > * {
+	grid-area: 1 / 1;
+	justify-self: end;
+	transition: opacity 150ms ease;
+}
+.dispatch-accounts-row:hover .dispatch-accounts-row-usage,
+.dispatch-accounts-row:focus-within .dispatch-accounts-row-usage {
+	opacity: 0;
+}
+
+/* the account in use: one line per allowance (as the account panel's limit rows) */
+.dispatch-accounts-limits {
+	display: flex;
+	flex-direction: column;
+	margin: 0 0 4px 24px;
+}
+.dispatch-accounts-limit {
+	display: grid;
+	grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+	align-items: baseline;
+	column-gap: 8px;
+	font-size: 12px;
+	line-height: 20px;
+}
+.dispatch-accounts-limit-label {
+	white-space: nowrap;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-accounts-limit-reset {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-accounts-limit-value {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+	font-weight: 500;
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-accounts-limit-warn {
+	font-size: 14px !important;
+	color: var(--vscode-foreground) !important;
+}
+
+/* buttons: the outline capsule of the machine panel, an icon button, a ghost row to add one */
+.dispatch-accounts-pill {
+	display: inline-flex;
+	align-items: center;
+	height: 24px;
+	padding: 0 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+}
+.dispatch-accounts-pill:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-accounts-icon-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	opacity: 0;
+}
+.dispatch-accounts-row:hover .dispatch-accounts-icon-button,
+.dispatch-accounts-row:focus-within .dispatch-accounts-icon-button {
+	opacity: 1;
+}
+.dispatch-accounts-icon-button:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-accounts-icon-button .codicon {
+	font-size: 14px;
+}
+.dispatch-accounts-add {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	margin: 0 -4px;
+	padding: 0 4px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+.dispatch-accounts-add:hover {
+	background-color: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-accounts-add-icon {
+	width: 16px;
+	font-size: 14px !important;
+	text-align: center;
+}
+.dispatch-accounts-pill:focus-visible,
+.dispatch-accounts-add:focus-visible,
+.dispatch-accounts-icon-button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+.dispatch-accounts-error {
+	display: none;
+	margin: 0 16px 8px;
+	font-size: 12px;
+	color: var(--vscode-foreground);
+}
+.dispatch-accounts-error.visible {
+	display: block;
+}

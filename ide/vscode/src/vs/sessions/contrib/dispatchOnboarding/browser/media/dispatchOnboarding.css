@@ -1,0 +1,704 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the setup wizard (dispatchOnboardingPage.ts), after kanban design/onboarding/redesign
+ *  direction A and DESIGN.md: one 640 px column, flat, a well for each list, 12px grey group heads,
+ *  capsule buttons with one solid one per screen, 16 px square checkboxes. Colour nowhere: the wizard
+ *  is stone on stone.
+ *--------------------------------------------------------------------------------------------*/
+
+/* the wizard has its own heading: the host's header band (title / description) is not drawn for it */
+.custom-view-node[data-view-id="dispatch.onboarding"] .custom-view-header,
+.custom-view-node[data-view-id="dispatch.onboarding.tools"] .custom-view-header {
+	display: none;
+}
+/* the page's own buttons take the focus once drawn; until then it rests on the view's content, whose focus line drew a
+   square frame inside the rounded card on the first screen a new user sees (the 0.9.1 new-user run) */
+.custom-view-node[data-view-id="dispatch.onboarding"] .custom-view-content:focus-visible,
+.custom-view-node[data-view-id="dispatch.onboarding.tools"] .custom-view-content:focus-visible {
+	outline: none;
+}
+
+.dispatch-onboarding {
+	--dob-hair: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	--dob-hair-2: color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+	--dob-well: var(--vscode-sideBar-background);
+	--dob-sel: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--vscode-foreground) 6%, transparent));
+	--dob-hover: color-mix(in srgb, var(--dob-sel) 60%, transparent);
+	--dob-text-2: var(--vscode-descriptionForeground);
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: 640px;
+	margin: 0 auto;
+	padding-top: 24px;
+	font-size: 13px;
+	line-height: 1.5;
+	outline: none;
+	user-select: none;
+	-webkit-user-select: none;
+}
+.dispatch-onboarding * {
+	box-sizing: border-box;
+}
+.dispatch-onboarding .dob-sp {
+	flex: 1 1 auto;
+}
+
+/* ---- heading ---- */
+.dispatch-onboarding .dob-bars {
+	display: flex;
+	gap: 4px;
+	margin: 10px 0 26px;
+	flex: none;
+}
+.dispatch-onboarding .dob-bars i {
+	flex: 1;
+	height: 3px;
+	border-radius: 2px;
+	background: var(--dob-hair-2);
+	transition: background-color 200ms ease;
+}
+.dispatch-onboarding .dob-bars i.on {
+	background: var(--vscode-foreground);
+}
+.dispatch-onboarding .dob-title {
+	flex: none;
+	margin: 0 0 6px;
+	font-size: 17px;
+	font-weight: 600;
+	line-height: 1.35;
+	color: var(--vscode-foreground);
+}
+.dispatch-onboarding .dob-sub {
+	flex: none;
+	margin: 0 0 18px;
+	color: var(--dob-text-2);
+	line-height: 1.6;
+}
+.dispatch-onboarding .dob-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+.dispatch-onboarding .dob-scroll,
+.dispatch-onboarding .dob-fill {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+.dispatch-onboarding .dob-scroll {
+	overflow-y: auto;
+	padding-right: 2px;
+}
+.dispatch-onboarding .dob-fill > .dob-well.fill {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+.dispatch-onboarding .dob-foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	height: 76px;
+}
+
+/* ---- buttons ---- */
+.dispatch-onboarding .dob-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border: 1px solid var(--dob-hair-2);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 150ms ease, opacity 150ms ease;
+}
+.dispatch-onboarding .dob-btn:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-onboarding .dob-btn:active {
+	transform: translateY(1px);
+}
+.dispatch-onboarding .dob-btn.fill {
+	background: var(--vscode-button-background);
+	border-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+.dispatch-onboarding .dob-btn.fill:hover {
+	background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+}
+.dispatch-onboarding .dob-btn.ghost {
+	border-color: transparent;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-btn.ghost:hover {
+	color: var(--vscode-foreground);
+}
+.dispatch-onboarding .dob-btn.xs {
+	height: 24px;
+	padding: 0 10px;
+	font-size: 12px;
+}
+.dispatch-onboarding .dob-btn.disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.dispatch-onboarding .dob-btn:focus-visible,
+.dispatch-onboarding .dob-cb:focus-visible,
+.dispatch-onboarding .dob-chip:focus-visible,
+.dispatch-onboarding .dob-more:focus-visible,
+.dispatch-onboarding .dob-oldhead:focus-visible,
+.dispatch-onboarding .dob-mi:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+/* ---- checkbox ---- */
+.dispatch-onboarding .dob-cb {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	width: 16px;
+	height: 16px;
+	border-radius: 4px;
+	border: 1.5px solid color-mix(in srgb, var(--dob-text-2) 65%, transparent);
+	background: transparent;
+	color: var(--vscode-button-foreground);
+	cursor: pointer;
+	transition: background-color 120ms ease, border-color 120ms ease;
+}
+.dispatch-onboarding .dob-cb .codicon {
+	font-size: 12px;
+}
+.dispatch-onboarding .dob-cb.on,
+.dispatch-onboarding .dob-cb.mix {
+	background: var(--vscode-button-background);
+	border-color: var(--vscode-button-background);
+}
+.dispatch-onboarding .dob-cb.disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+/* ---- wells and rows ---- */
+.dispatch-onboarding .dob-gh {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	margin-top: 10px;
+	padding: 0 4px;
+	font-size: 12px;
+	font-weight: 600;
+	color: color-mix(in srgb, var(--dob-text-2) 85%, var(--vscode-foreground));
+}
+.dispatch-onboarding .dob-gh:first-child {
+	margin-top: 0;
+}
+.dispatch-onboarding .dob-gh .ct {
+	font-weight: 400;
+	font-size: 11px;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-well {
+	position: relative;
+	background: var(--dob-well);
+	border: 1px solid var(--dob-hair);
+	border-radius: 14px;
+	padding: 3px;
+}
+.dispatch-onboarding .dob-well.fill {
+	display: flex;
+	flex-direction: column;
+	padding: 0;
+}
+.dispatch-onboarding .dob-listhead {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex: none;
+	min-height: 44px;
+	padding: 0 14px;
+	border-bottom: 1px solid var(--dob-hair);
+}
+.dispatch-onboarding .dob-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 4px 3px;
+}
+.dispatch-onboarding .dob-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 44px;
+	padding: 0 14px;
+	border-radius: 12px;
+}
+.dispatch-onboarding .dob-row.tight {
+	min-height: 32px;
+}
+.dispatch-onboarding .dob-row.plain {
+	padding: 0;
+	min-height: 32px;
+}
+.dispatch-onboarding .dob-row.folder,
+.dispatch-onboarding .dob-row.pref,
+.dispatch-onboarding .dob-row.group {
+	cursor: pointer;
+}
+.dispatch-onboarding .dob-row.folder:hover,
+.dispatch-onboarding .dob-row.pref:hover,
+.dispatch-onboarding .dob-row.group:hover {
+	background: var(--dob-hover);
+}
+.dispatch-onboarding .dob-row.with-why {
+	align-items: flex-start;
+	padding-top: 9px;
+	padding-bottom: 9px;
+}
+.dispatch-onboarding .dob-row.with-why > .dob-cb,
+.dispatch-onboarding .dob-row.agent > .dob-cb {
+	margin-top: 2px;
+}
+.dispatch-onboarding .dob-row.agent {
+	align-items: flex-start;
+	padding-top: 10px;
+	padding-bottom: 10px;
+}
+.dispatch-onboarding .dob-row.group {
+	min-height: 40px;
+	gap: 8px;
+}
+.dispatch-onboarding .dob-row.group .dob-cb {
+	margin-right: 4px;
+}
+.dispatch-onboarding .dob-row.group > .codicon {
+	font-size: 14px;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-row.pref {
+	padding-left: 36px;
+	min-height: 36px;
+}
+.dispatch-onboarding .dob-row.pref.with-why {
+	min-height: 0;
+}
+.dispatch-onboarding .dob-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.dispatch-onboarding .dob-line {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+.dispatch-onboarding .dob-n {
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-foreground);
+}
+.dispatch-onboarding .dob-n.reg {
+	font-weight: 400;
+}
+.dispatch-onboarding .dob-n.mut {
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-n.mono {
+	font-family: var(--monaco-monospace-font, monospace);
+	font-size: 12px;
+	font-weight: 400;
+}
+.dispatch-onboarding .dob-n.clip {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-onboarding .dob-p {
+	font-size: 12px;
+	color: var(--dob-text-2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+.dispatch-onboarding .dob-r {
+	display: flex;
+	align-items: center;
+	flex: none;
+	gap: 10px;
+	margin-left: auto;
+	font-size: 12px;
+	color: var(--dob-text-2);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-onboarding .dob-r .age {
+	display: inline-block;
+	min-width: 28px;
+	text-align: right;
+}
+.dispatch-onboarding .dob-gl {
+	flex: none;
+	font-size: 16px;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-why {
+	margin-top: 1px;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-tag {
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	padding: 0 8px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+	font-size: 11px;
+	font-weight: 500;
+}
+.dispatch-onboarding .dob-note {
+	flex: none;
+	margin: 12px 4px 0;
+	font-size: 12px;
+	line-height: 1.55;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-note.lock {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+}
+.dispatch-onboarding .dob-note.lock .codicon {
+	font-size: 14px;
+	margin-top: 1px;
+}
+.dispatch-onboarding .dob-note.small {
+	margin-top: 8px;
+}
+.dispatch-onboarding .dob-empty {
+	padding: 20px 14px;
+	font-size: 13px;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-peek {
+	padding: 0 14px 6px 36px;
+	font-size: 12px;
+	color: var(--dob-text-2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-onboarding .dob-more,
+.dispatch-onboarding .dob-oldhead {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	min-height: 32px;
+	padding: 0 14px;
+	border: 0;
+	border-radius: 12px;
+	background: transparent;
+	color: var(--dob-text-2);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+.dispatch-onboarding .dob-more.indent {
+	padding-left: 36px;
+}
+.dispatch-onboarding .dob-more:hover,
+.dispatch-onboarding .dob-oldhead:hover {
+	background: var(--dob-hover);
+	color: var(--vscode-foreground);
+}
+.dispatch-onboarding .dob-oldhead {
+	margin-top: 4px;
+	font-weight: 600;
+}
+.dispatch-onboarding .dob-oldhead .ct {
+	font-weight: 400;
+	font-size: 11px;
+}
+
+/* ---- range chip and its menu ---- */
+.dispatch-onboarding .dob-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 26px;
+	padding: 0 8px 0 10px;
+	border: 1px solid var(--dob-hair-2);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.dispatch-onboarding .dob-chip:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+.dispatch-onboarding .dob-chip .codicon {
+	font-size: 14px;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-menu {
+	position: absolute;
+	z-index: 30;
+	top: 40px;
+	right: 10px;
+	min-width: 220px;
+	padding: 4px;
+	border: 1px solid var(--vscode-menu-border, var(--dob-hair-2));
+	border-radius: 14px;
+	background: var(--vscode-menu-background, var(--vscode-editor-background));
+	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+}
+.dispatch-onboarding .dob-mi {
+	position: relative;
+	display: flex;
+	align-items: center;
+	width: 100%;
+	height: 28px;
+	padding: 0 10px 0 28px;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.dispatch-onboarding .dob-mi:hover {
+	background: var(--vscode-menu-selectionBackground, var(--dob-sel));
+}
+.dispatch-onboarding .dob-mi.on::before {
+	content: "";
+	position: absolute;
+	left: 10px;
+	top: 9px;
+	width: 9px;
+	height: 5px;
+	border-left: 1.6px solid currentColor;
+	border-bottom: 1.6px solid currentColor;
+	transform: rotate(-45deg);
+}
+.dispatch-onboarding .dob-msep {
+	height: 1px;
+	margin: 4px 6px;
+	background: var(--dob-hair);
+}
+.dispatch-onboarding .dob-mnote {
+	max-width: 240px;
+	padding: 6px 10px 4px;
+	font-size: 11px;
+	line-height: 1.4;
+	color: var(--dob-text-2);
+}
+
+/* ---- reading, running ---- */
+.dispatch-onboarding .dob-progress {
+	flex: none;
+	margin: 14px 4px 0;
+}
+.dispatch-onboarding .dob-pbar {
+	height: 4px;
+	margin-top: 8px;
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	overflow: hidden;
+}
+.dispatch-onboarding .dob-pbar i {
+	display: block;
+	height: 100%;
+	border-radius: 2px;
+	background: var(--vscode-button-background);
+	transition: width 300ms ease;
+}
+.dispatch-onboarding .dob-pbar.busy i {
+	width: 30%;
+	animation: dob-slide 1.4s ease-in-out infinite;
+}
+@keyframes dob-slide {
+	0% { margin-left: -30%; }
+	100% { margin-left: 100%; }
+}
+.dispatch-onboarding .dob-spin {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	border: 1.5px solid var(--dob-hair-2);
+	border-top-color: var(--vscode-foreground);
+	animation: dob-rot 1s linear infinite;
+}
+@keyframes dob-rot {
+	to { transform: rotate(360deg); }
+}
+.dispatch-onboarding .dob-shim {
+	display: inline-block;
+	flex: none;
+	width: 70px;
+	height: 10px;
+	border-radius: 5px;
+	background: linear-gradient(90deg, var(--dob-sel) 0%, color-mix(in srgb, var(--dob-sel) 30%, transparent) 50%, var(--dob-sel) 100%);
+	background-size: 200% 100%;
+	animation: dob-shim 2s linear infinite;
+}
+.dispatch-onboarding .dob-shim.soft {
+	opacity: 0.6;
+}
+@keyframes dob-shim {
+	0% { background-position: 100% 0; }
+	100% { background-position: -100% 0; }
+}
+.dispatch-onboarding .dob-skel {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+	padding: 4px 3px;
+}
+.dispatch-onboarding .dob-skeleton {
+	height: 120px;
+	border-radius: 14px;
+	background: var(--dob-well);
+	border: 1px solid var(--dob-hair);
+}
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-onboarding .dob-spin,
+	.dispatch-onboarding .dob-shim,
+	.dispatch-onboarding .dob-pbar.busy i {
+		animation: none;
+	}
+}
+.dispatch-onboarding .dob-well.prog {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.dispatch-onboarding .dob-pr {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	height: 36px;
+	padding: 0 14px;
+	border-radius: 12px;
+	color: var(--dob-text-2);
+}
+.dispatch-onboarding .dob-pr .mark {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	flex: none;
+}
+.dispatch-onboarding .dob-pr .dot {
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: var(--dob-hair-2);
+}
+.dispatch-onboarding .dob-pr.running,
+.dispatch-onboarding .dob-pr.done {
+	color: var(--vscode-foreground);
+}
+.dispatch-onboarding .dob-pr.failed {
+	color: var(--vscode-foreground);
+}
+.dispatch-onboarding .dob-pr .dob-r {
+	margin-left: auto;
+	color: var(--dob-text-2);
+}
+
+/* ---- the title bar's "Set up" pill (skipped the wizard): What's new's look, at its place ---- */
+.monaco-action-bar .dispatch-setup-entry .update-indicator.dispatch-setup {
+	color: var(--vscode-descriptionForeground);
+	border-color: var(--vscode-input-border, var(--vscode-editorHoverWidget-border));
+	font-weight: 500;
+	cursor: pointer;
+}
+.monaco-action-bar .dispatch-setup-entry .update-indicator.dispatch-setup .indicator-label {
+	font-size: 12px;
+}
+.monaco-action-bar .dispatch-setup-entry:hover .update-indicator.dispatch-setup {
+	background-color: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-onboarding .dob-btn.monaco-button { width: auto; flex: none; text-decoration: none; }
+.dispatch-onboarding .dob-cb.monaco-checkbox { padding: 0; margin-right: 0; border-width: 1px; }
+.dispatch-onboarding .dob-chip { border-radius: 4px; max-width: 165px; }
+.dispatch-onboarding .dob-sub { line-height: 1.5; }
+.dispatch-onboarding .dob-pr { height: auto; min-height: 36px; }
+.dispatch-onboarding .dob-pr .lab { min-width: 0; overflow-wrap: anywhere; }
+/* a step that did not finish: its reason under the label, the row grows (kanban task-4xxj) */
+.dispatch-onboarding .dob-pr.failed { padding-top: 8px; padding-bottom: 8px; }
+.dispatch-onboarding .dob-pr .lab .dob-why { display: block; }
+@media (max-height: 700px) { .dispatch-onboarding { padding-top: 8px; } .dispatch-onboarding .dob-bars { margin-bottom: 16px; } .dispatch-onboarding .dob-foot { height: 60px; } }
+@media (max-width: 1000px) { .dispatch-onboarding .dob-r { flex-wrap: wrap; justify-content: flex-end; white-space: normal; max-width: 38%; gap: 4px 8px; } .dispatch-onboarding .dob-line { flex-wrap: wrap; gap: 2px 8px; } }
+
+.dispatch-onboarding .dob-range { width: 150px; flex: none; }
+.dispatch-onboarding .dob-range select { font-size: 12px; border-radius: 4px; }
+
+/* ---- appearance preview: a small window in the theme's own colours (Dispatch Light / Dark, DESIGN.md) ---- */
+.dispatch-onboarding .dob-swatch {
+	position: relative;
+	flex: none;
+	width: 56px;
+	height: 36px;
+	overflow: hidden;
+	border-radius: 8px;
+	border: 1px solid var(--dob-hair-2);
+	background: #ffffff;
+}
+.dispatch-onboarding .dob-swatch i {
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: 16px;
+	background: #fafaf9;
+}
+.dispatch-onboarding .dob-swatch b {
+	position: absolute;
+	left: 22px;
+	top: 8px;
+	width: 26px;
+	height: 6px;
+	border-radius: 3px;
+	background: #252525;
+}
+.dispatch-onboarding .dob-swatch.dark {
+	background: #0c0a09;
+}
+.dispatch-onboarding .dob-swatch.dark i {
+	background: #1c1917;
+}
+.dispatch-onboarding .dob-swatch.dark b {
+	background: #fafaf9;
+}
+.dispatch-onboarding .dob-swatch.system {
+	background: linear-gradient(115deg, #ffffff 50%, #0c0a09 50%);
+}
+.dispatch-onboarding .dob-swatch.system i {
+	background: linear-gradient(115deg, #fafaf9 50%, #1c1917 50%);
+}
+.dispatch-onboarding .dob-swatch.system b {
+	background: linear-gradient(115deg, #252525 50%, #fafaf9 50%);
+}

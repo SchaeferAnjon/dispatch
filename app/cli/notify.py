@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Push a short message to the phone, or fall back to a macOS banner.
+
+    dispatch notify "<title>" "<body>" [--url LINK] [--level normal|high] [--key KEY]
+
+Channels come from `dispatch env`, so there is nothing else to configure:
+  NTFY_URL   the topic address, e.g. https://ntfy.sh/my-topic (or a self-hosted server)
+  BARK_KEY   the key in https://api.day.app/<key> (a full BARK_URL also works)
+Both set → ntfy wins. Neither → osascript on this Mac (a toast on Windows). Pure urllib, no dependencies.
+
+`--key` makes a message idempotent: the same key inside DEDUP_WINDOW seconds is sent
+once. The presence hook uses it so a session that keeps asking does not ring the phone
+on every hook event.
+
+Callers that must never fail (hooks, report generation) import `send` directly; it
+returns a dict and swallows network errors into `error` instead of raising.
+"""
+import argparse, json, os, subprocess, sys, time, urllib.parse, urllib.request
+sys.dont_write_bytecode = True  # never write __pycache__ next to these files: inside Dispatch.app that breaks the code signature
+from lang import t as _t
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import dispatch as D
+import dplatform as P
+
+DEDUP_FILE = os.path.join(D.DISPATCH_DIR, "notify-dedup.json")
+DEDUP_WINDOW = 300  # seconds
+DEDUP_KEEP = 86400  # forget keys older than a day
+
+
+def setting(name):
+    """Value from `dispatch env` (the store agents use), then the process environment."""
+    try:
+        for it in D.env_read():
+            if it["name"] == name and it["value"].strip():
+                return it["value"].strip()
+    except Exception:
+        pass
+    return (os.environ.get(name) or "").strip()
+
+
+def channel():
+    """('ntfy', url) | ('bark', key) | ('macos', '') | ('windows', '')."""
+    ntfy = setting("NTFY_URL")
+    if ntfy:
+        return "ntfy", ntfy
+    bark = setting("BARK_KEY")
+    if bark:
+        return "bark", bark
+    return local_channel(), ""
+
+
+def local_channel():
+    return "windows" if P.IS_WIN else "macos"
+
+
+def dedup_hit(key, window=DEDUP_WINDOW, path=None):
+    """True when the same key was sent within `window` seconds; otherwise records it now."""
+    if not key:
+        return False
+    path = path or DEDUP_FILE
+    now = time.time()
+    try:
+        seen = json.load(open(path))
+    except Exception:
+        seen = {}
+    try:
+        last = float(seen.get(key) or 0)
+    except (TypeError, ValueError):
+        last = 0
+    if now - last < window:
+        return True
+    seen = {k: v for k, v in seen.items() if now - float(v or 0) < DEDUP_KEEP}
+    seen[key] = now
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        json.dump(seen, open(tmp, "w"))
+        os.replace(tmp, path)
+    except OSError:
+        pass
+    return False
+
+
+LINK_TTL = {"ntfy": 15 * 60}  # seconds; channels not listed keep serve's default of a day
+
+
+def serve_link(path):
+    """A page on `dispatch serve` for the phone to open from a notification; '' if the phone
+    service is not set up. The link never carries the permanent token (notification text passes
+    through Bark / ntfy servers, and ntfy topics are public by default): it carries a single-use
+    login code. Through Bark (end to end to one device) the code lasts a day; through ntfy, whose
+    topics anyone who guesses the name can read, it lasts 15 minutes. An already-paired phone does
+    not need the code at all, it has its cookie."""
+    try:
+        conf = json.load(open(os.path.join(D.DISPATCH_DIR, "serve.json")))
+    except Exception:
+        return ""
+    if not conf.get("token"):
+        return ""
+    dest = path[1:] if path.startswith("/#/") else path  # "/#/sessions/x" → "#/sessions/x"
+    if conf.get("phone_host"):
+        # The phone lives on another Mac (the always-on one): the link must open there, or it
+        # is dead whenever this Mac is closed. That Mac can show this Mac's sessions too.
+        try:
+            import serve
+            home = serve.phone_home(conf)
+            link = serve.remote_login_link(home, to=dest, ttl=LINK_TTL.get(channel()[0], 24 * 3600)) if home else ""
+            if link:
+                return link
+        except Exception as e:
+            D.debug("notify.serve_link phone_host", e)
+    ip = conf.get("bind") or D.tailscale_ip() or (D.lan_ip() if conf.get("allow_lan") else "")
+    if not ip:
+        return ""
+    try:
+        import serve
+        code = serve.login_issue(ttl=LINK_TTL.get(channel()[0]))
+    except Exception:
+        code = ""
+    q = {"login": code, "to": dest} if code else {"to": dest}
+    return f"http://{ip}:{conf.get('port', 7799)}/?" + urllib.parse.urlencode(q)
+
+
+def _post(url, payload, timeout=10):
+    req = urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), method="POST",
+                                 headers={"Content-Type": "application/json; charset=utf-8"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.status
+
+
+def _ntfy(url, title, body, level, link):
+    """ntfy JSON publish: the topic is the last path segment, the server is the rest."""
+    p = urllib.parse.urlsplit(url if "://" in url else "https://" + url)
+    segs = [s for s in p.path.split("/") if s]
+    topic = segs[-1] if segs else "dispatch"
+    base = urllib.parse.urlunsplit((p.scheme, p.netloc, "/" + "/".join(segs[:-1]) if len(segs) > 1 else "", "", "")) or url
+    payload = {"topic": topic, "title": title, "message": body, "priority": 5 if level == "high" else 3}
+    if link:
+        payload["click"] = link
+    return _post(base, payload)
+
+
+def _bark(key, title, body, level, link):
+    base = key.rstrip("/") if key.startswith("http") else "https://api.day.app/" + key.strip("/")
+    payload = {"title": title, "body": body, "level": "timeSensitive" if level == "high" else "active", "group": "Dispatch"}
+    if link:
+        payload["url"] = link
+    return _post(base, payload)
+
+
+def _macos(title, body, sound=""):
+    def esc(s):
+        return s.replace("\\", "\\\\").replace('"', '\\"')
+    script = f'display notification "{esc(body)}" with title "{esc(title)}"' + (sound or "")
+    subprocess.run(["osascript", "-e", script], capture_output=True, timeout=10)
+
+
+# The app's own AUMID (the Start-menu shortcut the installer made carries it); without that shortcut
+# Windows drops toasts from an unknown id, so fall back to PowerShell's, which is always registered.
+WIN_AUMID = "dev.schaefer.dispatch"
+POWERSHELL_AUMID = "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe"
+# Title and body travel in environment variables, never inside the script text: nothing in them
+# can break out of the PowerShell or the toast XML.
+TOAST_PS = r"""$ErrorActionPreference = 'Stop'
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null
+$id = '%s'
+try { if (-not (Get-StartApps | Where-Object { $_.AppID -eq $id })) { $id = '%s' } } catch { $id = '%s' }
+$t = [Security.SecurityElement]::Escape($env:DISPATCH_TOAST_TITLE)
+$b = [Security.SecurityElement]::Escape($env:DISPATCH_TOAST_BODY)
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml("<toast><visual><binding template='ToastGeneric'><text>$t</text><text>$b</text></binding></visual></toast>")
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($id).Show([Windows.UI.Notifications.ToastNotification]::new($xml))
+""" % (WIN_AUMID, POWERSHELL_AUMID, POWERSHELL_AUMID)
+
+
+def _windows(title, body):
+    """A Windows toast through PowerShell's WinRT bridge (Windows PowerShell 5.1, which every
+    Windows 10/11 has; pwsh 7 cannot load WinRT types this way)."""
+    env = dict(os.environ, DISPATCH_TOAST_TITLE=title, DISPATCH_TOAST_BODY=body)
+    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", TOAST_PS],
+                       capture_output=True, timeout=20, env=env, creationflags=P.no_window_flags())
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or b"").decode("utf-8", "replace").strip()[-200:] or "toast failed")
+
+
+def _local(title, body, sound=""):
+    if P.IS_WIN:
+        return _windows(title, body)
+    return _macos(title, body, sound) if sound else _macos(title, body)
+
+
+def send(title, body="", url="", level="normal", key="", sound=""):
+    """Send one message. Never raises: failures come back as ok=False + error.
+
+    If the configured channel fails (phone offline, bad URL) the Mac still gets a banner (a toast
+    on Windows), so the message is not silently lost.
+    """
+    title = (title or "").strip() or "Dispatch"
+    body = (body or "").strip()
+    if key and dedup_hit(key):
+        return {"ok": True, "channel": "dedup", "skipped": True}
+    name, target = channel()
+    if name in ("macos", "windows"):
+        try:
+            _local(title, body, sound)
+            return {"ok": True, "channel": name}
+        except Exception as e:
+            return {"ok": False, "channel": name, "error": str(e)[:200]}
+    try:
+        status = _ntfy(target, title, body, level, url) if name == "ntfy" else _bark(target, title, body, level, url)
+        return {"ok": True, "channel": name, "status": status}
+    except Exception as e:
+        try:
+            _local(title, body)
+            return {"ok": False, "channel": name, "error": str(e)[:200], "fallback": local_channel()}
+        except Exception:
+            return {"ok": False, "channel": name, "error": str(e)[:200]}
+
+
+def main(a):
+    res = send(getattr(a, "title", ""), getattr(a, "body", "") or "", getattr(a, "url", "") or "",
+               getattr(a, "level", "normal"), getattr(a, "key", "") or "")
+
+    def text(r):
+        if r.get("skipped"):
+            print(_t("The same notification went out within 5 minutes; skipped", "5 分钟内发过同样的通知，跳过"))
+        elif r.get("ok"):
+            print(_t("Sent to the phone (ntfy)", "已推到手机（ntfy）") if r["channel"] == "ntfy" else _t("Sent to the phone (Bark)", "已推到手机（Bark）") if r["channel"] == "bark"
+                  else _t("Shown on this Mac. With NTFY_URL or BARK_KEY it reaches the phone: dispatch env set NTFY_URL https://ntfy.sh/<your topic>", "已发本机通知。配 NTFY_URL 或 BARK_KEY 就能推到手机：dispatch env set NTFY_URL https://ntfy.sh/你的主题"))
+        else:
+            print(_t(f"The notification did not go out ({r['channel']}): {r.get('error', '')}" + ("; shown on this Mac instead" if r.get("fallback") else ""), f"通知没发出去（{r['channel']}）：{r.get('error', '')}" + ("，已退回本机通知" if r.get("fallback") else "")), file=sys.stderr)
+
+    D.out(res, getattr(a, "json", False), text)
+    if not res.get("ok") and not res.get("skipped"):
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser(description="push a message to the phone (ntfy / Bark) or a macOS banner")
+    p.add_argument("title")
+    p.add_argument("body", nargs="?", default="")
+    p.add_argument("--url", default="")
+    p.add_argument("--level", choices=["normal", "high"], default="normal")
+    p.add_argument("--key", default="")
+    p.add_argument("--json", action="store_true")
+    main(p.parse_args())

@@ -1,0 +1,384 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: tips and the Getting started checklist (dispatchTours). The look is the hover card's
+ *  (DESIGN.md: --bg-2 floating layer, radius 14, one light shadow, 13px, buttons are pills), no colour:
+ *  the ring round the element is the focus border, the checklist ring is the text colour.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ---- the bubble ---- */
+
+.dispatch-tour {
+	position: fixed;
+	z-index: 1500;
+	width: 320px;
+	max-width: calc(100vw - 24px);
+	box-sizing: border-box;
+	padding: 14px 14px 12px;
+	display: grid;
+	gap: 6px;
+	border-radius: 14px;
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	background: var(--vscode-sideBar-background);
+	color: var(--vscode-foreground);
+	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.dispatch-tour.entering {
+	animation: dispatch-tour-in 180ms ease-out 1;
+}
+
+@keyframes dispatch-tour-in {
+	from { opacity: 0; transform: translateY(4px); }
+	to { opacity: 1; transform: none; }
+}
+
+.dispatch-tour-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.dispatch-tour-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 13px;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.dispatch-tour-close {
+	flex: none;
+	width: 20px;
+	height: 20px;
+	margin: 1px -4px 0 0;
+	padding: 0;
+	display: grid;
+	place-items: center;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+
+.dispatch-tour-close:hover,
+.dispatch-tour-close:focus-visible {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+	outline: none;
+}
+
+.dispatch-tour-close .codicon {
+	font-size: 14px;
+}
+
+.dispatch-tour-body {
+	overflow-wrap: anywhere;
+}
+
+.dispatch-tour-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+.dispatch-tour-count {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-tour-sp {
+	flex: 1 1 auto;
+}
+
+.dispatch-tour-btn {
+	height: 28px;
+	padding: 0 12px;
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-tour-btn:hover,
+.dispatch-tour-btn:focus-visible {
+	background: var(--vscode-list-hoverBackground);
+	outline: none;
+}
+
+.dispatch-tour-btn.fill {
+	border-color: transparent;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.dispatch-tour-btn.fill:hover,
+.dispatch-tour-btn.fill:focus-visible {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.dispatch-tour-btn:focus-visible,
+.dispatch-tour-close:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+/* the arrow: a square turned 45 degrees on the edge facing the element */
+.dispatch-tour-arrow {
+	position: absolute;
+	width: 12px;
+	height: 12px;
+	box-sizing: border-box;
+	background: var(--vscode-sideBar-background);
+	border: 0 solid var(--vscode-editorHoverWidget-border);
+	pointer-events: none;
+}
+
+.dispatch-tour[data-side="bottom"] .dispatch-tour-arrow {
+	top: -7px;
+	transform: translateX(-50%) rotate(45deg);
+	border-width: 1px 0 0 1px;
+}
+
+.dispatch-tour[data-side="top"] .dispatch-tour-arrow {
+	bottom: -7px;
+	transform: translateX(-50%) rotate(45deg);
+	border-width: 0 1px 1px 0;
+}
+
+.dispatch-tour[data-side="right"] .dispatch-tour-arrow {
+	left: -7px;
+	transform: translateY(-50%) rotate(45deg);
+	border-width: 0 0 1px 1px;
+}
+
+.dispatch-tour[data-side="left"] .dispatch-tour-arrow {
+	right: -7px;
+	transform: translateY(-50%) rotate(45deg);
+	border-width: 1px 1px 0 0;
+}
+
+/* ---- the ring round the element ---- */
+
+.dispatch-tour-ring {
+	position: fixed;
+	z-index: 1499;
+	box-sizing: border-box;
+	border-radius: 8px;
+	box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+	pointer-events: none;
+	animation: dispatch-tour-pulse 1.6s ease-in-out 2;
+}
+
+.dispatch-tour-ring.big {
+	display: none;
+}
+
+@keyframes dispatch-tour-pulse {
+	0%, 100% { box-shadow: 0 0 0 2px var(--vscode-focusBorder); }
+	50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--vscode-focusBorder) 35%, transparent); }
+}
+
+/* ---- Getting started: the ring the bottom bar's block shows (contrib/dispatchStatusBar) ---- */
+
+.dispatch-ring {
+	flex: none;
+	display: block;
+}
+
+.dispatch-ring .track {
+	fill: none;
+	stroke: currentColor;
+	opacity: 0.25;
+}
+
+.dispatch-ring .bar {
+	fill: none;
+	stroke: currentColor;
+	stroke-linecap: round;
+	transform: rotate(-90deg);
+	transform-origin: center;
+	transition: stroke-dasharray 300ms ease;
+}
+
+/* ---- the checklist card: in a hover, like the What's new card ---- */
+
+.monaco-hover.dispatch-checklist-hover {
+	border-radius: 14px;
+	background-color: var(--vscode-sideBar-background);
+	border-color: var(--vscode-editorHoverWidget-border);
+	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
+}
+
+.monaco-hover.dispatch-checklist-hover .monaco-hover-content,
+.monaco-hover.dispatch-checklist-hover .hover-contents {
+	padding: 0 !important;
+	max-width: none !important;
+}
+
+.dispatch-checklist-card {
+	width: 380px;
+	box-sizing: border-box;
+	padding: 16px 8px 8px;
+	display: grid;
+	gap: 4px;
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.dispatch-checklist-card .ct {
+	padding: 0 8px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.dispatch-checklist-card .ct b {
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.dispatch-checklist-card .ct span {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-checklist-card .ci {
+	padding: 0 8px 4px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-checklist-card .rows {
+	display: grid;
+	gap: 2px;
+}
+
+.dispatch-checklist-card .row {
+	display: grid;
+	grid-template-columns: 20px minmax(0, 1fr) auto;
+	column-gap: 10px;
+	align-items: start;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 8px;
+	border: 0;
+	border-radius: 10px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-checklist-card .row:hover,
+.dispatch-checklist-card .row:focus-visible {
+	background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground) 60%, transparent);
+	outline: none;
+}
+
+.dispatch-checklist-card .row:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-checklist-card .tick {
+	width: 18px;
+	height: 18px;
+	margin-top: 1px;
+	box-sizing: border-box;
+	display: grid;
+	place-items: center;
+	border: 1.5px solid var(--vscode-descriptionForeground);
+	border-radius: 999px;
+	color: var(--vscode-sideBar-background);
+}
+
+.dispatch-checklist-card .row.done .tick {
+	border-color: var(--vscode-foreground);
+	background: var(--vscode-foreground);
+}
+
+.dispatch-checklist-card .tick .codicon {
+	font-size: 12px;
+	visibility: hidden;
+}
+
+.dispatch-checklist-card .row.done .tick .codicon {
+	visibility: visible;
+}
+
+.dispatch-checklist-card .text {
+	min-width: 0;
+}
+
+.dispatch-checklist-card .a {
+	font-weight: 500;
+}
+
+.dispatch-checklist-card .row.done .a {
+	color: var(--vscode-descriptionForeground);
+	text-decoration: line-through;
+}
+
+.dispatch-checklist-card .b {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-checklist-card .go {
+	align-self: center;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-checklist-card .row.done .go {
+	visibility: hidden;
+}
+
+.dispatch-checklist-card .foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 4px 0;
+}
+
+.dispatch-checklist-card .ghost {
+	height: 28px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.dispatch-checklist-card .ghost:hover,
+.dispatch-checklist-card .ghost:focus-visible {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+	outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-tour.entering,
+	.dispatch-tour-ring {
+		animation: none;
+	}
+
+	.dispatch-ring .bar,
+	.dispatch-checklist-card .row {
+		transition: none;
+	}
+}

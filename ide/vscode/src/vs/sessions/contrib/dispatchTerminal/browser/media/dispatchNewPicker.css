@@ -1,0 +1,149 @@
+/* Dispatch IDE: "+" asks Chat or Terminal, then the agent (dispatchNewPicker.ts). Flat: one surface, rows by tint. */
+.dispatch-new-picker {
+	width: 400px;
+	max-height: 460px;
+	display: flex;
+	flex-direction: column;
+	padding: 6px;
+	border-radius: 12px;
+	background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+	color: var(--vscode-menu-foreground, var(--vscode-foreground));
+	border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, transparent));
+	box-shadow: 0 8px 28px -10px rgba(0, 0, 0, 0.18);
+	font-size: 13px;
+	line-height: 1.5;
+	box-sizing: border-box;
+}
+
+.dispatch-new-picker .dnp-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 2px 4px 8px 8px;
+}
+
+.dispatch-new-picker .dnp-folder {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-new-picker .dnp-switch {
+	display: inline-flex;
+	flex: none;
+	padding: 2px;
+	border-radius: 999px;
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.dispatch-new-picker .dnp-tab {
+	border: 0;
+	padding: 2px 12px;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.dispatch-new-picker .dnp-tab.on {
+	background: var(--vscode-menu-background, var(--vscode-editor-background));
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+
+.dispatch-new-picker .dnp-list {
+	overflow-y: auto;
+	min-height: 0;
+	scrollbar-width: thin;
+	scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.dispatch-new-picker .dnp-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 6px 8px;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.dispatch-new-picker .dnp-row:hover,
+.dispatch-new-picker .dnp-row.focused {
+	background: var(--vscode-list-hoverBackground);
+	outline: none;
+}
+
+.dispatch-new-picker .dnp-mark {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+	font-size: 14px;
+}
+
+/* in Terminal the mark sits in a dark square: a terminal opens */
+.dispatch-new-picker.terminal .dnp-mark {
+	background: var(--vscode-terminal-background, #1c1917);
+	color: var(--vscode-terminal-foreground, #fafaf9);
+}
+
+.dispatch-new-picker .dnp-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	flex: 1;
+}
+
+.dispatch-new-picker .dnp-name {
+	font-weight: 500;
+}
+
+.dispatch-new-picker .dnp-default {
+	margin-left: 6px;
+	font-size: 11px;
+	font-weight: 400;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-new-picker .dnp-about {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-new-picker .dnp-tag {
+	flex: none;
+	font-size: 11px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-new-picker .dnp-foot:not(:empty) {
+	margin-top: 4px;
+	padding-top: 4px;
+	border-top: 1px solid var(--vscode-menu-separatorBackground, var(--vscode-widget-border, transparent));
+}
+
+.dispatch-new-picker .dnp-empty {
+	padding: 8px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}

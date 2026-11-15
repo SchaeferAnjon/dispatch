@@ -1,0 +1,375 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: who wrote which line, step by step (dispatchAttributionSteps.ts; kanban
+ *  design/attribution/redesign proto-b). One colour: the text colour and the description grey; the person
+ *  block is the one the diffs use (dispatchAttribution.css). Rows come in from 3px above in 180ms.
+ *--------------------------------------------------------------------------------------------*/
+
+.monaco-workbench {
+	--dispatch-attr-chip-2: color-mix(in srgb, var(--vscode-foreground) 4.5%, transparent);
+	--dispatch-attr-hair: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	--dispatch-attr-hair-2: color-mix(in srgb, var(--vscode-foreground) 15%, transparent);
+}
+
+/* ---- under a reply ---- */
+
+.dispatch-attr-reply {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
+	margin: 6px 0 4px;
+	min-width: 0;
+}
+
+.dispatch-attr-reply:empty {
+	display: none;
+}
+
+/* "You changed 2 lines in NOTES.md · 5:58 AM ›" */
+.dispatch-attr-yours {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 100%;
+	height: 32px;
+	padding: 0 10px 0 8px;
+	border: 0;
+	border-radius: 8px;
+	background: var(--dispatch-attr-chip-2);
+	box-shadow: inset 0 0 0 1px var(--dispatch-attr-hair);
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color .15s;
+}
+
+.dispatch-attr-yours:hover,
+.dispatch-attr-yours:focus-visible {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.dispatch-attr-yours:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+.dispatch-attr-yours .dispatch-attr-chip {
+	margin-left: 0;
+}
+
+.dispatch-attr-yours .who {
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+.dispatch-attr-yours .meta,
+.dispatch-attr-yours .go {
+	flex: none;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-attr-yours .go {
+	font-size: 12px;
+}
+
+/* the commit card */
+.dispatch-attr-commit {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 10px 12px;
+	border-radius: 14px;
+	/* a card lifts off the conversation (DESIGN.md: cards are the raised surface, never a hole in it) */
+	background: var(--dispatch-attr-chip-2);
+	box-shadow: inset 0 0 0 1px var(--dispatch-attr-hair-2);
+	font-size: 12px;
+}
+
+.dispatch-attr-commit .l1 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	font-size: 13px;
+}
+
+.dispatch-attr-commit .l1 .ic {
+	flex: none;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-attr-commit .hash {
+	flex: none;
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-attr-commit .subj {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-attr-commit .more {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	margin-left: auto;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	transition: background-color .15s;
+}
+
+.dispatch-attr-commit .more:hover {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+/* a click leaves no ring (the default focus style of a VS Code button); the keyboard still shows where it is */
+.monaco-workbench .dispatch-attr-commit .more:focus:not(:focus-visible) {
+	outline: none !important;
+}
+
+.dispatch-attr-commit .l2 .by.you {
+	color: var(--vscode-foreground);
+}
+
+.dispatch-attr-commit .more > span {
+	transition: transform .2s cubic-bezier(.2, 0, 0, 1);
+}
+
+.dispatch-attr-commit.open .more > span {
+	transform: rotate(180deg);
+}
+
+.dispatch-attr-commit .l2 {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 14px;
+	margin-top: 6px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-attr-commit .l2 > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	white-space: nowrap;
+}
+
+.dispatch-attr-commit .l2 .dispatch-attr-chip {
+	margin-left: 0;
+}
+
+.dispatch-attr-commit .yours {
+	color: var(--vscode-foreground);
+}
+
+.dispatch-attr-commit .msg {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows .28s cubic-bezier(.2, 0, 0, 1);
+}
+
+.dispatch-attr-commit .msg > div {
+	overflow: hidden;
+}
+
+.dispatch-attr-commit.open .msg {
+	grid-template-rows: 1fr;
+}
+
+.dispatch-attr-commit pre {
+	margin: 8px 0 0;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: var(--vscode-editor-background);
+	box-shadow: inset 0 0 0 1px var(--dispatch-attr-hair);
+	font: 12px/1.6 var(--monaco-monospace-font);
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-attr-commit .note {
+	margin-top: 6px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ---- All / Turn 1 / You above the diffs ---- */
+
+.dispatch-attr-steps-host:empty {
+	display: none;
+}
+
+.dispatch-attr-steps {
+	display: flex;
+	align-items: center;
+	height: 34px;
+	padding: 0 12px;
+}
+
+/* few choices: the tab's slightly rounded corners, not a capsule (DESIGN.md, the square switch) */
+.dispatch-attr-steps .seg {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	border-radius: 6px;
+	background: var(--dispatch-attr-chip-2);
+	box-shadow: inset 0 0 0 1px var(--dispatch-attr-hair);
+}
+
+.dispatch-attr-steps .seg-b {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 22px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color .15s, color .15s;
+}
+
+/* a turn is named by the start of your message: cut at one line; in a narrow pane the turns give way, All and You keep their width */
+.dispatch-attr-steps .seg {
+	min-width: 0;
+}
+
+.dispatch-attr-steps .seg-b {
+	flex: none;
+}
+
+.dispatch-attr-steps .seg-b[data-step^="turn:"] {
+	flex: 0 1 auto;
+	min-width: 56px;
+}
+
+.dispatch-attr-steps .seg-b > span:not(.lbl) {
+	flex: none;
+}
+
+.dispatch-attr-steps .seg-b .lbl {
+	max-width: 180px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dispatch-attr-steps .seg-b:hover {
+	color: var(--vscode-foreground);
+}
+
+.dispatch-attr-steps .seg-b.on {
+	background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+	box-shadow: 0 0 0 1px var(--dispatch-attr-hair-2);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-attr-steps .seg-b:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
+.dispatch-attr-steps .ag,
+.dispatch-attr-stepnote .ag {
+	font-size: 12px;
+}
+
+.dispatch-attr-chip.small {
+	width: 14px;
+	height: 14px;
+	margin-left: 0;
+}
+
+.dispatch-attr-chip.small::before {
+	width: 12px;
+	height: 12px;
+	border-radius: 3px;
+}
+
+.dispatch-attr-chip.small::after {
+	width: 9px;
+	height: 9px;
+	-webkit-mask-size: 9px 9px;
+	mask-size: 9px 9px;
+}
+
+.dispatch-attr-stepnote {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 12px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.dispatch-attr-stepnote b {
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+.dispatch-attr-stepnote .rest {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+.dispatch-attr-stepnote .x {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+	height: 22px;
+	margin-left: auto;
+	padding: 0 6px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.dispatch-attr-stepnote .x:hover {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-attr-stepnote .x .codicon {
+	font-size: 12px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.dispatch-attr-yours.enter,
+	.dispatch-attr-reply > .dispatch-attr-commit {
+		animation: dispatch-attr-in .18s cubic-bezier(0, 0, .2, 1);
+	}
+}
+
+.monaco-reduce-motion .dispatch-attr-yours,
+.monaco-reduce-motion .dispatch-attr-commit,
+.monaco-reduce-motion .dispatch-attr-commit * {
+	animation: none !important;
+	transition: none !important;
+}

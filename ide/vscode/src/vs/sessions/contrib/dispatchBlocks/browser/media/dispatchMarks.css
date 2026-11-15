@@ -1,0 +1,46 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the state marks (dispatchMarks.ts; DESIGN.md「符号表」, user 2026-11-15, task-o01fh): VS Code's round
+ *  state icons, 14px in a row and 16px on an entry, coloured only by --dispatch-state-* or the second grey.
+ *--------------------------------------------------------------------------------------------*/
+
+.codicon.dispatch-mark[class*='codicon-'] {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	font-size: 14px;
+	line-height: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+.codicon.dispatch-mark.s16[class*='codicon-'] {
+	width: 16px;
+	height: 16px;
+	font-size: 16px;
+	line-height: 16px;
+}
+
+.codicon.dispatch-mark.done { color: var(--dispatch-state-done); }
+.codicon.dispatch-mark.now { color: var(--dispatch-state-working); }
+.codicon.dispatch-mark.waiting { color: var(--dispatch-state-waiting); }
+.codicon.dispatch-mark.stopped { color: var(--dispatch-state-stopped); }
+.codicon.dispatch-mark.sub-agent { color: var(--dispatch-state-plan); }
+.codicon.dispatch-mark.handoff { color: var(--dispatch-state-handoff); }
+/* seen, todo and stop stay the second grey */
+
+/* the step it is on while the agent is at it: a light breath, 2s, down to 0.8 so it keeps 3:1 (the 1s ping it replaced was louder) */
+.codicon.dispatch-mark.now.live {
+	animation: dispatch-mark-breathe 2s ease-in-out infinite;
+	animation-delay: var(--dispatch-mark-phase, 0ms);
+}
+@keyframes dispatch-mark-breathe {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.8; }
+}
+
+.monaco-reduce-motion .codicon.dispatch-mark.live {
+	animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.codicon.dispatch-mark.live {
+		animation: none;
+	}
+}

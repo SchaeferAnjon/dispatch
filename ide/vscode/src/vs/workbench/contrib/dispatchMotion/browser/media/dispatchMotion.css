@@ -1,0 +1,43 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Motion "Less" (dispatchMotion.contribution.ts). Only decoration stops here; the motion that says
+ *  something is working or waiting (breathing blocks, spinners, the Assistant's thinking cells, knocking, a build
+ *  filling up, shimmering status lines) is left alone. Reduce motion (workbench.reduceMotion, the Mac's setting)
+ *  still stops everything through each file's own rules.
+ *--------------------------------------------------------------------------------------------*/
+
+/* steam over the cup (bottom bar, its panel, Settings' Keep awake) and the sleeping z's: still, half visible */
+.dispatch-motion-less .dispatch-status-cup .steam,
+.dispatch-motion-less .dset-steam i,
+.dispatch-motion-less .dset-zz i {
+	animation: none !important;
+	opacity: 0.6 !important;
+	transform: none !important;
+}
+/* things that grow or slide in only to look nice: shown at once */
+.dispatch-motion-less .dispatch-status-bar .dispatch-status-item,
+.dispatch-motion-less .dispatch-settings-page .dset-tile,
+.dispatch-motion-less .dispatch-settings-page .dset-ring .vl,
+.dispatch-motion-less .dispatch-settings-page .dset-meter-bar i {
+	animation: none !important;
+}
+/* the empty page's fish and glows (contrib/aquarium) */
+.dispatch-motion-less [class*="agents-aquarium"],
+.dispatch-motion-less [class*="agents-aquarium"] * {
+	animation: none !important;
+}
+
+/* Settings › Appearance › Motion: three small examples of what each choice keeps */
+.dispatch-settings-page .dset-motion-preview {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 20px;
+	padding: 4px 12px 12px;
+	font-size: 12px;
+	color: var(--dset-text-2, var(--vscode-descriptionForeground));
+}
+.dispatch-settings-page .dset-motion-ex {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.dispatch-settings-page .dset-motion-ex .dset-cup { transform: scale(0.8); margin: -4px -2px; }

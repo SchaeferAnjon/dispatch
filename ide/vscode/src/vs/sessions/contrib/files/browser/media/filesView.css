@@ -1,0 +1,39 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.files-empty-view-body {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 4px 8px;
+	box-sizing: border-box;
+}
+
+/* Welcome/Empty state */
+.files-empty-view-body .files-empty-welcome {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	flex: 1;
+	padding: 32px;
+	text-align: center;
+	gap: 8px;
+}
+
+.files-empty-view-body .files-empty-welcome-message {
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-label1);
+}
+
+/* Dispatch IDE: the logo above "Folders and files will appear here.", as the empty editor's: the Dock icon's blocks
+   (28px) and its big dot, the glow breathing (dispatch-mark.svg, written by ide/gen-icon-svgs.mjs from
+   base/common/dispatchIcon.ts's mark). */
+.files-empty-view-body .files-empty-dispatch-mark {
+	width: 153px;
+	height: 134.4px;
+	margin-bottom: 8px;
+	background: url('./dispatch-mark.svg') center / contain no-repeat;
+}

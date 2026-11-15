@@ -1,0 +1,118 @@
+import { useEffect, useMemo, useState } from "react";
+import { firstInstalled, isInstalled } from "../installedAgents";
+import type { Api, AgentStartInput, AgentStartResult } from "../api";
+import { control } from "./SessionActions";
+import { actorOf, projectOf } from "../derive";
+import type { Host, Issue } from "../types";
+import { useT } from "../i18n";
+import { useModels } from "../models";
+import { ModelSelect } from "./ModelSelect";
+
+// 派活: start an agent as an in-app chat in Dispatch on a machine, optionally handing it a task it
+// claims as its own, and send it the first prompt.
+export const KINDS: [string, string][] = [["claude", "Claude Code"], ["codex", "Codex"], ["pi", "pi"], ["gemini", "Gemini CLI"], ["opencode", "OpenCode"], ["hermes", "Hermes"]];
+export const KIND_ACTOR: Record<string, string> = { claude: "claude-code", codex: "codex", pi: "pi", opencode: "opencode", hermes: "hermes", gemini: "gemini" };
+/** The ones Dispatch's in-app chat drives, so the ones 派活 can start. */
+const CHAT_KINDS = KINDS.filter(([k]) => k === "claude" || k === "codex");
+
+interface Props {
+  api?: Api;
+  hosts: Host[];
+  initialHost?: string;
+  initialCwd?: string;
+  initialTask?: string;
+  initialPrompt?: string;
+  initialLabel?: string;
+  initialKind?: string;
+  initialModel?: string;
+  issues: Issue[];
+  me: string;
+  dirOfProject: (name: string) => string;
+  onClose: () => void;
+  onStart: (input: AgentStartInput) => Promise<AgentStartResult | null>;
+  onShowSessions?: (hostName: string) => void;
+}
+
+export function Delegate({ api, hosts, initialHost, initialCwd, initialTask, initialPrompt, initialLabel, initialKind, initialModel, issues, me, dirOfProject, onClose, onStart, onShowSessions }: Props) {
+  const t = useT();
+  const online = hosts.filter((h) => h.online || h.local);
+  const [hostId, setHostId] = useState(initialHost ?? (online.find((h) => h.local)?.id ?? online[0]?.id ?? ""));
+  const host = hosts.find((h) => h.id === hostId);
+  const [kind, setKind] = useState(initialKind || firstInstalled(CHAT_KINDS.map(([k]) => k)));
+  const [model, setModel] = useState(initialModel || "");
+  const catalog = useModels(api, host?.local ? "local" : hostId);
+  const [taskId, setTaskId] = useState(initialTask ?? "");
+  const task = issues.find((i) => i.id === taskId);
+  const suggestedCwd = task ? dirOfProject(projectOf(task)) : "";
+  const [cwd, setCwd] = useState(initialCwd || "");
+  // Folder picker: the same browse the new-session dialog uses, on the chosen machine.
+  type Folders = { path: string; parent: string; children: { name: string; path: string }[]; recent: string[]; truncated: boolean };
+  const [picking, setPicking] = useState(false);
+  const [folders, setFolders] = useState<Folders | null>(null);
+  const [browseBusy, setBrowseBusy] = useState(false);
+  const browse = async (next: string) => {
+    if (!api || !host) return;
+    setBrowseBusy(true);
+    try { const r = await control<Folders>(api, host.local ? "local" : host.id, "browse", { path: next }); setFolders(r); setCwd(r.path); }
+    catch (e) { setErr(String(e)); }
+    finally { setBrowseBusy(false); }
+  };
+  const openPicker = () => { setPicking(true); void browse(cwd.trim() || suggestedCwd || ""); };
+  const [prompt, setPrompt] = useState(initialPrompt ?? "");
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<AgentStartResult | null>(null);
+  const [err, setErr] = useState("");
+  const candidates = useMemo(() => issues.filter((i) => i.status !== "closed").sort((a, b) => Number(b.id === initialTask) - Number(a.id === initialTask) || a.priority - b.priority || b.updated_at.localeCompare(a.updated_at)), [issues, initialTask]);
+  const defaultPrompt = task ? `你接手任务 ${task.id}「${task.title}」。先 \`bd show ${task.id}\` 读背景和验收项，按验收项做完，进展用 dispatch log，收尾 dispatch done --reason。` : "";
+  const go = async () => {
+    const text = (prompt.trim() || defaultPrompt).trim();
+    if (!text || !host) return;
+    setBusy(true); setErr("");
+    try { setRes(await onStart({ kind, model: model || undefined, host: host.local ? "" : host.id, cwd: (cwd.trim() || suggestedCwd) || undefined, task: taskId || undefined, prompt: text, label: initialLabel || (task ? task.title.slice(0, 24) : undefined) })); }
+    catch (e) { setErr(String(e)); }
+    finally { setBusy(false); }
+  };
+  const actorName = actorOf(KIND_ACTOR[kind] ?? kind, me)?.name ?? kind;
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
+  // Grouped so the eye lands on the tasks that are actually free: this project's, then others', then ones someone already holds.
+  const proj = initialTask ? projectOf(issues.find((i) => i.id === initialTask) ?? ({} as Issue)) : "";
+  const groups: [string, typeof candidates][] = [
+    [proj ? t("{project} · 待接手", { project: proj }) : t("待接手"), candidates.filter((i) => !i.assignee && (!proj || projectOf(i) === proj))],
+    [t("其他项目 · 待接手"), candidates.filter((i) => !i.assignee && proj && projectOf(i) !== proj)],
+    [t("已有人在做"), candidates.filter((i) => !!i.assignee)],
+  ];
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog delegate" role="dialog" aria-label={t("派活")}>
+        <h3>{t("派活")}{task ? ` · ${task.title}` : initialLabel ? ` · ${initialLabel}` : ""}</h3>
+        <p className="muted small">{t("在所选电脑的 Dispatch 里起一个 Agent，把任务记到它名下，并发第一句话。它会以自己的身份认领任务，完成后 dispatch done。那台电脑要开着 Dispatch。")}</p>
+        <div className="new-session-selects">
+          <label>{t("电脑")}<select value={hostId} onChange={(e) => setHostId(e.target.value)}>{hosts.map((h) => <option key={h.id} value={h.id} disabled={!h.online && !h.local}>{h.name}{!h.online && !h.local ? t(" · 离线") : ""}</option>)}</select></label>
+          <label>Agent<select value={kind} onChange={(e) => { setKind(e.target.value); setModel(""); }} title={t("Dispatch 能起的 Agent，它们的对话都能在会话页里看")}>{CHAT_KINDS.map(([k, l]) => <option key={k} value={k} disabled={!isInstalled(k)}>{l}{isInstalled(k) ? "" : ` · ${t("未安装")}`}</option>)}</select></label>
+          <label>{t("模型")}<ModelSelect options={catalog[kind]} value={model} onChange={setModel} /></label>
+        </div>
+        <label>{t("任务")}<select value={taskId} onChange={(e) => setTaskId(e.target.value)}><option value="">{t("不挂任务，只发一句话")}</option>{groups.filter(([, xs]) => xs.length).map(([label, xs]) => <optgroup key={label} label={label}>{xs.map((i) => <option key={i.id} value={i.id}>{i.id} · {i.title}{i.assignee ? t(" · 现在 {who}", { who: actorOf(i.assignee, me)?.name ?? i.assignee }) : ""}</option>)}</optgroup>)}</select></label>
+        <label>{t("目录")}<div className="folder-path"><input placeholder={suggestedCwd ? t("默认：{dir}", { dir: suggestedCwd }) : host?.local ? t("默认：~（家目录）；点「选择…」挑一个") : t("默认：那台机器的家目录")} value={cwd} onChange={(e) => setCwd(e.target.value)} />{api && <button className="btn sm" type="button" disabled={busy || browseBusy} onClick={picking ? () => setPicking(false) : openPicker}>{picking ? t("收起") : t("选择…")}</button>}</div></label>
+        {picking && <div className="folder-picker" aria-busy={browseBusy}>
+          <div className="folder-picker-heading"><b>{t("浏览文件夹")}</b><span className="muted small">{folders?.path}</span><button className="link" disabled={!folders || browseBusy || folders.path === folders.parent} onClick={() => browse(folders!.parent)}>{t("↑ 上一级")}</button></div>
+          {browseBusy ? <p className="muted">{t("读取文件夹…")}</p> : <div className="folder-children">{folders?.children.map((f) => <button key={f.path} type="button" onClick={() => browse(f.path)}>▱ {f.name}<span>›</span></button>)}{folders?.children.length === 0 && <p className="muted">{t("没有子文件夹，就用当前目录。")}</p>}</div>}
+          {!!folders?.recent.length && <select aria-label={t("最近使用的文件夹")} value="" disabled={browseBusy} onChange={(e) => browse(e.target.value)}><option value="">{t("最近使用的文件夹…")}</option>{folders.recent.map((p) => <option key={p} value={p}>{p}</option>)}</select>}
+        </div>}
+        <label>{t("第一句话")}<textarea rows={4} placeholder={defaultPrompt || t("要它做什么")} value={prompt} onChange={(e) => setPrompt(e.target.value)} /></label>
+        {err && <div className="err">{err}</div>}
+        {res && (
+          <div className="sel-text small">
+            <div><b>{res.prompt_sent ? t('会话已启动，第一句话已发送') : t('会话已创建，请检查输入状态')}</b> · {res.host}{res.warning ? ` · ${res.warning}` : ""}</div>
+            {res.prompt_sent && <p>{t("Agent 会在后台继续处理，可以到会话页查看进度和回复。")}</p>}
+            {res.output && <pre className="diff" style={{ maxHeight: 220, overflow: "auto" }}>{res.output.split("\n").filter((l) => l.trim()).slice(-25).join("\n")}</pre>}
+          </div>
+        )}
+        <div className="foot">
+          <button className="btn ghost" onClick={onClose}>{res ? t("关闭") : t("取消")}</button>
+          {res && onShowSessions && <button className="btn primary" onClick={() => onShowSessions(res.host)}>{t("查看会话")}</button>}
+          <button className={`btn ${res ? 'ghost' : 'primary'}`} disabled={busy || !host || (!prompt.trim() && !defaultPrompt)} onClick={go}>{busy ? t("正在启动并发送第一句话…") : res ? t("再派一个") : t("派给 {who}", { who: actorName })}</button>
+        </div>
+      </div>
+    </div>
+  );
+}

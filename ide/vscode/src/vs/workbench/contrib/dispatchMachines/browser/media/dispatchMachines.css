@@ -1,0 +1,299 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the machine button and the machines panel (dispatchMachines.ts), after kanban
+ *  design/machines/redesign (direction B) and DESIGN.md: flat, no colour but the status dots (green online,
+ *  amber waiting, a hollow ring offline), one-colour line icons.
+ *--------------------------------------------------------------------------------------------*/
+
+/* the button: the title bar's own icon button, widened by the machine name */
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 22px;
+	padding: 0 3px;
+	border-radius: 5px;
+	font-size: 13px;
+	line-height: 22px;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	width: auto !important;
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-label.named {
+	padding: 0 8px 0 5px;
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-label.remote {
+	background-color: var(--vscode-list-inactiveSelectionBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-label:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-label.remote:hover {
+	background-color: var(--vscode-list-activeSelectionBackground, var(--vscode-toolbar-hoverBackground));
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-label.open {
+	background-color: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-foreground);
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-label.remote.open {
+	background-color: color-mix(in srgb, var(--vscode-foreground) 9%, var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground)));
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-icon {
+	font-size: 16px;
+	color: inherit;
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-button-name:empty {
+	display: none;
+}
+/* the other Macs, next to this one: a monitor each with its dot at the lower right */
+.monaco-workbench .dispatch-machines-button .dispatch-machines-others {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-others:empty {
+	display: none;
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-other {
+	position: relative;
+	font-size: 16px;
+	color: inherit;
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-other-dot {
+	position: absolute;
+	right: -2px;
+	bottom: 0;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1.5px var(--vscode-titleBar-activeBackground);
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-other-dot.online {
+	background: var(--dispatch-state-working);
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-other-dot.waiting {
+	background: var(--dispatch-state-waiting);
+}
+.monaco-workbench .dispatch-machines-button .dispatch-machines-other-dot.offline {
+	background: var(--vscode-titleBar-activeBackground);
+	box-shadow: inset 0 0 0 1.2px var(--vscode-descriptionForeground), 0 0 0 1.5px var(--vscode-titleBar-activeBackground);
+}
+
+/* the panel: as wide and as round as the account panel next to it */
+.monaco-hover.workbench-hover.dispatch-machines-panel-hover {
+	border-color: var(--vscode-menu-border, var(--vscode-editorHoverWidget-border));
+	border-radius: 12px;
+	overflow: hidden;
+	outline: none;
+}
+.monaco-hover.workbench-hover.dispatch-machines-panel-hover .hover-contents {
+	padding: 0 !important;
+}
+.dispatch-machines-panel {
+	display: flex;
+	flex-direction: column;
+	width: 400px;
+	max-width: calc(100vw - 16px);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.dispatch-machines-panel-body {
+	display: flex;
+	flex-direction: column;
+	padding: 4px 0;
+}
+.dispatch-machines-panel-note {
+	padding: 16px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-machines-section {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 7px 16px;
+}
+.dispatch-machines-section-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	height: 24px;
+}
+.dispatch-machines-section-icon {
+	flex: none;
+	font-size: 16px !important;
+	color: var(--vscode-descriptionForeground) !important;
+}
+.dispatch-machines-section-name {
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-machines-section-sub {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+.dispatch-machines-section-state {
+	margin-left: auto;
+	font-size: 12px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-machines-section-state .codicon {
+	font-size: 14px;
+}
+/* a Mac's state (machineMark; DESIGN.md「符号表」): VS Code's round state icons, 14px */
+.codicon.dispatch-machines-mark[class*='codicon-'] {
+	flex: none;
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+.codicon.dispatch-machines-mark.online { color: var(--dispatch-state-working); }
+.codicon.dispatch-machines-mark.waiting { color: var(--dispatch-state-waiting); }
+.dispatch-machines-section-line,
+.dispatch-machines-section-text {
+	margin-left: 24px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.dispatch-machines-section-text {
+	display: block;
+}
+.dispatch-machines-count {
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+.dispatch-machines-pill {
+	align-self: flex-start;
+	margin: 6px 0 0 24px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+}
+.dispatch-machines-pill:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-machines-pill .codicon {
+	font-size: 14px;
+}
+.dispatch-machines-recent-head {
+	margin: 9px 0 0 24px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-machines-recent-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: 16px;
+	height: 28px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	cursor: pointer;
+	min-width: 0;
+}
+.dispatch-machines-recent-row + .dispatch-machines-recent-row {
+	margin-top: -2px;
+}
+.dispatch-machines-recent-row:hover:not(:disabled) {
+	background-color: var(--vscode-list-hoverBackground);
+}
+.dispatch-machines-recent-row:disabled {
+	cursor: default;
+	opacity: 0.5;
+}
+.dispatch-machines-recent-icon {
+	flex: none;
+	font-size: 14px !important;
+	color: var(--vscode-descriptionForeground) !important;
+}
+.dispatch-machines-recent-name {
+	flex: none;
+	max-width: 40%;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dispatch-machines-recent-title {
+	flex: 1;
+	font-size: 12px;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-machines-recent-time {
+	flex: none;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-machines-section.offline .dispatch-machines-recent-head,
+.dispatch-machines-section.offline .dispatch-machines-recent-row {
+	opacity: 0.5;
+}
+.dispatch-machines-panel-footer {
+	display: flex;
+	align-items: center;
+	padding: 6px 8px;
+	border-top: 1px solid var(--vscode-menu-separatorBackground, var(--vscode-editorHoverWidget-border));
+}
+.dispatch-machines-panel-footer-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	height: 24px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.dispatch-machines-panel-footer-action.end {
+	margin-left: auto;
+}
+.dispatch-machines-panel-footer-action:hover {
+	background-color: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-machines-panel-footer-action .codicon {
+	font-size: 14px;
+}
+.dispatch-machines-pill:focus-visible,
+.dispatch-machines-recent-row:focus-visible,
+.dispatch-machines-panel-footer-action:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}

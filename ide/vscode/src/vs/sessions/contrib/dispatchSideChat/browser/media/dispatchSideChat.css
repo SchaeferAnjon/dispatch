@@ -1,0 +1,458 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the side chat card in the side pane's bottom right corner, its pill, the passage it lights in the
+ *  Docs reader and the answers kept there as comments (direction A, user 2026-11-15, task-23iin, design/side-chat;
+ *  DESIGN.md「组件」旁聊卡). Sizes and places are set in dispatchSideChatCard.ts (cardBox).
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-side-chat-card,
+.dispatch-side-chat-pill {
+	--dsc-bg: var(--vscode-agentsPanel-background, var(--vscode-editor-background));
+	--dsc-hair: var(--vscode-editorWidget-border);
+	--dsc-hair-2: var(--vscode-input-border, var(--vscode-editorWidget-border));
+	--dsc-chip: var(--vscode-toolbar-hoverBackground);
+	--dsc-text-2: var(--vscode-descriptionForeground);
+	--dsc-shadow: 0 12px 40px -8px var(--vscode-widget-shadow), 0 4px 12px -4px var(--vscode-widget-shadow);
+	position: absolute;
+	z-index: 20;
+	box-sizing: border-box;
+	background: var(--dsc-bg);
+	border: 1px solid var(--dsc-hair-2);
+	box-shadow: var(--dsc-shadow);
+	color: var(--vscode-foreground);
+	transition: opacity 0.2s cubic-bezier(0, 0, 0.2, 1), transform 0.2s cubic-bezier(0, 0, 0.2, 1), visibility 0s;
+}
+
+.dispatch-side-chat-card.hidden,
+.dispatch-side-chat-pill.hidden {
+	opacity: 0;
+	transform: translateY(8px);
+	visibility: hidden;
+	pointer-events: none;
+	transition: opacity 0.2s cubic-bezier(0, 0, 0.2, 1), transform 0.2s cubic-bezier(0, 0, 0.2, 1), visibility 0s linear 0.2s;
+}
+
+.dispatch-side-chat-card {
+	display: flex;
+	flex-direction: column;
+	border-radius: 12px;
+	overflow: hidden;
+}
+
+/* the head: "Side chat · from <session>" and the card's own ⋯ – × */
+.dispatch-side-chat-card .dsc-head {
+	flex: none;
+	height: 40px;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 6px 0 12px;
+	border-bottom: 1px solid color-mix(in srgb, var(--dsc-hair) 40%, transparent);
+}
+
+.dispatch-side-chat-card .dsc-ic,
+.dispatch-side-chat-pill .dsc-ic {
+	font-size: 14px;
+	color: var(--dsc-text-2);
+	flex: none;
+}
+
+.dispatch-side-chat-card .dsc-t {
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.dispatch-side-chat-card .dsc-from {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+	color: var(--dsc-text-2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-side-chat-card .dsc-ib {
+	flex: none;
+	width: 24px;
+	height: 24px;
+	display: grid;
+	place-items: center;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: none;
+	color: var(--dsc-text-2);
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.dispatch-side-chat-card .dsc-ib .codicon {
+	font-size: 14px;
+}
+
+.dispatch-side-chat-card .dsc-ib:hover,
+.dispatch-side-chat-card .dsc-ib.open {
+	background: var(--dsc-chip);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-side-chat-card .dsc-ib:focus-visible,
+.dispatch-side-chat-card .dsc-quote:focus-visible,
+.dispatch-side-chat-pill:focus-visible,
+.dispatch-side-chat-act:focus-visible,
+.dispatch-doc-comment-head:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-side-chat-card .dsc-body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/* the quoted passage, the quote card's look (DESIGN.md 引用片): 48 high, corner 6, 13px words over a 12px place */
+.dispatch-side-chat-card .dsc-quote {
+	flex: none;
+	margin: 12px 12px 0;
+	min-height: 48px;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 6px 10px;
+	border: 1px solid var(--dsc-hair);
+	border-radius: 6px;
+	background: var(--dsc-bg);
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.dispatch-side-chat-card .dsc-quote:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.dispatch-side-chat-card .dsc-quote-ic {
+	font-size: 14px;
+	color: var(--dsc-text-2);
+	flex: none;
+}
+
+.dispatch-side-chat-card .dsc-quote-t {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.dispatch-side-chat-card .dsc-quote-1,
+.dispatch-side-chat-card .dsc-quote-2 {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	line-height: 1.5;
+}
+
+.dispatch-side-chat-card .dsc-quote-1 {
+	font-size: 13px;
+}
+
+.dispatch-side-chat-card .dsc-quote-2 {
+	font-size: 12px;
+	color: var(--dsc-text-2);
+}
+
+/* the side chat: the conversation's chat view, on the card's ground */
+.dispatch-side-chat-card .dsc-chat {
+	flex: none;
+	overflow: hidden;
+	position: relative;
+}
+
+.dispatch-side-chat-card .dsc-chat .interactive-session,
+.dispatch-side-chat-card .dsc-chat .chat-view {
+	--vscode-chat-list-background: var(--dsc-bg);
+	background: var(--dsc-bg);
+}
+
+/* inside the card everything starts 12 in from its edge, as the head does: the messages, the input */
+.dispatch-side-chat-card .dsc-chat .interactive-session .interactive-item-container {
+	padding-left: 12px;
+	padding-right: 12px;
+}
+
+/* the person's words: the conversation's bubble (24 round, 16 / 12 inside, at most 80% of the row) */
+.dispatch-side-chat-card .dsc-chat .interactive-session .interactive-item-container.interactive-request .value .rendered-markdown {
+	border-radius: 24px;
+	padding: 12px 16px;
+	max-width: 80%;
+	box-sizing: border-box;
+}
+
+/* the input: 10 round inside the 12 round card (an inner corner never rounder than the outer one) */
+.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-input-container {
+	border-radius: 10px;
+}
+
+/* the side chat runs on its session's engine and permissions: no engine switch and no status row under the input
+   (the conversation's input has them); the model's name gets the room */
+.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-secondary-toolbar,
+.dispatch-side-chat-card .dsc-chat .interactive-input-part .dispatch-harness-picker-item {
+	display: none !important;
+}
+
+/* the agent and the mode keep their icons and give their words' room to the model's name */
+.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-mode-picker-item .codicon ~ .chat-input-picker-label,
+.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-agent-picker-item .sessions-chat-dropdown-label,
+.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-agent-picker-item .sessions-chat-dropdown-chevron {
+	display: none;
+}
+
+/* an answer's own row of icons (copy, …): the card's Add to chat, Keep as comment and Copy say it once */
+.dispatch-side-chat-card .dsc-chat .interactive-item-container .chat-footer-toolbar {
+	display: none !important;
+}
+
+/* the card's quote says what was asked about; the chat's own "from" row would say it again */
+.dispatch-side-chat-card.has-quote .chat-request-origin {
+	display: none;
+}
+
+/* Add to chat, Keep as comment, Copy: over the input, where the session's pills float */
+.dispatch-side-chat-card .dsc-acts {
+	display: none;
+	gap: 4px;
+	align-items: center;
+	padding: 4px 0;
+	margin-bottom: 8px;
+	pointer-events: auto;
+	background: var(--dsc-bg);
+}
+
+.dispatch-side-chat-card .dsc-acts.on {
+	display: flex;
+}
+
+.dispatch-side-chat-act {
+	height: 24px;
+	box-sizing: border-box;
+	padding: 0 8px;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	border: 0;
+	border-radius: 999px;
+	background: none;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.dispatch-side-chat-act .codicon {
+	font-size: 12px;
+}
+
+.dispatch-side-chat-act:hover,
+.dispatch-side-chat-act.did {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+/* the folded card: a pill where the card's corner was */
+.dispatch-side-chat-pill {
+	height: 32px;
+	padding: 0 14px 0 10px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	border-radius: 999px;
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.dispatch-side-chat-pill:hover {
+	background: color-mix(in srgb, var(--vscode-toolbar-hoverBackground) 100%, var(--dsc-bg));
+}
+
+.dispatch-side-chat-pill.unread .dsc-pill-t {
+	font-weight: 500;
+}
+
+/* answering: the words shimmer, as the chat's own "Working" does */
+.dispatch-side-chat-pill.answering .dsc-pill-t {
+	background: linear-gradient(90deg, var(--dsc-text-2) 0 40%, var(--vscode-foreground) 50%, var(--dsc-text-2) 60% 100%);
+	background-size: 200% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: dispatch-side-chat-shimmer 2s linear infinite;
+}
+
+@keyframes dispatch-side-chat-shimmer {
+	from {
+		background-position: 100% 0;
+	}
+
+	to {
+		background-position: -100% 0;
+	}
+}
+
+/* the passage in the Docs reader: softly while its card is open, fully while the pointer is on the card's quote */
+::highlight(dispatch-side-chat-soft) {
+	background-color: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+::highlight(dispatch-side-chat-strong) {
+	background-color: var(--vscode-editor-selectionBackground);
+}
+
+/* a passage with an answer kept on it */
+::highlight(dispatch-doc-commented) {
+	text-decoration: underline dotted var(--vscode-descriptionForeground);
+	text-underline-offset: 3px;
+}
+
+/* the kept answer, a row under its passage; a click opens the whole answer */
+.dispatch-doc-comment {
+	margin: -4px 0 12px;
+	border: 1px solid var(--vscode-editorWidget-border);
+	border-radius: 6px;
+	user-select: text;
+}
+
+.dispatch-doc-comment-head {
+	width: 100%;
+	height: 28px;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 6px;
+	background: none;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.dispatch-doc-comment-head:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.dispatch-doc-comment-head .ic {
+	font-size: 14px;
+	flex: none;
+}
+
+.dispatch-doc-comment-head .t {
+	font-weight: 500;
+	color: var(--vscode-foreground);
+	flex: none;
+}
+
+.dispatch-doc-comment-head .s {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* open, the whole answer is below: the row says only Comment */
+.dispatch-doc-comment.open .dispatch-doc-comment-head .s {
+	visibility: hidden;
+}
+
+.dispatch-doc-comment-head .car {
+	font-size: 12px;
+	flex: none;
+	transition: transform 0.2s ease;
+}
+
+.dispatch-doc-comment.open /* open, the whole answer is below: the row says only Comment */
+.dispatch-doc-comment.open .dispatch-doc-comment-head .s {
+	visibility: hidden;
+}
+
+.dispatch-doc-comment-head .car {
+	transform: rotate(180deg);
+}
+
+.dispatch-doc-comment-body {
+	display: none;
+	padding: 2px 12px 10px 28px;
+	font-size: 13px;
+	line-height: 1.65;
+}
+
+.dispatch-doc-comment.open .dispatch-doc-comment-body {
+	display: block;
+}
+
+.dispatch-doc-comment-body p {
+	margin: 0 0 8px;
+}
+
+.dispatch-doc-comment-body ol,
+.dispatch-doc-comment-body ul {
+	margin: 0 0 8px;
+	padding-left: 20px;
+}
+
+.dispatch-doc-comment-acts {
+	display: flex;
+	gap: 4px;
+	margin-left: -8px;
+}
+
+/* the same small buttons as the card's (the reader's own button and icon sizes do not reach in) */
+.dispatch-docs-md .dispatch-doc-comment .dispatch-side-chat-act {
+	height: 24px;
+	font-size: 12px;
+	line-height: 24px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-docs-md .dispatch-doc-comment .dispatch-side-chat-act .codicon {
+	font-size: 12px;
+}
+
+.dispatch-docs-md .dispatch-doc-comment .dispatch-side-chat-act:hover {
+	color: var(--vscode-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-side-chat-card,
+	.dispatch-side-chat-pill,
+	.dispatch-side-chat-card.hidden,
+	.dispatch-side-chat-pill.hidden,
+	/* open, the whole answer is below: the row says only Comment */
+.dispatch-doc-comment.open .dispatch-doc-comment-head .s {
+	visibility: hidden;
+}
+
+.dispatch-doc-comment-head .car {
+		transition: none;
+	}
+
+	.dispatch-side-chat-pill.answering .dsc-pill-t {
+		animation: none;
+		background: none;
+		color: var(--dsc-text-2);
+	}
+}

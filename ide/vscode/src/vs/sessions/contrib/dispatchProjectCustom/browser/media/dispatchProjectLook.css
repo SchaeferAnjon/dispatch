@@ -1,0 +1,31 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: a project's own icon (dispatchProjectLook.ts). The colour is the icon's alone; in the dark
+ *  theme a step lighter (kanban DESIGN.md: 深色下各提亮一档).
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-project-look.dispatch-project-look-colored {
+	color: var(--dispatch-project-color) !important;
+}
+.monaco-workbench.vs-dark .dispatch-project-look.dispatch-project-look-colored,
+.monaco-workbench.hc-black .dispatch-project-look.dispatch-project-look-colored {
+	color: color-mix(in srgb, var(--dispatch-project-color) 78%, white) !important;
+}
+.dispatch-project-look.dispatch-project-look-emoji {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 13px;
+	line-height: 1;
+	font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+.dispatch-project-look.dispatch-project-look-picture {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+.dispatch-project-look.dispatch-project-look-picture > img {
+	width: 16px;
+	height: 16px;
+	border-radius: 4px;
+	object-fit: cover;
+}

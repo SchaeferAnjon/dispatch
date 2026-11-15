@@ -1,0 +1,55 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Quote and Ask Question in a diff's selection box (315-quote.patch)
+ *--------------------------------------------------------------------------------------------*/
+
+/* Dispatch IDE: Quote and Ask Question in front of the input, a line after them (kanban design/quote/redesign 第 3 节) */
+.agent-feedback-input-widget .agent-feedback-input-leading {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex-shrink: 0;
+	align-self: flex-start;
+	margin: -1px 0;
+}
+
+.agent-feedback-input-widget .agent-feedback-input-leading-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 8px 0 6px;
+	border: 0;
+	border-radius: var(--vscode-cornerRadius-small);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 13px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.agent-feedback-input-widget .agent-feedback-input-leading-action:hover,
+.agent-feedback-input-widget .agent-feedback-input-leading-action:focus-visible {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	outline: none;
+}
+
+.agent-feedback-input-widget .agent-feedback-input-leading-action .codicon {
+	font-size: 14px;
+	color: var(--vscode-icon-foreground);
+}
+
+.agent-feedback-input-widget .agent-feedback-input-divider {
+	width: 1px;
+	height: 16px;
+	margin: 0 6px 0 4px;
+	background: var(--vscode-editorHoverWidget-border, var(--vscode-widget-border));
+}
+
+.agent-feedback-input-widget.compact-leading .agent-feedback-input-leading-action {
+	padding: 0 5px;
+}
+
+.agent-feedback-input-widget.compact-leading .agent-feedback-input-leading-action > span:last-child {
+	display: none;
+}

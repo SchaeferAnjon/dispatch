@@ -1,0 +1,151 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Settings › Keys and the "Key saved" toast (kanban task-d5ejn). The rows are the Settings rows;
+ *  a key's name and its hidden value in the editor's monospace at 12, the value in the description colour until
+ *  shown; the project tag in the page's font. Edit and Delete come up on hover, as Rename does on Projects. The form
+ *  is a part of the list card under a hairline, two columns (name, project) over the value and the purpose. No colour
+ *  but the error's.
+ *  The toast is the preference toast's (chat media/dispatchPrefs.css), in a slot of its own.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-settings-page .dset-keys .dset-key-name {
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+	letter-spacing: 0;
+}
+.dispatch-settings-page .dset-keys .dset-key-row .dset-tag {
+	font-family: var(--sans, var(--vscode-font-family));
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: normal;
+}
+.dispatch-settings-page .dset-keys .dset-tag.dset-key-all {
+	background: none;
+	box-shadow: inset 0 0 0 1px var(--dset-hair);
+	color: var(--dset-text-2);
+}
+.dispatch-settings-page .dset-keys .dset-key-nopurpose { font-style: italic; }
+.dispatch-settings-page .dset-keys .dset-row-ctl { gap: 2px; }
+.dispatch-settings-page .dset-key-val {
+	width: 160px;
+	margin-right: 6px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: right;
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+	color: var(--dset-text-2);
+	letter-spacing: 1px;
+}
+.dispatch-settings-page .dset-key-val.shown {
+	color: var(--dset-text);
+	letter-spacing: 0;
+	user-select: all;
+}
+.dispatch-settings-page .dset-key-row [data-keys="edit"],
+.dispatch-settings-page .dset-key-row [data-keys="delete"] {
+	opacity: 0;
+	transition: opacity 200ms ease, background-color 150ms ease;
+}
+.dispatch-settings-page .dset-key-row:hover [data-keys="edit"],
+.dispatch-settings-page .dset-key-row:hover [data-keys="delete"],
+.dispatch-settings-page .dset-key-row:focus-within [data-keys="edit"],
+.dispatch-settings-page .dset-key-row:focus-within [data-keys="delete"],
+.dispatch-settings-page .dset-key-row.editing [data-keys="edit"] {
+	opacity: 1;
+}
+.dispatch-settings-page .dset-key-row.editing { background: var(--dset-sel); }
+
+/* the form: the list card's last part (a new key) or the part under a row (an edit), set off by one hairline, its
+   sides in line with the rows' text */
+.dispatch-settings-page .dset-keys-form {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 200px;
+	gap: 12px;
+	margin: 4px 0 0;
+	padding: 14px 12px 10px;
+	border-top: 1px solid var(--dset-hair);
+}
+.dispatch-settings-page .dset-keys-field { display: block; min-width: 0; }
+.dispatch-settings-page .dset-keys-field.value,
+.dispatch-settings-page .dset-keys-field.note,
+.dispatch-settings-page .dset-keys-actions { grid-column: 1 / -1; }
+.dispatch-settings-page .dset-keys-l {
+	display: block;
+	margin: 0 2px 6px;
+	font-size: 12px;
+	color: var(--dset-text-2);
+}
+.dispatch-settings-page .dset-keys-in .monaco-inputbox { border-radius: 6px; }
+.dispatch-settings-page .dset-keys-in .monaco-inputbox .input { font-size: 13px; }
+.dispatch-settings-page .dset-keys-field.name .input,
+.dispatch-settings-page .dset-keys-field.value .input { font-family: var(--monaco-monospace-font); font-size: 12px; }
+.dispatch-settings-page .dset-keys-in .monaco-select-box { width: 100%; height: 26px; border-radius: 6px; padding: 0 6px; }
+.dispatch-settings-page .dset-keys-fixed {
+	display: block;
+	height: 26px;
+	line-height: 26px;
+	padding: 0 2px;
+	font-family: var(--monaco-monospace-font);
+	font-size: 12px;
+}
+.dispatch-settings-page .dset-keys-actions { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.dispatch-settings-page .dset-keys-hint { font-size: 12px; color: var(--dset-text-2); }
+.dispatch-settings-page .dset-keys-hint.bad { color: var(--vscode-errorForeground); }
+.dispatch-settings-page .dset-keys-foot:empty { display: none; }
+.dispatch-settings-page .dset-keys-status:empty { display: none; }
+.dispatch-settings-page .dset-keys + .dset-foot + .dset-problem + .dset-note,
+.dispatch-settings-page .dset-keys ~ .dset-note { margin-top: 16px; }
+
+/* the toast's places: above a session's input (in its flow), or the bottom of the window */
+.dispatch-keys-toast-slot,
+.dispatch-keys-toast-float {
+	display: flex;
+	justify-content: center;
+	min-width: 0;
+}
+.dispatch-keys-toast-slot:empty,
+.dispatch-keys-toast-float:empty {
+	display: none;
+}
+.dispatch-keys-toast-float {
+	position: absolute;
+	left: 50%;
+	bottom: 32px;
+	max-width: calc(100% - 64px);
+	transform: translateX(-50%);
+	z-index: 2600;
+	pointer-events: none;
+}
+.dispatch-keys-toast-float > .dispatch-prefs-toast {
+	margin: 0;
+	pointer-events: auto;
+}
+
+/* Search keys: the side bar's search box, above the list */
+.dispatch-settings-page .dset-keys-search {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 30px;
+	padding: 0 10px;
+	margin: 0 0 8px;
+	border-radius: 8px;
+	background: var(--dset-chip-2);
+	box-shadow: inset 0 0 0 1px var(--dset-hair-2);
+	color: var(--dset-text-2);
+}
+.dispatch-settings-page .dset-keys-search[hidden] { display: none; }
+.dispatch-settings-page .dset-keys-search:focus-within { box-shadow: inset 0 0 0 1px var(--dset-text-2), 0 0 0 3px var(--vscode-focusBorder); }
+.dispatch-settings-page .dset-keys-search input {
+	flex: 1;
+	min-width: 0;
+	border: 0;
+	outline: none !important;
+	background: none;
+	color: var(--dset-text);
+	font: inherit;
+	font-size: 13px;
+}
+.dispatch-settings-page .dset-keys-search input::placeholder { color: var(--dset-text-2); }
+.dispatch-settings-page .dset-keys-nomatch { padding: 12px 16px; color: var(--dset-text-2); font-size: 13px; }

@@ -1,0 +1,250 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the slash menu (dispatchSlashMenu.ts). As wide as the input and 8px above it; the
+ *  model picker's surface (menu background, hover-widget border, 14 radius, padding 4); group heads
+ *  28 high 12/600 grey with the count and a line of what the group is; rows 32 high, 8 radius, the
+ *  selected one on the list selection colour with what Enter does on the right; the engine and the
+ *  keys on the last line. DESIGN.md: menus 14, rows 32, heads 28, 12px secondary text.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-slash-menu {
+	position: fixed;
+	z-index: 2550;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	padding: 4px;
+	border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent));
+	border-radius: 14px;
+	background-color: var(--vscode-menu-background);
+	color: var(--vscode-foreground);
+	box-shadow: var(--vscode-shadow-lg, 0 12px 32px -12px var(--vscode-widget-shadow));
+	font-size: 13px;
+	line-height: 1.5;
+	overflow: hidden;
+	transform-origin: bottom left;
+}
+
+.dispatch-slash-menu.dsm-opening {
+	animation: dsm-in 100ms ease both;
+}
+
+@keyframes dsm-in {
+	from { opacity: 0; transform: translateY(8px) scale(0.98); }
+	to { opacity: 1; transform: none; }
+}
+
+.dispatch-slash-menu .dsm-list {
+	overflow-y: auto;
+	overflow-x: hidden;
+	max-height: 360px;
+	scrollbar-width: thin;
+	scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.dispatch-slash-menu .dsm-list:hover {
+	scrollbar-color: var(--vscode-scrollbarSlider-hoverBackground) transparent;
+}
+
+/* a group: name, count, what it is */
+.dispatch-slash-menu .dsm-head {
+	height: 28px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 12px;
+	margin-top: 4px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+	cursor: default;
+}
+
+.dispatch-slash-menu .dsm-head:first-child {
+	margin-top: 0;
+}
+
+.dispatch-slash-menu .dsm-head-name {
+	font-weight: 600;
+	flex: none;
+}
+
+.dispatch-slash-menu .dsm-head-count {
+	font-size: 11px;
+	opacity: 0.7;
+	font-variant-numeric: tabular-nums;
+	flex: none;
+}
+
+.dispatch-slash-menu .dsm-head-what {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+/* an entry */
+.dispatch-slash-menu .dsm-row {
+	height: 32px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 12px;
+	border-radius: 8px;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+
+.dispatch-slash-menu .dsm-row.selected {
+	background-color: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+
+.dispatch-slash-menu .dsm-row > .codicon {
+	flex: none;
+	font-size: 16px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-slash-menu .dsm-row.selected > .codicon {
+	color: var(--vscode-foreground);
+}
+
+.dispatch-slash-menu .dsm-name {
+	flex: none;
+	min-width: 208px;
+	max-width: 280px;
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-slash-menu .dsm-desc {
+	flex: 1;
+	min-width: 0;
+	padding-left: 4px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* what Enter does, only on the selected row */
+.dispatch-slash-menu .dsm-act {
+	flex: none;
+	display: none;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-slash-menu .dsm-row.selected .dsm-act {
+	display: inline-flex;
+}
+
+.dispatch-slash-menu .dsm-act kbd,
+.dispatch-slash-menu .dsm-keys kbd {
+	font: 500 11px/18px inherit;
+	min-width: 12px;
+	padding: 0 5px;
+	border-radius: 4px;
+	background-color: var(--vscode-keybindingLabel-background);
+	color: var(--vscode-descriptionForeground);
+	text-align: center;
+}
+
+.dispatch-slash-menu .dsm-current {
+	flex: none;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-slash-menu .dsm-row.dsm-more {
+	height: 28px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-slash-menu .dsm-row.dsm-more > .codicon {
+	font-size: 14px;
+}
+
+.dispatch-slash-menu .dsm-row.dsm-more .dsm-name {
+	font-weight: 400;
+	min-width: 0;
+	max-width: none;
+	flex: 1;
+}
+
+/* a command this session cannot run here */
+.dispatch-slash-menu .dsm-row.dsm-gray .dsm-name,
+.dispatch-slash-menu .dsm-row.dsm-gray > .codicon {
+	opacity: 0.5;
+}
+
+.dispatch-slash-menu .dsm-empty,
+.dispatch-slash-menu .dsm-loading {
+	padding: 6px 12px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* waiting for the engine's list: the words shimmer (DESIGN.md: everything the person waits for moves) */
+.dispatch-slash-menu .dsm-loading {
+	background: linear-gradient(90deg, var(--vscode-descriptionForeground) 40%, var(--vscode-foreground) 50%, var(--vscode-descriptionForeground) 60%) 0 0 / 300% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: dsm-shimmer 2s linear infinite;
+}
+
+@keyframes dsm-shimmer {
+	from { background-position: 100% 0; }
+	to { background-position: 0 0; }
+}
+
+/* the engine and the keys */
+.dispatch-slash-menu .dsm-foot {
+	flex: none;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-top: 4px;
+	padding: 0 12px;
+	border-top: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent)) 60%, transparent);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+
+.dispatch-slash-menu .dsm-engine {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+}
+
+.dispatch-slash-menu .dsm-engine .codicon {
+	font-size: 14px;
+}
+
+.dispatch-slash-menu .dsm-keys {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-slash-menu.dsm-opening,
+	.dispatch-slash-menu .dsm-loading {
+		animation: none;
+	}
+	.dispatch-slash-menu .dsm-loading {
+		background: none;
+		color: var(--vscode-descriptionForeground);
+	}
+	.dispatch-slash-menu .dsm-row {
+		transition: none;
+	}
+}

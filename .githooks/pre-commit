@@ -1,0 +1,23 @@
+#!/bin/sh
+# In a worktree git hands the hook GIT_DIR: from then on git takes the folder it runs in as the repository's root,
+# so the root is read here, before any cd, and typecheck.sh (whose git commands run from ide/) runs without the
+# hook's git variables.
+root="$(git rev-parse --show-toplevel)"
+# ARCHITECTURE.md has to match the code in every commit (app/cli/test_architecture.py says what is missing).
+cd "$root/app/cli" || exit 1
+out=$(python3 -m unittest -q test_architecture 2>&1) || {
+  echo "$out" | grep -E '^[-+] |: (add|name|these)' >&2
+  echo "ARCHITECTURE.md is out of date with the code: update it in this commit." >&2
+  exit 1
+}
+
+# Dispatch IDE's TypeScript: both builds compile with esbuild, which does not check types, so a type error only
+# shows up in ide/typecheck.sh (three real bugs got into commits that way, 2026-10-21). Run it when IDE .ts files
+# are staged; skip with DISPATCH_SKIP_TYPECHECK=1 when its node_modules are not on this Mac.
+if [ -z "$DISPATCH_SKIP_TYPECHECK" ] && git diff --cached --name-only --diff-filter=ACMR | grep -q '^ide/vscode/.*\.ts$'; then
+  out=$(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE "$root/ide/typecheck.sh" 2>&1) || {
+    echo "$out" | grep -E 'error TS|no node_modules|cannot find|No such file' >&2
+    echo "ide/typecheck.sh found type errors: fix them in this commit (DISPATCH_SKIP_TYPECHECK=1 to skip)." >&2
+    exit 1
+  }
+fi

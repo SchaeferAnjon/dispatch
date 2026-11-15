@@ -1,0 +1,17 @@
+# Secret scanning (gitleaks 8.21 or later): `gitleaks dir .` for the working tree, `gitleaks git .` for history.
+# The default rules, minus what is known not to be a secret.
+title = "Dispatch"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "VS Code's own source (upstream): Microsoft's public telemetry keys and test data"
+paths = ['''(^|/)ide/vscode/''']
+
+[[allowlists]]
+description = "Dispatch's tests of its secret filters: made-up keys on purpose"
+paths = [
+  '''(^|/)app/cli/test_code_search\.py$''',
+  '''(^|/)app/ide-ext/test/deliveryPage\.test\.ts$''',
+]

@@ -1,0 +1,4 @@
+<!-- OpenClaw's mark for Dispatch IDE: its lobster with claws and feelers, after the icon Orca ships (github.com/stablyai/orca, MIT). In one colour on codicon's 16 px grid; the glyph of dispatch-agent-marks.ttf (dispatch-ide make-icon-font.py). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+  <path d="M3 1h1v1H3ZM12 1h1v1H12ZM4 2h1v1H4ZM11 2h1v1H11ZM5 3h6v1H5ZM3 4h10v1H3ZM2 5h3v1H2ZM6 5h4v1H6ZM11 5h3v1H11ZM0 6h1v1H0ZM2 6h12v1H2ZM15 6h1v1H15ZM0 7h2v1H0ZM3 7h10v1H3ZM14 7h2v1H14ZM0 8h16v1H0ZM1 9h14v1H1ZM2 10h12v1H2ZM3 11h10v1H3ZM4 12h8v1H4ZM5 13h6v1H5ZM5 14h1v1H5ZM10 14h1v1H10Z"/>
+</svg>

@@ -1,0 +1,35 @@
+import type { Dict } from "../../i18n";
+// The Agent window's 命令 tab (components/AgentRunsPanel.tsx), the chat's compact drawer and the
+// 在 VS Code / Cursor 里打开 menu items. Keys are the Chinese source text; leave a key out and t() shows the Chinese.
+const agentRuns: Dict = {
+  "关闭": "Schließen",
+  "打开": "Öffnen",
+  "搜索": "Suche",
+  "文件": "Dateien",
+  "正在读取…": "Wird gelesen…",
+  "第 {n} 处": "Änderung {n}",
+  "在 VS Code 里打开": "In VS Code öffnen",
+  "图片": "Bild",
+  "表格": "Tabelle",
+  "输出": "Ausgabe",
+  "Agent · {cmd} 在跑": "Agent · {cmd} läuft",
+  "关掉": "Schließen",
+  "Agent 跑完了 · {d}，只读": "Agent fertig · {d}, schreibgeschützt",
+  "Agent 的命令失败了（{code}），只读": "Der Befehl des Agents ist fehlgeschlagen ({code}), schreibgeschützt",
+  "Agent 在跑 · {s}s，只读；Claude 跑完才给输出": "Agent läuft · {s}s, schreibgeschützt; Claude zeigt die Ausgabe erst am Ende",
+  "Agent 在跑 · {s}s，只读": "Agent läuft · {s}s, schreibgeschützt",
+  "跑完了，{m} 分钟后收起": "Fertig, verschwindet in {m} Min.",
+  "这段会话还没有 Agent 事件。": "Noch keine Agent-Ereignisse in dieser Sitzung.",
+  "这里只显示应用内对话的 Agent 事件；这段会话现在不在 Dispatch 里跑。": "Hier erscheinen nur Agent-Ereignisse eines App-Chats; diese Sitzung läuft gerade nicht in Dispatch.",
+  "Agent 跑的命令": "Befehle des Agenten",
+  "Agent 跑的命令会列在这里，只读。": "Die Befehle des Agenten erscheinen hier, nur lesbar.",
+  "这里显示应用内对话里 Agent 跑的命令；这段会话现在不在 Dispatch 里跑。": "Hier stehen die Befehle, die der Agent in einem App-Chat ausführt; diese Sitzung läuft gerade nicht in Dispatch.",
+  "任务 / 改动 / 产物": "Aufgaben / Änderungen / Ergebnisse",
+  "收起聊天（{mod}L）": "Chat ausblenden ({mod}L)",
+  "这一段还没改文件": "In diesem Abschnitt wurden noch keine Dateien geändert",
+  "没有关联的任务": "Keine verknüpften Aufgaben",
+  "产物": "Ergebnisse",
+  "还没有图片或文件": "Noch keine Bilder oder Dateien",
+  "在 Cursor 里打开": "In Cursor öffnen",
+};
+export default agentRuns;

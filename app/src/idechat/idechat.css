@@ -1,0 +1,197 @@
+/* Dispatch IDE's chat column: Dispatch's ChatPage inside a VS Code webview (secondary side bar).
+   It takes VS Code's theme instead of Dispatch's: the tokens map to --vscode-* variables, so the
+   column looks like part of the IDE (Copilot Chat's layout: no inner frame, one title row, requests
+   left-aligned on a light band, the input flush at the bottom). main.tsx keeps data-theme="light"
+   so Dispatch's own dark blocks stay off; `html[data-theme]` outranks `:root`. */
+html[data-theme]{
+  --bg:var(--vscode-sideBar-background,var(--vscode-editor-background));
+  --bg-2:var(--vscode-sideBar-background,var(--vscode-editor-background));
+  --sel:var(--vscode-list-inactiveSelectionBackground);
+  --text:var(--vscode-foreground);
+  --text-2:var(--vscode-descriptionForeground);
+  /* Dispatch Light / Dark (generated from styles.css, app/scripts/gen-ide-theme.mjs) clear widget.border
+     and panel.border so the panes have no lines; --hair lives on editorWidget.border and --chip on
+     button.secondaryBackground there. Other themes fall back to their own borders and hover grounds. */
+  --hair:var(--vscode-editorWidget-border,var(--vscode-widget-border,var(--vscode-panel-border)));
+  --hair-2:var(--vscode-input-border,var(--vscode-widget-border,var(--vscode-panel-border)));
+  --chip:var(--vscode-button-secondaryBackground,var(--vscode-toolbar-hoverBackground));
+  --chip-2:var(--vscode-keybindingLabel-background,var(--vscode-toolbar-hoverBackground));
+  --fill:var(--vscode-button-background);
+  --fill-text:var(--vscode-button-foreground);
+  --blue:var(--vscode-textLink-foreground);
+  --green:var(--vscode-testing-iconPassed,var(--vscode-charts-green));
+  --orange:var(--vscode-editorWarning-foreground,var(--vscode-charts-orange));
+  --red:var(--vscode-errorForeground);
+  --purple:var(--vscode-charts-purple);
+  --sans:var(--vscode-font-family);
+  --mono:var(--vscode-editor-font-family);
+  /* radii: DESIGN.md's own (the column is our page, not VS Code chrome), so bubbles, the input and chips match Agent mode */
+  --ring:var(--vscode-focusBorder);--card-ring:0 0 0 1px var(--hair);--shadow-diffuse:none;
+  --glass:var(--vscode-sideBar-background);--glass-pop:var(--vscode-editorWidget-background);
+  --conv-w:none;
+  /* your message's bubble: --chip in light like the main app (dark: 6% of the text colour, below) */
+  --req-bg:var(--chip);
+}
+html[data-vs="dark"]{color-scheme:dark}
+html[data-vs="dark"][data-theme]{--req-bg:color-mix(in srgb,var(--vscode-foreground) 6%,transparent)}
+html,body,#root{height:100%;margin:0}
+/* VS Code gives webviews a 20px body padding by default; the column goes edge to edge */
+body{padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--vscode-font-size,13px);overflow:hidden}
+
+.ic{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);position:relative}
+/* the conversation's name and state: the first line under VS Code's own title bar, no second close button */
+.ic-head{display:flex;align-items:baseline;gap:6px;min-width:0;padding:6px 12px;border-bottom:1px solid var(--vscode-panel-border,var(--hair));background:var(--bg);font-size:12px;color:var(--text-2);white-space:nowrap}
+.ic-head b{font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ic-head span{flex:none}
+.ic-head span::before{content:"· "}
+.ic-head span.only::before{content:none}
+/* a folder without a conversation: the hint and the composer at the bottom */
+.ic.ic-new{display:flex;flex-direction:column;justify-content:flex-end}
+.ic.ic-new:has(.ic-pending){justify-content:flex-start}
+.ic-new-hint{margin:0;padding:0 12px 8px;font-size:12px;color:var(--text-2)}
+/* the first message the moment it is sent, then 正在启动 Agent until the conversation takes over */
+.ic-pending{flex:1;min-height:0;overflow:auto;padding:24px 12px 8px}
+.ic-failed{margin:40px 0 0;font-size:12px;color:var(--text-2);display:flex;gap:8px;align-items:center}
+.ic-failed span{color:var(--red)}
+.ic-empty{height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:0 12px}
+.ic-empty p{margin:0 0 4px;font-size:12px}
+.ic-err{position:absolute;left:12px;right:12px;bottom:8px;padding:6px 8px;border-radius:var(--r-ctl);background:var(--vscode-inputValidation-errorBackground);border:1px solid var(--vscode-inputValidation-errorBorder);color:var(--text);font-size:12px;cursor:pointer}
+
+/* one title row: VS Code's view title carries the name and state; the page's own row stays in the DOM for the drawer button */
+.ic .chat-page{min-height:0;background:transparent}
+/* ChatPage pins its rows (title 1, turns 2, composer 3): the hidden title keeps row 1 at zero so the turns start at the top */
+.ic .chat-page.compact{grid-template-rows:0 minmax(0,1fr) auto}
+.ic .chat-page.compact>.ch{display:none}
+.ic .chat-page .turns{padding:24px 12px 4px}
+.ic .chat-page .turns .in{max-width:none;margin:0}
+
+/* requests (DESIGN.md 消息): on the right, the bubble only as wide as the text (80% at most), text left-aligned,
+   a faint fill (6% of the foreground in dark themes, the input background in light ones); replies are plain text */
+/* 40 between messages (DESIGN.md 消息); vertical margins collapse, so every block carries the whole gap above it */
+.ic .turn{font-size:14px;line-height:1.7}
+.ic .turn.you{display:flex;justify-content:flex-end;margin:40px 0 0;padding:0}
+.ic .turn.you:first-child{margin-top:0}
+.ic .turn.you .bubble-row{max-width:80%;width:auto}
+.ic .turn.you .bubble{flex:0 1 auto;text-align:left;background:var(--req-bg);border-radius:var(--r-win);padding:12px 16px;font-size:14px;line-height:1.7}
+.ic .turn.bot{margin:40px 0 0}
+.ic .md,.ic .md.compact{font-size:14px;line-height:1.7;max-width:none}
+.ic .md code,.ic .md pre code{font-size:var(--vscode-editor-font-size,12px)}
+
+/* the input: flush at the bottom, full width, one border; pills in one row under the text, the state line right below */
+.ic .composer{padding:0 12px 8px}
+/* 16 rather than the main app's 24: in a column this narrow the send button sits in the corner, and 24 would cut into it */
+.ic .composer .cbox{max-width:none;margin:0;border-radius:var(--r-card);background:var(--vscode-input-background);box-shadow:none;border:1px solid var(--hair-2);padding:10px 8px 6px}
+.ic .composer .cbox:focus-within{border-color:var(--vscode-focusBorder)}
+.ic .composer .ta{font-size:13px;color:var(--vscode-input-foreground);background:transparent}
+.ic .composer .ta::placeholder{color:var(--vscode-input-placeholderForeground)}
+.ic .composer .tools{flex-wrap:nowrap;align-items:center;gap:4px;min-width:0;margin-top:2px}
+.ic .composer .tools>.btn.icon,.ic .composer .conn{display:none}
+/* permission mode and model: Copilot Chat's text buttons (the <select> opens VS Code's quick pick, main.tsx);
+   in a narrow column they shrink (ellipsis) so the send button stays inside the box */
+.ic .composer .dd{position:relative;height:20px;min-width:0;flex:0 1 auto;max-width:none;gap:2px;padding:0 4px;border:0;border-radius:var(--r-chip);font-size:12px;background:transparent;color:var(--vscode-foreground);opacity:.8}
+.ic .composer .dd:hover{background:var(--vscode-toolbar-hoverBackground);opacity:1}
+.ic .composer .dd select{-webkit-appearance:none;appearance:none;field-sizing:content;min-width:0;max-width:140px;font-size:12px;color:inherit;background:none;border:0;cursor:pointer;text-overflow:ellipsis}
+.ic .composer .dd::after{content:"";flex:none;width:12px;height:12px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='black' stroke-width='1.3'/%3E%3C/svg%3E") center/contain no-repeat;pointer-events:none}
+.ic .composer .dd:has(select:disabled){opacity:.45}
+.ic .composer .dd:has(select:disabled)::after{display:none}
+/* no browser focus rings: one pixel of VS Code's focus border */
+.ic select:focus,.ic button:focus,.ic textarea:focus,.ic select:focus-visible,.ic button:focus-visible{outline:none}
+.ic .composer .dd:has(select:focus-visible),.ic button:focus-visible{box-shadow:0 0 0 1px var(--vscode-focusBorder)}
+.ic .composer .tools .btn{flex:none;white-space:nowrap;height:20px;padding:0 8px;font-size:11px;border-radius:var(--r-chip)}
+.ic .composer .tools .btn.primary{height:28px;padding:0 12px;font-size:12px;background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+.ic .composer .tools .btn.primary:hover:not(:disabled){background:var(--vscode-button-hoverBackground)}
+.ic .composer .tools .btn .kbds,.ic .composer .tools .btn kbd{display:none}
+/* the box keeps its own inner spacing here (the app's 16 / 12 is for the 24-radius box) */
+.ic .composer .ta{padding:2px 2px 6px;min-height:38px;line-height:1.5}
+.ic .composer .tools{padding:0;min-height:24px}
+.ic .composer .dd>.caret{display:none}
+.ic .composer .dd.fixed::after,.ic .cstat-row .dd::after{display:none}
+.ic .composer .dd,.ic .composer .dd .v{font-weight:400;font-size:12px}
+.ic .composer .tools .dd .dd-ag{display:inline}
+.ic .composer .dd .agent-dot{margin-right:4px}
+.ic .composer .dd{padding:0 4px}
+/* the send key: VS Code's button colours, 24 square-ish like Copilot Chat's; a square while a turn runs */
+.ic .composer .send{width:24px;height:24px;border-radius:var(--r-ctl);background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+.ic .composer .send:hover:not(:disabled){background:var(--vscode-button-hoverBackground)}
+.ic .composer .send:disabled{background:transparent;color:var(--text-2);opacity:.6}
+.ic .composer .send>svg{width:14px;height:14px}
+.ic .cstat-row{max-width:none;margin:4px 0 0;padding:0 2px;flex-wrap:nowrap;font-size:11px;color:var(--text-2);gap:6px}
+.ic .cstat-row *{font-size:11px}
+/* the IDE column always runs the chat in Dispatch: no terminal / desktop switch in the state line */
+.ic .cstat-row .dd.where{display:none}
+.ic .cstat{flex:0 1 auto;min-width:0}
+.ic .cstat>span.mono{font-family:var(--sans);min-width:2em}
+.ic .queued-list,.ic .queued,.ic .chat-composer .chat-error{max-width:none}
+
+/* the drawer (任务 / 改动 / 产物) over the conversation, from the view title's button */
+.ic .chat-page.compact .cdrawer{position:absolute;left:0;right:0;top:0;bottom:0;z-index:4;overflow:auto;padding:8px 12px;background:var(--bg);font-size:12px}
+.ic .cdrawer h4{margin:12px 0 6px;font-size:11px;font-weight:500;color:var(--text-2)}
+.ic .cdrawer h4:first-child{margin-top:0}
+.ic .cdrawer h4 .lk{float:right;color:var(--blue);font-size:11px}
+.ic .cdrawer .cd-row{display:flex;align-items:center;gap:8px;width:100%;min-height:22px;padding:0 6px;border-radius:var(--r-chip);text-align:left;color:var(--text)}
+.ic .cdrawer .cd-row:hover{background:var(--vscode-list-hoverBackground)}
+.ic .cdrawer .cd-row .p{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ic .cdrawer .add{color:var(--green)}.ic .cdrawer .del{color:var(--red)}
+
+.ic ::-webkit-scrollbar{width:10px;height:10px}
+.ic ::-webkit-scrollbar-track,.ic ::-webkit-scrollbar-corner{background:transparent}
+.ic ::-webkit-scrollbar-thumb{background:var(--vscode-scrollbarSlider-background);border-radius:0;border:0}
+.ic ::-webkit-scrollbar-thumb:hover{background:var(--vscode-scrollbarSlider-hoverBackground)}
+/* history requests (the transcript before the live turns) look the same as live ones */
+.ic .chat .tl.user{align-self:flex-end;align-items:flex-end;max-width:80%;margin:40px 0 0}
+.ic .chat .tl.user:first-child{margin-top:4px}
+.ic .chat .tl.user .tl-t{text-align:left;background:var(--req-bg);border-radius:var(--r-win);padding:12px 16px;font-size:14px;line-height:1.7}
+/* 回到这一轮之前 floats over the request instead of taking half the row */
+.ic .turn.you .bubble-row,.ic .chat .tl.user .bubble-row{position:relative}
+.ic .turn.you .cp-restore,.ic .chat .tl.user .cp-restore{position:absolute;right:4px;top:4px;z-index:1}
+
+/* the chip menu (menu.ts): above the chip, VS Code's dropdown colours, 26px rows, a check on the current
+   one, optgroups as a line with an 11px grey title; 100ms fade + 4px rise (DESIGN.md popover) */
+.ic-menu{position:fixed;z-index:50;min-width:200px;max-width:320px;max-height:60vh;overflow:auto;padding:4px;box-sizing:border-box;
+  background:var(--vscode-dropdown-background,var(--vscode-editorWidget-background));border:1px solid var(--vscode-dropdown-border,var(--vscode-widget-border));
+  border-radius:var(--r-ctl);box-shadow:0 4px 16px var(--vscode-widget-shadow,rgba(0,0,0,.36));color:var(--vscode-dropdown-foreground,var(--vscode-foreground));
+  font-family:var(--vscode-font-family);font-size:13px;animation:ic-menu-in 100ms ease-out}
+@keyframes ic-menu-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.ic-menu.out{opacity:0;transition:opacity 100ms ease-out}
+@media (prefers-reduced-motion:reduce){.ic-menu{animation:none}.ic-menu.out{transition:none}}
+.ic-menu-row{display:flex;align-items:center;gap:6px;height:26px;padding:0 8px 0 4px;border-radius:3px;cursor:default;white-space:nowrap}
+.ic-menu-row.on{background:var(--vscode-list-hoverBackground)}
+.ic-menu-row.cur{font-weight:500}
+.ic-menu-row.cur.on{background:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground,inherit)}
+.ic-menu-check{flex:none;width:16px;height:16px}
+.ic-menu-row.cur .ic-menu-check{background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat}
+.ic-menu-l{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ic-menu-sep{margin:4px 0 0;padding:6px 8px 2px 26px;border-top:1px solid var(--vscode-menu-separatorBackground,var(--vscode-widget-border));font-size:12px;color:var(--vscode-descriptionForeground)}
+.ic .composer .dd.open{background:var(--vscode-toolbar-hoverBackground);opacity:1;box-shadow:0 0 0 1px var(--vscode-focusBorder)}
+
+/* narrow columns (the side bar is at least 300): 发送 never shrinks and stays bottom right; the chips give
+   way first (text ellipsis), then turn into icons (Agent colour dot, the model's first letter, a shield
+   for the permission mode; the full text stays in their title) */
+.ic .composer .cbox{container-type:inline-size;container-name:icbox}
+.ic .composer .tools{display:flex;align-items:center;flex-wrap:nowrap;min-width:0}
+.ic .composer .tools .sp{flex:1 1 0;min-width:4px}
+.ic .composer .tools .btn{flex:none}
+.ic .composer .dd{flex:0 1 auto;min-width:0;overflow:hidden}
+.ic .composer .dd select{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ic .composer .dd .dd-ag{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ic-new-hint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@container icbox (max-width:300px){
+  .ic .composer .dd{flex:none;width:28px;height:22px;padding:0;justify-content:center;position:relative}
+  .ic .composer .dd::after{display:none}
+  .ic .composer .dd select,.ic .composer .dd .dd-ag{position:absolute;inset:0;width:100%;max-width:none;opacity:0}
+  .ic .composer .dd::before{content:"";flex:none;pointer-events:none}
+  .ic .composer .dd-agent::before,.ic .composer .dd-model[data-agent]::before{width:8px;height:8px;border-radius:50%;background:var(--claude)}
+  .ic .composer .dd-agent[data-agent="codex"]::before,.ic .composer .dd-model[data-agent="codex"]::before{background:var(--codex)}
+  .ic .composer .dd-model:not([data-agent])::before{content:attr(data-short);font-size:12px;font-weight:500}
+  .ic .composer .dd-perm::before{width:14px;height:14px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6z' fill='none' stroke='black' stroke-width='1.3' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat}
+}
+
+/* skeleton while the transcript is read (after 120 ms): a request bubble, reply lines and a tool row, a shimmer across them */
+.ic-skel{position:absolute;left:0;right:0;top:36px;bottom:140px;z-index:3;padding:24px 12px;background:var(--bg);display:flex;flex-direction:column;gap:10px;animation:ic-fade 120ms ease-out}
+.ic-skel i{display:block;border-radius:4px;background:linear-gradient(90deg,var(--req-bg) 0%,color-mix(in srgb,var(--vscode-foreground) 12%,transparent) 45%,var(--req-bg) 90%);background-size:200% 100%;animation:ic-shimmer 2s linear infinite}
+.ic-skel .b{align-self:flex-end;width:60%;height:44px;border-radius:8px;margin-bottom:30px}
+.ic-skel .l{width:92%;height:14px}.ic-skel .l.s{width:70%}.ic-skel .l.m{width:80%}
+.ic-skel .t{width:50%;height:24px;margin:6px 0}
+@keyframes ic-shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
+@keyframes ic-fade{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.ic-skel,.ic-skel i{animation:none}}

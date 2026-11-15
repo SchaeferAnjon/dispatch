@@ -1,0 +1,59 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the agents' own marks as product icons (dispatchAgentIcons.ts). The icon registry gives each
+ *  `dispatch-agent-<id>` a codicon glyph as a fallback; these rules draw the agent's mark in its place: one colour
+ *  (the text colour, like codicon's Claude and OpenAI marks, DESIGN.md), one icon (1em) square. The marks are the
+ *  agents' logos (from Orca, MIT, Copyright (c) 2026 Lovecast Inc.) reduced to their shape, a busy one drawn smaller
+ *  so they all weigh about the same.
+ *--------------------------------------------------------------------------------------------*/
+
+.codicon[class*="codicon-dispatch-agent-"]::before {
+	content: "" !important;
+	display: inline-block;
+	width: 1em;
+	height: 1em;
+	background: currentColor;
+	-webkit-mask: center / contain no-repeat;
+	mask: center / contain no-repeat;
+}
+
+.codicon.codicon-dispatch-agent-aider::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-aider.png"); mask-image: url("./agent-icons/dispatch-agent-aider.png"); }
+.codicon.codicon-dispatch-agent-amp::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-amp.png"); mask-image: url("./agent-icons/dispatch-agent-amp.png"); }
+.codicon.codicon-dispatch-agent-ante::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-ante.png"); mask-image: url("./agent-icons/dispatch-agent-ante.png"); }
+.codicon.codicon-dispatch-agent-antigravity::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-antigravity.png"); mask-image: url("./agent-icons/dispatch-agent-antigravity.png"); }
+.codicon.codicon-dispatch-agent-auggie::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-auggie.png"); mask-image: url("./agent-icons/dispatch-agent-auggie.png"); }
+.codicon.codicon-dispatch-agent-autohand::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-autohand.png"); mask-image: url("./agent-icons/dispatch-agent-autohand.png"); }
+.codicon.codicon-dispatch-agent-cline::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-cline.png"); mask-image: url("./agent-icons/dispatch-agent-cline.png"); }
+.codicon.codicon-dispatch-agent-codebuddy::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-codebuddy.png"); mask-image: url("./agent-icons/dispatch-agent-codebuddy.png"); }
+.codicon.codicon-dispatch-agent-codebuff::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-codebuff.png"); mask-image: url("./agent-icons/dispatch-agent-codebuff.png"); }
+.codicon.codicon-dispatch-agent-command-code::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-command-code.png"); mask-image: url("./agent-icons/dispatch-agent-command-code.png"); }
+.codicon.codicon-dispatch-agent-continue::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-continue.png"); mask-image: url("./agent-icons/dispatch-agent-continue.png"); }
+.codicon.codicon-dispatch-agent-crush::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-crush.png"); mask-image: url("./agent-icons/dispatch-agent-crush.png"); }
+.codicon.codicon-dispatch-agent-cursor::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-cursor.png"); mask-image: url("./agent-icons/dispatch-agent-cursor.png"); }
+.codicon.codicon-dispatch-agent-devin::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-devin.png"); mask-image: url("./agent-icons/dispatch-agent-devin.png"); }
+.codicon.codicon-dispatch-agent-droid::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-droid.png"); mask-image: url("./agent-icons/dispatch-agent-droid.png"); }
+.codicon.codicon-dispatch-agent-dsh::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-dsh.png"); mask-image: url("./agent-icons/dispatch-agent-dsh.png"); }
+.codicon.codicon-dispatch-agent-freebuff::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-freebuff.png"); mask-image: url("./agent-icons/dispatch-agent-freebuff.png"); }
+.codicon.codicon-dispatch-agent-gemini::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-gemini.png"); mask-image: url("./agent-icons/dispatch-agent-gemini.png"); }
+.codicon.codicon-dispatch-agent-goose::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-goose.png"); mask-image: url("./agent-icons/dispatch-agent-goose.png"); }
+.codicon.codicon-dispatch-agent-grok::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-grok.png"); mask-image: url("./agent-icons/dispatch-agent-grok.png"); }
+.codicon.codicon-dispatch-agent-hermes::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-hermes.png"); mask-image: url("./agent-icons/dispatch-agent-hermes.png"); }
+.codicon.codicon-dispatch-agent-kilo::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-kilo.png"); mask-image: url("./agent-icons/dispatch-agent-kilo.png"); }
+.codicon.codicon-dispatch-agent-kimi::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-kimi.png"); mask-image: url("./agent-icons/dispatch-agent-kimi.png"); }
+.codicon.codicon-dispatch-agent-kiro::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-kiro.png"); mask-image: url("./agent-icons/dispatch-agent-kiro.png"); }
+.codicon.codicon-dispatch-agent-mimo::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-mimo.png"); mask-image: url("./agent-icons/dispatch-agent-mimo.png"); }
+.codicon.codicon-dispatch-agent-muse::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-muse.png"); mask-image: url("./agent-icons/dispatch-agent-muse.png"); }
+.codicon.codicon-dispatch-agent-omp::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-omp.png"); mask-image: url("./agent-icons/dispatch-agent-omp.png"); }
+.codicon.codicon-dispatch-agent-openclaude::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-openclaude.png"); mask-image: url("./agent-icons/dispatch-agent-openclaude.png"); }
+.codicon.codicon-dispatch-agent-openclaw::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-openclaw.png"); mask-image: url("./agent-icons/dispatch-agent-openclaw.png"); }
+.codicon.codicon-dispatch-agent-openhands::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-openhands.png"); mask-image: url("./agent-icons/dispatch-agent-openhands.png"); }
+.codicon.codicon-dispatch-agent-pi::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-pi.png"); mask-image: url("./agent-icons/dispatch-agent-pi.png"); }
+.codicon.codicon-dispatch-agent-prime-agent::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-prime-agent.png"); mask-image: url("./agent-icons/dispatch-agent-prime-agent.png"); }
+.codicon.codicon-dispatch-agent-qoder::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-qoder.png"); mask-image: url("./agent-icons/dispatch-agent-qoder.png"); }
+.codicon.codicon-dispatch-agent-qwen::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-qwen.png"); mask-image: url("./agent-icons/dispatch-agent-qwen.png"); }
+.codicon.codicon-dispatch-agent-rovo::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-rovo.png"); mask-image: url("./agent-icons/dispatch-agent-rovo.png"); }
+.codicon.codicon-dispatch-agent-trae::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-trae.png"); mask-image: url("./agent-icons/dispatch-agent-trae.png"); }
+.codicon.codicon-dispatch-agent-vibe::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-vibe.png"); mask-image: url("./agent-icons/dispatch-agent-vibe.png"); }
+.codicon.codicon-dispatch-agent-zcode::before { -webkit-mask-image: url("./agent-icons/dispatch-agent-zcode.png"); mask-image: url("./agent-icons/dispatch-agent-zcode.png"); }
+
+/* Customizations > Overview: the mark in front of each agent's name */
+.dispatch-agent-row > .dispatch-agent-icon { flex: none; font-size: 16px; margin-right: -4px; }

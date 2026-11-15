@@ -1,0 +1,122 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the side pane's tab strip (dispatchTabs.contribution.ts; kanban task-fecz, task-gcc5).
+ *--------------------------------------------------------------------------------------------*/
+
+/* The close button belongs to the tab in front and has a space of its own after the name: the tabs behind are
+   all name, so clicking a name switches to it (a tab with unsaved changes keeps its dot). */
+.agent-sessions-workbench.modern-ui-tabs .part.editor:not(.modal-editor-part) > .content .editor-group-container > .title.tabs .tabs-container > .tab:not(.active):not(.dirty):not(.sticky) > .tab-actions {
+	visibility: hidden;
+}
+
+.agent-sessions-workbench.modern-ui-tabs .part.editor:not(.modal-editor-part) > .content .editor-group-container > .title.tabs .tabs-container > .tab.active:not(.sticky-compact):not(.tab-actions-left):not(.close-action-off) {
+	padding-right: var(--modern-ui-tab-action-padding, var(--vscode-spacing-size280)) !important;
+}
+
+/* Too narrow for every name (fitStep, design/right-tabs/redesign A5 and B2): 1 the fixed tabs behind keep their
+   icons only; 2 the documents' names get shorter; 3 the document behind loses its name and Docs keeps only its icon
+   and count; 4 every tab is an icon. The name is in each tab's hover. */
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="1"] .tabs-container > .tab:not(.active):not(.dispatch-tab-doc):not(.dispatch-tab-docs) > .tab-label > .monaco-icon-label-container,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="2"] .tabs-container > .tab:not(.active):not(.dispatch-tab-doc):not(.dispatch-tab-docs) > .tab-label > .monaco-icon-label-container,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="3"] .tabs-container > .tab:not(.active):not(.dispatch-tab-docs) > .tab-label > .monaco-icon-label-container,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="3"] .tabs-container > .tab.dispatch-tab-docs > .tab-label > .monaco-icon-label-container,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="4"] .tabs-container > .tab > .tab-label > .monaco-icon-label-container {
+	display: none !important;
+}
+
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="1"] .tabs-container > .tab:not(.active):not(.dispatch-tab-doc):not(.dispatch-tab-docs) > .tab-label::before,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="2"] .tabs-container > .tab:not(.active):not(.dispatch-tab-doc):not(.dispatch-tab-docs) > .tab-label::before,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="3"] .tabs-container > .tab:not(.active):not(.dispatch-tab-docs) > .tab-label::before,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="3"] .tabs-container > .tab.dispatch-tab-docs > .tab-label::before,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="4"] .tabs-container > .tab > .tab-label::before {
+	padding-right: 0 !important;
+}
+
+.agent-sessions-workbench.modern-ui-tabs .part.editor:not(.modal-editor-part) > .content .editor-group-container > .title[data-dispatch-fit="1"] .tabs-container > .tab:not(.active):not(.dispatch-tab-doc):not(.dispatch-tab-docs),
+.agent-sessions-workbench.modern-ui-tabs .part.editor:not(.modal-editor-part) > .content .editor-group-container > .title[data-dispatch-fit="2"] .tabs-container > .tab:not(.active):not(.dispatch-tab-doc):not(.dispatch-tab-docs),
+.agent-sessions-workbench.modern-ui-tabs .part.editor:not(.modal-editor-part) > .content .editor-group-container > .title[data-dispatch-fit="3"] .tabs-container > .tab:not(.active):not(.dispatch-tab-docs),
+.agent-sessions-workbench.modern-ui-tabs .part.editor:not(.modal-editor-part) > .content .editor-group-container > .title[data-dispatch-fit="4"] .tabs-container > .tab:not(.active) {
+	padding-left: var(--vscode-spacing-size60) !important;
+	padding-right: var(--vscode-spacing-size60) !important;
+}
+
+/* a document's tab carries its short name; when room runs out the name gets shorter before it goes */
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title .tabs-container > .tab.dispatch-tab-doc > .tab-label .monaco-icon-label-container {
+	max-width: 200px;
+}
+
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="2"] .tabs-container > .tab.dispatch-tab-doc > .tab-label .monaco-icon-label-container,
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .title[data-dispatch-fit="3"] .tabs-container > .tab.dispatch-tab-doc > .tab-label .monaco-icon-label-container {
+	max-width: 110px;
+}
+
+/* a short line between the fixed tabs and the documents (DESIGN.md: the lanes of a tab strip) */
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .tabs-container > .tab.dispatch-tab-first-doc {
+	margin-left: 9px !important;
+	overflow: visible !important;
+}
+
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .tabs-container > .tab.dispatch-tab-first-doc::after {
+	content: '';
+	position: absolute;
+	left: -5px;
+	top: 50%;
+	width: 1px;
+	height: 20px;
+	margin-top: -10px;
+	background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	pointer-events: none;
+}
+
+/* Docs is one of the fixed tabs: no close button of its own */
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .tabs-container > .tab.dispatch-tab-docs > .tab-actions {
+	display: none !important;
+}
+
+.agent-sessions-workbench.modern-ui-tabs .part.editor:not(.modal-editor-part) > .content .editor-group-container > .title.tabs .tabs-container > .tab.dispatch-tab-docs.active {
+	padding-right: var(--vscode-spacing-size100, 10px) !important;
+}
+
+/* a page from the web keeps its site's icon, in grey (DESIGN.md: colour only in three places) */
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .tabs-container > .tab.dispatch-tab-web > .tab-label::before {
+	filter: grayscale(1);
+}
+
+/* Direction B (task-fif4i): of the documents only the one in front and the one before it keep a tab; the rest are
+   in the Docs list's Open group. */
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .tabs-container > .tab.dispatch-tab-tucked {
+	display: none !important;
+}
+
+/* The Docs tab says how many documents are open: 11px, grey, a small pill after the name; it stays when the name goes. */
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .tabs-container > .tab > .dispatch-docs-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	margin-left: 4px;
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+	align-self: center;
+}
+
+.agent-sessions-workbench .part.editor:not(.modal-editor-part) .tabs-container > .tab > .dispatch-docs-count.roll {
+	animation: dispatch-docs-count-roll 150ms cubic-bezier(0, 0, .2, 1);
+}
+
+@keyframes dispatch-docs-count-roll {
+	from { transform: translateY(6px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.agent-sessions-workbench .part.editor:not(.modal-editor-part) .tabs-container > .tab > .dispatch-docs-count.roll {
+		animation: none;
+	}
+}

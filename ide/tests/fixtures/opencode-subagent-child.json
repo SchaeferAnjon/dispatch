@@ -1,0 +1,123 @@
+[
+ {
+  "info": {
+   "id": "msg_11181be950018Jig8wolSYcWkG",
+   "role": "user",
+   "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ"
+  },
+  "parts": [
+   {
+    "id": "prt_11181be99001xoYZKhOG2R7v83",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181be950018Jig8wolSYcWkG",
+    "type": "text",
+    "text": "This is a read-only research task; do not write any code or files. Using the bash tool, run `ls` in the current working directory (/tmp/demo/work), then run `cat a.txt` in the same directory. Report back exactly: (1) the full list of files/directories `ls` showed, and (2) the full contents of a.txt (or the error message if it does not exist)."
+   }
+  ]
+ },
+ {
+  "info": {
+   "id": "msg_11181bec30016rISgxvZ1zh0hd",
+   "role": "assistant",
+   "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ"
+  },
+  "parts": [
+   {
+    "id": "prt_11181d3c800126kG51VxqvkThk",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181bec30016rISgxvZ1zh0hd",
+    "type": "step-start"
+   },
+   {
+    "id": "prt_11181d3d9001Vnd6r8nksFaqXC",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181bec30016rISgxvZ1zh0hd",
+    "type": "reasoning",
+    "text": "The user wants me to run `ls` and `cat a.txt` in the working directory. These two commands are independent of each other, so I can run them in parallel in a single block."
+   },
+   {
+    "id": "prt_11181d75700102vi8RB3c1s1R4",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181bec30016rISgxvZ1zh0hd",
+    "type": "tool",
+    "callID": "call_d56973590ba943e098e61619",
+    "tool": "bash",
+    "state": {
+     "status": "completed",
+     "title": "ls",
+     "input": {
+      "command": "ls"
+     },
+     "output": "a.txt\n",
+     "metadata": {
+      "output": "a.txt\n",
+      "exit": 0,
+      "truncated": false
+     }
+    }
+   },
+   {
+    "id": "prt_11181d83000102wA2E2zhd3HmF",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181bec30016rISgxvZ1zh0hd",
+    "type": "tool",
+    "callID": "call_3cdbd19c6e9e44acbaccc7cd",
+    "tool": "bash",
+    "state": {
+     "status": "completed",
+     "title": "cat a.txt",
+     "input": {
+      "command": "cat a.txt"
+     },
+     "output": "hello\n",
+     "metadata": {
+      "output": "hello\n",
+      "exit": 0,
+      "truncated": false
+     }
+    }
+   },
+   {
+    "id": "prt_11181daff001qzpArAHYm4b2s8",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181bec30016rISgxvZ1zh0hd",
+    "type": "step-finish"
+   }
+  ]
+ },
+ {
+  "info": {
+   "id": "msg_11181dcef001xk3uYshMMlH1Ic",
+   "role": "assistant",
+   "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ"
+  },
+  "parts": [
+   {
+    "id": "prt_11181e541001McaGYGjltPYe6o",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181dcef001xk3uYshMMlH1Ic",
+    "type": "step-start"
+   },
+   {
+    "id": "prt_11181e5490013WmsItjBQhAmDj",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181dcef001xk3uYshMMlH1Ic",
+    "type": "reasoning",
+    "text": "Simple report of the results."
+   },
+   {
+    "id": "prt_11181e655001w1bl8YM1buX8Zf",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181dcef001xk3uYshMMlH1Ic",
+    "type": "text",
+    "text": "(1) `ls` output: `a.txt` (only file in the directory)\n\n(2) `cat a.txt` output:\n```\nhello\n```"
+   },
+   {
+    "id": "prt_11181e88f001THYHWG6m3tibmC",
+    "sessionID": "ses_eee7e4180ffe36YACxhpQXIaYJ",
+    "messageID": "msg_11181dcef001xk3uYshMMlH1Ic",
+    "type": "step-finish"
+   }
+  ]
+ }
+]

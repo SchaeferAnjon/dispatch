@@ -1,0 +1,54 @@
+/* The Agent window's 命令 tab (AgentRunsPanel): one read-only xterm per command the agent ran, the list on the right, 输出. */
+
+/* ---- bottom panel: 214 px, 30 px when collapsed */
+.panel.tpanel{border-top:1px solid var(--hair);display:grid;grid-template-rows:30px minmax(0,1fr);height:214px;min-height:0;min-width:0;background:color-mix(in srgb,var(--bg-2) 45%,transparent);flex:none}
+.panel.tpanel.min{height:30px;grid-template-rows:30px 0}
+.panel.tpanel.min .pbody{display:none}
+.tpanel .ptabs{display:flex;align-items:center;gap:2px;padding:0 8px;border-bottom:1px solid var(--hair);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden}
+.tpanel .ptabs>button{height:22px;padding:0 8px;border-radius:5px;color:var(--text-2);display:inline-flex;align-items:center;gap:5px}
+.tpanel .ptabs>button.on{color:var(--text);background:var(--chip)}
+.tpanel .ptabs>button .n{font-size:11px;color:var(--text-2)}
+.tpanel .ptabs .sp{flex:1}
+.tpanel .ptabs .prun{display:inline-flex;align-items:center;gap:5px;margin-left:8px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tpanel .ptabs .prun .dotc{margin:0;flex:none}
+.tpanel .ptabs .tools{display:flex;align-items:center;gap:2px}
+.tpanel .ptabs .tools button{width:24px;height:22px;padding:0;border-radius:5px;display:grid;place-items:center;color:var(--text-2)}
+.tpanel .ptabs .tools button:hover{background:var(--chip);color:var(--text)}
+.tpanel .ptabs .tools button:disabled{opacity:.4}
+.tpanel .ptabs .tools .ic,.tpanel .ptabs .tools svg{width:14px;height:14px}
+.tpanel .pbody{display:grid;grid-template-columns:minmax(0,1fr) 168px;min-height:0;min-width:0}
+.tpanel .pbody.one{grid-template-columns:minmax(0,1fr)}
+.tpanel .pbody[hidden]{display:none}
+
+/* the terminal stack: one xterm per tab, only the active one shown */
+.tpanel .tstack{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
+.tpanel .xt{flex:1;min-height:0;min-width:0;padding:4px 0 0 10px}
+.tpanel .xt[hidden]{display:none}
+.tpanel .xt .xterm{height:100%}
+.tpanel .xt .xterm-viewport{background:transparent !important}
+.tpanel .xt .xterm-viewport::-webkit-scrollbar{width:8px}
+.tpanel .xt .xterm-viewport::-webkit-scrollbar-thumb{background:var(--chip-2);border-radius:4px}
+.tpanel .tnote{padding:10px 12px;font-size:12px;display:flex;gap:8px;align-items:center}
+.tpanel .texit,.tpanel .trun{display:flex;align-items:center;gap:10px;flex:none;height:26px;padding:0 12px;font-size:12px;color:var(--text-2);border-top:1px solid var(--hair);background:color-mix(in srgb,var(--bg-2) 60%,transparent)}
+.tpanel .texit.err{color:var(--red)}
+.tpanel .trun .pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.6s ease-in-out infinite;flex:none}
+.tpanel .lk{color:var(--blue);font-size:12px;padding:0}
+
+/* the list on the right: 168 px */
+.tpanel .tlist{border-left:1px solid var(--hair);padding:4px;font-size:12px;overflow:auto;min-height:0}
+.tpanel .tlist>div{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:6px;align-items:center;height:26px;padding:0 8px;border-radius:5px;color:var(--text-2);white-space:nowrap;cursor:default}
+.tpanel .tlist>div:hover{background:var(--chip)}
+.tpanel .tlist>div.on{background:var(--sel);color:var(--text)}
+.tpanel .tlist>div svg{width:13px;height:13px}
+.tpanel .tlist .nm{overflow:hidden;text-overflow:ellipsis}
+.tpanel .tlist .dotc{margin:0}
+.tpanel .tlist .dotc.gray{background:var(--text-2);opacity:.5}
+.tpanel .tlist .dotc.bad{background:var(--red);opacity:.8}
+.tpanel .tlist .av.sm{width:13px;height:13px;font-size:7px;border-radius:4px}
+.tpanel .tlist .tend{display:inline-flex;align-items:center;gap:4px}
+.tpanel .tlist .tx{width:16px;height:16px;border-radius:4px;font-size:10px;color:var(--text-2);display:none;place-items:center;padding:0}
+.tpanel .tlist>div:hover .tx,.tpanel .tlist>div.on .tx{display:grid}
+.tpanel .tlist .tx:hover{background:var(--chip-2);color:var(--text)}
+
+.tpanel .probs{padding:10px 12px;font-size:12px;overflow:auto}
+.tpanel .tout{overflow:auto;padding:6px 12px;font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-all;color:var(--text-2);user-select:text}

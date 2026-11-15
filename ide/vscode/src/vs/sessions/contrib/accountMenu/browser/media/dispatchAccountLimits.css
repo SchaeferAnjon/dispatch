@@ -1,0 +1,40 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: one row per limit window under a subscription (Weekly, 5-hour, a model's weekly):
+ *  name on the left, when it resets in grey, how much is used on the right.
+ *--------------------------------------------------------------------------------------------*/
+
+.agent-sessions-workbench .dispatch-limit-row {
+	display: grid;
+	grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+	align-items: baseline;
+	column-gap: 8px;
+	min-width: 0;
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 20px;
+	color: var(--vscode-foreground);
+}
+
+.agent-sessions-workbench .dispatch-limit-label {
+	white-space: nowrap;
+}
+
+.agent-sessions-workbench .dispatch-limit-reset {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-descriptionForeground);
+}
+
+.agent-sessions-workbench .dispatch-limit-value {
+	font-weight: 500;
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+.agent-sessions-workbench .dispatch-limit-head {
+	flex: 0 0 auto;
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--vscode-descriptionForeground);
+}

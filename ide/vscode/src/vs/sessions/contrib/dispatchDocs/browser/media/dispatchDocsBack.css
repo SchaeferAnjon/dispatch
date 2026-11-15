@@ -1,0 +1,33 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: "‹ Docs" in the side pane's editor header (patches/435-docs.patch).
+ *  Grey like the breadcrumbs next to it and "‹ Projects", the foreground on hover. Always first in
+ *  the row: on these tabs (Markdown, browser, image) the header's action bar holds only this link,
+ *  so it moves in front of the breadcrumbs, which follow 12px after it.
+ *--------------------------------------------------------------------------------------------*/
+
+.editor-group-header .editor-group-header-actions:has(a.action-label[aria-label="Back to Docs"]) {
+	order: -1;
+	margin-right: 12px;
+}
+
+.editor-group-header a.action-label[aria-label="Back to Docs"] {
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+
+.editor-group-header a.action-label[aria-label="Back to Docs"]:hover {
+	color: var(--vscode-foreground);
+}
+
+/*
+ * A tab opened from Docs says "‹ Docs  <file>": no folder crumbs (the disk path is not what the person
+ * looks for), and the editor picker on the right ("Markdown Editor ⌄") gives way first when the pane is
+ * narrow, so it never covers the file name.
+ */
+.editor-group-header:has(a.action-label[aria-label="Back to Docs"]) .breadcrumbs-control .monaco-breadcrumb-item.folder {
+	display: none;
+}
+
+.editor-group-header:has(a.action-label[aria-label="Back to Docs"]) .breadcrumbs-control.with-editor-type > .breadcrumbs-editor-type {
+	max-width: 30%;
+}

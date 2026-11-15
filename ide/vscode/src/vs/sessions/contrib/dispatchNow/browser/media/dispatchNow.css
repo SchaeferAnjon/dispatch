@@ -1,0 +1,461 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the Now tab (dispatchNowEditor.ts). Direction A of 2026-11-11 (task-0v1o9, kanban
+ *  design/home-now/notes.md A4): three lines on the panel, no card; the tasks and their steps on one thin
+ *  line under them. Two greys, the state colours only in the marks; 15 / 13 / 12 / 11 type; the panel's
+ *  8 + 12 insets (DESIGN.md「留白」).
+ *
+ *  The names on the right are DESIGN.md's tokens, taken from the theme the way Waiting for you takes them:
+ *    --text  foreground                      --text-2  descriptionForeground
+ *    --hair  editorHoverWidget.border        --chip    button.secondaryBackground
+ *    --fill  button.background / foreground  --sel 60% list.hoverBackground
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-now-tab {
+	--now-text: var(--vscode-foreground);
+	--now-text-2: var(--vscode-descriptionForeground);
+	--now-hair: var(--vscode-editorHoverWidget-border);
+	--now-chip: var(--vscode-button-secondaryBackground);
+	--now-hover: var(--vscode-list-hoverBackground);
+	--now-fill: var(--vscode-button-background);
+	--now-fill-text: var(--vscode-button-foreground);
+	--now-ring: var(--vscode-focusBorder);
+	--now-mono: var(--monaco-monospace-font, ui-monospace, "SF Mono", Menlo, monospace);
+	--now-ease-out: cubic-bezier(0, 0, 0.2, 1);
+	/* the side bar's session rows show about 10px of corner on their hover (their 28px is cut by the list; looked at
+	   2026-11-11), its entries 4px: 10 here, as design/home-now's prototype has it; 28 on a 32 high row would be a pill */
+	--now-row-radius: 10px;
+	box-sizing: border-box;
+	height: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 8px 8px 12px;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--now-text);
+	outline: none;
+}
+
+/* the tab's icon: a thin pulse line, drawn a little heavier on the tab that is showing (DESIGN.md: selected icons
+   are --text with a 2 stroke) */
+.monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active .monaco-icon-label.codicon-pulse::before {
+	color: var(--vscode-tab-activeForeground);
+	-webkit-text-stroke: 0.4px currentColor;
+}
+
+/* ---- the head: state, the line, and what goes under it ----------------------------------------------------- */
+
+.dispatch-now-top {
+	padding: 0 12px;
+}
+
+.dispatch-now-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 20px;
+	font-size: 12px;
+	color: var(--now-text-2);
+	white-space: nowrap;
+	/* the running blocks fall in from above the line (dispatchStatusBlocks.css, task-dw425): they show from 5px over
+	   the icon (the design's stage edge at its scale), and the icon's 1px past the slot on the left is not cut */
+	overflow: visible;
+	clip-path: inset(-3px 0 0 -1px);
+}
+
+.dispatch-now-state {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-now-slot {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	display: grid;
+	place-items: center;
+	color: var(--now-text-2);
+}
+
+/* the falling blocks of the session row (16 px) sit in the 14 slot */
+.dispatch-now-slot > .dispatch-status-blocks {
+	margin: 0 -1px;
+}
+
+.dispatch-now-say {
+	margin-top: 4px;
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.35;
+	color: var(--now-text);
+	overflow-wrap: anywhere;
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+/* why, in plain words (task-39x97, design/learn-scene frame 1's `.nwhy`): 13px in the second grey, 6 under the agent's
+   line, at most three lines; only words the agent itself said this turn */
+.dispatch-now-why {
+	margin-top: 6px;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--now-text-2);
+	overflow-wrap: anywhere;
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.dispatch-now-sub {
+	margin-top: 4px;
+	font-size: 12px;
+	color: var(--now-text-2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-now-sub.mono {
+	font-family: var(--now-mono);
+}
+
+/* "Right now": a light band runs over it, 2 s (DESIGN.md「Agent 在想」) */
+.dispatch-now-sub.shimmer {
+	background: linear-gradient(90deg, var(--now-text-2) 0 40%, var(--now-text) 50%, var(--now-text-2) 60% 100%);
+	background-size: 200% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: dispatch-now-shimmer 2s linear infinite;
+	animation-delay: var(--now-phase, 0ms);
+}
+
+@keyframes dispatch-now-shimmer {
+	from { background-position: 100% 0; }
+	to { background-position: -100% 0; }
+}
+
+.dispatch-now-btns {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+/* sm buttons (DESIGN.md「按钮」): 32 high pills, 13/500; the fill is the one solid button on screen */
+.dispatch-now-btn {
+	display: inline-flex;
+	align-items: center;
+	height: 32px;
+	padding: 0 12px;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--now-text);
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 150ms ease, transform 150ms ease;
+}
+.dispatch-now-btn.fill { background: var(--now-fill); color: var(--now-fill-text); }
+.dispatch-now-btn.outline { border-color: var(--now-hair); }
+.dispatch-now-btn.ghost { color: var(--now-text-2); }
+.dispatch-now-btn.outline:hover,
+.dispatch-now-btn.ghost:hover { background: var(--now-chip); }
+.dispatch-now-btn:active { transform: translateY(1px); }
+
+/* ---- the tasks and their steps ----------------------------------------------------------------------------- */
+
+.dispatch-now-sec {
+	margin-top: 24px;
+}
+
+.dispatch-now-task {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	padding: 0 12px;
+	border-radius: var(--now-row-radius);
+	font-weight: 500;
+	transition: background-color 150ms ease;
+}
+.dispatch-now-task:hover { background: var(--now-hover); }
+
+.dispatch-now-caret {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 14px;
+	height: 20px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--now-text-2);
+	cursor: pointer;
+}
+.dispatch-now-caret:disabled { visibility: hidden; }
+.dispatch-now-tab .dispatch-now-caret > .codicon,
+.dispatch-now-tab .dispatch-now-fold > .codicon {
+	font-size: 12px;
+	transition: transform 200ms ease;
+}
+.dispatch-now-caret.open > .codicon,
+.dispatch-now-fold.open > .codicon { transform: rotate(90deg); }
+
+.dispatch-now-title {
+	flex: 1;
+	min-width: 0;
+	height: 100%;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--now-text);
+	font: inherit;
+	text-align: left;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+.dispatch-now-task.done:not(.current) .dispatch-now-title { color: var(--now-text-2); }
+
+.dispatch-now-count,
+.dispatch-now-time {
+	flex: none;
+	margin-left: auto;
+	font-size: 11px;
+	font-weight: 400;
+	color: var(--now-text-2);
+	font-variant-numeric: tabular-nums;
+}
+
+/* a task's steps, sub-agents and deliveries, and a fold's rows: they open in place, 200 ms on the rows' height */
+.dispatch-now-body {
+	display: grid;
+	grid-template-rows: 0fr;
+	opacity: 0;
+	transition: grid-template-rows 200ms var(--now-ease-out), opacity 200ms var(--now-ease-out);
+}
+.dispatch-now-body.open {
+	grid-template-rows: 1fr;
+	opacity: 1;
+}
+.dispatch-now-body-in {
+	min-height: 0;
+	overflow: hidden;
+}
+
+.dispatch-now-steps,
+.dispatch-now-body-in,
+.dispatch-now-dls {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+/* a step: 28 high, its mark in the 14 slot */
+.dispatch-now-step {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 28px;
+	padding: 0 12px;
+	color: var(--now-text-2);
+}
+.dispatch-now-step.now { color: var(--now-text); font-weight: 500; }
+.dispatch-now-step.ask { color: var(--now-text); }
+/* where a paused task stopped: the large ring, the words strong */
+.dispatch-now-step.stop { color: var(--now-text); font-weight: 500; }
+.dispatch-now-step.link { padding: 0; }
+
+.dispatch-now-words {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* one 1px line from the first step to the last, through the slots (and the sub-agents hanging between them) */
+.dispatch-now-steps[data-part="steps"] > .dispatch-now-step:not(.last)::before,
+.dispatch-now-steps[data-part="steps"] > .dispatch-now-step:not(.first)::after,
+.dispatch-now-steps[data-part="steps"] .through::before {
+	content: "";
+	position: absolute;
+	left: 18.5px;
+	width: 1px;
+	background: var(--now-hair);
+	pointer-events: none;
+}
+.dispatch-now-steps[data-part="steps"] > .dispatch-now-step:not(.last)::before { top: calc(50% + 9px); bottom: 0; }
+.dispatch-now-steps[data-part="steps"] > .dispatch-now-step:not(.first)::after { top: 0; height: calc(50% - 9px); }
+.dispatch-now-steps[data-part="steps"] .through::before { top: 0; bottom: 0; }
+
+/* the marks are DESIGN.md「符号表」's, from dispatchMarks.ts (14px VS Code round state icons, their colours there) */
+
+.dispatch-now-term {
+	width: 14px;
+	height: 14px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* rows that open something: a sub-agent, a delivery, a task next in line */
+.dispatch-now-rowbtn {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 28px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: var(--now-row-radius);
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-now-rowbtn:hover,
+.dispatch-now-fold:hover { background: var(--now-hover); }
+
+.dispatch-now-agent {
+	position: relative;
+	font-size: 12px;
+	font-weight: 400;
+}
+.dispatch-now-agent > .dispatch-now-rowbtn { padding-left: 34px; color: var(--now-text); }
+.dispatch-now-agent[data-state="done"] > .dispatch-now-rowbtn { color: var(--now-text-2); }
+/* the sub-agent's kind ("general", "designer") before what it was sent to do */
+.dispatch-now-agent-name { font-weight: 500; color: var(--now-text-2); margin-right: 8px; }
+.dispatch-now-finished {
+	padding-left: 56px;
+	font-size: 12px;
+	color: color-mix(in srgb, var(--now-text-2) 70%, transparent);
+}
+li.dispatch-now-body { position: relative; }
+
+.dispatch-now-dl { padding-left: 34px; color: var(--now-text); }
+.dispatch-now-tab .dispatch-now-dl .codicon { font-size: 14px; color: var(--now-text-2); }
+.dispatch-now-tab .dispatch-now-handoffs .codicon { font-size: 14px; }
+
+/* ---- folds: Done in this session, Next in <project>, Handed over ------------------------------------------- */
+
+.dispatch-now-fold {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	height: 28px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: var(--now-row-radius);
+	background: transparent;
+	color: color-mix(in srgb, var(--now-text-2) 70%, transparent);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-now-fold-label {
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-now-tab button:focus-visible {
+	outline: 1px solid var(--now-ring);
+	outline-offset: -1px;
+}
+.dispatch-now-btn:focus-visible {
+	outline-offset: 1px;
+}
+
+/* reduce motion: everything still; the shimmer is plain grey words, the step it is on a still circle */
+.monaco-reduce-motion .dispatch-now-tab *,
+.monaco-reduce-motion .dispatch-now-tab *::before,
+.monaco-reduce-motion .dispatch-now-tab *::after {
+	animation: none !important;
+	transition: none !important;
+}
+.monaco-reduce-motion .dispatch-now-sub.shimmer {
+	background: none;
+	color: var(--now-text-2);
+}
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-now-tab *,
+	.dispatch-now-tab *::before,
+	.dispatch-now-tab *::after {
+		animation: none !important;
+		transition: none !important;
+	}
+	.dispatch-now-sub.shimmer {
+		background: none;
+		color: var(--now-text-2);
+	}
+}
+
+/* ---- empty and failed ------------------------------------------------------------------------------------ */
+
+.dispatch-now-empty {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 16px 12px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.dispatch-now-empty b { font-size: 13px; font-weight: 500; color: var(--vscode-foreground); }
+.dispatch-now-top + .dispatch-now-empty { margin-top: 8px; }
+
+/* the board could not be read: why, and a way to try at once */
+.dispatch-now-why { overflow-wrap: anywhere; }
+.dispatch-now-retry {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	height: 24px;
+	margin-top: 8px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.dispatch-now-retry:hover { background: var(--vscode-toolbar-activeBackground); }
+.dispatch-now-retry:disabled { opacity: 0.5; cursor: default; }
+
+/* the board's answer is not in yet: three quiet bars, no guessed state (2026-11-12, task-cq11p) */
+.dispatch-now-skeleton {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.dispatch-now-skeleton > span {
+	height: 10px;
+	border-radius: 5px;
+	background: var(--now-hover);
+	animation: dispatch-now-skeleton 2s linear infinite;
+}
+@keyframes dispatch-now-skeleton {
+	50% { opacity: 0.5; }
+}

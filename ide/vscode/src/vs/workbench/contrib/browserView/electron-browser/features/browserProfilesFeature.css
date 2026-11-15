@@ -1,0 +1,14 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Dispatch: the browser profile button keeps the share toggle's look; its name reads at 12/500 (DESIGN.md) */
+.browser-share-toggle-container.dispatch-browser-identity .browser-share-toggle > span:not(.codicon) {
+	font-size: 12px;
+	font-weight: 500;
+}
+
+.browser-share-toggle-container.dispatch-browser-identity .browser-share-toggle .codicon-chevron-down {
+	font-size: 12px;
+}

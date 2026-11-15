@@ -1,0 +1,28 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the side pane with no tab in it (dispatchEmptySidePane.ts).
+ *--------------------------------------------------------------------------------------------*/
+
+.agent-sessions-workbench .part.editor > .dispatch-side-empty {
+	display: none;
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	/* below the tab strip, where the Now and Docs tabs put their empty states (.dispatch-now-empty) */
+	top: var(--editor-group-tab-height, 35px);
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	/* the logo and its lines a little above the middle, as the empty editor's are */
+	padding: 16px 16px 12%;
+	box-sizing: border-box;
+	font-size: 12px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+	pointer-events: none;
+}
+
+.agent-sessions-workbench .part.editor > .dispatch-side-empty.shown { display: flex; }
+.agent-sessions-workbench .part.editor > .dispatch-side-empty > .dispatch-side-empty-logo { margin-bottom: 14px; line-height: 0; }
+.agent-sessions-workbench .part.editor > .dispatch-side-empty > b { font-size: 13px; font-weight: 500; color: var(--vscode-foreground); }
+.agent-sessions-workbench .part.editor > .dispatch-side-empty > span { max-width: 46ch; }

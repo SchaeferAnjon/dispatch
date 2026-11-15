@@ -1,0 +1,57 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the editor window's chat in the Agents window's shape (810-editor-chat.patch)
+ *--------------------------------------------------------------------------------------------*/
+
+/* Dispatch IDE: the editor window's chat input in the Agents window's shape (dispatch-shell.css there):
+   input box radius 24 with one surface and 14px text, 24 high capsule pickers with 12px labels, a 32 round
+   send button */
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .chat-input-container {
+	border-radius: 24px;
+}
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .monaco-editor,
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .monaco-editor-background,
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .monaco-editor .margin {
+	background-color: transparent !important;
+}
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .native-edit-context,
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .monaco-editor .current-line {
+	outline: none !important;
+	border: none !important;
+}
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .interactive-input-editor .monaco-editor .view-lines,
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .editorPlaceholder {
+	font-size: 14px !important;
+}
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .chat-input-toolbars .chat-input-picker-item .action-label,
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .chat-secondary-toolbar .action-label,
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .model-picker-section {
+	height: 24px;
+	border-radius: 12px;
+	box-sizing: border-box;
+}
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .chat-input-picker-label {
+	font-size: 12px;
+}
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .chat-submit-button,
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .chat-submit-button .action-label {
+	width: 32px;
+	min-width: 32px;
+	height: 32px;
+	border-radius: 50%;
+}
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .chat-submit-button .action-label {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* a narrow chat column (under 480): radius 12, the 24 capsule reads as a pill there */
+.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane {
+	container-type: inline-size;
+	container-name: dispatch-chat;
+}
+@container dispatch-chat (max-width: 479px) {
+	.monaco-workbench:not(.agent-sessions-workbench) .chat-viewpane .interactive-input-part .chat-input-container {
+		border-radius: 12px;
+	}
+}

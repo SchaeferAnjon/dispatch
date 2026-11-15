@@ -1,0 +1,130 @@
+Dispatch
+Copyright (C) 2026 SchaeferAnjon
+
+Dispatch is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version (GPL-3.0-or-later). The full license text is in LICENSE.
+
+Dispatch 是自由软件，按 GNU 通用公共许可证第 3 版或（由你选择）任何更新的版本
+（GPL-3.0-or-later）发布，许可证全文见 LICENSE。
+
+This file lists the third-party code in this repository and the third-party
+components that ship inside the Dispatch IDE app, with their licenses. Each
+keeps its own license; the GPL covers Dispatch's own code and the combined
+work.
+下面列出本仓库里的第三方代码和随 Dispatch IDE 安装包分发的第三方组件及其许可证。
+它们各自保留原许可证；GPL 管的是 Dispatch 自己的代码和整体作品。
+
+
+1. Visual Studio Code (Code - OSS) 1.139.1
+
+   The source of Dispatch IDE, with Dispatch's changes, in ide/vscode.
+   Dispatch IDE 的源码（含 Dispatch 的改动），在 ide/vscode。
+   Source: https://github.com/microsoft/vscode
+   License: MIT License, Copyright (c) 2015 - present Microsoft Corporation.
+   The license is kept unchanged in ide/vscode/LICENSE.txt, and the notices
+   of the third-party code VS Code itself contains in
+   ide/vscode/ThirdPartyNotices.txt (both also ship inside the app).
+   Microsoft's proprietary GitHub Copilot extension (ide/vscode/extensions/
+   copilot) is removed when the app is built and is not part of the package.
+
+
+2. Orca
+
+   Source: https://github.com/stablyai/orca
+   License: MIT License, Copyright (c) 2026 Lovecast Inc. The full text is in
+   app/termd/ORCA-LICENSE.txt.
+   Ported from or based on Orca:
+   - the terminal daemon in app/termd (escape-tail.cjs, emulator.cjs,
+     session.cjs, the protocol in termd.cjs) and the Agents window's terminal;
+   - app/cli/accounts.py, app/cli/ghostty_import.py,
+     app/cli/automations_discover.py, app/cli/fixit.py (each says so at its top);
+   - the 38 agent logos in ide/vscode/src/vs/sessions/contrib/dispatchAgents/
+     browser/media/agent-icons (reduced to one colour). See also section 10.
+
+
+3. Agent skills "leader" and "neat-freak"
+
+   agent/skills/leader and agent/skills/neat-freak.
+   License: MIT License, Copyright (c) 2026 数字生命卡兹克. Each folder carries
+   its own LICENSE file.
+
+
+4. bd (Beads) 1.2.2
+
+   The task board, bundled as Contents/Resources/app/tools/bd.
+   Source: https://github.com/gastownhall/beads
+   License: MIT License. Its license file ships beside it as
+   tools/licenses/bd-LICENSE.
+
+
+5. Dolt 2.3.1
+
+   The database under the task board, bundled as tools/dolt.
+   Source: https://github.com/dolthub/dolt
+   License: Apache License 2.0. Dolt's release carries no separate NOTICE
+   file; its LICENSES file (Dolt's license and the licenses and notices of the
+   code it is built from) ships unchanged as tools/licenses/dolt-LICENSES.
+
+
+6. Open Remote - SSH 0.3.1
+
+   Bundled as the built-in extension extensions/open-remote-ssh (from Open VSX).
+   Source: https://github.com/jeanp413/open-remote-ssh
+   License: MIT License (its LICENSE ships inside the extension).
+
+
+7. OpenCode plugin kit (@opencode-ai/plugin 1.18.34 and its dependencies)
+
+   Bundled as tools/opencode-plugin-kit.tgz so OpenCode's first start does not
+   wait for npm; pinned in ide/opencode-kit/package-lock.json.
+   Source: https://github.com/sst/opencode
+   License: MIT License; its dependencies are under MIT, ISC, Apache-2.0 and
+   (AFL-2.1 OR BSD-3-Clause). Each package keeps its own license file inside
+   the archive.
+
+
+8. OpenAI Codex 0.153.0
+
+   The Codex agent SDK, bundled under agent-sdks/codex.
+   Source: https://github.com/openai/codex
+   License: Apache License 2.0. Its NOTICE reads:
+
+   ----------------------------------------------------------------------
+   OpenAI Codex
+   Copyright 2025 OpenAI
+
+   This project includes code derived from [Ratatui](https://github.com/ratatui/ratatui), licensed under the MIT license.
+   Copyright (c) 2016-2022 Florian Dehau
+   Copyright (c) 2023-2025 The Ratatui Developers
+   ----------------------------------------------------------------------
+
+   The Claude Agent SDK is not bundled: Dispatch IDE downloads it from its
+   official source the first time it is used, under Anthropic's own terms.
+   Claude Agent SDK 不在安装包里，第一次用到时从官方地址下载，按 Anthropic 自己的条款使用。
+
+
+9. IBM Plex Sans and IBM Plex Mono
+
+   The fonts of the web demo in docs/demo/assets.
+   Source: https://github.com/IBM/plex
+   License: SIL Open Font License 1.1, Copyright © 2017 IBM Corp. with
+   Reserved Font Name "Plex".
+
+
+10. Trademarks / 商标
+
+   Dispatch shows the names and logos of the coding agents and services it
+   works with (among them Claude and Claude Code, OpenAI and Codex, GitHub
+   Copilot, Gemini, OpenCode, Cursor and the other agents in
+   app/cli/agents_catalog.py), only to tell you which agent a session or
+   setting belongs to. They are trademarks of their respective owners;
+   Dispatch is not affiliated with, sponsored by or endorsed by any of them.
+   The MIT License of Orca, where the logos come from, covers Orca's code and
+   does not grant any right to those trademarks.
+   Dispatch 里出现的各家编程 Agent 和服务的名称、图标（Claude、Claude Code、OpenAI、
+   Codex、GitHub Copilot、Gemini、OpenCode、Cursor 以及 app/cli/agents_catalog.py
+   里的其他 Agent）只用来标明会话或设置属于哪个 Agent，是各自所有者的商标；Dispatch
+   与它们没有隶属、赞助或背书关系。图标来自 Orca，Orca 的 MIT 许可只管它的代码，
+   不授予这些商标的任何权利。

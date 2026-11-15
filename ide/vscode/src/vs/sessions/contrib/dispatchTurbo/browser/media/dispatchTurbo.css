@@ -1,0 +1,1381 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Turbo and its Timeline page (dispatchTurbo.contribution.ts, dispatchTimeline.ts;
+ *  patches/420-turbo.patch; kanban design/frenzy direction A).
+ *  Flat (DESIGN.md「扁平」): two grey levels, 1px rings, pills; colour only on the state blocks, the waiting
+ *  card and the app icon's own blocks when a run is done (DESIGN.md「彩色只出现在三处」).
+ *--------------------------------------------------------------------------------------------*/
+
+/* ---------------------------------------------------------------- the Timeline page */
+
+/* its sentence starts at the page's edge, the ten blocks beside it */
+.dispatch-timeline-page {
+	display: flex;
+	flex-direction: column;
+	padding: 8px 0 24px;
+}
+.dispatch-timeline-page .dt-head {
+	align-items: flex-start;
+	gap: 16px;
+}
+.dispatch-timeline-page .dt-head > .dispatch-turbo-mark {
+	width: 48px;
+	height: 48px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.dispatch-timeline-page .dt-head > .dt-words {
+	padding-top: 12px;
+}
+.dispatch-timeline-page .dt-head > .dt-actions {
+	align-self: center;
+}
+
+/* ---------------------------------------------------------------- the ten blocks */
+
+.dispatch-turbo-mark {
+	display: inline-block;
+	flex: none;
+	line-height: 0;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-turbo-mark .cell {
+	fill: transparent;
+	stroke: currentColor;
+	stroke-opacity: 0.55;
+	stroke-width: 0.45;
+}
+.dispatch-turbo-mark .cell.lit {
+	fill: currentColor;
+	fill-opacity: 0.85;
+	stroke: none;
+}
+.dispatch-turbo-mark .dot {
+	fill: transparent;
+	stroke: currentColor;
+	stroke-opacity: 0.4;
+	stroke-width: 0.45;
+	transform-box: fill-box;
+	transform-origin: center;
+}
+.dispatch-turbo-mark.think .cell {
+	animation: dispatch-turbo-wave 1.6s var(--dispatch-ease-std, ease-in-out) infinite;
+	animation-delay: calc(var(--i) * 90ms);
+}
+/* done: the blocks take the app icon's colours one after another, then the green corner lights up */
+.dispatch-turbo-mark.done .cell {
+	stroke: none;
+	fill: var(--c);
+	fill-opacity: var(--o, 1);
+	animation: dispatch-turbo-colour 420ms var(--dispatch-ease-out, ease-out) both;
+	animation-delay: calc(var(--i) * 70ms);
+}
+.dispatch-turbo-mark.done .dot {
+	fill: var(--dispatch-state-working);
+	stroke: none;
+	animation: dispatch-turbo-dot 1.2s var(--dispatch-ease-spring, ease-out) 760ms both;
+}
+@keyframes dispatch-turbo-wave {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.35; }
+}
+@keyframes dispatch-turbo-colour {
+	from { fill: var(--vscode-descriptionForeground); fill-opacity: 0.85; }
+	to { fill: var(--c); fill-opacity: 1; }
+}
+@keyframes dispatch-turbo-dot {
+	0% { transform: scale(0); }
+	40% { transform: scale(1.25); }
+	60% { transform: scale(1); }
+	80% { transform: scale(1.15); }
+	100% { transform: scale(1); }
+}
+
+/* ---------------------------------------------------------------- the Timeline tab */
+
+.dispatch-timeline {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	min-width: 0;
+	container: dispatch-timeline / inline-size;
+	/* the last lane scrolled to the end keeps clear of the pills under it */
+	padding-bottom: 24px;
+	--dt-pad: 8px;
+	--dt-gap: 12px;
+	--dt-label: 236px;
+	--dt-side: 232px;
+	--dt-bar: color-mix(in srgb, var(--vscode-descriptionForeground) 48%, transparent);
+	--dt-dash: color-mix(in srgb, var(--vscode-descriptionForeground) 70%, transparent);
+	--dt-helper: color-mix(in srgb, var(--dispatch-state-plan) 85%, transparent);
+}
+.dispatch-timeline.busy {
+	cursor: progress;
+}
+.dt-head {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 0 4px;
+	min-width: 0;
+}
+.dt-words {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.dt-title {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 600;
+	line-height: 1.35;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dt-line {
+	margin: 2px 0 0;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+}
+.dt-folder {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 22px;
+	padding: 0 8px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-folder .codicon {
+	font-size: 12px;
+}
+
+/* pills (DESIGN.md 按钮): solid is the one thing to do on the page */
+.dt-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	padding: 0 14px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 150ms var(--dispatch-ease-out, ease-out);
+}
+.dt-btn:active {
+	transform: translateY(1px);
+}
+.dt-btn.solid {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+.dt-btn.solid:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+.dt-btn.outline {
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 55%, transparent);
+}
+.dt-btn.outline:hover,
+.dt-btn.ghost:hover,
+.dt-icon:hover,
+.dt-add:hover,
+.dt-chip:hover,
+.dt-link:hover {
+	background: color-mix(in srgb, var(--vscode-list-hoverBackground) 80%, transparent);
+}
+.dt-btn.ghost {
+	color: var(--vscode-descriptionForeground);
+}
+.dt-btn:focus-visible,
+.dt-icon:focus-visible,
+.dt-chip:focus-visible,
+.dt-add:focus-visible,
+.dt-link:focus-visible,
+.dt-seg button:focus-visible,
+.dt-lane:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+.dt-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+.dt-link {
+	align-self: flex-start;
+	height: 24px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+/* what waits for the person: the one amber card */
+.dt-need {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 12px 10px 14px;
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--dispatch-state-waiting) 8%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dispatch-state-waiting) 45%, transparent);
+}
+.dt-need-words {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.dt-need-from {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-need-q {
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--vscode-foreground);
+}
+.dt-need-btns {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+}
+.dt-need-btns .dt-btn.outline {
+	background: var(--vscode-editor-background);
+}
+
+/* the lanes (design/frenzy proto-a, redrawn in design/timeline-design): no box around them, a heading with the legend,
+   the axis, one row a lane: [name] [track] [what it does]; one Now line runs down through the rows */
+.dt-lanes {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.dt-lanes-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 28px;
+	padding: 0 var(--dt-pad);
+	font-size: 12px;
+}
+.dt-lanes-title {
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-legend {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	margin-left: auto;
+	min-width: 0;
+	overflow: hidden;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+.dt-legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+.dt-sw {
+	display: inline-block;
+	flex: none;
+}
+.dt-sw.working,
+.dt-sw.waiting {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--dispatch-state-working);
+}
+.dt-sw.waiting {
+	background: var(--dispatch-state-waiting);
+}
+.dt-sw.bar {
+	width: 16px;
+	height: 8px;
+	border-radius: 3px;
+	background: var(--dt-bar);
+}
+.dt-sw.box {
+	width: 16px;
+	height: 8px;
+	border-radius: 3px;
+	box-sizing: border-box;
+	border: 1px dashed var(--dt-dash);
+}
+.dt-sw.combined {
+	width: 10px;
+	height: 10px;
+	border-radius: 3px;
+	background: var(--dispatch-state-done);
+}
+.dt-sw.helper {
+	width: 16px;
+	height: 3px;
+	border-radius: 2px;
+	background: var(--dt-helper);
+}
+
+.dt-rows {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.dt-row {
+	display: grid;
+	grid-template-columns: var(--dt-label) minmax(0, 1fr) var(--dt-side);
+	column-gap: var(--dt-gap);
+	align-items: center;
+	min-height: 32px;
+	padding: 0 var(--dt-pad);
+	box-sizing: border-box;
+}
+.dt-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	font-size: 13px;
+	color: var(--vscode-foreground);
+}
+.dt-label > .dispatch-block,
+.dt-label > .codicon {
+	flex: none;
+}
+.dt-n {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	width: 16px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dt-n .codicon {
+	font-size: 13px;
+}
+.dt-name {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.dt-caret.codicon {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-track {
+	position: relative;
+	align-self: stretch;
+	min-height: 32px;
+}
+.dt-side {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-side > span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dt-side strong {
+	flex: none;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+.dt-side .codicon {
+	flex: none;
+	font-size: 13px;
+}
+
+.dt-lane {
+	border-radius: 8px;
+	cursor: pointer;
+	transition: background-color 150ms var(--dispatch-ease-out, ease-out);
+}
+.dt-lane:hover,
+.dt-lane.hl,
+.dt-lane.carded,
+.dt-lane[aria-expanded="true"].dt-fold {
+	background: color-mix(in srgb, var(--vscode-list-hoverBackground) 70%, transparent);
+}
+.dt-lane.flash {
+	background: color-mix(in srgb, var(--vscode-list-hoverBackground) 100%, transparent);
+}
+.dt-lane.helper .dt-label,
+.dt-lane.in-fold .dt-label {
+	padding-left: 22px;
+}
+.dt-lane.helper .dt-name {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-fold .dt-name {
+	color: var(--vscode-descriptionForeground);
+	font-weight: 500;
+}
+
+/* a project's heading among the sessions (会话按文件夹组织) */
+.dt-group {
+	grid-template-columns: minmax(0, 1fr);
+	min-height: 28px;
+	margin-top: 8px;
+}
+.dt-group:first-child {
+	margin-top: 0;
+}
+.dt-group .dt-label {
+	gap: 6px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-group .dt-label .codicon {
+	font-size: 14px;
+}
+.dt-group .dt-track {
+	display: none;
+}
+.dt-count {
+	font-size: 11px;
+	font-weight: 400;
+	opacity: 0.7;
+	font-variant-numeric: tabular-nums;
+}
+
+/* a session's helpers, folded into its lane: a chip with their count */
+.dt-helpers {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 20px;
+	padding: 0 6px;
+	border: none;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	cursor: pointer;
+}
+.dt-helpers:hover,
+.dt-helpers[aria-expanded="true"] {
+	background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+	color: var(--vscode-foreground);
+}
+.dt-helpers:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* who waits for whom: a thin hook from the end of one part to the start of the one after it */
+.dt-deps {
+	position: absolute;
+	top: 0;
+	left: 0;
+	overflow: visible;
+	pointer-events: none;
+}
+.dt-deps path {
+	fill: none;
+	stroke: var(--dt-dash);
+	stroke-width: 1;
+	stroke-dasharray: 3 3;
+}
+.dt-deps circle {
+	fill: var(--dt-dash);
+}
+
+.dt-bar {
+	position: absolute;
+	top: 50%;
+	height: 10px;
+	border-radius: 4px;
+	transform: translateY(-50%);
+	background: var(--dt-bar);
+}
+.dt-bar.faint {
+	opacity: 0.55;
+}
+.dt-bar.fix {
+	background: color-mix(in srgb, var(--dispatch-state-stopped) 85%, transparent);
+}
+.dt-bar.needs,
+.dt-bar.wait {
+	height: 2px;
+	border-radius: 1px;
+	background: var(--dispatch-state-waiting);
+}
+.dt-bar.paused {
+	background: repeating-linear-gradient(135deg, var(--dt-dash) 0 2px, transparent 2px 5px);
+}
+/* the helpers folded into a session: a thin line under its bars where they worked */
+.dt-bar.helper {
+	top: calc(50% + 9px);
+	height: 3px;
+	border-radius: 2px;
+	background: var(--dt-helper);
+}
+.dt-box {
+	position: absolute;
+	top: 50%;
+	height: 10px;
+	border-radius: 4px;
+	transform: translateY(-50%);
+	box-sizing: border-box;
+	border: 1px dashed var(--dt-dash);
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 7%, transparent);
+}
+.dt-pin {
+	position: absolute;
+	top: 50%;
+	z-index: 2;
+	line-height: 0;
+	transform: translate(-50%, -50%);
+}
+.dt-mk.done {
+	display: inline-flex;
+	border-radius: 4px;
+	background: var(--vscode-editor-background);
+}
+.dt-mk.todo {
+	display: inline-block;
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	box-sizing: border-box;
+	border: 1.5px solid color-mix(in srgb, var(--dispatch-state-done) 75%, transparent);
+	background: var(--vscode-editor-background);
+}
+/* a lane at work at Now: a dot in its state's colour; working pings (DESIGN.md 状态圆点) */
+.dt-dot {
+	position: relative;
+	display: inline-block;
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--dispatch-state-working);
+}
+.dt-dot.waiting {
+	background: var(--dispatch-state-waiting);
+}
+.dt-dot.stopped {
+	background: var(--dispatch-state-stopped);
+}
+.dt-dot.working::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
+	background: inherit;
+	animation: dt-ping 1.6s var(--dispatch-ease-out, ease-out) infinite;
+}
+@keyframes dt-ping {
+	75%, 100% {
+		transform: scale(2.2);
+		opacity: 0;
+	}
+}
+.dt-side-now {
+	color: var(--vscode-foreground);
+}
+
+/* the one Now line, the refill's dashed line: over every row */
+.dt-nowline,
+.dt-refline {
+	position: absolute;
+	top: -2px;
+	bottom: -2px;
+	z-index: 1;
+	width: 0;
+	pointer-events: none;
+}
+.dt-nowline {
+	border-left: 1px solid var(--vscode-foreground);
+}
+.dt-refline {
+	border-left: 1px dashed var(--dt-dash);
+}
+.dt-now {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	z-index: 1;
+	width: 0;
+	border-left: 1px solid var(--vscode-foreground);
+	pointer-events: none;
+}
+.dt-axis {
+	min-height: 24px;
+}
+.dt-axis .dt-label,
+.dt-axis .dt-side {
+	min-height: 0;
+}
+.dt-axis .dt-track {
+	min-height: 24px;
+}
+.dt-tick {
+	position: absolute;
+	top: 4px;
+	transform: translateX(-50%);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.dt-now-label {
+	position: absolute;
+	top: 2px;
+	z-index: 2;
+	transform: translateX(-50%);
+	padding: 0 6px;
+	border-radius: 4px;
+	background: var(--vscode-foreground);
+	color: var(--vscode-editor-background);
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 18px;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.dt-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 24px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+}
+.dt-add .codicon {
+	font-size: 12px;
+}
+.dt-tag {
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	margin-left: 8px;
+	padding: 0 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 500;
+	vertical-align: 1px;
+}
+.dt-tag.waiting {
+	background: color-mix(in srgb, var(--dispatch-state-waiting) 18%, transparent);
+	color: color-mix(in srgb, var(--dispatch-state-waiting) 55%, var(--vscode-foreground));
+}
+
+/* a lane's card: beside the lane, over the ones below, moves nothing (卡片别贴边: 16 inside, one left edge) */
+.dt-pop {
+	position: absolute;
+	z-index: 20;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 14px 16px 16px;
+	border-radius: 14px;
+	background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 45%, transparent), 0 10px 28px -14px rgba(0, 0, 0, 0.35);
+	color: var(--vscode-foreground);
+	font-size: 12px;
+	line-height: 1.5;
+	animation: dt-pop-in 150ms var(--dispatch-ease-out, ease-out);
+}
+@keyframes dt-pop-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+}
+.dt-pop-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin-bottom: 2px;
+}
+.dt-pop-head > .dispatch-block {
+	flex: none;
+	margin-top: 2px;
+}
+.dt-pop-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+.dt-pop-close.dt-icon {
+	flex: none;
+	width: 22px;
+	height: 22px;
+	margin: -2px -6px 0 0;
+	border-radius: 6px;
+}
+.dt-pop-close .codicon {
+	font-size: 14px;
+}
+.dt-pop-line {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dt-pop-line.now {
+	color: var(--vscode-foreground);
+}
+.dt-pop-kv {
+	display: grid;
+	grid-template-columns: 64px minmax(0, 1fr);
+	gap: 2px 8px;
+	margin-top: 4px;
+}
+.dt-pop-k {
+	color: var(--vscode-descriptionForeground);
+}
+.dt-pop-v {
+	overflow-wrap: anywhere;
+}
+.dt-pop-sub {
+	margin: 8px 0 0;
+	font-weight: 600;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-pop-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.dt-pop-list li {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 22px;
+}
+.dt-pop-item {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.dt-pop-time,
+.dt-pop-more {
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+.dt-pop-foot {
+	display: flex;
+	gap: 8px;
+	margin-top: 10px;
+}
+.dt-btn.xs {
+	height: 24px;
+	padding: 0 10px;
+	font-size: 12px;
+}
+
+/* nothing in the last hours */
+.dt-empty {
+	padding: 20px var(--dt-pad);
+	border-radius: 16px;
+	border: 1px dashed var(--dt-dash);
+}
+.dt-empty-title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+.dt-empty-line {
+	margin: 4px 0 0;
+	max-width: 60ch;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* a narrow window: what each lane does moves into its card */
+@container dispatch-timeline (max-width: 720px) {
+	.dt-lanes {
+		--dt-label: 176px;
+		--dt-side: 0px;
+	}
+	.dispatch-timeline .dt-lanes .dt-row > .dt-side {
+		display: none;
+	}
+	.dt-legend-item:nth-child(n + 4) {
+		display: none;
+	}
+}
+
+/* the allowance band, on the same axis */
+.dt-band {
+	min-height: 64px;
+	margin-bottom: 4px;
+}
+.dt-band .dt-label {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0;
+}
+.dt-band-name {
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1.4;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	max-width: 100%;
+}
+.dt-band-sub {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-band .dt-track {
+	min-height: 64px;
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+	overflow: hidden;
+}
+.dt-band.unknown {
+	min-height: 32px;
+}
+.dt-band.unknown .dt-track {
+	display: flex;
+	align-items: center;
+	min-height: 32px;
+	padding: 0 12px;
+}
+.dt-band-svg {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+.dt-band-svg .used {
+	fill: none;
+	stroke: var(--vscode-foreground);
+	stroke-opacity: 0.75;
+	stroke-width: 1.5;
+}
+.dt-band-svg .ahead {
+	fill: none;
+	stroke: var(--vscode-descriptionForeground);
+	stroke-width: 1.2;
+	stroke-dasharray: 4 3;
+}
+.dt-band-svg .slow {
+	stroke: var(--vscode-descriptionForeground);
+	stroke-opacity: 0.6;
+	stroke-width: 1;
+	stroke-dasharray: 2 3;
+}
+.dt-band-svg .limit {
+	stroke: var(--vscode-descriptionForeground);
+	stroke-opacity: 0.25;
+	stroke-width: 1;
+}
+.dt-band-paused {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	pointer-events: auto;
+	background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent) 0 2px, transparent 2px 6px);
+}
+.dt-band-tag {
+	position: absolute;
+	right: 6px;
+	transform: translateY(-100%);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-band-refill {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 0;
+	border-left: 1px dashed color-mix(in srgb, var(--vscode-descriptionForeground) 70%, transparent);
+}
+.dt-band-mark {
+	position: absolute;
+	bottom: 3px;
+	padding-left: 4px;
+	border-left: 1px solid var(--vscode-descriptionForeground);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+.dt-band-words {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	white-space: normal;
+}
+/* beside the band: the reading, and its sentence in two lines at most (the whole of it is the tooltip) */
+.dt-band .dt-side .dt-band-words {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+}
+.dt-band .dt-side {
+	display: flex;
+	flex-direction: column;
+	white-space: normal;
+}
+.dt-band-used {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-band-used strong {
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+/* Combine: the parts going in, numbered, then the last steps */
+.dt-combine {
+	margin-top: 6px;
+}
+.dt-combine .dt-name {
+	font-weight: 500;
+}
+.dt-merge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--dispatch-state-done);
+	color: var(--vscode-editor-background);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1;
+}
+.dt-merge.todo {
+	width: 9px;
+	height: 9px;
+	box-sizing: border-box;
+	border: 1.5px solid color-mix(in srgb, var(--dispatch-state-done) 65%, transparent);
+	background: var(--vscode-editor-background);
+}
+.dt-final {
+	position: absolute;
+	top: 50%;
+	height: 10px;
+	border-radius: 3px;
+	transform: translateY(-50%);
+	border: 1px dashed color-mix(in srgb, var(--vscode-descriptionForeground) 50%, transparent);
+	box-sizing: border-box;
+}
+.dt-final.done {
+	border: none;
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 40%, transparent);
+}
+.dt-final.working {
+	border-style: solid;
+	border-color: var(--dispatch-state-working);
+}
+.dt-final.needs {
+	border-style: solid;
+	border-color: var(--dispatch-state-waiting);
+}
+
+/* the plan, before Start */
+.dt-plan {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 14px 16px;
+	border-radius: 16px;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 35%, transparent);
+}
+.dt-plan-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+.dt-k {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-k:not(:first-child) {
+	margin-left: 8px;
+}
+.dt-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 28px;
+	padding: 0 10px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+}
+.dt-chip .codicon {
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-seg {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+}
+.dt-seg button {
+	min-width: 30px;
+	height: 24px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	cursor: pointer;
+}
+.dt-seg button.on {
+	background: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+	font-weight: 500;
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+}
+.dt-plan-words {
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-strong {
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+.dt-plan-rule,
+.dt-note,
+.dt-ask {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-ask {
+	padding: 0 4px;
+	font-size: 13px;
+	color: var(--vscode-foreground);
+	opacity: 0.85;
+}
+.dt-note {
+	padding: 0 4px;
+}
+.dt-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.dt-foot-note {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* done: the summary card */
+.dt-summary {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 16px 20px;
+	border-radius: 16px;
+	background: color-mix(in srgb, var(--vscode-sideBar-background, var(--vscode-editor-background)) 82%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 30%, transparent);
+	animation: dispatch-turbo-fade 400ms var(--dispatch-ease-out, ease-out) 900ms both;
+}
+.dt-nums {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 32px;
+}
+.dt-num {
+	display: flex;
+	flex-direction: column;
+}
+.dt-big {
+	font-size: 17px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	font-variant-numeric: tabular-nums;
+}
+.dt-small {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dt-left {
+	margin: 0;
+	font-size: 13px;
+	color: var(--vscode-foreground);
+}
+@keyframes dispatch-turbo-fade {
+	from { opacity: 0; transform: translateY(4px); }
+	to { opacity: 1; transform: none; }
+}
+
+/* ---------------------------------------------------------------- the switch under the input box */
+
+.dispatch-turbo-switch {
+	display: inline-flex;
+	align-items: center;
+}
+.dispatch-turbo-note {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	width: min(var(--conv-w, 760px), 100%);
+	margin: 8px auto 0;
+	padding: 0 4px;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+	box-sizing: border-box;
+}
+.dispatch-turbo-note .codicon {
+	flex: none;
+	margin-top: 2px;
+	font-size: 12px;
+}
+/* the first time: the inverse note of DESIGN.md's tooltip, beside the switch, clear of the send button */
+.dispatch-turbo-note.first {
+	padding: 8px 12px;
+	border-radius: 14px;
+	background: var(--vscode-foreground);
+	color: var(--vscode-editor-background);
+	animation: dispatch-turbo-fade 200ms var(--dispatch-ease-out, ease-out) both;
+}
+
+/* seen once already: no motion again on the next read */
+.dispatch-turbo-mark.still .cell,
+.dispatch-turbo-mark.still .dot,
+.dispatch-timeline.dt-settled .dt-summary {
+	animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-turbo-mark .cell,
+	.dispatch-turbo-mark .dot,
+	.dt-summary,
+	.dispatch-turbo-note.first {
+		animation: none !important;
+	}
+}
+.monaco-workbench.reduce-motion .dispatch-turbo-mark .cell,
+.monaco-workbench.reduce-motion .dispatch-turbo-mark .dot,
+.monaco-workbench.reduce-motion .dt-summary {
+	animation: none !important;
+}
+
+/* the part the pointer is on, here or in the sessions list: both light up (linked hover) */
+.dt-lane.hl,
+.dt-fold.hl {
+	background: color-mix(in srgb, var(--vscode-list-hoverBackground) 80%, transparent);
+}
+/* opened from the sessions list: the lane says where it is, once */
+.dt-lane.flash {
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent);
+}
+/* a stop before the run went on with another agent: the same stripes; the hand-over is a mark on the band */
+.dt-band-paused.past {
+	opacity: 0.8;
+}
+.dt-band-mark.switch {
+	top: 3px;
+	bottom: auto;
+}
+.dt-back {
+	display: block;
+}
+
+/* the run's row under its folder in the sessions list (dispatchTurboSidebar.ts): a session row's place and size */
+.agent-sessions-workbench .sessions-list-control .monaco-tl-contents.session-section.dispatch-turbo-row,
+.agent-sessions-workbench .sessions-list-control .monaco-tl-contents.session-section.dispatch-turbo-part-row {
+	margin-left: 12px;
+	padding: 0 6px 0 12px;
+	border-radius: 8px;
+	font-weight: normal;
+	font-size: 13px;
+	color: var(--vscode-foreground);
+}
+.agent-sessions-workbench .sessions-list-control .monaco-tl-contents.session-section.dispatch-turbo-part-row {
+	padding-left: 34px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.agent-sessions-workbench .sessions-list-control .monaco-tl-contents.session-section.dispatch-turbo-part-row.hl,
+.agent-sessions-workbench .sessions-list-control .monaco-tl-contents.session-section.dispatch-turbo-row.hl {
+	background: color-mix(in srgb, var(--vscode-list-hoverBackground) 80%, transparent);
+	color: var(--vscode-foreground);
+}
+.dispatch-turbo-row .session-section-chevron,
+.dispatch-turbo-part-row .session-section-chevron {
+	display: none;
+}
+.dispatch-turbo-part-row .session-section-icon {
+	width: 12px;
+	margin-right: 8px;
+}
+.dispatch-turbo-bolt.working { color: var(--dispatch-state-working); }
+.dispatch-turbo-bolt.waiting { color: var(--dispatch-state-waiting); }
+.dispatch-turbo-bolt.stopped { color: var(--vscode-descriptionForeground); }
+.dispatch-turbo-bolt.done { color: var(--dispatch-state-done); }
+.dispatch-turbo-row .session-section-count {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	opacity: 1;
+	margin-right: 0;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+.dispatch-turbo-row-caret {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+}
+.dispatch-turbo-row-caret:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+.dispatch-turbo-row-caret .codicon {
+	font-size: 12px;
+	transition: transform 150ms var(--dispatch-ease-out, ease-out);
+}
+.monaco-list-row[aria-expanded="false"] .dispatch-turbo-row-caret .codicon {
+	transform: rotate(-90deg);
+}
+
+/* the bottom bar's allowance while a Turbo run uses it: a bolt before the agent, what the run still plans to use striped */
+.dispatch-status-bar .dispatch-status-turbo {
+	font-size: 12px;
+	margin-right: -2px;
+	color: var(--dispatch-state-working);
+}
+.dispatch-status-gauge .hatch {
+	fill: var(--vscode-foreground);
+	fill-opacity: 0.75;
+}
+.dispatch-status-gauge .plan {
+	stroke: none;
+}
+/* the account menu: the same bolt and stripes under the agent the run uses */
+.dispatch-turbo-usage {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+.dispatch-turbo-usage > .codicon {
+	font-size: 12px;
+	color: var(--dispatch-state-working);
+}
+.dispatch-turbo-usage-meter {
+	position: relative;
+	flex: none;
+	width: 72px;
+	height: 6px;
+	border-radius: 3px;
+	overflow: hidden;
+	background: color-mix(in srgb, var(--vscode-descriptionForeground) 22%, transparent);
+}
+.dispatch-turbo-usage-meter .used {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	background: var(--vscode-descriptionForeground);
+}
+.dispatch-turbo-usage-meter .plan {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	background: repeating-linear-gradient(135deg, var(--vscode-foreground) 0 2px, transparent 2px 4px);
+	opacity: 0.75;
+}
+.dispatch-turbo-usage-words {
+	flex: 1 1 auto;
+	min-width: 0;
+}

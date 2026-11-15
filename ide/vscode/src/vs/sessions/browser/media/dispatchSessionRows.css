@@ -1,0 +1,29 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: session rows sit 12px right of their group header (Chats, a folder), so they read
+ *  as its children. Only the contents move; the row's hover and selection background stays full width.
+ *--------------------------------------------------------------------------------------------*/
+
+.agent-sessions-workbench .sessions-list-control .monaco-tl-row > .monaco-tl-contents:is(.session-item, .session-chat-item, .session-placeholder) {
+	margin-left: 12px;
+	min-width: 0;
+}
+
+/* A group inside a project (its Worktrees): the head starts where the project's sessions start and its own sessions
+   one step further, so it reads as the project's child and not as one more project. Its chevron stays in sight, open
+   or closed, the way a folder's twistie does; aria-level is the tree depth. */
+.agent-sessions-workbench .sessions-list-control .monaco-list-row[aria-level="2"] > .monaco-tl-row > .monaco-tl-contents.session-section {
+	margin-left: 12px;
+	min-width: 0;
+}
+.agent-sessions-workbench .sessions-list-control .monaco-list-row[aria-level="3"] > .monaco-tl-row > .monaco-tl-contents:is(.session-item, .session-placeholder),
+.agent-sessions-workbench .sessions-list-control .monaco-list-row[aria-level="4"] > .monaco-tl-row > .monaco-tl-contents.session-chat-item {
+	margin-left: 24px;
+}
+.agent-sessions-workbench .sessions-list-control .monaco-list-row[aria-level="2"] .session-section > .session-section-chevron.collapsible {
+	display: flex;
+	align-items: center;
+	width: 16px;
+}
+.agent-sessions-workbench .sessions-list-control .monaco-list-row[aria-level="2"] .session-section > .session-section-chevron.collapsible + .session-section-icon {
+	display: none;
+}
