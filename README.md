@@ -1,86 +1,83 @@
+<p align="center"><b>中文</b> · <a href="README.en.md">English</a> · <a href="README.de.md">Deutsch</a></p>
+
 <p align="center">
   <img src="docs/assets/icon.png" width="88" alt="Dispatch">
 </p>
 
-<p align="center"><b>中文</b> · <a href="README.en.md">English</a> · <a href="README.de.md">Deutsch</a></p>
-
-<h1 align="center">Dispatch 调度台</h1>
+<h1 align="center">Dispatch</h1>
 
 <p align="center">
-你的 AI 编程 Agent 越来越多，它们的会话、任务和进展应该放进一个台子。<br>
-Claude Code · Codex · pi · ZCode · Gemini CLI · OpenCode · Hermes
+AI 在做什么，看得懂；它做的时候，你也学会。<br>
+给 Claude Code、Codex、OpenCode 用的 Mac 窗口
 </p>
 
 <p align="center">
-  <a href="https://dispatch.us-cloud.uk/"><b>官网</b></a> ·
-  <a href="https://dispatch.us-cloud.uk/manual/"><b>使用手册（可搜索，中/英/德）</b></a> ·
-  <a href="https://dispatch.us-cloud.uk/demo/#/home"><b>在线试用（示例数据）</b></a> ·
-  <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest"><b>下载 macOS 版</b></a>
+  <a href="https://dispatch.us-cloud.uk/?lang=zh"><b>官网</b></a> ·
+  <a href="https://github.com/SchaeferAnjon/dispatch/releases/latest"><b>下载 Mac 版</b></a> ·
+  <a href="https://github.com/SchaeferAnjon/dispatch/releases"><b>更新了什么</b></a>
 </p>
 
 <p align="center">
-  <img src="docs/assets/demo.gif" width="880" alt="Dispatch 演示：工作台 → 项目页 → 会话回复">
+  <a href="https://dispatch.us-cloud.uk/?lang=zh"><img src="docs/assets/window-learn.png" width="880" alt="Dispatch 的窗口：左栏是会话，中间是对话，右栏 Now 列出计划和正在做的那一步，右下角两张小卡说明新建的文件和新装的包"></a>
 </p>
 
-Dispatch 是一个**本地**的 Agent 工作台。它读取本机已有的 Agent 记录，按**项目**组织每一段会话、每个任务和每项成果：谁在等你、谁在跑、做到哪了，一眼看清；在电脑或手机上直接回复原会话，不另开模型进程，默认不向任何模型发送你的文档或对话。
+Dispatch 是一个 macOS 桌面 App。干活的还是你装的官方命令行 Agent，用你自己的订阅；Dispatch 给它一扇看得清的窗口，你在右栏看懂它每一步在做什么，哪一行不懂就地问为什么。
 
-支持 **macOS 14+**，网页界面适配手机宽度，开源（GPL-3.0）。
+**免费开源**（GPL-3.0）· Apple 芯片，macOS 14 及以上
 
-## 它长什么样
+## 一轮是怎么走的
 
-| 工作台：每个项目此刻的情况 | 项目页：一个项目的全部记录 |
-|:--|:--|
-| ![工作台](docs/assets/shot-home.png) | ![项目页](docs/assets/shot-project.png) |
-| 未读回复、等待确认的会话，正在跑的会话和它当前的动作，进行中的任务和验收进度，最新成果。 | 回顾（模型写的现状 + 14 天时间线）、会话、任务、成果、文档、**按项目分的知识库**。 |
-
-| 会话：看 Agent 的每一步，直接回复 | 分屏：几段会话并排看 |
-|:--|:--|
-| ![会话](docs/assets/shot-session.png) | ![分屏](docs/assets/shot-split.png) |
-| 思考、工具调用、改动的文件、图片都在一页，正在跑的实时跟读；排队发送、打断并发送、撤回并编辑。 | 2 格或 4 格各自独立；⧉ 把当前页分离成独立窗口；⌘+点击项目、会话、任务开新窗口。 |
-
-| 等我：只放需要你处理的 | 额度、规则与技能 |
-|:--|:--|
-| ![等我](docs/assets/shot-inbox.png) | ![额度](docs/assets/shot-quota.png) |
-| 未读回复、等待确认、只有你能做的事；正在跑的不算未读。 | 各 Agent 的用量与重置时间；一份共同规则同步到所有 Agent；技能池统一挂载到 Claude Code 与 Codex。 |
+1. **交代**：在输入框里用大白话说要什么。
+2. **看着**：右栏 Now 里是计划和正在做的那一步；Agent 读了哪个文件、改了什么、跑了什么命令，都记在对话里。
+3. **学到**：新建的文件、新装的包，右栏右下角各冒一张小卡，说是干什么的。
+4. **回看**：这一轮做完，点 Walk me through，改动一站一站看，每站一句话；哪里不懂，点 Ask about this 接着问。
 
 <p align="center">
-  <img src="docs/assets/shot-phone.png" width="260" alt="手机版"><br>
-  <sub>手机：出门也能看进展、回它一句；会话没在跑就一键在电脑上恢复，停在确认框就直接按键回答。</sub>
+  <img src="docs/assets/window-walk.png" width="880" alt="Walk me through：右栏打开 package.json，高亮这一站加的那一行，右下角的站卡说明它是干什么的">
 </p>
 
-## 特色一览
+## 都有什么
 
-- **不用改你的习惯**：Agent 还是在你的终端或编辑器里跑。Dispatch 只读它们已有的本地记录（Claude Code、Codex 的转录，包括 VS Code 扩展里开的会话；OpenCode、ZCode、Hermes 的数据库），不需要 API Key，也不需要先建任务板。
-- **项目是起点**：会话按目录归到项目，任务和成果挂在会话上；项目可收藏、归档、改显示名，两台电脑一致。
-- **回复回到原会话**：从工作台、等我或手机进入会话直接回，消息投递到那个终端里的原会话；正在跑就排队，排错了能撤回。
-- **任务由 Agent 自己记**：新会话开头自动收到身份、本项目任务和相关知识；Agent 用 `dispatch begin / log / done` 记任务、`dispatch wiki` 记坑，你不用在界面里逐个点完成。
-- **两台电脑**：任务板、规则、技能同步一份；项目连同未提交改动、Git 历史、正在跑的会话和历史记录一键迁到另一台，后台跑、带进度条。
-- **手机**：通过 Tailscale 访问，同一套界面；通知走 ntfy / Bark / 系统通知；需要时用 noVNC 看并操作电脑屏幕。
-- **一切可用命令行问到**：界面能看到的，`dispatch … --json` 都能拿到，Agent 也能用。
+- **一个 App，两种窗口**：Dispatch Agent 是对话加右栏，平时在这里交代和看；Dispatch IDE 是完整的编辑器（VS Code 1.139.1 的分支），要自己动手改代码时用它。
+- **右栏**：Now（计划和当前一步）、Changes（按轮看改动，每块改动点 Why 或 More 看为什么这么改）、Files、Docs（Agent 交出来的文档和网页）、Tasks。
+- **边做边学**：Settings › Learning 里选 Quiet 或 Talk。Talk 时新文件、新包主动冒小卡，一轮做完右下角出现 Walk me through；Quiet 时这些只在你点按钮或选中文字时出现。回复里的术语下面有点线，指上去看一句大白话解释。
+- **就地追问**：终端输出或文档里选一段字，点 Ask Question，右栏右下角开一段旁聊来问，主对话不受打扰。
+- **任务**：你的每条需求是一件任务，Agent 自己写计划、记进展，交付时附上提交号。左栏 Waiting for you 只放等你回答或决定的事。
+- **在另一台 Mac 上跑**：新会话页第一个选项默认是 This Mac，换成 Settings › Macs 里加的另一台，会话就跑在那台的文件、Agent 和登录上。
+- **命令行**：界面上看得到的，`dispatch … --json` 都问得到；Agent 也用这一套，同时装成它们的 MCP 工具。
 
-## 使用手册
+## 数据留在哪
 
-觉得功能多、不知道从哪开始：看 **[使用手册](https://dispatch.us-cloud.uk/manual/)**（可全文搜索，中文、English、Deutsch）。它按「五分钟上手 → 核心概念 → 每个视图 → 手机 → 两台电脑 → Agent 约定 → 命令行参考 → 排错」的顺序写，每一页开头都说明这一页解决什么。
+- 不用注册，不收集使用数据。代码和对话只经过你装的 Agent 发给它自己的服务，不经过我们。
+- Dispatch 不带自己的模型，也不拿你的订阅 token 直接调模型。要一句说明时（比如 Walk me through 里有几站没有现成的话），问的是这段会话自己的 Agent。
+- 任务板、偏好和知识库都存在这台 Mac 上。
+- 账号和用量页读取 Claude Code、Codex 存在钥匙串和本机文件里的登录，只用来向它们官方查用量、切换账号；token 不打印，也不写进日志。
 
 ## 安装
 
 ### 从 Release 安装
 
-1. 到 [Releases](https://github.com/SchaeferAnjon/dispatch/releases) 下载两个包（目前只发布 Apple 芯片版，Intel 机器请按下面「从源码构建」自己打包）：
-   - `Dispatch-IDE-<版本>-macos-apple-silicon.dmg`：应用本身（同名 .zip 也行）；
-   - `dispatch-cli-<版本>.tar.gz`：终端命令 `dispatch`、chatd 和手机网页版。
+1. 到 [Releases](https://github.com/SchaeferAnjon/dispatch/releases/latest) 下载 `Dispatch-IDE-<版本>-macos-apple-silicon.dmg`（同名 .zip 也行）。目前只发布 Apple 芯片版，Intel 机器请按下面「从源码构建」自己打包。
 2. 双击打开 dmg，把 **Dispatch IDE.app** 拖进「应用程序」。包有 Developer ID 签名，但没有经过 Apple 公证，第一次双击会被 macOS 拦下，点「完成」，再放行一次（两种都行）：
    - 系统设置 → 隐私与安全性 → 往下拉到「安全性」，在说 Dispatch IDE 被阻止的那一行点「仍要打开」；弹出的确认框里再点一次「仍要打开」，然后输入登录密码确认；
    - 或者终端里 `xattr -dr com.apple.quarantine "/Applications/Dispatch IDE.app"`，再双击。
 
    之后就和别的 App 一样双击打开。
-3. 命令行：`mkdir -p ~/.dispatch-cli && tar xzf dispatch-cli-<版本>.tar.gz -C ~/.dispatch-cli && ln -sf ~/.dispatch-cli/dispatch/cli/dispatch.py ~/.local/bin/dispatch`，再 `dispatch init` 走首次设置（见下一节），`dispatch chatd install` 让手机回复和派活不依赖任何窗口。
+3. 打开后直接进入**首次设置**（见下面「首次设置」一节）。
 
-需要 [Homebrew](https://brew.sh)；首次设置会用它装 Dolt、Beads，缺 Python（3.9 或更新）或 git 时也一并装。
+不需要 Homebrew，也不用另装任务板：bd 和 Dolt 打在 App 里。新 Mac 还没有 Apple 的命令行工具（Dispatch 要用里面的 git 和 python3）时，首次设置第一页先装它们，用的是 macOS 自己的安装器。
+
+终端命令 `dispatch` 也在 App 里。首次设置最后点 **Set up Dispatch** 时，它被链接到 `~/.local/bin/dispatch`，这个目录也加进 shell 的 PATH，新开的终端里就能用。跳过了首次设置的话，手动链接：
+
+```sh
+mkdir -p ~/.local/bin && ln -sf "/Applications/Dispatch IDE.app/Contents/Resources/app/dispatch-cli/dispatch/cli/dispatch.py" ~/.local/bin/dispatch
+```
 
 ### 更新
 
-- 重新下载新版本的两个包覆盖即可；从源码装的用 `dispatch-update`（`app/scripts/install.sh`）。
+- **App 自己更新**：Dispatch 定期查有没有新版本，有就从本仓库的 Releases 在后台下好；下好后左下角底栏出现 **Restart to update**，点 Restart 就换上新版，各段会话接着原来的地方。点 Later 的话，下次打开 Dispatch 时装上。
+- **手动**：到 [Releases](https://github.com/SchaeferAnjon/dispatch/releases/latest) 重新下载 dmg，把新的 **Dispatch IDE.app** 拖进「应用程序」替换旧的。
+- 从源码装的：拉下新代码，再跑一次 `bash app/scripts/install.sh --local`。
 
 ### 从源码构建（开发者）
 
@@ -96,154 +93,40 @@ Dispatch IDE 的源码就在本仓库的 `ide/vscode`（VS Code 1.139.1 加上 D
 brew install fnm
 fnm install "$(cat ide/vscode/.nvmrc)" && fnm default "$(cat ide/vscode/.nvmrc)" && eval "$(fnm env)"
 (cd app && npm ci)
-bash app/scripts/install.sh --local   # 在本机构建 Dispatch IDE 和手机网页版，装到 /Applications/Dispatch IDE.app
+bash app/scripts/install.sh --local   # 在本机构建 Dispatch IDE，装到 /Applications/Dispatch IDE.app
 ```
 
 第一次构建要装 VS Code 的依赖、整个编译一遍，十几分钟起。自己打的包是临时签名（ad-hoc），只在本机用。
 
-`dispatch` 命令直接用本仓库的 `app/cli/dispatch.py`（`ln -sf "$PWD/app/cli/dispatch.py" ~/.local/bin/dispatch`）。手机回复和派活靠常驻的 chatd：`dispatch chatd install`。
+`dispatch` 命令直接用本仓库的 `app/cli/dispatch.py`（`ln -sf "$PWD/app/cli/dispatch.py" ~/.local/bin/dispatch`）。后台常驻的 chatd（任务板服务、Keep awake、多台 Mac）用 `dispatch chatd install` 装上。
 
-任务板功能额外依赖 [Beads](https://github.com/steveyegge/beads) 和 Dolt；默认任务目录为 `~/tasks/.beads`，可用 `BEADS_DIR` 指定。会话、附件和指令检查不需要模型 API Key，也不需要先建立任务板。
+任务板是 [Beads](https://github.com/steveyegge/beads)（bd）加 Dolt，构建时一起打进 App；默认目录是 `~/tasks/.beads`，可用 `BEADS_DIR` 指定。
 
-## 首次设置（八步，后三步可选）
+## 首次设置
 
-首次打开会走一遍。每一步都能重跑，也可以右上角「跳过，以后不再提示」，之后从 设置 → 首次设置 再打开。按顺序：
+第一次打开是一个设置向导。一页页点过去时什么都不改，最后点 **Set up Dispatch** 才按顺序做；做过的每一项都列在 Settings › Abilities › What Dispatch changed on this Mac，每条都能 Undo。
 
-1. **装依赖**：检测并安装 Dolt、Beads，缺哪个点哪个。
-2. **终端命令**：把 `dispatch` 链接到 `~/.local/bin/dispatch`，之后终端里直接可用。也可以手动：`ln -sf /Applications/Dispatch.app/Contents/Resources/cli/dispatch.py ~/.local/bin/dispatch`。
-3. **任务板**：第一台机器选「只有这一台，或这是第一台」新建任务板，这台成为枢纽；已有一台装了 Dispatch 就选「接入它的任务板」并填那台的 `用户名@地址`（见下一节）。
-4. **Agent**：勾选这台电脑上要用的 Agent（Claude Code / Codex / pi / ZCode / Gemini CLI / OpenCode / Hermes）。
-5. **规则与技能**：准备共同规则 `~/.agents/rules/GLOBAL.md` 并同步到各 Agent，同时把技能池挂到 Claude Code 与 Codex 下面（其它 Agent 暂不支持技能挂载）。
-6. **模型与总结**（可选）：Dispatch 自己不带模型。在这里选「先不用」、用 Claude Code 订阅，或填某家的 API Key，并勾选要用它做什么（会话总结、项目现状、记忆总结、洞察报告、语义搜索）。在你选之前，什么都不会发给任何模型。
-7. **手机与通知**（可选）：一键开启手机访问，出现二维码后用手机扫；推送到手机的通知（Bark / ntfy）在 设置 → 手机通知 里配。
-8. **审查优化**（可选）：派一个 Agent 审查规则与技能并给出建议。
+- **Agents**：找到这台 Mac 上的 Claude Code、Codex、OpenCode。没装的点 Install，没登录的点 Sign in。Claude Code 和 OpenCode 用它们自己的安装脚本；Codex 用 Node.js 装，没有 Node.js 就用 Homebrew，两样都没有时会让你先装 Node.js。
+- **Projects**：把 Agent 干过活的文件夹收成项目。没有 git 的会 `git init`，别的不动。
+- **Preferences**：从 CLAUDE.md、AGENTS.md 和 Agent 的记忆里挑出你的偏好，勾选导入。
+- **Agent permissions**：Agent 改文件、跑命令之前，什么时候先问你。
+- **Appearance**、**Notifications**：外观和通知。
+- **Connect Dispatch to your agents**：在每个 Agent 的规则文件里加一段 Dispatch 的说明、几个钩子和任务板工具，先列给你看；文件里你自己写的内容不动。
 
-前五步都打勾后才能「完成，进入工作台」；后三步随时可以回到 设置 → 首次设置 再做。
+新 Mac 上向导前面多一页，先装 Apple 的命令行工具；没有可带过来的东西，Projects 和 Preferences 两页会跳过。也可以 Skip setup，以后点标题栏的 Set up 再来。
 
-## 两台电脑
+## 参与开发
 
-第一台完成首次设置后就是**枢纽**：任务板、规则、技能都在它上面。
-
-第二台：
-
-1. 在枢纽上打开 系统设置 → 通用 → 共享 → **远程登录**（接入要 SSH）。
-2. 第二台装好 Dispatch，首次设置第 3 步选「接入」，填枢纽的 `用户名@地址`。同一 Wi‑Fi 用局域网 IP，出门用 [Tailscale](https://tailscale.com) 的地址；在 设置 → 机器 里也能点「接入另一台电脑」。
-3. 接入时可以把枢纽的登录密码交给 Dispatch，它会放好公钥，之后两台免密互访；不想给密码，也可以让本机 Agent 在终端里做。
-
-接入后两边每 2 分钟双向同步任务板（Dolt 远程 API），任务、知识库、规则、技能是同一份；侧栏可按机器筛选。
-
-### 把项目或会话迁到另一台继续
-
-项目页「迁移到 <机器名>」：先预检 Git 与文件差异，确认后把目录（含未提交改动）、Git 历史、正在跑的会话和全部历史记录搬过去，那边直接续上；迁移在后台跑，项目上有进度条。单段会话：会话右键 → 「迁移到 <机器名> 接着做」，或：
-
-```sh
-dispatch project <项目名> --move-to <机器 id 或名字>
-dispatch move <会话 id 前缀> --to <机器 id 或名字> [--prompt "额外交代"] [--no-files]
-```
-
-支持 Claude Code 和 Codex；pi 的会话存在自己的库里，暂不迁移。
-
-## 手机
-
-手机需能访问运行 Dispatch 的电脑（推荐 Tailscale），不能把服务暴露到公网。
-
-- 电脑上在 设置 → 手机访问 点「开启手机访问」（命令行：`dispatch serve install`），出现二维码后用手机扫；`dispatch serve url` / `dispatch serve qr` 也能拿到配对链接和二维码。没有 Tailscale 时默认只监听本机，要勾选「允许局域网」才会让同一 Wi‑Fi 的设备访问。
-- 设置 → 手机访问：内嵌同一个二维码（链接里带登录令牌，扫一次就记住），也可以复制链接发到手机；浏览器里可「添加到主屏幕」，界面按手机宽度排版。
-- **通知**：报告生成完、讨论结束、会话变成「等你」时推一条。渠道在「环境」页配 `NTFY_URL`（ntfy 主题地址）或 `BARK_KEY`（Bark 的 key），两个都没配就发这台 Mac 的系统通知；命令行 `dispatch notify "标题" "正文"`。
-- **看屏幕**：设置 → 屏幕访问 点一次「配置」（等价命令 `dispatch screen setup`），它装好 noVNC 与常驻服务并开通 Tailscale HTTPS；剩下只需在系统设置 → 通用 → 共享 打开「屏幕共享」。之后手机浏览器里用这台 Mac 的用户名和登录密码看并操作屏幕（noVNC，走 Tailscale HTTPS）。
-
-网页版与桌面共用同一套 CLI；更新在 Mac 上的 Dispatch.app 里做。服务运行方式与限制见 [app/README.md](app/README.md)。
-
-## 使用约定
-
-- **右键**：任务、会话、项目、技能、文件、机器都有各自的操作菜单；空白处右键是本页的操作。不方便右键时点 `⋯`（任务、会话）或页头菜单。
-- **快捷键**：`⌘K` 搜项目 / 会话 / 任务，`⌘N` 新建会话，`⌘T` 新任务，`⌘R` 刷新。
-- **任务由 Agent 记**：每个新会话开头会收到 `dispatch prime` 注入的身份、本项目任务和相关知识；它用 `dispatch begin / log / done` 记任务，用 `dispatch wiki` 记坑。你不需要在界面里逐个点完成。
-- **会话总结**：默认关闭。在首次设置的「模型与总结」里选了模型（Claude Code 订阅或某家 API Key）并勾上「会话总结」之后，每隔几分钟总结一两段会话（新的优先），历史会话逐步补齐；也可以在会话上右键「用模型总结这段会话」/「用模型重新总结」。模型取 `SUMMARY_MODEL` 指定的 `provider:model`，没配就用 `dispatch env` 里已有的 API Key（智谱、DeepSeek、Kimi、MiniMax、OpenAI），或用 Claude Code 订阅（`SUMMARY_MODEL=claude:haiku`）。命令行：`dispatch session-summary run <key>` / `auto` / `providers`。
-
-### 命令行
-
-在终端使用 CLI 需先完成首次设置第 2 步，或手动把 `app/cli/dispatch.py` 链接到 `~/.local/bin/dispatch`。所有界面能看到的，Agent 都能用 `--json` 问到。
-
-```sh
-dispatch rules inspect --json
-dispatch rules optimize --path ~/.codex/AGENTS.md --model gpt-6-astra --json
-dispatch facts show -P harbor-api      # 常用信息：服务器/域名/数据库/API 名字，按项目分节，prime 自动注入
-dispatch facts sections --json
-dispatch task trash TASK_ID --json
-dispatch task restore TASK_ID --json
-dispatch project my-app --star          # 收藏；--archive 归档；dispatch projects 列出
-dispatch here                           # 当前目录/项目此刻：现状一段话、最近 14 天时间线、没做完的任务、本目录活会话「可关/别关」
-dispatch lineage [项目]                  # 脉络：项目→任务→会话（发起/在做/提到）→进展与提交，脉络页画的就是它
-dispatch profile show|add|upcoming|done # 关于我：Agent 自动维护的用户档案（现状 / 将来会发生的事 / 已发生）；inventory --refresh 实测各机器
-dispatch memories list|show|archive|summary   # 各 Agent 的长期记忆：按项目分组、归档过期的、让模型写总览
-dispatch summarize providers|set-key|uses    # 总结用的模型、就地存 Key（stdin，不回显）、各用途开关与上次用量
-dispatch prime                          # 会话启动注入：身份、本项目任务、用户在任务上的未回复留言、知识库、常用信息、额度
-```
-
-## 已实现
-
-- **工作台**：按项目排列，每张卡片是该项目此刻的情况：等你回的会话（未读回复、等待确认）、在跑的会话及其当前动作、进行中的任务和验收进度、最新成果。三天内没有动静的项目折叠为一行。顶部是需要你处理的计数和各 Agent 的额度。
-- **收藏与归档**：项目可收藏（置顶）或归档（从工作台和项目列表隐藏，随时找回）。状态存在共享任务板的一条记忆里，两台机器一致；CLI 为 `dispatch project <名> --star|--archive`。
-- **项目页**：一个项目的完整记录，会话、任务、成果、待归属任务、目录各一页。会话显示明确关联的任务；任务可指定发起和参与会话；成果可汇总多个任务与会话；目录页可打开 Finder 或在该目录新建会话。
-- **项目回顾**：项目页的「回顾」页或任意目录里 `dispatch here`，一眼看到现状一段话（用设置里选的总结模型写）、最近 14 天时间线（任务进展与完成、git 提交、会话总结按天分组）、未完成任务及验收进度、本目录每个活会话在做什么和「可关/别关」。任务在 prime、会话列表里都以标题显示，task-id 只作后缀。
-- **统一的项目规则**：会话归属按一条规则解析：手动关联 > 家目录（不归项目） > `~/Projects/<名>/…` > 路径里出现任务板已知的项目名 > 目录名。侧栏计数、工作台、项目页、搜索用同一份列表。
-- **明确归属**：任务与会话的关系只认 `session:` / `session-origin:` 标签。对话里提到任务 ID、同一个 Agent、同一个目录都不算归属，只作为折叠的参考信息。
-- **OpenCode 与 ZCode 会话**：两者都把对话存在各自的 SQLite（`~/.local/share/opencode/opencode.db`、`~/.zcode/cli/db/db.sqlite`）里，Dispatch 直接读它们：会话列表、工作台、等我、Agent 状态里都能看到，进程在跑且最近有写入就算活会话，会话页能看完整对话；OpenCode 的会话可用 `opencode --session <id>` 续上。
-- **Hermes 会话**：Hermes Agent（Telegram / 微信 / 定时任务背后的助手）把每段会话存在 `~/.hermes/state.db`，Dispatch 直接读它：会话列表、工作台、等我、统计、Agent 页里都当独立 Agent `hermes`；来源（终端 / 聊天 / 定时）显示在 Agent 页，cron 跑出来的会话自动算定时会话；`hermes chat --resume <id>` 续上。
-- **脉络页**：节点 + 连线的图：任务 → 发起它的会话（粗线主线；一个会话顺带做的其他任务画细虚线）→ 进展 / 完成 / 提交按时间从左到右。节点名就是任务标题、会话标题、进展原文首句，不缩写；悬停或选中一个节点整条线高亮，右栏看详情。「清单」页签是同一份数据的树。
-- **成果追溯**：成果有独立内容和入口，可以关联多个任务与会话；历史完成说明单独保留，不要求用户逐个点击审核。成果与回收站任务不进入脉络图。
-- **等我**：红点和系统通知只算未读回复和等待确认；被卡住的任务、Agent 互审、定时会话都不计入。正在跑的会话不算未读。
-- **全局搜索**：⌘K 搜项目、会话、任务；⌘N 新建会话。
-- **会话与附件**：持续读取本机记录；图片内联显示，集中预览图片、PDF、HTML、音视频和文本。续接会话的多个记录文件按会话合并。
-- **原会话回复**：从工作台或“等我”进入会话后直接回复，桌面与手机网页共用入口。消息交给那台电脑上 Dispatch 的应用内对话：会话已在 Dispatch 里就直接发，不在就接着原对话在 Dispatch 里重开再发（Claude Code 和 Codex）。草稿按会话保留，重复请求只发送一次。
-- **任务操作**：看板和表格支持右键或 `⋯` 菜单。任务可移到回收站并恢复原状态，保留描述、评论和依赖。
-- **统计与额度**：同一入口切换额度概览和使用统计，显示已使用比例、重置时间、数据来源和更新时间。缺失或过期的数据会标明，不推算成零。
-- **全局指令**：检测 Codex、Claude Code、pi、ZCode、Gemini、OpenCode 的惯用文档位置与 Markdown 引用，识别 Codex override 优先级和软链接。
-- **优化与一致性**：根据检测到或手填的模型选择 Codex、Claude 或通用检查规则。检查重复、候选冲突、循环或失效引用、文档长度、个人路径和托管副本版本。自动优化仅合并明确的相邻重复条目；语义修改通过建议、编辑和差异预览完成。
-- **可恢复修改**：保存前重检所有文档版本；共同源文件的现有托管副本一起预览、保存；保留恢复版本。文件被其他程序修改时拒绝覆盖。
-
-「规则与资料」包含两个区域：
-
-- **Agent 规则**：选择全局或已检测到的项目，将项目 AGENTS.md / CLAUDE.md 与继承的全局规则一起检查、编辑、预览和恢复。共同规则同步也在这里。
-- **常用资料**：密钥与 API、服务器与数据库、Obsidian 资料库。服务器资料仍编辑 `~/.agents/rules/FACTS.md`：`## 通用` 每个会话注入，`## 项目名` 只注入该项目；密钥值只进 `dispatch env`。Obsidian 仅检测资料库元数据并提供当前设备的打开入口，不移动或上传笔记。
-
-`optimize` 只返回建议和差异；不会立即修改文档。界面提供编辑、检查、应用和恢复步骤。模型名只影响本地检查配置，**不会调用该模型**；“复制深度审查指令”可将所选上下文交给用户自己的 Agent。
-
-## 数据与边界
-
-Dispatch 读取用户已有的本地 Agent 记录，默认不向任何模型发送文档或聊天内容。额度页会读取 Claude Code 保存在钥匙串里的登录信息，只用来向 Anthropic 查询你的官方用量，只读、不保存、不外传；第一次读取时 macOS 会弹一次钥匙串确认。当前不接入 ChatGPT 网页会话，也不能取得原 Agent 应用的“已读”回执；仅后续用户消息能清除此前回复的未读。工作区 Git 差异可能包含其他会话的改动。
-
-主动点击发送时，回复只投递给所选电脑上的原会话，那台电脑要开着 Dispatch。会话还开在你自己的终端里时不会发，先在终端里退出它。发送回执存在本机 `~/tasks/.dispatch/reply-receipts.sqlite`，不跨机复制。
-
-附件只能从当前会话明确附加或链接的文件读取，单个文件上限 20 MB。HTML 在隔离 iframe 中预览，外部网络被禁用；同目录内的图片可嵌入。依赖外部库的复杂产物需要在原项目运行。文件已被清理时会显示原因。
-
-“潜在冲突”是静态检查结果，不是完整语义证明。修改规则不会立即重载已有 Agent 会话，应按相应 Agent 的加载机制重新开始会话。
-
-## 验证与贡献
+- 代码地图在 [ARCHITECTURE.md](ARCHITECTURE.md)：一条请求从界面走到 CLI 的路线，想改什么该看哪个文件。
+- Dispatch IDE 是 `ide/vscode` 里的 VS Code 1.139.1 源码。新功能放新文件，VS Code 原文件只加标了 `// Dispatch IDE:` 的挂钩，规矩见 [ide/README.md](ide/README.md)。
+- 测试：
 
 ```sh
 cd app
-npm test
-npm run test:py
-npm run build
+npm test          # vitest
+npm run test:py   # 命令行 dispatch（Python）
 ```
 
-业务逻辑在 `app/cli/`，Dispatch IDE 的 dispatch-bridge 扩展和 HTTP（手机网页版）共用 CLI，React 只给手机网页版和扩展里的 webview 呈现。新增传输能力须同时验证 Dispatch IDE 与网页。请使用临时目录测试文档写入；不要把真实会话、配置、密钥或截图加入仓库。
+- 测试只用临时目录，不碰真实的任务板和主目录；不要把真实会话、配置、密钥或截图加进仓库。
 
-项目代码采用 [GPL-3.0-or-later](LICENSE)。第三方代码保留各自许可证，清单在 [NOTICE](NOTICE)；Python、Beads、Dolt、Agent 客户端及可选远程桌面工具作为独立依赖使用。
-
-## 项目关系与 Agent 交付
-
-关系沿用共享任务板保存，两台机器同步后使用同一份数据：
-
-- `project:<name>`：所属项目。
-- `session-origin:<id>`：发起会话；`dispatch begin` 在会话身份可用时自动记录。
-- `session:<id>`：明确关联的发起或参与会话，可有多个。
-- `dispatch:outcome`：独立成果记录，不进入普通任务计数。
-- `outcome-task:<task-id>`：成果来源任务，可有多个；成果上的 `session:` 标签记录来源会话。
-- `dispatch-projects`（bd memory）：项目的收藏与归档状态。以 `dispatch-` 开头的记忆是 Dispatch 自己的记录，不出现在知识库、`dispatch wiki` 和 `dispatch prime` 里。
-
-Agent 可以通过现有 `bd create` 创建带 `dispatch:outcome`、项目和来源标签的记录，以描述保存交付说明及文件链接，再 `bd close` 完成登记。用户也可在项目的“成果”页登记或编辑。不要根据提及次数批量写入归属，也不要自动把所有已完成任务复制成成果。
-
-工作台合并实时活动和历史会话索引。索引仍遵循现有读取上限（本机与远端列表的限制分别为 500 和 200）；历史条目不显示未读或推断运行状态。
+项目代码采用 [GPL-3.0-or-later](LICENSE)。第三方代码保留各自许可证，清单在 [NOTICE](NOTICE)。

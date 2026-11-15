@@ -202,8 +202,10 @@ svg.drop { overflow: visible; display: block; }
 .ed { position: absolute; inset: 41px 0 0 0; background: var(--bg); font: 12.5px/20px var(--mono); padding: 8px 0; opacity: 0; transition: opacity .2s var(--ease-out); pointer-events: none; }
 .ed.on { opacity: 1; }
 .ed .crumb { font: 12px var(--sans); color: var(--text-2); padding: 0 16px 8px; display: flex; gap: 6px; align-items: center; }
-.ed .ln { display: flex; padding-right: 12px; white-space: pre; transition: background-color .2s var(--ease-out); }
-.ed .ln i { font-style: normal; width: 40px; text-align: right; padding-right: 14px; color: color-mix(in srgb, var(--text-2) 70%, transparent); flex: none; }
+/* a block line, not flex: a flex line drops the whitespace-only text between the code's spans (its indents and spaces) */
+.ed .ln { display: block; padding-right: 12px; white-space: pre; transition: background-color .2s var(--ease-out); }
+.ed .ln i { display: inline-block; font-style: normal; width: 40px; text-align: right; padding-right: 14px; color: color-mix(in srgb, var(--text-2) 70%, transparent); }
+.win.narrow .ed { font-size: 11px; line-height: 18px; }
 .ed .ln.hi { background: color-mix(in srgb, var(--text) 7%, transparent); box-shadow: inset 2px 0 0 var(--text-2); }
 .ed .s { color: var(--code-str); } .ed .k { color: var(--code-key); } .ed .c { color: var(--code-com); }
 
@@ -212,6 +214,8 @@ svg.drop { overflow: visible; display: block; }
 .card { width: 100%; background: var(--bg); border: 1px solid var(--hair-2); border-radius: 12px; box-shadow: var(--pop); opacity: 0; transform: translateY(8px); transition: opacity .2s var(--ease-out), transform .2s var(--ease-out); }
 :root[data-theme="dark"] .card { background: var(--bg-2); }
 .card.on { opacity: 1; transform: none; }
+/* a card not showing takes no room, so the ones showing sit in the corner (it still fades in and out where it is) */
+.corner .card:not(.on) { position: absolute; right: 0; bottom: 0; }
 .talk { padding: 10px 12px 10px 14px; }
 .talk .r1 { display: flex; align-items: center; gap: 8px; height: 20px; }
 .talk .r1 .ico { width: 14px; height: 14px; color: var(--text-2); }
@@ -542,7 +546,7 @@ const TOOLS = [
 ];
 const RIGHT_NOW = ["reading src/settings.tsx", "writing src/theme.ts", "adding the switch to Settings", "running npm test"];
 const TALK = [
-  { ic: "newfile", n: "theme.ts", tag: "New file", p: "Keeps the light and dark colours in one place." },
+  { ic: "newfile", n: "theme.ts", tag: "New file", p: "Keeps both colour sets in one place." },
   { ic: "package", n: "use-local-storage", tag: "Installed", p: "Remembers what you pick after the app closes." },
 ];
 const STOPS = [
@@ -551,8 +555,8 @@ const STOPS = [
   { ic: "file", f: "package.json", m: "1 line added · line 9", p: "use-local-storage, the small library that remembers the pick.", file: "pkg", hi: [9, 9] },
 ];
 const CODE = {
-  theme: ['<span class="c">// Keeps the light and dark colours in one place.</span>', '<span class="k">export const</span> themes = {', '  light: { page: <span class="s">\'#ffffff\'</span>, text: <span class="s">\'#1c1917\'</span> },', '  dark:  { page: <span class="s">\'#1c1917\'</span>, text: <span class="s">\'#fafaf9\'</span> },', '};', '', '<span class="k">export function</span> applyTheme(name) {', '  document.body.dataset.theme = name;', '}'],
-  settings: ['<span class="k">import</span> { applyTheme } <span class="k">from</span> <span class="s">\'./theme\'</span>;', '<span class="k">import</span> useLocalStorage <span class="k">from</span> <span class="s">\'use-local-storage\'</span>;', '', '<span class="k">export function</span> Settings() {', '  <span class="k">const</span> [dark, setDark] = useLocalStorage(<span class="s">\'dark\'</span>, <span class="k">false</span>);', '  <span class="k">const</span> flip = (on) => {', '    setDark(on);', '    applyTheme(on ? <span class="s">\'dark\'</span> : <span class="s">\'light\'</span>);', '  };', '  <span class="k">return</span> (', '    &lt;Page title=<span class="s">"Settings"</span>&gt;', '      &lt;Row label=<span class="s">"Dark mode"</span>&gt;', '        &lt;Switch checked={dark} onChange={flip} /&gt;', '      &lt;/Row&gt;', '    &lt;/Page&gt;', '  );', '}'],
+  theme: ['<span class="c">// Keeps both colour sets in one place.</span>', '<span class="k">export const</span> themes = {', '  light: { bg: <span class="s">\'#ffffff\'</span>, fg: <span class="s">\'#1c1917\'</span> },', '  dark:  { bg: <span class="s">\'#1c1917\'</span>, fg: <span class="s">\'#fafaf9\'</span> },', '};', '', '<span class="k">export function</span> applyTheme(name) {', '  document.body.dataset.theme = name;', '}'],
+  settings: ['<span class="k">import</span> { applyTheme } <span class="k">from</span> <span class="s">\'./theme\'</span>;', '<span class="k">import</span> useStored <span class="k">from</span> <span class="s">\'use-local-storage\'</span>;', '', '<span class="k">export function</span> Settings() {', '  <span class="k">const</span> [dark, setDark] = useStored(<span class="s">\'dark\'</span>);', '  <span class="k">const</span> flip = (on) => {', '    setDark(on);', '    applyTheme(on ? <span class="s">\'dark\'</span> : <span class="s">\'light\'</span>);', '  };', '  <span class="k">return</span> (', '    &lt;Page title=<span class="s">"Settings"</span>&gt;', '      &lt;Row label=<span class="s">"Dark mode"</span>&gt;', '        &lt;Switch on={dark} onChange={flip} /&gt;', '      &lt;/Row&gt;', '    &lt;/Page&gt;', '  );', '}'],
   pkg: ['{', '  <span class="s">"name"</span>: <span class="s">"reading-app"</span>,', '  <span class="s">"version"</span>: <span class="s">"0.3.0"</span>,', '  <span class="s">"scripts"</span>: {', '    <span class="s">"test"</span>: <span class="s">"vitest run"</span>', '  },', '  <span class="s">"dependencies"</span>: {', '    <span class="s">"react"</span>: <span class="s">"^19.1.0"</span>,', '    <span class="s">"use-local-storage"</span>: <span class="s">"^3.0.0"</span>', '  }', '}'],
 };
 const FILE_NAME = { theme: "theme.ts", settings: "settings.tsx", pkg: "package.json" };
@@ -562,7 +566,7 @@ function initialState() {
 }
 
 function makeWindow(box, { narrow = false } = {}) {
-  const W = narrow ? 380 : 1180, H = narrow ? 760 : 700;
+  const W = narrow ? 380 : 1180, H = narrow ? 880 : 700;
   box.innerHTML = `<div class="win${narrow ? " narrow" : ""}" style="width:${W}px;height:${H}px" data-part="window">
     <div class="tb">
       ${narrow ? "" : `<span class="lights"><i></i><i></i><i></i></span>${ic("sidebar")}`}
@@ -589,7 +593,7 @@ function makeWindow(box, { narrow = false } = {}) {
     <div class="bar">${ic("gear")}<span>Settings</span><span class="sp"></span><span class="q">${ic("cup")}</span><span class="q">${ic("spark")}<span class="cells">${"<i class=on></i>".repeat(7)}${"<i></i>".repeat(3)}</span></span></div>
   </div>`;
   const win = box.querySelector(".win");
-  if (narrow) { const b = win.querySelector(".body"); b.style.gridTemplateColumns = "1fr"; b.style.gridTemplateRows = "300px 1fr"; b.style.padding = "0 6px 6px"; win.querySelector(".corner").style.width = "calc(100% - 24px)"; win.querySelector(".corner").style.right = "12px"; win.querySelector(".corner").style.bottom = "12px"; win.querySelector(".comp").style.margin = "0 12px 12px"; win.querySelector(".flow").style.padding = "16px 14px 8px"; }
+  if (narrow) { const b = win.querySelector(".body"); b.style.gridTemplateColumns = "1fr"; b.style.gridTemplateRows = "280px 1fr"; b.style.padding = "0 6px 6px"; win.querySelector(".corner").style.width = "calc(100% - 24px)"; win.querySelector(".corner").style.right = "12px"; win.querySelector(".corner").style.bottom = "12px"; win.querySelector(".comp").style.margin = "0 12px 12px"; win.querySelector(".flow").style.padding = "16px 14px 8px"; }
   const $ = (s) => win.querySelector(s);
   let S = initialState();
   const fit = () => { const s = box.clientWidth / W; win.style.transform = `scale(${s})`; box.style.height = H * s + "px"; };
