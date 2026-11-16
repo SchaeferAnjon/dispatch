@@ -309,3 +309,34 @@ export function agoText(at: number, now: number): string {
 	const d = Math.floor(h / 24);
 	return d === 1 ? 'yesterday' : `${d} days ago`;
 }
+
+// ---- Keys: a form asked for from elsewhere ------------------------------------------------------------------
+
+/** A key another part of the window wants saved (Point and talk's card: SONIOX_API_KEY), handed in as
+ *  `dispatch.settings.open 'keys' { add, note }`: the Keys page opens its form with the name and the purpose filled
+ *  in, or the key's Edit when there is one by that name (task-5wvgj). */
+export interface IKeyFormRequest {
+	readonly name: string;
+	readonly note: string;
+}
+
+const KEY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** The command's argument as a request, or undefined when it is not one (a row to flash is a plain string). */
+export function keyFormRequest(arg: unknown): IKeyFormRequest | undefined {
+	if (!arg || typeof arg !== 'object') {
+		return undefined;
+	}
+	const { add, note } = arg as { add?: unknown; note?: unknown };
+	if (typeof add !== 'string' || !KEY_NAME.test(add.trim())) {
+		return undefined;
+	}
+	return { name: add.trim(), note: typeof note === 'string' ? note.replace(/\s+/g, ' ').trim().slice(0, 200) : '' };
+}
+
+/** What the page opens for a request: the key's Edit when it is there (its own purpose kept, the asked one only when
+ *  it has none), else the form for a new key, filled in. */
+export function keyFormFor(request: IKeyFormRequest, keys: readonly { readonly name: string; readonly note: string }[]): { readonly edit: boolean; readonly note: string } {
+	const there = keys.find(k => k.name === request.name);
+	return there ? { edit: true, note: there.note || request.note } : { edit: false, note: request.note };
+}

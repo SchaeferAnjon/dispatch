@@ -1,0 +1,24 @@
+{
+ "v": 1,
+ "image": "thinking-level.png",
+ "size": [
+  450,
+  448
+ ],
+ "scale": 2,
+ "marks": [
+  {
+   "n": 1,
+   "box": [
+    58,
+    154,
+    336,
+    50
+   ],
+   "color": "red",
+   "what": "Last picked",
+   "where": "The level menu under the message box",
+   "how": "The level you picked before, next to Default"
+  }
+ ]
+}

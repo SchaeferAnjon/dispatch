@@ -14,7 +14,10 @@
 			"badge": true,
 			"anchor": {
 				"selector": ".pt-cam"
-			}
+			},
+			"image": "point-and-talk.png",
+			"marks": "point-and-talk.json",
+			"mark": 1
 		},
 		{
 			"id": "side-chat-split",
@@ -23,7 +26,10 @@
 			"where": "Right panel, below Now",
 			"icon": "comment-discussion",
 			"version": "2026-11-16",
-			"badge": true
+			"badge": true,
+			"image": "side-chat-split.png",
+			"marks": "side-chat-split.json",
+			"mark": 1
 		},
 		{
 			"id": "square-corners",
@@ -32,7 +38,10 @@
 			"where": "Everywhere",
 			"icon": "symbol-misc",
 			"version": "2026-11-16",
-			"badge": false
+			"badge": false,
+			"image": "square-corners.png",
+			"marks": "square-corners.json",
+			"mark": 1
 		},
 		{
 			"id": "thinking-level",
@@ -41,7 +50,10 @@
 			"where": "The level next to the model name under the message box",
 			"icon": "settings",
 			"version": "2026-11-16",
-			"badge": false
+			"badge": false,
+			"image": "thinking-level.png",
+			"marks": "thinking-level.json",
+			"mark": 1
 		},
 		{
 			"id": "turbo",

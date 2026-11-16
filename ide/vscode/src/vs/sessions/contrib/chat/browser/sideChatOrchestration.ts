@@ -17,9 +17,12 @@ export async function openAndSendSideChat(
 	session: ISession,
 	sideChat: IChat,
 	requestOptions: ISendRequestOptions,
+	onDidOpen?: () => void,
 ): Promise<void> {
 	await sessionsService.openChat(session, sideChat.resource);
-	// Dispatch IDE: no second column: opening the side chat puts it in its card in the side pane (contrib/dispatchSideChat)
+	// Dispatch IDE: no second column: opening the side chat puts it in its card in the side pane (contrib/dispatchSideChat).
+	// The conversation stays the active chat, so whoever asked hears here that the side chat is up (task-28mnh).
+	onDidOpen?.();
 	await sessionsManagementService.sendRequest(session, sideChat, requestOptions);
 }
 
@@ -36,8 +39,9 @@ export async function createAndSendSideChat(
 	turnId: string,
 	requestOptions: ISendRequestOptions,
 	selection?: ISideChatSelection,
+	onDidOpen?: () => void, // Dispatch IDE: task-28mnh
 ): Promise<IChat> {
 	const sideChat = await sessionsManagementService.createSideChatInSession(session, sourceChat, turnId, selection);
-	await openAndSendSideChat(sessionsManagementService, sessionsService, sessionsPartService, session, sideChat, requestOptions);
+	await openAndSendSideChat(sessionsManagementService, sessionsService, sessionsPartService, session, sideChat, requestOptions, onDidOpen);
 	return sideChat;
 }

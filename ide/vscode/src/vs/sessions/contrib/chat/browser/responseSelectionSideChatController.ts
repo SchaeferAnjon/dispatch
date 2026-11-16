@@ -470,12 +470,21 @@ export class ResponseSelectionSideChatController extends Disposable {
 		}
 
 		// Keep the overlay visible with a busy state instead of eagerly
-		// dismissing: opening the created side chat naturally dismisses it via
-		// `setChat`; on failure the question and normal controls are restored
-		// below so the user can retry.
+		// dismissing: it closes once the created side chat is open (Dispatch IDE:
+		// the callback below, task-28mnh); on failure before that the question
+		// and normal controls are restored below so the user can retry.
 		this._input.setBusy(true, localize('sessions.selectionSideChat.busy', "Asking question…"));
 		const generation = this._generation;
-		createAndSendSideChat(this._sessionsManagementService, this._sessionsService, this._sessionsPartService, session, chat.resource, resolved.response.requestId, { query }, { text: resolved.text })
+		let opened = false;
+		createAndSendSideChat(this._sessionsManagementService, this._sessionsService, this._sessionsPartService, session, chat.resource, resolved.response.requestId, { query }, { text: resolved.text }, () => {
+			// Dispatch IDE: the side chat opens in the side pane and the conversation stays this view's chat, so `setChat`
+			// never dismisses the overlay: it closes here, emptied, with the selection gone (task-28mnh)
+			opened = true;
+			if (this._generation === generation) {
+				this._input.setBusy(false);
+				this._dismissAndClearSelection();
+			}
+		})
 			.then(() => {
 				// A stale completion after a genuine navigation force-dismissed this overlay must no-op.
 				if (this._generation !== generation) {
@@ -492,6 +501,9 @@ export class ResponseSelectionSideChatController extends Disposable {
 					return;
 				}
 				this._notificationService.error(localize('sessions.selectionSideChat.createFailed', "The side chat could not be created."));
+				if (opened) {
+					return; // Dispatch IDE: the overlay already closed when the side chat opened (task-28mnh)
+				}
 				this._input.setBusy(false);
 				this._input.inputElement.value = query;
 				this._input.autoSize();

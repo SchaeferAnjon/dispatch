@@ -37,3 +37,20 @@ test('What Dispatch gives every agent is found on Soul, what is yours on its own
  assert.equal(top('global.md').page, 'instructions');
  assert.equal(top('skills').page, 'skills');
 });
+
+test('Open Keys from Point and talk asks for SONIOX_API_KEY: a new key filled in, or the key\'s Edit when it is there (task-5wvgj)', () => {
+ const r = model.keyFormRequest({ add: 'SONIOX_API_KEY', note: '  Point and talk speech recognition\n(Soniox) ' });
+ assert.deepEqual(r, { name: 'SONIOX_API_KEY', note: 'Point and talk speech recognition (Soniox)' });
+ // a row to flash is a string; anything that is not a key name is no request
+ assert.equal(model.keyFormRequest('key:SONIOX_API_KEY'), undefined);
+ assert.equal(model.keyFormRequest(undefined), undefined);
+ assert.equal(model.keyFormRequest({ add: '9LIVES' }), undefined);
+ assert.equal(model.keyFormRequest({ add: 'two words' }), undefined);
+ assert.deepEqual(model.keyFormRequest({ add: 'X_KEY' }), { name: 'X_KEY', note: '' });
+ assert.equal(model.keyFormRequest({ add: 'X_KEY', note: 'a'.repeat(500) }).note.length, 200);
+ const keys = [{ name: 'DEEPSEEK_API_KEY', note: 'DeepSeek' }, { name: 'SONIOX_API_KEY', note: '' }];
+ assert.deepEqual(model.keyFormFor(r, keys.slice(0, 1)), { edit: false, note: r.note });
+ // there with no purpose: its Edit, the asked purpose offered; there with one: its Edit, its own purpose kept
+ assert.deepEqual(model.keyFormFor(r, keys), { edit: true, note: r.note });
+ assert.deepEqual(model.keyFormFor(r, [{ name: 'SONIOX_API_KEY', note: 'mine' }]), { edit: true, note: 'mine' });
+});

@@ -1,7 +1,7 @@
 {
 	"nameShort": "Dispatch IDE",
 	"nameLong": "Dispatch IDE",
-	"dispatchVersion": "0.9.6",
+	"dispatchVersion": "0.9.7",
 	"applicationName": "dispatch-ide",
 	"dataFolderName": ".dispatch-ide",
 	"sharedDataFolderName": ".dispatch-ide-shared",

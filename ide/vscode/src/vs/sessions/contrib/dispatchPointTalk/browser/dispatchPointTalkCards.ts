@@ -6,7 +6,8 @@
  *    System Settings at that list, with a small panel holding Dispatch's icon to drag in). Each row says Allowed with
  *    a grey check once it is; when Screen Recording was turned on while Dispatch runs, its row offers Quit & Reopen
  *    (macOS wants that) and a line says the sessions come back as they were. Not now closes it.
- *  - No Soniox key: what it is for and where to add it (Settings › Keys, SONIOX_API_KEY).
+ *  - No Soniox key: what it is for and how to add it: Open Keys opens Settings › Keys with the form for SONIOX_API_KEY
+ *    open, the cursor in Value; the card goes by itself once the key is saved (task-5wvgj).
  *  Buttons keep their words on one line.
  *--------------------------------------------------------------------------------------------*/
 
@@ -93,7 +94,7 @@ export class PointTalkCard extends Disposable {
 		dom.clearNode(this.slot);
 		const card = dom.append(this.slot, $('.dispatch-pt-card.enter', { role: 'region', 'aria-label': localize('dispatchPointTalk.keyLabel', "Point and talk needs a Soniox key") }));
 		dom.append(card, $('.pt-ct', undefined, localize('dispatchPointTalk.keyTitle', "Point and talk needs a Soniox key")));
-		dom.append(card, $('p', undefined, localize('dispatchPointTalk.keyWhy', "Your voice is transcribed by Soniox with your own key. Add it in Settings › Keys as SONIOX_API_KEY, then press the camera again.")));
+		dom.append(card, $('p', undefined, localize('dispatchPointTalk.keyWhy', "Your voice is transcribed by Soniox with your own key. Press Open Keys, paste your Soniox key and save it. Then press the camera to record.")));
 		this.row(card, Codicon.key, 'SONIOX_API_KEY', { label: localize('dispatchPointTalk.openKeys', "Open Keys"), run: () => this.actions.openKeys() });
 		this.foot(card);
 	}

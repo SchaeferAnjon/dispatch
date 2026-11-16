@@ -1,7 +1,7 @@
 // Settings › Keys and the "Key saved" toast (kanban task-d5ejn), the way a person meets them. The instance has a HOME of
 // its own (fixtures/keys_home.py: two made-up keys), so nothing here reads or writes this Mac's real key store.
 //   1 the page lists the two keys: name, purpose, project, the value hidden
-//   2 Add a key → "Key saved: NAME — purpose" → Show flashes its row → Undo takes it out again
+//   2 Add key → "Key saved: NAME — purpose" → Show flashes its row → Undo takes it out again
 //   3 Edit: a new value and purpose, saved; the eye shows the new value; Copy puts it on the clipboard
 //   4 Delete asks first, the toast says Key deleted, Undo brings it back; the store before is kept in backups
 //   5 `dispatch env set` in the instance's terminal brings up the toast too, and tells the agent what to call the key
@@ -129,11 +129,11 @@ export default async function (ui) {
 		await typeSecret('input[data-keys="value"]', NEW.value);
 		await ui.type(NEW.note, { into: { css: 'input[data-keys="note"]' } });
 		check(await ui.eval(`document.querySelector('input[data-keys="value"]').type === 'password'`), 'the value box hides what is pasted');
-		const formLook = await ui.eval(`(() => { const f = document.querySelector('.dset-keys-form'); const cs = getComputedStyle(f); return { bg: cs.backgroundColor, shadow: cs.boxShadow, borderTop: cs.borderTopWidth + ' ' + cs.borderTopStyle, inCard: !!f.closest('.dset-rows.dset-keys') }; })()`);
+		const formLook = await ui.eval(`(() => { const f = document.querySelector('.dset-keys-form'); const cs = getComputedStyle(f); const l = document.querySelector('.dset-keys-list'); return { bg: cs.backgroundColor, shadow: cs.boxShadow, first: !!f.closest('.dset-keys-top'), under: l ? getComputedStyle(l).borderTopWidth + ' ' + getComputedStyle(l).borderTopStyle : '', inCard: !!f.closest('.dset-rows.dset-keys') }; })()`);
 		facts.formLook = formLook;
-		check(formLook.inCard && /^(rgba\(0, 0, 0, 0\)|transparent)$/.test(formLook.bg) && formLook.shadow === 'none' && formLook.borderTop === '1px solid', `the form is the list card's last part under a hairline, no box of its own (${JSON.stringify(formLook)})`);
+		check(formLook.inCard && formLook.first && /^(rgba\(0, 0, 0, 0\)|transparent)$/.test(formLook.bg) && formLook.shadow === 'none' && formLook.under === '1px solid', `the form is the list card's first part, a hairline under it, no box of its own (${JSON.stringify(formLook)})`);
 		await ui.screenshot('02-add-form');
-		await ui.mark({ css: '.dset-keys-form' }, { what: '新增 key 的表单', where: '列表下面，点 Add a key… 打开', how: '名字、项目、值（密码框）、用途，Save key 保存' });
+		await ui.mark({ css: '.dset-keys-form' }, { what: '新增 key 的表单', where: '列表最上面，点搜索框旁的 Add key 打开', how: '名字、项目、值（密码框）、用途，Save key 保存' });
 		await ui.click({ css: '[data-keys="save"]' });
 		let t = await waitToast(/Key saved:/);
 		facts.toastAdd = t;
@@ -165,6 +165,9 @@ export default async function (ui) {
 
 		// ---- 3 edit, show, copy
 		const S = seed[0].name;
+		// Undo's change comes back from the bridge too and the list is drawn once more: a row hovered before that loses
+		// the pointer, and its Edit fades out before it is pressed (as in step 4)
+		await ui.sleep(800);
 		await ui.hover({ css: row(S) });
 		await ui.click({ css: `${row(S)} [data-keys="edit"]` });
 		await ui.waitFor({ css: '.dset-keys-form[data-keys="edit-form"]' }, { timeoutMs: 5000 });

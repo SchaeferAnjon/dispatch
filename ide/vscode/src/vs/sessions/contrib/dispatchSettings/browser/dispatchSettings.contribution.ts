@@ -33,9 +33,9 @@ import { ICustomizationHarnessService } from '../../../../workbench/contrib/chat
 import { IEditorService } from '../../../../workbench/services/editor/common/editorService.js';
 import { Menus } from '../../../browser/menus.js';
 import { ICustomViewService } from '../../../services/customView/browser/customViewService.js';
-import { AGENT_PAGES, ABILITIES, pageForSection, SETTINGS_NAV, SettingsPageId } from './dispatchSettingsModel.js';
+import { AGENT_PAGES, ABILITIES, keyFormRequest, pageForSection, SETTINGS_NAV, SettingsPageId } from './dispatchSettingsModel.js';
 import { DispatchSettingsNav } from './dispatchSettingsNav.js';
-import { DISPATCH_SETTINGS_CLOSE, DISPATCH_SETTINGS_OPEN, DISPATCH_SETTINGS_VIEW_ID, escapeWasForAPopup, goToSettingsPage, noteEscape, setSettingsOpen } from './dispatchSettingsState.js';
+import { DISPATCH_SETTINGS_CLOSE, DISPATCH_SETTINGS_OPEN, DISPATCH_SETTINGS_VIEW_ID, escapeWasForAPopup, goToSettingsPage, noteEscape, requestKeyForm, setSettingsOpen } from './dispatchSettingsState.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { DispatchSettingsView } from './dispatchSettingsView.js';
 import { settingsData } from './dispatchSettingsData.js';
@@ -216,7 +216,8 @@ registerAction2(class extends Action2 {
 			},
 		});
 	}
-	run(_accessor: ServicesAccessor, page?: unknown, flash?: unknown): void {
+	/** `page`, then the row to flash (its data-setting), or on Keys `{ add: NAME, note }`: the form for that key, open. */
+	run(_accessor: ServicesAccessor, page?: unknown, flashOrKey?: unknown): void {
 		const c = controller;
 		if (!c) {
 			return;
@@ -226,7 +227,11 @@ registerAction2(class extends Action2 {
 			c.toggle();
 			return;
 		}
-		c.open(typeof page === 'string' ? page : undefined, typeof flash === 'string' ? flash : undefined);
+		const key = page === 'keys' ? keyFormRequest(flashOrKey) : undefined;
+		if (key) {
+			requestKeyForm(key);
+		}
+		c.open(typeof page === 'string' ? page : undefined, typeof flashOrKey === 'string' ? flashOrKey : undefined);
 	}
 });
 

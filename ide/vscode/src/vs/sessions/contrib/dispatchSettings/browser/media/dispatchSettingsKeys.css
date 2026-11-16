@@ -1,9 +1,10 @@
 /*---------------------------------------------------------------------------------------------
  *  Dispatch IDE: Settings › Keys and the "Key saved" toast (kanban task-d5ejn). The rows are the Settings rows;
  *  a key's name and its hidden value in the editor's monospace at 12, the value in the description colour until
- *  shown; the project tag in the page's font. Edit and Delete come up on hover, as Rename does on Projects. The form
- *  is a part of the list card under a hairline, two columns (name, project) over the value and the purpose. No colour
- *  but the error's.
+ *  shown; the project tag in the page's font. Edit and Delete come up on hover, as Rename does on Projects. Search keys
+ *  and Add key share the line above the list. The form is a part of the list card set off by a hairline (a new key's
+ *  at the top, an edit under its row), two columns (name, project) over the value and the purpose. No colour but the
+ *  error's.
  *  The toast is the preference toast's (chat media/dispatchPrefs.css), in a slot of its own.
  *--------------------------------------------------------------------------------------------*/
 
@@ -76,11 +77,11 @@
 	font-size: 12px;
 	color: var(--dset-text-2);
 }
-.dispatch-settings-page .dset-keys-in .monaco-inputbox { border-radius: 6px; }
+.dispatch-settings-page .dset-keys-in .monaco-inputbox { border-radius: var(--dispatch-radius-button); }
 .dispatch-settings-page .dset-keys-in .monaco-inputbox .input { font-size: 13px; }
 .dispatch-settings-page .dset-keys-field.name .input,
 .dispatch-settings-page .dset-keys-field.value .input { font-family: var(--monaco-monospace-font); font-size: 12px; }
-.dispatch-settings-page .dset-keys-in .monaco-select-box { width: 100%; height: 26px; border-radius: 6px; padding: 0 6px; }
+.dispatch-settings-page .dset-keys-in .monaco-select-box { width: 100%; height: 26px; border-radius: var(--dispatch-radius-button); padding: 0 6px; }
 .dispatch-settings-page .dset-keys-fixed {
 	display: block;
 	height: 26px;
@@ -92,7 +93,17 @@
 .dispatch-settings-page .dset-keys-actions { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .dispatch-settings-page .dset-keys-hint { font-size: 12px; color: var(--dset-text-2); }
 .dispatch-settings-page .dset-keys-hint.bad { color: var(--vscode-errorForeground); }
-.dispatch-settings-page .dset-keys-foot:empty { display: none; }
+/* a new key's form opens at the top of the card, right under Add key, its hairline under it (task-5wvgj) */
+.dispatch-settings-page .dset-keys-top .dset-keys-form {
+	margin: 0;
+	padding: 12px 12px 14px;
+	border-top: 0;
+}
+.dispatch-settings-page .dset-keys-top:not(:empty) + .dset-keys-list:not(:empty) {
+	margin-top: 4px;
+	padding-top: 4px;
+	border-top: 1px solid var(--dset-hair);
+}
 .dispatch-settings-page .dset-keys-status:empty { display: none; }
 .dispatch-settings-page .dset-keys + .dset-foot + .dset-problem + .dset-note,
 .dispatch-settings-page .dset-keys ~ .dset-note { margin-top: 16px; }
@@ -122,15 +133,55 @@
 	pointer-events: auto;
 }
 
-/* Search keys: the side bar's search box, above the list */
-.dispatch-settings-page .dset-keys-search {
+/* Search keys (the side bar's search box) and Add key, one line above the list; it stays at the top of the page
+   while dozens of keys scroll under it, on the colour the page is drawn on (the custom view's, not --dset-bg: that one
+   is worked out on the workbench, where the session view's colour is not set, and comes out as the editor's) */
+.dispatch-settings-page .dset-keys-bar {
+	position: sticky;
+	top: 0;
+	z-index: 2;
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	height: 30px;
+	margin: -8px 0 0;
+	padding: 8px 0;
+	background: var(--session-view-background, var(--dset-bg));
+}
+.dispatch-settings-page .dset-keys-bar[hidden] { display: none; }
+.dispatch-settings-page .dset-keys-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	margin-left: auto;
+	box-sizing: border-box;
+	height: 32px;
+	padding: 0 12px 0 10px;
+	border: 1px solid var(--dset-hair);
+	border-radius: var(--dispatch-radius-button);
+	background: transparent;
+	color: var(--dset-text);
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color 150ms ease;
+}
+.dispatch-settings-page .dset-keys-add:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.dispatch-settings-page .dset-keys-add:hover { background: var(--dset-hover); }
+.dispatch-settings-page .dset-keys-add[aria-expanded="true"] { background: var(--dset-sel); }
+.dispatch-settings-page .dset-keys-add .dset-ic { font-size: 14px; }
+.dispatch-settings-page .dset-keys-search {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
 	padding: 0 10px;
-	margin: 0 0 8px;
-	border-radius: 8px;
+	margin: 0;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--dset-chip-2);
 	box-shadow: inset 0 0 0 1px var(--dset-hair-2);
 	color: var(--dset-text-2);

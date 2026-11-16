@@ -1,0 +1,24 @@
+{
+ "v": 1,
+ "image": "square-corners.png",
+ "size": [
+  1480,
+  320
+ ],
+ "scale": 2,
+ "marks": [
+  {
+   "n": 1,
+   "box": [
+    33,
+    29,
+    1405,
+    217
+   ],
+   "color": "red",
+   "what": "The input box",
+   "where": "Under the conversation",
+   "how": "Same small corners as VS Code"
+  }
+ ]
+}

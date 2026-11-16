@@ -358,7 +358,7 @@ export default async function (ui) {
 	await ui.click({ css: '.dispatch-settings-nav .dsn-row[data-page="keys"]', webview: false });
 	// a key saved already (a walk that goes on from here): the form's own button instead of the empty list's
 	if (!(await until(ui, () => ui.exists({ css: '[data-keys="add-first"]', webview: false }), 8000))) {
-		await ui.eval(`(() => { const k = [...document.querySelectorAll('.dispatch-settings-page [data-keys]')].find(e => /Add a key/.test(e.innerText)); k?.setAttribute('data-keys', 'add-first'); })()`);
+		await ui.eval(`(() => { const k = [...document.querySelectorAll('.dispatch-settings-page [data-keys]')].find(e => /Add (a )?key/.test(e.innerText)); k?.setAttribute('data-keys', 'add-first'); })()`);
 	}
 	await ui.click({ css: '[data-keys="add-first"]', webview: false });
 	await ui.type('WEATHER_API_KEY', { into: { css: '.dispatch-settings-page input[aria-label="Name"]', webview: false } });

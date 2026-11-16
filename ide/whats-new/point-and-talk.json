@@ -1,0 +1,24 @@
+{
+ "v": 1,
+ "image": "point-and-talk.png",
+ "size": [
+  1480,
+  640
+ ],
+ "scale": 2,
+ "marks": [
+  {
+   "n": 1,
+   "box": [
+    1318,
+    548,
+    60,
+    56
+   ],
+   "color": "red",
+   "what": "Point and talk",
+   "where": "The camera next to Send",
+   "how": "Press it, or Shift+Ctrl+S, then point and talk"
+  }
+ ]
+}

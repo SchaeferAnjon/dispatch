@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { IObservable, observableValue } from '../../../../base/common/observable.js';
-import { SettingsPageId } from './dispatchSettingsModel.js';
+import type { IKeyFormRequest, SettingsPageId } from './dispatchSettingsModel.js';
 
 export const DISPATCH_SETTINGS_VIEW_ID = 'dispatch.settings';
 export const DISPATCH_SETTINGS_OPEN = 'dispatch.settings.open';
@@ -44,6 +44,20 @@ export function setSettingsQuery(query: string): void {
 	if (cur.query !== query) {
 		location.set({ page: cur.page, query, seq: ++seq }, undefined);
 	}
+}
+
+let keyRequest: IKeyFormRequest | undefined;
+
+/** The Keys page about to be shown opens its form for this key (see keyFormRequest). */
+export function requestKeyForm(request: IKeyFormRequest): void {
+	keyRequest = request;
+}
+
+/** The request, once: the Keys page takes it as it is drawn. */
+export function takeKeyFormRequest(): IKeyFormRequest | undefined {
+	const r = keyRequest;
+	keyRequest = undefined;
+	return r;
 }
 
 export function setSettingsOpen(value: boolean): void {

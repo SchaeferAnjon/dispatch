@@ -471,6 +471,8 @@ export default async function (ui) {
   await until(ui, async () => { const s = await read(); return s.pane && s.quote && s.quote.two === "In the conversation" && s.acts; }, 300000, "the answer of the side chat asked on the reply", 1500);
   const onReply = qa.states.onReply = await read();
   check("Ask Question on a reply opens the same pane (the conversation still one column at its width), its quote says In the conversation", onReply.groups === 1 && near(onReply.column[0], before.column[0]) && onReply.quote.two === "In the conversation" && !!onReply.pane, { quote: onReply.quote, column: onReply.column });
+  qa.states.replyBar = await ui.eval(`(() => { const b = document.querySelector('.session-view .agent-feedback-input-widget'); return { shown: !!b && getComputedStyle(b).display !== 'none', typed: b ? b.querySelector('textarea').value : null, selection: getSelection().toString() }; })()`);
+  check("once sent, the reply's bar is gone, emptied, the selection with it (task-28mnh; quote-bar-send.mjs times it)", !qa.states.replyBar.shown && qa.states.replyBar.typed === "" && qa.states.replyBar.selection === "", qa.states.replyBar);
   check("a side chat asked on a reply has no Keep as comment (no passage in a document)", !(await ui.exists({ css: `${PANE} [data-part="side-chat-keep"]` })) && (await ui.exists({ css: `${PANE} [data-part="side-chat-add"]` })));
   await ui.screenshot("06c-asked-on-reply");
   await ui.mark({ css: `${PANE} .dsc-quote` }, { what: "在对话回复里选字问：同一格，引用卡写 In the conversation", where: "下格消息最上面", how: "点它回到原对话那一轮" });

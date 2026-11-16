@@ -5,9 +5,13 @@
  *  agent from its next call on.
  *
  *  Each key is a row: its name, what it is for, the project it belongs to, the value hidden (the eye shows it for
- *  30 s, Copy puts it on the clipboard). Add a key opens a form under the list, Edit the same form under the row
+ *  30 s, Copy puts it on the clipboard). Add key sits next to Search keys above the list, always in sight however many
+ *  keys there are, and opens the form at the top of the list (task-5wvgj); Edit opens the same form under the row
  *  (the value left empty keeps the old one), Delete asks first. Every change shows the "Key saved" toast with Undo
  *  (dispatchSettingsKeysToast.ts), and the store before it is kept in ~/.dispatch/backups/<date>/.
+ *
+ *  Another part of the window can ask for a key (`dispatch.settings.open 'keys' { add, note }`, Point and talk's card):
+ *  the page opens with the form filled in and the cursor in Value, or that key's Edit when it is there already.
  *
  *  Everything goes through dispatch-bridge's `dispatch.env` (ide-ext/src/keys.ts). A value is only ever in this page
  *  while it is shown or being typed: never in a log, a title, a toast or the page's text otherwise.
@@ -30,6 +34,8 @@ import { dispatchProjectsRegistry, refreshDispatchProjectsRegistry } from '../..
 import { button, empty, groupHead, icon, iconButton, note, pending, problem, row, rowsBlock, tag } from './dispatchSettingsDom.js';
 import { settingsData } from './dispatchSettingsData.js';
 import { IKeyEvent, IKeysAnswer, KEYS_COMMAND, onDidChangeDispatchKeys, closeKeysToast, showKeysToast } from './dispatchSettingsKeysToast.js';
+import { type IKeyFormRequest, keyFormFor } from './dispatchSettingsModel.js';
+import { takeKeyFormRequest } from './dispatchSettingsState.js';
 
 const $ = DOM.$;
 const ASK_MS = 30_000;
@@ -81,15 +87,24 @@ export class DispatchKeysPage {
 	render(root: HTMLElement, store: DisposableStore): void {
 		const head = groupHead(root, localize('dispatchKeys.head', "Your keys"), Codicon.key);
 		const count = DOM.append(head, $('span.dset-gh-r'));
-		// a search over the names, what each is for and its project: dozens of keys do not fit on a screen
-		const search = DOM.append(root, $('.dset-keys-search'));
+		// one line above the list: a search over the names, what each is for and its project (dozens of keys do not
+		// fit on a screen), and Add key, in sight without scrolling to the end of them (task-5wvgj)
+		const bar = DOM.append(root, $('.dset-keys-bar'));
+		bar.hidden = true; // until the list is read: with no keys it stays hidden
+		const search = DOM.append(bar, $('.dset-keys-search'));
 		search.appendChild(icon(Codicon.search));
 		const query = DOM.append(search, $<HTMLInputElement>('input', { type: 'search', placeholder: localize('dispatchKeys.search', "Search keys"), 'aria-label': localize('dispatchKeys.search', "Search keys") }));
 		store.add(DOM.addDisposableListener(query, DOM.EventType.INPUT, () => draw()));
+		const add = DOM.append(bar, $('button.dset-keys-add', { type: 'button' }));
+		add.dataset.keys = 'add';
+		add.appendChild(icon(Codicon.add));
+		DOM.append(add, $('span', undefined, localize('dispatchKeys.addKey', "Add key")));
+		store.add(DOM.addDisposableListener(add, DOM.EventType.CLICK, () => editing === '' ? focusForm() : openForm('')));
 		const block = rowsBlock(root, 'keys');
 		block.classList.add('dset-keys');
+		// the form for a new key: the list card's first part, so it opens where Add key is
+		const top = DOM.append(block, $('.dset-keys-top'));
 		const list = DOM.append(block, $('.dset-keys-list'));
-		const foot = DOM.append(block, $('.dset-keys-foot'));
 		const status = DOM.append(root, $('.dset-foot.dset-keys-status', { 'aria-live': 'polite' }));
 		const err = problem(root, '');
 		err.hidden = true;
@@ -110,6 +125,10 @@ export class DispatchKeysPage {
 		const form = store.add(new DisposableStore());
 		/** The open form's element, kept across redraws so what is typed in it stays when the list changes. */
 		let formEl: HTMLElement | undefined;
+		/** What the open form starts with when another part of the window asked for a key. */
+		let prefill: IKeyFormRequest | undefined;
+		/** Asked for as this page opened: answered once the list is read (is the key there already?). */
+		let asked = takeKeyFormRequest();
 		const listStore = store.add(new DisposableStore());
 		const revealed = new Map<string, string>();
 		store.add(toDisposable(() => revealed.clear()));
@@ -120,9 +139,12 @@ export class DispatchKeysPage {
 			}
 			listStore.clear();
 			DOM.clearNode(list);
-			DOM.clearNode(foot);
+			DOM.clearNode(top);
 			count.textContent = rows.length === 1 ? localize('dispatchKeys.one', "1 key") : localize('dispatchKeys.n', "{0} keys", rows.length);
+			// no keys: the empty card (with its own button) or the form says it all; the line comes with the first key
+			bar.hidden = !rows.length;
 			search.hidden = rows.length < 2;
+			add.setAttribute('aria-expanded', String(editing === ''));
 			if (!rows.length && editing !== '') {
 				const e = empty(list, Codicon.key, localize('dispatchKeys.emptyT', "No keys yet"), localize('dispatchKeys.emptyS', "Save an API key once here and every agent can use it by name. You will not have to paste it into a chat again."));
 				button(e, localize('dispatchKeys.addFirst', "Add a key"), () => openForm(''), listStore, true).element.dataset.keys = 'add-first';
@@ -136,13 +158,7 @@ export class DispatchKeysPage {
 				drawRow(k);
 			}
 			if (editing === '') {
-				placeForm(foot, undefined);
-			} else if (rows.length) {
-				const add = DOM.append(foot, $('button.dset-addrow'));
-				add.dataset.keys = 'add';
-				add.appendChild(icon(Codicon.add));
-				DOM.append(add, $('span', undefined, localize('dispatchKeys.add', "Add a key…")));
-				listStore.add(DOM.addDisposableListener(add, DOM.EventType.CLICK, () => openForm('')));
+				placeForm(top, undefined);
 			}
 			this.host.relayout();
 		};
@@ -252,13 +268,33 @@ export class DispatchKeysPage {
 		const dropForm = () => {
 			form.clear();
 			formEl = undefined;
+			prefill = undefined;
 		};
 
-		const openForm = (name: string) => {
+		const openForm = (name: string, fill?: IKeyFormRequest) => {
 			dropForm();
+			prefill = fill;
 			editing = name;
 			say('');
 			draw();
+		};
+
+		/** The open form's first box still to fill: Value when the name is given. */
+		const focusForm = () => {
+			const box = formEl?.querySelector<HTMLInputElement>('input[data-keys="name"]:placeholder-shown') ?? formEl?.querySelector<HTMLInputElement>('input[data-keys="value"]');
+			box?.focus();
+		};
+
+		/** The key another part of the window asked for, once the list says whether it is there. */
+		const answerRequest = () => {
+			const r = asked;
+			if (!r || !rows) {
+				return;
+			}
+			asked = undefined;
+			const how = keyFormFor(r, rows);
+			query.value = '';
+			openForm(how.edit ? r.name : '', { name: r.name, note: how.note });
 		};
 
 		const closeForm = () => {
@@ -299,6 +335,7 @@ export class DispatchKeysPage {
 			} else {
 				nameBox = input(field('name', localize('dispatchKeys.nameL', "Name")), localize('dispatchKeys.namePh', "DEEPSEEK_API_KEY"), localize('dispatchKeys.nameL', "Name"));
 				nameBox.inputElement.dataset.keys = 'name';
+				nameBox.value = prefill?.name ?? '';
 			}
 			const projects = (dispatchProjectsRegistry.get() ?? []).filter(p => p.host === 'local' && !p.archived).map(p => p.name);
 			if (k?.project && !projects.some(p => p.toLowerCase() === k.project.toLowerCase())) {
@@ -318,7 +355,7 @@ export class DispatchKeysPage {
 			valueBox.inputElement.dataset.keys = 'value';
 			const noteBox = input(field('note', localize('dispatchKeys.noteL', "What it is for")), localize('dispatchKeys.notePh', "DeepSeek API for OpenCode"), localize('dispatchKeys.noteL', "What it is for"));
 			noteBox.inputElement.dataset.keys = 'note';
-			noteBox.value = k?.note ?? '';
+			noteBox.value = (k ? k.note : '') || (prefill && (!k || prefill.name === k.name) ? prefill.note : '');
 
 			const actions = DOM.append(f, $('.dset-keys-actions'));
 			const save = button(actions, k ? localize('dispatchKeys.saveEdit', "Save") : localize('dispatchKeys.saveNew', "Save key"), () => submit(), form, true);
@@ -427,7 +464,14 @@ export class DispatchKeysPage {
 					}
 				}));
 			}
-			DOM.getWindow(f).requestAnimationFrame(() => (nameBox ?? valueBox).focus());
+			// the cursor where the typing starts: Name, or Value when the name is given (an edit, a key asked for)
+			const asking = !!prefill;
+			DOM.getWindow(f).requestAnimationFrame(() => {
+				(nameBox && !nameBox.value ? nameBox : valueBox).focus();
+				if (asking) {
+					f.scrollIntoView({ block: 'nearest' });
+				}
+			});
 			this.host.relayout();
 			return f;
 		};
@@ -444,7 +488,11 @@ export class DispatchKeysPage {
 				dropForm();
 				editing = undefined;
 			}
-			draw();
+			if (asked) {
+				answerRequest();
+			} else {
+				draw();
+			}
 		};
 		const reload = async () => {
 			await settingsData.refresh('keys');
@@ -469,13 +517,31 @@ export class DispatchKeysPage {
 		store.add(onDidChangeDispatchKeys(() => void reload()));
 		// the projects for the form's list
 		void refreshDispatchProjectsRegistry();
-		const kept = settingsData.get<IKeyRow[]>('keys');
-		if (kept) {
-			take(kept);
-		} else {
-			// the first Settings on this Mac, before the first answer
-			const wait = pending(list);
-			void reload().then(() => wait.remove());
-		}
+		const begin = () => {
+			const kept = settingsData.get<IKeyRow[]>('keys');
+			if (kept) {
+				take(kept);
+			} else {
+				// the first Settings on this Mac, before the first answer
+				const wait = pending(list);
+				void reload().then(() => wait.remove());
+			}
+		};
+		// Settings opened by a command (Open Keys, a toast's Show) renders its page before the view is in the window:
+		// a draw then would be skipped (nothing to draw into) and the key asked for lost, so the first one waits for it
+		// (task-5wvgj)
+		let tries = 0;
+		const whenShown = () => {
+			if (store.isDisposed) {
+				return;
+			}
+			if (root.isConnected || ++tries > 60) {
+				begin();
+				return;
+			}
+			const h = setTimeout(whenShown, 16);
+			store.add(toDisposable(() => clearTimeout(h)));
+		};
+		whenShown();
 	}
 }

@@ -16,7 +16,7 @@ import * as dom from '../../../../base/browser/dom.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
-import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { ProxyChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { joinPath } from '../../../../base/common/resources.js';
 import { URI } from '../../../../base/common/uri.js';
@@ -51,6 +51,7 @@ import { ChatAgentLocation } from '../../../../workbench/contrib/chat/common/con
 import { ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { dispatchBlobUrl, dispatchDrawInputController, rememberDispatchOriginal } from '../../dispatchDraw/browser/dispatchDrawInput.js';
 import { burnDispatchMarks } from '../../dispatchDraw/browser/dispatchDrawTool.js';
+import { onDidChangeDispatchKeys } from '../../dispatchSettings/browser/dispatchSettingsKeysToast.js';
 import { clock, composeMessage, ILine, liveWords, pickFrames, sentencesOf, spotBox } from '../common/dispatchPointTalkModel.js';
 import { IPointTalkPermissionState, PointTalkCard } from '../browser/dispatchPointTalkCards.js';
 import { IPointTalkReviewFrame, PointTalkInputSlot } from '../browser/dispatchPointTalkInput.js';
@@ -60,6 +61,9 @@ import { IPointTalkTestTake, pointTalkTest, PointTalkTestSources, TEST_DISPLAY }
 
 const TOGGLE = 'dispatch.pointTalk.toggle';
 const STOP = 'dispatch.pointTalk.stop';
+/** The key Point and talk needs, and what Keys says it is for when the card's Open Keys adds it. */
+const SONIOX_KEY = 'SONIOX_API_KEY';
+const SONIOX_NOTE = 'Point and talk speech recognition (Soniox)';
 
 /** The real screen and microphone: the main process picked the display under the pointer just before. */
 class RealSources implements IPointTalkSources {
@@ -137,7 +141,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 	private readonly reviews = new Map<string, IReview>();
 	/** The review drawn in a box right now, and the box's slot. */
 	private shown: { widget: IChatWidget; slot: PointTalkInputSlot; review: IReview; store: DisposableStore } | undefined;
-	private card: { widget: IChatWidget; card: PointTalkCard; timer: number; wants: 'start' | 'none'; sim?: IPointTalkPermissionState } | undefined;
+	private card: { widget: IChatWidget; card: PointTalkCard; timer: number; wants: 'start' | 'none'; sim?: IPointTalkPermissionState; keyWatch?: IDisposable } | undefined;
 	private readonly messages: PointTalkMessages;
 	private shortcutWarned = false;
 
@@ -713,8 +717,9 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 				openScreenSettings: () => void this.openScreenSettings(),
 				relaunch: () => void this.relaunch(),
 				openKeys: () => {
-					this.hideCard();
-					void this.commandService.executeCommand('dispatch.settings.open', 'keys');
+					// Keys with the form open on SONIOX_API_KEY; the card stays until the key is saved (watchKey)
+					pointTalkTest.events.push('open-keys');
+					void this.commandService.executeCommand('dispatch.settings.open', 'keys', { add: SONIOX_KEY, note: SONIOX_NOTE });
 				},
 				close: () => this.hideCard(),
 			});
@@ -724,6 +729,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		pointTalkTest.events.push(`card ${kind}`);
 		if (kind === 'key') {
 			this.card.card.showKey();
+			this.watchKey(this.card);
 		} else if (access) {
 			this.card.card.showPermissions(access);
 		}
@@ -751,9 +757,27 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		c.card.showPermissions(access);
 	}
 
+	/** The key card goes by itself once SONIOX_API_KEY is saved, wherever from (Keys, a terminal, an agent): every
+	 *  save lands in the key store's event file, which the bridge watches. Asked once per change, not every second:
+	 *  each ask runs the CLI. The recording does not start by itself: the person is on Settings, not on the box. */
+	private watchKey(c: NonNullable<DispatchPointTalkController['card']>): void {
+		c.keyWatch ??= onDidChangeDispatchKeys(events => {
+			if (!events.some(e => e.name === SONIOX_KEY)) {
+				return;
+			}
+			void this.hasKey().then(there => {
+				if (there && this.card === c && c.card.showing === 'key') {
+					this.hideCard();
+					pointTalkTest.events.push('key-saved');
+				}
+			});
+		});
+	}
+
 	private hideCard(): void {
 		if (this.card) {
 			mainWindow.clearInterval(this.card.timer);
+			this.card.keyWatch?.dispose();
 			this.card.card.dispose();
 			this.card = undefined;
 		}

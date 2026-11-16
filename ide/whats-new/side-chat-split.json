@@ -1,0 +1,24 @@
+{
+ "v": 1,
+ "image": "side-chat-split.png",
+ "size": [
+  610,
+  820
+ ],
+ "scale": 2,
+ "marks": [
+  {
+   "n": 1,
+   "box": [
+    33,
+    283,
+    565,
+    109
+   ],
+   "color": "red",
+   "what": "Side chat",
+   "where": "Right panel, below Now",
+   "how": "Drag the line above it; click its header to fold it"
+  }
+ ]
+}

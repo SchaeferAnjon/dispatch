@@ -109,7 +109,7 @@
 	height: 30px;
 	padding: 0 6px 0 10px;
 	margin: 0 2px 8px;
-	border-radius: 8px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--dset-chip-2);
 	box-shadow: inset 0 0 0 1px var(--dset-hair-2);
 	flex: none;

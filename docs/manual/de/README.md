@@ -4,7 +4,7 @@
 
 Dispatch ist ein **lokaler Agent-Arbeitsplatz**, der auf Ihrem Mac läuft. Sie arbeiten im Terminal oder im Editor wie gewohnt mit Programmier-Agenten: Claude Code, Codex, pi, ZCode, Gemini CLI, OpenCode, Hermes. Dispatch liest nur die Aufzeichnungen, die diese Agenten ohnehin schon lokal geschrieben haben, und stellt jede Sitzung, jede Aufgabe und jedes Ergebnis nach **Projekt** sortiert auf einen Tisch: wer auf Sie wartet, wer läuft, wie weit etwas gediehen ist. Wenn ein Agent auf Sie wartet, antworten Sie am Rechner oder am Handy direkt in der Ursprungssitzung.
 
-Aktuelle Version v0.9.6, unterstützt macOS 14 und neuer, quelloffen (GPL-3.0). Website unter <https://dispatch.us-cloud.uk/>, Quellcode unter <https://github.com/SchaeferAnjon/dispatch>.
+Aktuelle Version v0.9.7, unterstützt macOS 14 und neuer, quelloffen (GPL-3.0). Website unter <https://dispatch.us-cloud.uk/>, Quellcode unter <https://github.com/SchaeferAnjon/dispatch>.
 
 ![Arbeitsplatz: der aktuelle Stand jedes Projekts](../../assets/shot-home.png)
 
