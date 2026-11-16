@@ -3,7 +3,8 @@
  *  prototype; colours are theme colours standing for DESIGN.md's tokens (--bg editor, --bg-2 side bar, --sel list
  *  selection, --text foreground, --text-2 description, --hair hover border, --hair-2 input border, --fill button).
  *  Corners follow the person's VS Code corners (pref「VS Code 方圆角」): box 8, bubble and pictures 6, buttons 4.
- *  The red of the boxes is picture content (DESIGN.md「第四处颜色」); the interface itself has no red.
+ *  The red of the boxes is picture content (DESIGN.md「第四处颜色」); the only red of the interface is the recording dot
+ *  (and the moving frame round the recorded display, task-dd4hw).
  *--------------------------------------------------------------------------------------------*/
 
 .dispatch-pt-slot,
@@ -28,9 +29,8 @@
 
 /* ---- the box while recording (A1) and while reviewing (A2) ---- */
 
-.agent-sessions-workbench .interactive-session .chat-input-container.dispatch-pt-recording {
-	border-color: color-mix(in srgb, var(--vscode-foreground) 30%, transparent) !important;
-}
+/* the box keeps its own border (and the working flow on it): the red dot and the moving frame round the display say
+   it is recording (task-dd4hw) */
 
 .chat-input-container.dispatch-pt-recording > .chat-editor-container,
 .chat-input-container.dispatch-pt-recording > .chat-input-toolbars,
@@ -57,6 +57,21 @@
 	line-height: 1.6;
 }
 
+/* the review takes the focus (Enter sends, Delete removes a frame): VS Code's [tabindex="-1"]:focus outline
+   (workbench/browser/media/style.css) drew a second, darker frame inside the box (task-dd4hw). The box shows the
+   focus on its own border instead, with the colours VS Code gives it while you type (sessions chatView.css) */
+.monaco-workbench .chat-input-container .dispatch-pt-slot:focus {
+	outline: none;
+}
+
+.agent-sessions-workbench .interactive-session .chat-input-container.dispatch-pt-review:has(> .dispatch-pt-slot:focus-within) {
+	border-color: var(--vscode-agentsChatInput-focusBorder, var(--vscode-focusBorder)) !important;
+}
+
+.agent-sessions-workbench .interactive-session .chat-input-container.working.dispatch-pt-review:has(> .dispatch-pt-slot:focus-within) {
+	border-color: color-mix(in srgb, var(--vscode-agentsChatInput-focusBorder, var(--vscode-focusBorder)) 40%, transparent) !important;
+}
+
 .dispatch-pt-slot .pt-live {
 	min-height: 48px;
 	max-height: calc(14px * 1.6 * 3 + 16px);
@@ -80,21 +95,31 @@
 	font-size: 12px;
 }
 
-.dispatch-pt-slot .pt-cam {
-	color: var(--pt-text);
-	font-size: 16px;
-	animation: pt-breathe 2s ease-in-out infinite;
+/* recording: a red dot breathing, its word and the clock (task-dd4hw) */
+.dispatch-pt-slot .pt-rec {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	margin: 0 2px 0 4px;
+	border-radius: 50%;
+	background: var(--vscode-errorForeground);
+	animation: pt-breathe 1.6s ease-in-out infinite;
 }
 
 @keyframes pt-breathe {
 	50% {
-		opacity: .8;
+		opacity: .35;
 	}
+}
+
+.dispatch-pt-slot .pt-rec-label {
+	color: var(--pt-text);
+	font-weight: 500;
 }
 
 .dispatch-pt-slot .pt-clock {
 	width: 36px;
-	margin-left: 4px;
+	margin-left: 2px;
 	color: var(--pt-text);
 	font-variant-numeric: tabular-nums;
 }
@@ -388,6 +413,10 @@
 
 .dispatch-pt-slot.review .pt-lines {
 	padding: 8px 6px 4px;
+	/* a long take scrolls inside the box instead of pushing the conversation away (task-dd4hw) */
+	max-height: min(168px, 24vh);
+	overflow-y: auto;
+	overscroll-behavior: contain;
 }
 
 .pt-lines {
@@ -428,16 +457,13 @@
 	overflow-wrap: anywhere;
 }
 
+/* a line being changed shows only the caret, no grey block inside the box (designer review, task-dd4hw) */
 .dispatch-pt-slot .pt-row .pt-tx {
 	cursor: text;
 }
 
-.dispatch-pt-slot .pt-row .pt-tx:focus {
-	background: var(--pt-chip);
-	box-shadow: 0 0 0 2px var(--pt-chip);
-}
-
-.pt-row.hl > * {
+/* the number keeps its solid badge when its row lights up */
+.pt-row.hl > :not(.pt-nd) {
 	background: color-mix(in srgb, var(--pt-sel) 60%, transparent);
 }
 
@@ -718,7 +744,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.dispatch-pt-slot .pt-cam,
+	.dispatch-pt-slot .pt-rec,
 	.pt-shim,
 	.pt-ph,
 	.pt-th.new,
@@ -737,8 +763,9 @@
 	}
 }
 
-/* a frame with the keyboard focus: its ring, and its × and pen show (see .pt-th:focus-within above) */
-.pt-th:focus {
+/* a frame with the keyboard focus: its ring, and its × and pen show (see .pt-th:focus-within above); not VS Code's
+   [tabindex="0"]:focus outline as well */
+.monaco-workbench div.pt-th:focus {
 	outline: none;
 }
 

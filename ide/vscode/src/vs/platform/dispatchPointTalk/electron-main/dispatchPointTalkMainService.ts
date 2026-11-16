@@ -291,7 +291,8 @@ export class DispatchPointTalkMainService extends Disposable implements IDispatc
 	}
 
 	async showFrame(displayId: number, theme: IPointTalkTheme): Promise<void> {
-		await this.hideFrame();
+		// no await before this.frame is set: a hideFrame that comes right after must find the window
+		void this.hideFrame();
 		const display = this.displayById(displayId);
 		const win = pageWindow({ ...display.bounds, enableLargerThanScreen: true });
 		win.setIgnoreMouseEvents(true);

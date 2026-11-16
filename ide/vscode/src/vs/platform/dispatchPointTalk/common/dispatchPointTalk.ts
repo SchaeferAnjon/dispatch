@@ -6,8 +6,9 @@
  *    next getDisplayMedia of that window gets it (code/electron-main/app.ts asks takeDispatchPointTalkDisplay);
  *  - macOS's two permissions, read and asked for: the microphone with macOS's own dialog, Screen Recording in System
  *    Settings with a small panel that holds Dispatch's icon to drag into the list;
- *  - the bar at the top of the recorded display while Dispatch is not in sight there, and a thin neutral frame round
- *    that display: windows of their own that never take the focus and are left out of the recording;
+ *  - the bar at the top of the recorded display while Dispatch is not in sight there, and a moving red frame round
+ *    that display for the whole recording: windows of their own that never take the focus and are left out of the
+ *    recording;
  *  - ⌃⇧S anywhere: one system-wide shortcut that runs dispatch.pointTalk.toggle in the window that set it.
  *
  *  Test instances (DISPATCH_E2E_INSTANCE) never touch the screen, the microphone or System Settings and never take a
@@ -64,6 +65,8 @@ export interface IPointTalkTheme {
 	readonly text2: string;
 	readonly fill: string;
 	readonly fillText: string;
+	/** The recording red (errorForeground): the dot and the moving frame. */
+	readonly red: string;
 }
 
 /** What the bar shows; sent again as it changes (the clock each second, the level a few times a second). */
@@ -96,7 +99,7 @@ export interface IDispatchPointTalkMainService {
 	showBar(windowId: number, displayId: number, theme: IPointTalkTheme, state: IPointTalkBarState): Promise<void>;
 	updateBar(state: IPointTalkBarState): Promise<void>;
 	hideBar(): Promise<void>;
-	/** The thin frame round a display recorded from another one; `spot` draws one ring where a spot was marked. */
+	/** The moving red frame round the recorded display, from start to stop; `ring` draws one ring where a spot was marked. */
 	showFrame(displayId: number, theme: IPointTalkTheme): Promise<void>;
 	ring(x: number, y: number): Promise<void>;
 	hideFrame(): Promise<void>;

@@ -349,6 +349,10 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			return;
 		}
 		pointTalkTest.events.push('recording');
+		// the moving red frame round the recorded display, the whole time, so it shows in any app (task-dd4hw)
+		void this.main.showFrame(prepared.display.id, this.theme());
+		pointTalkTest.events.push('frame');
+		store.add(toDisposable(() => void this.main.hideFrame()));
 		let lastBar = 0;
 		let lastSpot = 0;
 		const draw = () => {
@@ -373,10 +377,8 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		const tick = mainWindow.setInterval(draw, 500);
 		store.add(toDisposable(() => mainWindow.clearInterval(tick)));
 		store.add(recording.onDidMarkSpot(r => {
-			if (state.bar) {
-				const b = prepared.display.bounds;
-				void this.main.ring(b.x + r.x, b.y + r.y);
-			}
+			const b = prepared.display.bounds;
+			void this.main.ring(b.x + r.x, b.y + r.y);
 		}));
 		// the bar shows while Dispatch is not in sight on the recorded display
 		const place = () => {
@@ -386,21 +388,16 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 				pointTalkTest.events.push('bar');
 				const theme = this.theme();
 				void this.main.showBar(mainWindow.vscodeWindowId, prepared.display.id, theme, { clock: clock(recording.elapsed), level: recording.level, words: liveWords(recording.finalTokens, recording.pendingTokens), spot: recording.tracker.rests.length, popped: false });
-				if (!prepared.windowOnDisplay) {
-					void this.main.showFrame(prepared.display.id, theme);
-				}
 			} else if (!away && state.bar) {
 				state.bar = false;
 				pointTalkTest.events.push('bar-hidden');
 				void this.main.hideBar();
-				void this.main.hideFrame();
 			}
 		};
 		store.add(dom.addDisposableListener(mainWindow.document, 'visibilitychange', place));
 		store.add(toDisposable(() => {
 			if (state.bar) {
 				void this.main.hideBar();
-				void this.main.hideFrame();
 			}
 		}));
 		place();
@@ -412,10 +409,10 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			return;
 		}
 		state.stopping = true;
+		void this.main.hideFrame();
 		if (state.bar) {
 			state.bar = false;
 			void this.main.hideBar();
-			void this.main.hideFrame();
 		}
 		const { widget, recording, slot } = state;
 		slot.showPicking(recording.elapsed, recording.videoUri?.fsPath ?? '');
@@ -822,6 +819,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			text2: c('descriptionForeground', dark ? '#a6a09b' : '#79716b'),
 			fill: c('button.background', dark ? '#fafaf9' : '#252525'),
 			fillText: c('button.foreground', dark ? '#0c0a09' : '#fafaf9'),
+			red: c('errorForeground', dark ? '#f87171' : '#dc2626'),
 		};
 	}
 

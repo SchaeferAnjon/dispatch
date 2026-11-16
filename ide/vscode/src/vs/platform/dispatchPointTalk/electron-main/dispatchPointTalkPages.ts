@@ -1,7 +1,7 @@
 /*---------------------------------------------------------------------------------------------
  *  Dispatch IDE: the three small pages Point and talk shows outside the Agents window (task-0y0km, kanban
- *  design/screen-talk direction A, B's bar borrowed): the bar at the top of the recorded display, the thin frame round
- *  it, and the panel beside System Settings that holds Dispatch's icon to drag into the Screen Recording list.
+ *  design/screen-talk direction A, B's bar borrowed): the bar at the top of the recorded display, the moving red frame
+ *  round it for the whole recording (task-dd4hw), and the panel beside System Settings that holds Dispatch's icon to drag into the Screen Recording list.
  *
  *  Each is one self-contained HTML page (a data: URL: no files to ship, no access to anything), drawn in the
  *  window's theme colours. The main process updates it with executeJavaScript and hears its two clicks (Stop, the
@@ -32,17 +32,16 @@ function vars(t: IPointTalkTheme): string {
 	return `--bg:${color(t.bg, t.dark ? '#1c1917' : '#fafaf9')};--border:${color(t.border, t.dark ? 'rgba(255,255,255,.15)' : '#e7e5e4')};`
 		+ `--text:${color(t.text, t.dark ? '#fafaf9' : '#0c0a09')};--text2:${color(t.text2, t.dark ? '#a6a09b' : '#79716b')};`
 		+ `--fill:${color(t.fill, t.dark ? '#fafaf9' : '#252525')};--fillText:${color(t.fillText, t.dark ? '#0c0a09' : '#fafaf9')};`
+		+ `--red:${color(t.red, t.dark ? '#f87171' : '#dc2626')};`
 		+ `--pop:${t.dark ? '0 8px 24px -8px rgba(0,0,0,.6)' : '0 8px 24px -8px rgba(0,0,0,.16)'};`;
 }
 
 const BASE = `*{box-sizing:border-box}html,body{margin:0;background:transparent;overflow:hidden;font:12px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none}`;
 
-/** Video camera, 14 px, the line glyph of codicon device-camera-video. */
-const CAMERA = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="M10.5 7l4-2.2v6.4l-4-2.2"/></svg>`;
 const STOP = `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5" fill="currentColor"/></svg>`;
 
 /**
- * The bar (B1 of the design, borrowed by A while Dispatch is not on the recorded display): the camera breathing, the
+ * The bar (B1 of the design, borrowed by A while Dispatch is not on the recorded display): the red dot breathing, the
  * clock, the level, the words fading in from the left, the newest spot's number, Stop. Dragged by any part but Stop.
  */
 export function pointTalkBarPage(theme: IPointTalkTheme, stopLabel: string, listening: string): string {
@@ -50,8 +49,8 @@ export function pointTalkBarPage(theme: IPointTalkTheme, stopLabel: string, list
 	return `<!doctype html><html><head><meta charset="utf-8"><title>Point and talk</title><style>${BASE}
 :root{${vars(theme)}}
 .bar{position:absolute;left:${m}px;top:${m}px;width:${POINT_TALK_BAR_SIZE.width}px;height:${POINT_TALK_BAR_SIZE.height}px;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:var(--pop);color:var(--text2);-webkit-app-region:drag;cursor:default}
-.cam{color:var(--text);display:grid;place-items:center;animation:breathe 2s ease-in-out infinite}
-@keyframes breathe{50%{opacity:.8}}
+.rec{flex:none;width:8px;height:8px;border-radius:50%;background:var(--red);animation:breathe 1.6s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.35}}
 .clock{width:36px;color:var(--text);font-variant-numeric:tabular-nums}
 .meter{display:inline-flex;align-items:center;gap:2px;height:10px;width:18px}
 .meter i{width:2px;border-radius:1px;background:var(--text);height:2px;transition:height .12s}
@@ -67,7 +66,7 @@ export function pointTalkBarPage(theme: IPointTalkTheme, stopLabel: string, list
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
 <div class="bar" role="status" aria-label="Point and talk is recording">
-<span class="cam">${CAMERA}</span><span class="clock" id="clock">0:00</span><span class="meter" id="meter"><i></i><i></i><i></i><i></i><i></i></span>
+<span class="rec"></span><span class="clock" id="clock">0:00</span><span class="meter" id="meter"><i></i><i></i><i></i><i></i><i></i></span>
 <span class="live" id="live"><span class="shim">${esc(listening)}</span></span><span class="nd" id="spot" hidden></span>
 <button class="stop" id="stop" type="button">${STOP}${esc(stopLabel)}</button>
 </div>
@@ -90,7 +89,10 @@ window.__pt = s => {
 export function pointTalkFramePage(theme: IPointTalkTheme): string {
 	return `<!doctype html><html><head><meta charset="utf-8"><title>Point and talk frame</title><style>${BASE}
 :root{${vars(theme)}}
-.frame{position:fixed;inset:0;border:2px solid color-mix(in srgb,var(--text2) 70%,transparent);pointer-events:none}
+@property --a{syntax:'<angle>';inherits:false;initial-value:0deg}
+.frame{position:fixed;inset:0;padding:4px;pointer-events:none;background:conic-gradient(from var(--a),var(--red),color-mix(in srgb,var(--red) 15%,transparent) 30%,var(--red) 50%,color-mix(in srgb,var(--red) 15%,transparent) 80%,var(--red));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:flow 4s linear infinite}
+@keyframes flow{to{--a:360deg}}
+@media (prefers-reduced-motion:reduce){.frame{animation:none;background:color-mix(in srgb,var(--red) 70%,transparent)}}
 .ring{position:fixed;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:1.5px solid var(--text2);opacity:0;pointer-events:none}
 .ring.go{animation:ring .8s cubic-bezier(0,0,.2,1)}
 @keyframes ring{0%{opacity:.8;transform:scale(.4)}100%{opacity:0;transform:scale(1.3)}}

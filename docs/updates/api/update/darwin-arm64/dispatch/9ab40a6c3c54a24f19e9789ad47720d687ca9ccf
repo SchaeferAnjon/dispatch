@@ -1,0 +1,32 @@
+{
+  "url": "https://github.com/SchaeferAnjon/dispatch/releases/download/v0.9.7/Dispatch-IDE-0.9.7-macos-apple-silicon.zip",
+  "name": "0.9.7 (2026-11-16 12:19)",
+  "version": "1f01cc80e8f36f88441ac72d1cafc697d9e7867f",
+  "productVersion": "0.9.7 (2026-11-16 12:19)",
+  "hash": "384b59c7a84575a44220bac20374b1f16c8e5ce1",
+  "sha256hash": "353baf3df045305c6d1314f4c84ef0ca123cab64fcef72f38f93869fbcb2757a",
+  "timestamp": 1794827976552,
+  "notes": "1f01cc80e8f36f88441ac72d1cafc697d9e7867f",
+  "whatsNew": [
+    {
+      "title": "Point and talk",
+      "where": "The camera button next to Send, or Shift+Ctrl+S anywhere"
+    },
+    {
+      "title": "Side chat under Now",
+      "where": "Right panel, below Now"
+    },
+    {
+      "title": "Square corners",
+      "where": "Everywhere"
+    },
+    {
+      "title": "Clearer thinking level",
+      "where": "The level next to the model name under the message box"
+    },
+    {
+      "title": "Turbo",
+      "where": "Under the message box of a new chat (the + on Chats)"
+    }
+  ]
+}

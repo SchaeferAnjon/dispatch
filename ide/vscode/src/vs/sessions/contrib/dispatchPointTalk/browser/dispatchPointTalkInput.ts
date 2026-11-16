@@ -3,9 +3,9 @@
  *  design/screen-talk frames A1 and A2).
  *
  *  A1, recording: the box shows the words as they come (grey, three lines at most, older ones scroll up), and its
- *  tool row becomes the camera in the text colour breathing, the clock, the level, the newest spot's number, then
- *  Discard and Stop where the send button was (Stop has its word: it is not the agent's stop square). No red: macOS
- *  draws its own indicators in the menu bar.
+ *  tool row becomes a breathing red dot, "Recording", the clock, the level, the newest spot's number, then Discard
+ *  and Stop where the send button was (Stop has its word: it is not the agent's stop square); the box keeps its own
+ *  border (task-dd4hw: the grey camera did not tell the person it was recording, a grey border fought the working flow).
  *
  *  A2, stopped: three placeholders and "Picking frames…" while the frames are picked, then the keyframes (each a
  *  crop round its red box, its number and when its sentence starts; × removes it, the pen opens the draw tool to
@@ -97,7 +97,8 @@ export class PointTalkInputSlot extends Disposable {
 			this.slot.className = 'dispatch-pt-slot rec';
 			const live = dom.append(this.slot, $('.pt-live', { 'aria-live': 'polite' }));
 			const tools = dom.append(this.slot, $('.pt-tools'));
-			dom.append(tools, $(`span.pt-cam${ThemeIcon.asCSSSelector(Codicon.deviceCameraVideo)}`, { 'aria-hidden': 'true' }));
+			dom.append(tools, $('span.pt-rec', { 'aria-hidden': 'true' }));
+			dom.append(tools, $('span.pt-rec-label', undefined, localize('dispatchPointTalk.recording', "Recording")));
 			const clockEl = dom.append(tools, $('span.pt-clock', { role: 'timer', 'aria-label': localize('dispatchPointTalk.elapsed', "Recording time") }));
 			const meter = dom.append(tools, $('span.pt-meter', { 'aria-hidden': 'true' }));
 			const bars = [0, 1, 2, 3, 4].map(() => dom.append(meter, $('i')));

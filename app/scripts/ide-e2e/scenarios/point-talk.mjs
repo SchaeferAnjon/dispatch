@@ -148,8 +148,13 @@ export default async function (ui) {
   const a1 = await ui.eval(`(() => { const box = document.querySelector('${INPUT} .chat-input-container'); const s = box.querySelector('.dispatch-pt-slot'); const stop = s.querySelector('.pt-stop');
     return { cls: box.className, border: getComputedStyle(box).borderTopColor, live: s.querySelector('.pt-live').innerText, clock: s.querySelector('.pt-clock').innerText, dot: s.querySelector('.pt-dot').innerText,
       stop: stop.innerText, stopR: getComputedStyle(stop).borderTopLeftRadius, editorHidden: getComputedStyle(box.querySelector('.chat-editor-container')).display === 'none',
-      red: [...s.querySelectorAll('*')].some(e => /rgb\\((2[0-9]{2}), ([0-9]{1,2}), ([0-9]{1,2})\\)/.test(getComputedStyle(e).color)) }; })()`);
-  check("A1: the box shows the words, the clock, the newest number and Stop with its word; no red", a1.editorHidden && a1.live.length > 0 && /^0:0\d$/.test(a1.clock) && Number(a1.dot) >= 2 && a1.stop.trim() === "Stop" && !a1.red, a1);
+      label: s.querySelector('.pt-rec-label')?.innerText, recDot: s.querySelector('.pt-rec') ? getComputedStyle(s.querySelector('.pt-rec')).backgroundColor : null,
+      recAnim: s.querySelector('.pt-rec') ? getComputedStyle(s.querySelector('.pt-rec')).animationName : null, red: getComputedStyle(document.body).getPropertyValue('--vscode-errorForeground').trim() }; })()`);
+  // the red of the dot and of the border is the theme's errorForeground (task-dd4hw: the person could not tell it was recording)
+  const reddish = c => { const m = /rgba?\(([\d.]+), ([\d.]+), ([\d.]+)/.exec(c || ""); return !!m && Number(m[1]) > 150 && Number(m[1]) > Number(m[2]) * 1.6 && Number(m[1]) > Number(m[3]) * 1.6; };
+  check("A1: the box shows a breathing red dot, Recording, the words, the clock, the newest number and Stop with its word", a1.editorHidden && a1.live.length > 0 && a1.label === "Recording" && reddish(a1.recDot) && a1.recAnim === "pt-breathe" && /^0:0\d$/.test(a1.clock) && Number(a1.dot) >= 2 && a1.stop.trim() === "Stop", a1);
+  check("A1: the box keeps its own border (no recording colour on it)", !reddish(a1.border), a1.border);
+  check("A1: the moving red frame is on the recorded display from the start, without the bar", (await events()).includes("frame") && !(await events()).includes("bar"), await events());
   await shots("a1-rec");
   await ui.mark({ text: "Stop", exact: true, within: `${INPUT} .dispatch-pt-slot` }, { what: "录制中：边说边出字、计时、音量、最新编号", where: "输入框里，Stop 在发送键的位置", how: "点 Stop 或再按 ⌃⇧S 停下，Discard 丢掉" });
   const full = await waitState(s => s.elapsed >= 14, "the take to play out", 30000);
@@ -175,6 +180,31 @@ export default async function (ui) {
   check("A2: thumbnails 144×96 with a red box, number and time", a2.th.length === 3 && a2.th.every(t => t.w === 144 && t.h === 96 && t.boxes === 1 && /^\d \d:\d\d$/.test(t.lab)), a2.th);
   check("A2: the video chip says Screen recording and its length; the path on hover", /^Screen recording \d:\d\d$/.test(a2.chip.trim()) && /screen\.(mp4|webm)$/.test(a2.chipTitle), a2);
   check("A2: the keyframes are the box's attachments (hidden behind the review), the box's own tool row stays", a2.hiddenAttachments === 3 && a2.toolbar !== "none", a2);
+  // every framed element round the review, from the slot up to the input part: a border, an outline, a box shadow, or a
+  // ::before / ::after ring that shows (task-dd4hw: the focused review got VS Code's [tabindex="-1"]:focus outline, a
+  // darker frame inside the box; a border-only look missed it)
+  qa.facts.reviewFrames = await ui.eval(`(() => {
+    const clear = c => !c || c === 'transparent' || /rgba\\([^)]*,\\s*0\\)$/.test(c);
+    const frame = (cs, pseudo) => {
+      if (pseudo && (cs.content === 'none' || cs.content === 'normal' || cs.display === 'none' || Number(cs.opacity) === 0)) return null;
+      const f = [];
+      if (['Top', 'Right', 'Bottom', 'Left'].some(s => parseFloat(cs['border' + s + 'Width']) > 0 && cs['border' + s + 'Style'] !== 'none' && !clear(cs['border' + s + 'Color']))) f.push('border ' + cs.borderTopColor);
+      if (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0 && !clear(cs.outlineColor)) f.push('outline ' + cs.outlineWidth + ' ' + cs.outlineColor);
+      if (cs.boxShadow && cs.boxShadow !== 'none') f.push('shadow ' + cs.boxShadow);
+      if (pseudo && cs.backgroundImage !== 'none') f.push('ring ' + cs.backgroundImage.slice(0, 40));
+      return f.length ? f : null;
+    };
+    const out = []; let e = document.querySelector('${INPUT} .dispatch-pt-slot'); const top = document.querySelector('${INPUT}');
+    while (e && e !== top.parentElement) {
+      const f = [frame(getComputedStyle(e), false), frame(getComputedStyle(e, '::before'), true), frame(getComputedStyle(e, '::after'), true)];
+      if (f.some(Boolean)) { const r = e.getBoundingClientRect(); out.push({ cls: e.className, own: f[0], before: f[1], after: f[2], h: Math.round(r.height), top: Math.round(r.top) }); }
+      e = e.parentElement;
+    }
+    return { framed: out, focusInReview: !!document.activeElement?.closest('${INPUT} .dispatch-pt-slot') }; })()`);
+  const rf = qa.facts.reviewFrames;
+  check("A2: one frame round the review, the box's own (none inside it, the focused review included)", rf.focusInReview && rf.framed.length === 1 && /\bchat-input-container\b/.test(rf.framed[0].cls), rf);
+  const lines = await ui.eval(`(() => { const l = document.querySelector('${INPUT} .dispatch-pt-slot .pt-lines'); const cs = getComputedStyle(l); return { maxH: cs.maxHeight, overflow: cs.overflowY }; })()`);
+  check("A2: the lines have a height limit and scroll inside the box", lines.maxH !== "none" && lines.overflow === "auto", lines);
   await shots("a2-stop");
   await ui.mark(CAMERA, { what: "Point and talk 按钮（摄像机）", where: "输入框工具行，发送键左边", how: "点它或按 ⌃⇧S 开录，录鼠标所在那块屏和声音" });
   await ui.mark({ css: `${INPUT} .pt-th[data-n="1"]` }, { what: "关键帧：指针停住的地方，红框、编号和这句开始的时间", where: "停下后输入框里第一行", how: "悬停出 × 删、笔改框，Tab 走到后 Delete、Enter 同效" });
