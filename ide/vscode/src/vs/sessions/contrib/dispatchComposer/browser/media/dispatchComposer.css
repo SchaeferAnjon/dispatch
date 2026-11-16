@@ -9,7 +9,7 @@
 	place-items: center;
 	width: 18px;
 	height: 18px;
-	border-radius: 5px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
 	color: var(--vscode-foreground);
 	font-size: 12px !important;
@@ -17,13 +17,13 @@
 	flex: none;
 }
 
-/* send: a block, not a circle (32, radius 10) with Dispatch's arrow */
+/* send: a block, not a circle (32, row corners) with Dispatch's arrow */
 .monaco-workbench.agent-sessions-workbench .sessions-chat-send-button,
 .monaco-workbench.agent-sessions-workbench .sessions-chat-send-button .monaco-button,
 .monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-submit-button,
 .monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-submit-button .action-label,
 .monaco-workbench.agent-sessions-workbench .interactive-input-part .chat-execute-toolbar .action-item:last-child .action-label {
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-row);
 }
 
 /* the block reads as a block even while there is nothing to send yet: a quiet stone fill (DESIGN.md 方块发送键),

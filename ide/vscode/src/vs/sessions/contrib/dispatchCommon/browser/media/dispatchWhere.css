@@ -341,7 +341,7 @@
 	text-overflow: ellipsis;
 }
 
-/* ---- snippet card: 320 wide, --bg-2, radius 14, one light shadow (a floating layer) ---- */
+/* ---- snippet card: 320 wide, --bg-2, card corners, one light shadow (a floating layer) ---- */
 
 .dispatch-where-card {
 	width: 320px;
@@ -349,7 +349,7 @@
 	padding: 8px;
 	display: grid;
 	gap: 8px;
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-card);
 	background: var(--dw-bg-2);
 	border: 1px solid var(--dw-hair);
 	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
@@ -442,7 +442,7 @@
 /* ---- a hover that holds a snippet card (IHoverService, additionalClasses dispatch-where-hover): the hover's own frame is the card's ---- */
 
 .monaco-hover.dispatch-where-hover {
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-card);
 	background-color: var(--vscode-sideBar-background);
 	border-color: var(--vscode-editorHoverWidget-border);
 	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);

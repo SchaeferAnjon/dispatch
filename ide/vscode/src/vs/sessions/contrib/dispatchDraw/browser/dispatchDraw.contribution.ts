@@ -25,6 +25,9 @@ import { DispatchThumbSize, DispatchWhereViewer, IDispatchMark, renderDispatchWh
 import { dispatchAttachmentBytes, dispatchBlobUrl, DispatchDrawInputController, IDispatchDrawInputHost, renderDispatchImageTile, setDispatchDrawInputController } from './dispatchDrawInput.js';
 import { DispatchPaneDraw, setDispatchPaneDraw } from './dispatchDrawPane.js';
 
+/** Point and talk's keyframes carry boxes too (for the agent) but draw themselves (contrib/dispatchPointTalk). */
+const POINT_TALK_FRAME_META = 'dispatch.pointTalk';
+
 const $ = dom.$;
 
 let inputController: DispatchDrawInputController | undefined;
@@ -89,6 +92,9 @@ class DispatchDrawContribution extends Disposable implements IWorkbenchContribut
 	}
 
 	private decorateImage(ctx: IDispatchChatImageAttachmentContext): IDisposable | undefined {
+		if (ctx.attachment._meta?.[POINT_TALK_FRAME_META]) {
+			return undefined; // a Point and talk keyframe: contrib/dispatchPointTalk draws it
+		}
 		const store = new DisposableStore();
 		const render = (bytes: Uint8Array) => {
 			if (ctx.isCurrentInput) {
@@ -134,7 +140,7 @@ class DispatchDrawContribution extends Disposable implements IWorkbenchContribut
 
 	private decorateRequest(ctx: IDispatchChatRequestContext): IDisposable | undefined {
 		const pictures = ctx.variables
-			.map(v => ({ entry: v, meta: v.kind === 'image' ? readDispatchMarksMeta(v) : undefined }))
+			.map(v => ({ entry: v, meta: v.kind === 'image' && !v._meta?.[POINT_TALK_FRAME_META] ? readDispatchMarksMeta(v) : undefined }))
 			.filter((p): p is { entry: IChatRequestVariableEntry; meta: IDispatchMarksMetadata } => !!p.meta);
 		if (!pictures.length) {
 			return undefined;

@@ -131,9 +131,9 @@ const block = (text, selector) => {
  assert.ok(at >= 0, `no rule for ${selector}`);
  return text.slice(at, text.indexOf('}', at));
 };
-test('the notice and the input are one shell: 24 top corners, the input squares its own', () => {
+test('the notice and the input are one shell: the top corners of the input (--dispatch-radius-input), the input squares its own', () => {
  const notice = block(css(), '.chat-input-notice.chat-input-notification-widget.severity-error');
- assert.match(notice, /border-radius: 24px 24px 0 0/);
+ assert.match(notice, /border-radius: var\(--dispatch-radius-input\) var\(--dispatch-radius-input\) 0 0/);
  assert.match(notice, /border-color: var\(--vscode-agentsChatInput-border/);
  assert.match(notice, /background-color: var\(--vscode-agentsChatInput-background/);
  assert.match(css(), /border-top-left-radius: 0;\s+border-top-right-radius: 0;\s+border-top-width: 0;\s+padding-top: 1px;/);

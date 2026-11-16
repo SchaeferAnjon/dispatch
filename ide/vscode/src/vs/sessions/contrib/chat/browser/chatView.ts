@@ -287,7 +287,7 @@ export class ChatView extends AbstractChatView {
 				enableImplicitContext: true,
 				enableWorkingSet: 'implicit',
 				supportsChangingModes: true,
-				// Dispatch IDE: one line in a side chat's card, which is short (contrib/dispatchSideChat, task-23iin)
+				// Dispatch IDE: one line in a side chat's pane, which is short (contrib/dispatchSideChat, task-23iin, task-5im8n)
 				inputEditorMinLines: contextKeyService.getContextKeyValue<boolean>('dispatchSideChatCard') ? 1 : 2,
 				isSessionsWindow: true,
 				transcriptTabIndex: -1,

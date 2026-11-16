@@ -14,7 +14,7 @@
 .dispatch-settings-page .dset-bi-err[hidden] { display: none; }
 
 /* the pieces under a card's first row: a hairline under that row, nothing between the pieces */
-.dispatch-settings-page .dset-bi-head:has(~ .dset-bi-sub) { box-shadow: 0 1px 0 0 color-mix(in srgb, var(--dset-hair) 60%, transparent); border-radius: 9px 9px 0 0; }
+.dispatch-settings-page .dset-bi-head:has(~ .dset-bi-sub) { box-shadow: 0 1px 0 0 color-mix(in srgb, var(--dset-hair) 60%, transparent); border-radius: var(--dispatch-radius-row) var(--dispatch-radius-row) 0 0; }
 .dispatch-settings-page .dset-row.dset-bi-sub .dset-row-label { font-size: 13px; }
 
 /* one switch per agent, its name after it */
@@ -23,7 +23,7 @@
 .dispatch-settings-page .dset-bi-agent.dset-bi-na { opacity: .45; }
 .dispatch-settings-page .dset-row-ctl:has(.dset-bi-agent) { gap: 12px; }
 
-/* Show / Hide: a quiet capsule, the same width either way */
+/* Show / Hide: a quiet button, the same width either way */
 .dispatch-settings-page .dset-bi-show.monaco-button { min-width: 56px; justify-content: center; }
 
 /* what opens under a row */

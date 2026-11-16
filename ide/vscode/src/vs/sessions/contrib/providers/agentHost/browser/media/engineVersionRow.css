@@ -16,7 +16,7 @@
 	-webkit-user-select: text;
 }
 
-/* Dispatch IDE: installing or updating (DESIGN.md「安装或更新」): a 4px capsule (--chip) with a --fill band
+/* Dispatch IDE: installing or updating (DESIGN.md「安装或更新」): a 4px bar, 2 corners (--chip) with a --fill band
    sweeping across in 1.5s, then the step in words */
 .engine-version-row .engine-version-progress {
 	position: relative;
@@ -25,7 +25,7 @@
 	height: 4px;
 	margin-right: var(--vscode-spacing-size80);
 	vertical-align: middle;
-	border-radius: 999px;
+	border-radius: 2px;
 	overflow: hidden;
 	background: var(--vscode-button-secondaryBackground);
 }
@@ -36,7 +36,7 @@
 	bottom: 0;
 	left: 0;
 	width: 40%;
-	border-radius: 999px;
+	border-radius: 2px;
 	background: var(--vscode-progressBar-background);
 	animation: engine-version-sweep 1.5s linear infinite;
 }

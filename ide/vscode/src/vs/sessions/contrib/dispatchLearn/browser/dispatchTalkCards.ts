@@ -29,8 +29,10 @@ interface IShown {
 export interface ITalkCardsHost {
 	/** The side pane the cards sit in (undefined while it is put away: no card then). */
 	container(): HTMLElement | undefined;
-	/** The pills in the corner (the side chat's, Walk me through's): the cards sit above them. */
+	/** The pills in the corner (Walk me through's): the cards sit above them. */
 	pillShown(): number;
+	/** Where the corner starts from the side pane's bottom: 8 over the folded side chat's head, else the corner's gap. */
+	floor(): number;
 	/** A click on a card. */
 	activate(key: string, card: ILearnCard): void;
 	/** × on a card: no more of this one in this turn. */
@@ -104,7 +106,7 @@ export class DispatchTalkCards extends Disposable {
 			s.element.style.width = `${width}px`;
 		}
 		const corner = narrow ? 12 : 16;
-		const bottoms = talkCardBottoms(live.map(s => s.element.offsetHeight), corner, this._host.pillShown());
+		const bottoms = talkCardBottoms(live.map(s => s.element.offsetHeight), this._host.floor(), this._host.pillShown());
 		live.forEach((s, i) => {
 			s.element.style.right = `${corner}px`;
 			s.element.style.bottom = `${bottoms[i]}px`;

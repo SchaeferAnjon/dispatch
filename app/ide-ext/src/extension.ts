@@ -36,6 +36,7 @@ import { registerEngines } from "./engines";
 import { registerNet } from "./net";
 import { registerSoul } from "./soul";
 import { registerKeys } from "./keys";
+import { registerPointTalk } from "./pointTalk";
 import { registerTerminal } from "./terminal";
 import { registerHistory, registerHistoryWindow } from "./history";
 import { registerSlash } from "./slash";
@@ -207,6 +208,8 @@ function activateAgentsWindow(ctx: vscode.ExtensionContext) {
   step("soul", () => registerSoul(ctx));
   // Settings › Keys and the "Key saved" toast (keys.ts)
   step("keys", () => registerKeys(ctx));
+  // Point and talk: the Soniox key, a temporary key for the live words, a whole recording transcribed (pointTalk.ts)
+  step("point talk", () => registerPointTalk(ctx));
   // the Agents window's terminal: agents that can run in it, the Ghostty look (patches/610-terminal.patch)
   step("terminal", () => registerTerminal(ctx));
   // the right panel's History tab: every session on this Mac, nothing imported (patches/450-history.patch)

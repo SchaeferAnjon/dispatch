@@ -1,5 +1,6 @@
-// The side chat card (direction A「Bottom-right card」, user 2026-11-15, task-23iin, kanban design/side-chat): where it
-// sits and how big, what its pill says, the passage it lights in a document, and the answers kept as comments.
+// The side chat's pane under the side pane's tab (direction B「Split pane」, user 2026-11-16, task-5im8n,
+// design/side-chat-now): how the room is shared, what its folded head says, the corner over it, the passage it lights
+// in a document, and the answers kept as comments. (Walk me through's card still uses the old card's box.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -9,7 +10,7 @@ const src = process.env.DISPATCH_VSCODE_SOURCE;
 const vs = src ? path.join(src, 'src/vs') : fileURLToPath(new URL('../vscode/src/vs/', import.meta.url));
 const M = await import(pathToFileURL(path.join(vs, 'sessions/contrib/dispatchSideChat/common/dispatchSideChatModel.ts')));
 
-test('a wide window: 380 wide, at most 470 high, 16 from the side pane\'s bottom right corner', () => {
+test('Walk me through\'s card in a wide window: 380 wide, at most 470 high, 16 from the side pane\'s bottom right corner', () => {
 	// the prototype's 1440 × 887 window: its side pane is 682 × 819
 	assert.deepEqual(M.cardBox(682, 819, 1440), { right: 16, bottom: 16, width: 380, height: 470, narrow: false });
 	// a short pane leaves its top 96 free (the tabs and the document's head)
@@ -22,7 +23,7 @@ test('a wide window: 380 wide, at most 470 high, 16 from the side pane\'s bottom
 	assert.equal(M.cardBox(682, 200, 1440).height, 168);
 });
 
-test('a window 1200 wide or less: the card fills the pane\'s width, 12 each side, 58% of its height up to 420', () => {
+test('Walk me through\'s card in a window 1200 wide or less: it fills the pane\'s width, 12 each side, 58% of its height up to 420', () => {
 	assert.deepEqual(M.cardBox(500, 700, 1100), { right: 12, bottom: 12, width: 476, height: 406, narrow: true });
 	assert.equal(M.cardBox(500, 900, 1100).height, 420);
 	assert.equal(M.cardBox(500, 700, 1200).narrow, true);
@@ -31,15 +32,54 @@ test('a window 1200 wide or less: the card fills the pane\'s width, 12 each side
 	assert.equal(M.pillOffset(1440), 16);
 });
 
-test('the pill: Answering while it writes, 500 once an answer came unseen, else just Side chat', () => {
-	assert.deepEqual(M.pillLabel(true, 0), { text: 'Side chat · Answering', bold: false, answering: true });
-	assert.deepEqual(M.pillLabel(true, 1), { text: 'Side chat · Answering', bold: false, answering: true }, 'writing again: that comes first');
-	assert.deepEqual(M.pillLabel(false, 1), { text: 'Side chat · 1 new answer', bold: true, answering: false });
-	assert.deepEqual(M.pillLabel(false, 2), { text: 'Side chat · 2 new answers', bold: true, answering: false });
-	assert.deepEqual(M.pillLabel(false, 0), { text: 'Side chat', bold: false, answering: false });
+test('the folded head: Answering while it writes, 500 once an answer came unseen, else nothing after Side chat', () => {
+	assert.deepEqual(M.foldedBadge(true, 0), { text: '· Answering', bold: false, answering: true });
+	assert.deepEqual(M.foldedBadge(true, 1), { text: '· Answering', bold: false, answering: true }, 'writing again: that comes first');
+	assert.deepEqual(M.foldedBadge(false, 1), { text: '· 1 new answer', bold: true, answering: false });
+	assert.deepEqual(M.foldedBadge(false, 2), { text: '· 2 new answers', bold: true, answering: false });
+	assert.deepEqual(M.foldedBadge(false, 0), { text: '', bold: false, answering: false });
 	assert.equal(M.unreadAfterAnswer('open', 0), 0, 'seen as it came');
 	assert.equal(M.unreadAfterAnswer('min', 0), 1);
 	assert.equal(M.unreadAfterAnswer('closed', 1), 2);
+});
+
+test('the split: by default the pane has 55% of the room under the tabs; the old card\'s height in a narrow window', () => {
+	// a 1440 window: 779 under the tabs, about 350 over the line
+	assert.deepEqual(M.splitRoom(779, 1440, 'open'), { top: 351, pane: 428, oneLine: false });
+	assert.equal(M.defaultPaneHeight(779, 1440), 428);
+	// 756 wide, as the person's window: 58% of the room, at most 420, and the line
+	assert.deepEqual(M.splitRoom(784, 756, 'open'), { top: 363, pane: 421, oneLine: false });
+	assert.equal(M.splitRoom(600, 1100, 'open').pane, Math.round(600 * 0.58) + 1);
+	assert.equal(M.splitRoom(600, 1201, 'open').pane, 600 - 270);
+});
+
+test('the split: at least 32 over the pane, the pane at least 200 under its line; under 120 Now is one line', () => {
+	const r = 700;
+	assert.deepEqual(M.splitRoom(r, 1440, 'open', 0.99), { top: 32, pane: r - 32, oneLine: true }, 'dragged to the top: 32 stay');
+	assert.deepEqual(M.splitRoom(r, 1440, 'open', 0.05), { top: r - 201, pane: 201, oneLine: false }, 'dragged to the bottom: 200 and the line');
+	assert.equal(M.splitRoom(r, 1440, 'open', (r - 119) / r).oneLine, true, '119 over it');
+	assert.equal(M.splitRoom(r, 1440, 'open', (r - 120) / r).oneLine, false, '120 over it');
+	// a room too short for both: the 32 wins
+	assert.deepEqual(M.splitRoom(200, 1440, 'open'), { top: 32, pane: 168, oneLine: true });
+	// folded: the head and its line; closed: nothing
+	assert.deepEqual(M.splitRoom(r, 1440, 'min', 0.8), { top: r - 29, pane: 29, oneLine: false });
+	assert.deepEqual(M.splitRoom(r, 1440, 'closed'), { top: r, pane: 0, oneLine: false });
+});
+
+test('dragging the line: its place gives the pane\'s share, held inside the same bounds', () => {
+	assert.equal(M.shareForTop(800, 400), 0.5);
+	assert.equal(M.shareForTop(800, 0), (800 - 32) / 800, 'over the top: 32 stay');
+	assert.equal(M.shareForTop(800, 900), 201 / 800, 'under the bottom: the pane keeps 200 and its line');
+	// what a share gives back is where the line was put
+	assert.equal(M.splitRoom(800, 1440, 'open', M.shareForTop(800, 300)).top, 300);
+});
+
+test('the corner\'s small cards start 8 over the folded pane\'s head, else at the corner\'s gap', () => {
+	assert.equal(M.cornerFloor('min', 1440), 37);
+	assert.equal(M.cornerFloor('min', 1100), 37);
+	assert.equal(M.cornerFloor('open', 1440), 16);
+	assert.equal(M.cornerFloor(undefined, 1100), 12);
+	assert.equal(M.cornerFloor('closed', 1440), 16);
 });
 
 test('the quote\'s second line names the file and its lines; the words are one line', () => {

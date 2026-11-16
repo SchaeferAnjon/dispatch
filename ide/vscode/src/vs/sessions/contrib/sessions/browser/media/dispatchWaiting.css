@@ -82,6 +82,10 @@
 	box-sizing: border-box;
 	background-clip: content-box;
 }
+/* the corners of that background follow the padding (dispatch-shell.css, session rows) */
+.agent-sessions-workbench .agent-sessions-viewpane .sessions-list-control .monaco-list-row.dispatch-group-end {
+	--dispatch-row-pad-bottom: 8px;
+}
 /* "Show N more" (12/600) and "N older" (12/400), grey 70 %, at the titles' edge */
 .agent-sessions-viewpane .session-section.dispatch-wait-fold {
 	height: 28px;
@@ -170,7 +174,7 @@
 	gap: 6px;
 	height: 28px;
 	padding: 0 12px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
 	background: transparent;
 	color: var(--vscode-foreground);
@@ -227,7 +231,7 @@
 	gap: 8px;
 	min-height: 32px;
 	padding: 0 8px 0 12px;
-	border-radius: 20px;
+	border-radius: var(--dispatch-radius-row);
 	font-size: 13px;
 	transition: background-color 150ms ease, opacity 150ms ease;
 }
@@ -275,7 +279,7 @@
 	height: 18px;
 	line-height: 18px;
 	padding: 0 8px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background-color: var(--vscode-list-hoverBackground);
 	color: var(--vscode-descriptionForeground);
 	font-size: 11px;
@@ -292,7 +296,7 @@
 .dispatch-waiting-more {
 	height: 24px;
 	padding: 0 8px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
 	background: transparent;
 	color: var(--vscode-foreground);
@@ -383,7 +387,7 @@
 	line-height: 28px;
 	margin-top: 8px;
 	padding: 0 12px;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-row);
 	font-size: 12px;
 	font-weight: 600;
 	color: color-mix(in srgb, var(--dispatch-waiting-text-2) 70%, transparent);
@@ -434,7 +438,7 @@
 	min-height: 32px;
 	margin-top: 2px;
 	padding: 0 12px;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-row);
 	font-size: 13px;
 	cursor: pointer;
 	transition: background-color 150ms var(--dispatch-waiting-ease-out);
@@ -557,7 +561,7 @@
 	margin: 2px 0 0;
 	padding: 0 12px 0 34px;
 	border: 0;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-row);
 	background: transparent;
 	text-align: left;
 	font-size: 12px;
@@ -568,7 +572,7 @@
 	background-color: var(--dispatch-waiting-hover);
 }
 
-/* ---- buttons: capsules, 32 high by default, 24 for xs; ghost has no fill, outline a hairline of the text
+/* ---- buttons: button corners, 32 high by default, 24 for xs; ghost has no fill, outline a hairline of the text
    colour (--hair does not show on --bg-2), fill is the one solid button ---- */
 .dispatch-waiting-btn {
 	display: inline-flex;
@@ -576,7 +580,7 @@
 	gap: 6px;
 	height: 32px;
 	padding: 0 12px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	border: 1px solid transparent;
 	background: transparent;
 	color: var(--dispatch-waiting-text);
@@ -733,7 +737,7 @@
 	to { background-position: -100% 0; }
 }
 
-/* ---- the toast: inverted, radius 14, over the page's bottom edge; Undo for 6 s ---- */
+/* ---- the toast: inverted, row corners, over the page's bottom edge; Undo for 6 s ---- */
 .dispatch-waiting-toast {
 	position: absolute;
 	right: 12px;
@@ -744,7 +748,7 @@
 	gap: 12px;
 	max-width: min(440px, 70%);
 	padding: 6px 8px 6px 12px;
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-row);
 	background: var(--dispatch-waiting-text);
 	color: var(--vscode-editor-background);
 	font-size: 12px;
@@ -769,7 +773,7 @@
 	height: 20px;
 	padding: 0 8px;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: inherit;
 	font: inherit;

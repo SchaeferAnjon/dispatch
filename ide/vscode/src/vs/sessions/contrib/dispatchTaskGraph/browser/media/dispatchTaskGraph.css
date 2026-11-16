@@ -678,7 +678,7 @@
 	padding: 8px 12px;
 	background: var(--vscode-editorHoverWidget-background);
 	border: 1px solid var(--vscode-editorHoverWidget-border);
-	border-radius: 5px;
+	border-radius: var(--dispatch-radius-card);
 	box-shadow: var(--vscode-shadow-lg);
 	color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
 	font-size: 12px;
@@ -790,7 +790,7 @@
 .dispatch-tg-skel-row i {
 	display: block;
 	height: 10px;
-	border-radius: 5px;
+	border-radius: var(--dispatch-radius-button);
 	background: linear-gradient(90deg, var(--vscode-list-inactiveSelectionBackground) 0%,
 		color-mix(in srgb, var(--vscode-list-inactiveSelectionBackground) 30%, var(--session-view-background, var(--vscode-editor-background))) 50%,
 		var(--vscode-list-inactiveSelectionBackground) 100%);
@@ -832,7 +832,7 @@
 	margin-top: 12px;
 	padding: 0 12px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--vscode-list-inactiveSelectionBackground);
 	color: var(--vscode-foreground);
 	font: inherit;
@@ -891,7 +891,7 @@
 	padding: 0 8px;
 	margin-left: -8px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;
@@ -968,7 +968,7 @@
 	gap: 8px;
 	min-height: 32px;
 	padding: 0 12px;
-	border-radius: 20px;
+	border-radius: var(--dispatch-radius-row);
 	font-size: 13px;
 }
 

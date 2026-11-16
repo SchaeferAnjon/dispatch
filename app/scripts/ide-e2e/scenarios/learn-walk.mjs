@@ -252,7 +252,7 @@ export default async function (ui) {
   const s1 = await waitStop(0, "the first stop");
   check("the pill went when the walk began", !s1.pill, s1.pill);
   check("the card has the keyboard (← → Esc work at once)", s1.focusInCard, s1.focusInCard);
-  check("the card is the side chat card's family: corner 12, 16 off the pane's corner", s1.card.radius === "12px" && !!s1.part && Math.abs(s1.part.r - s1.card.box.r - 16) <= 1.5 && Math.abs(s1.part.b - s1.card.box.b - 16) <= 1.5, { radius: s1.card.radius, part: s1.part, card: s1.card.box });
+  check("the card is the side chat card's family: corner 8 (--dispatch-radius-card), 16 off the pane's corner", s1.card.radius === "8px" && !!s1.part && Math.abs(s1.part.r - s1.card.box.r - 16) <= 1.5 && Math.abs(s1.part.b - s1.card.box.b - 16) <= 1.5, { radius: s1.card.radius, part: s1.part, card: s1.card.box });
   const count = Number(s1.card.count);
   check("three stops: the new file, and each of the two changed blocks", count === 3, s1.card.count);
   await checkStop(s1, 1, count);

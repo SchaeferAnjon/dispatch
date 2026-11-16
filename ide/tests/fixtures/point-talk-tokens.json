@@ -1,0 +1,335 @@
+{
+ "_comment": "Soniox stt-async-v6 tokens for a 13.5 s take (macOS say, voice Tingting): four sentences with pauses of 0.9 to 1.2 s; transcribed 2026-11-16 for Point and talk (task-0y0km).",
+ "tokens": [
+  {
+   "text": "这",
+   "start_ms": 210,
+   "end_ms": 270,
+   "language": "zh"
+  },
+  {
+   "text": "里",
+   "start_ms": 390,
+   "end_ms": 450,
+   "language": "zh"
+  },
+  {
+   "text": "我",
+   "start_ms": 570,
+   "end_ms": 630,
+   "language": "zh"
+  },
+  {
+   "text": "把",
+   "start_ms": 750,
+   "end_ms": 810,
+   "language": "zh"
+  },
+  {
+   "text": "国家",
+   "start_ms": 930,
+   "end_ms": 990,
+   "language": "zh"
+  },
+  {
+   "text": "切",
+   "start_ms": 1410,
+   "end_ms": 1470,
+   "language": "zh"
+  },
+  {
+   "text": "到",
+   "start_ms": 1530,
+   "end_ms": 1590,
+   "language": "zh"
+  },
+  {
+   "text": " Canada",
+   "start_ms": 1830,
+   "end_ms": 1890,
+   "language": "zh"
+  },
+  {
+   "text": "。",
+   "start_ms": 2430,
+   "end_ms": 2490,
+   "language": "zh"
+  },
+  {
+   "text": " ",
+   "start_ms": 2730,
+   "end_ms": 2790,
+   "language": "zh"
+  },
+  {
+   "text": "运",
+   "start_ms": 2970,
+   "end_ms": 3030,
+   "language": "zh"
+  },
+  {
+   "text": "费",
+   "start_ms": 3150,
+   "end_ms": 3210,
+   "language": "zh"
+  },
+  {
+   "text": "还",
+   "start_ms": 3270,
+   "end_ms": 3330,
+   "language": "zh"
+  },
+  {
+   "text": "是",
+   "start_ms": 3390,
+   "end_ms": 3450,
+   "language": "zh"
+  },
+  {
+   "text": " 1",
+   "start_ms": 3690,
+   "end_ms": 3750,
+   "language": "zh"
+  },
+  {
+   "text": "5",
+   "start_ms": 3810,
+   "end_ms": 3870,
+   "language": "zh"
+  },
+  {
+   "text": ".",
+   "start_ms": 3990,
+   "end_ms": 4050,
+   "language": "zh"
+  },
+  {
+   "text": "4",
+   "start_ms": 4110,
+   "end_ms": 4170,
+   "language": "zh"
+  },
+  {
+   "text": "，",
+   "start_ms": 4470,
+   "end_ms": 4530,
+   "language": "zh"
+  },
+  {
+   "text": "应",
+   "start_ms": 4590,
+   "end_ms": 4650,
+   "language": "zh"
+  },
+  {
+   "text": "该",
+   "start_ms": 4650,
+   "end_ms": 4710,
+   "language": "zh"
+  },
+  {
+   "text": "跟",
+   "start_ms": 4890,
+   "end_ms": 4950,
+   "language": "zh"
+  },
+  {
+   "text": "着",
+   "start_ms": 5010,
+   "end_ms": 5070,
+   "language": "zh"
+  },
+  {
+   "text": "变",
+   "start_ms": 5250,
+   "end_ms": 5310,
+   "language": "zh"
+  },
+  {
+   "text": "。",
+   "start_ms": 5550,
+   "end_ms": 5610,
+   "language": "zh"
+  },
+  {
+   "text": " ",
+   "start_ms": 6330,
+   "end_ms": 6390,
+   "language": "zh"
+  },
+  {
+   "text": "然",
+   "start_ms": 6510,
+   "end_ms": 6570,
+   "language": "zh"
+  },
+  {
+   "text": "后",
+   "start_ms": 6630,
+   "end_ms": 6690,
+   "language": "zh"
+  },
+  {
+   "text": "点",
+   "start_ms": 6930,
+   "end_ms": 6990,
+   "language": "zh"
+  },
+  {
+   "text": " P",
+   "start_ms": 7290,
+   "end_ms": 7350,
+   "language": "en"
+  },
+  {
+   "text": "ay",
+   "start_ms": 7410,
+   "end_ms": 7470,
+   "language": "en"
+  },
+  {
+   "text": " now",
+   "start_ms": 7530,
+   "end_ms": 7590,
+   "language": "en"
+  },
+  {
+   "text": " ",
+   "start_ms": 7770,
+   "end_ms": 7830,
+   "language": "zh"
+  },
+  {
+   "text": "它",
+   "start_ms": 7890,
+   "end_ms": 7950,
+   "language": "zh"
+  },
+  {
+   "text": "就",
+   "start_ms": 7950,
+   "end_ms": 8010,
+   "language": "zh"
+  },
+  {
+   "text": "一",
+   "start_ms": 8070,
+   "end_ms": 8130,
+   "language": "zh"
+  },
+  {
+   "text": "直",
+   "start_ms": 8190,
+   "end_ms": 8250,
+   "language": "zh"
+  },
+  {
+   "text": "转",
+   "start_ms": 8490,
+   "end_ms": 8550,
+   "language": "zh"
+  },
+  {
+   "text": "圈",
+   "start_ms": 8730,
+   "end_ms": 8790,
+   "language": "zh"
+  },
+  {
+   "text": "不",
+   "start_ms": 8910,
+   "end_ms": 8970,
+   "language": "zh"
+  },
+  {
+   "text": "停",
+   "start_ms": 9090,
+   "end_ms": 9150,
+   "language": "zh"
+  },
+  {
+   "text": "。",
+   "start_ms": 9390,
+   "end_ms": 9450,
+   "language": "zh"
+  },
+  {
+   "text": " ",
+   "start_ms": 10350,
+   "end_ms": 10410,
+   "language": "zh"
+  },
+  {
+   "text": "两",
+   "start_ms": 10470,
+   "end_ms": 10530,
+   "language": "zh"
+  },
+  {
+   "text": "个",
+   "start_ms": 10590,
+   "end_ms": 10650,
+   "language": "zh"
+  },
+  {
+   "text": "都",
+   "start_ms": 10710,
+   "end_ms": 10770,
+   "language": "zh"
+  },
+  {
+   "text": "修",
+   "start_ms": 11070,
+   "end_ms": 11130,
+   "language": "zh"
+  },
+  {
+   "text": "，",
+   "start_ms": 11370,
+   "end_ms": 11430,
+   "language": "zh"
+  },
+  {
+   "text": "先",
+   "start_ms": 11550,
+   "end_ms": 11610,
+   "language": "zh"
+  },
+  {
+   "text": "修",
+   "start_ms": 11790,
+   "end_ms": 11850,
+   "language": "zh"
+  },
+  {
+   "text": "转",
+   "start_ms": 11970,
+   "end_ms": 12030,
+   "language": "zh"
+  },
+  {
+   "text": "圈",
+   "start_ms": 12210,
+   "end_ms": 12270,
+   "language": "zh"
+  },
+  {
+   "text": "那",
+   "start_ms": 12390,
+   "end_ms": 12450,
+   "language": "zh"
+  },
+  {
+   "text": "个",
+   "start_ms": 12450,
+   "end_ms": 12510,
+   "language": "zh"
+  },
+  {
+   "text": "。",
+   "start_ms": 12750,
+   "end_ms": 12810,
+   "language": "zh"
+  }
+ ]
+}

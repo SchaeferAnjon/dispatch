@@ -1,9 +1,48 @@
 {
 	"v": 1,
 	"version": "1.139.1",
-	"date": "2026-10-06",
+	"date": "2026-11-16",
 	"releaseNotes": "https://github.com/SchaeferAnjon/dispatch/releases",
 	"features": [
+		{
+			"id": "point-and-talk",
+			"title": "Point and talk",
+			"description": "Record the screen under your pointer and your voice, no picking an app. Your words come out as text, the spots you point at become pictures, and it all goes to the agent in one message.",
+			"where": "The camera button next to Send, or Shift+Ctrl+S anywhere",
+			"icon": "device-camera-video",
+			"version": "2026-11-16",
+			"badge": true,
+			"anchor": {
+				"selector": ".pt-cam"
+			}
+		},
+		{
+			"id": "side-chat-split",
+			"title": "Side chat under Now",
+			"description": "Side chat now sits under the right panel's tab instead of over it. Drag the line between them, double-click it to reset, or click the header to fold it.",
+			"where": "Right panel, below Now",
+			"icon": "comment-discussion",
+			"version": "2026-11-16",
+			"badge": true
+		},
+		{
+			"id": "square-corners",
+			"title": "Square corners",
+			"description": "Buttons, cards, the input box and your message bubbles now use the same small corners as VS Code.",
+			"where": "Everywhere",
+			"icon": "symbol-misc",
+			"version": "2026-11-16",
+			"badge": false
+		},
+		{
+			"id": "thinking-level",
+			"title": "Clearer thinking level",
+			"description": "The thinking level menu only lists the levels. A level you picked before is marked Last picked next to the Default one.",
+			"where": "The level next to the model name under the message box",
+			"icon": "settings",
+			"version": "2026-11-16",
+			"badge": false
+		},
 		{
 			"id": "turbo",
 			"title": "Turbo",
@@ -17,52 +56,6 @@
 			},
 			"image": "turbo.png",
 			"marks": "turbo.json",
-			"mark": 1
-		},
-		{
-			"id": "next-up",
-			"title": "Next up",
-			"description": "What you ask for in a chat lines up and starts by itself when a session finishes. Move it, pause it or take it off.",
-			"where": "Side pane, the Tasks tab",
-			"icon": "checklist",
-			"version": "2026-10-06",
-			"badge": true,
-			"anchor": {
-				"selector": ".tabs-container .tab",
-				"aria": "Tasks"
-			},
-			"command": "workbench.action.agentSessions.dispatchTasksTab",
-			"image": "tasks-tab.png",
-			"marks": "tasks-tab.json",
-			"mark": 1
-		},
-		{
-			"id": "terminal",
-			"title": "Agents in a terminal",
-			"description": "Run an agent in its own terminal next to your chats. It keeps running when Dispatch closes and comes back with its screen.",
-			"where": "Press ⌘T, or New Terminal in a project's + menu",
-			"icon": "terminal",
-			"version": "2026-10-06",
-			"badge": false,
-			"image": "terminal.png",
-			"marks": "terminal.json",
-			"mark": 1
-		},
-		{
-			"id": "settings",
-			"title": "Settings in one place",
-			"description": "Accounts and usage, agents, notifications, keep awake and what agents can use, all in the side bar.",
-			"where": "Press ⌘, or click Settings at the bottom left",
-			"icon": "settings-gear",
-			"version": "2026-10-02",
-			"badge": false,
-			"anchor": {
-				"selector": ".dset-entry",
-				"text": "Settings"
-			},
-			"command": "dispatch.settings.open",
-			"image": "settings.png",
-			"marks": "settings.json",
 			"mark": 1
 		}
 	]

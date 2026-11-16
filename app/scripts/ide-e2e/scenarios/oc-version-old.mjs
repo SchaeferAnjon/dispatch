@@ -83,8 +83,8 @@ function checkShell(m, label) {
   const [nx, ny, nw, nh] = m.notice, [ix, iy, iw] = m.input;
   if (!near(nx, ix) || !near(nw, iw)) bad.push(`notice and input differ in x or width: ${m.notice} vs ${m.input}`);
   if (!near(ny + nh, iy)) bad.push(`notice bottom ${ny + nh} is not the input top ${iy}`);
-  if (m.noticeRadius.join() !== '24,24,0,0') bad.push(`notice radius ${m.noticeRadius}, want 24,24,0,0`);
-  if (m.inputRadius[0] !== 0 || m.inputRadius[1] !== 0 || m.inputRadius[2] !== 24 || m.inputRadius[3] !== 24) bad.push(`input radius ${m.inputRadius}, want 0,0,24,24`);
+  if (m.noticeRadius.join() !== '8,8,0,0') bad.push(`notice radius ${m.noticeRadius}, want 8,8,0,0`);
+  if (m.inputRadius[0] !== 0 || m.inputRadius[1] !== 0 || m.inputRadius[2] !== 8 || m.inputRadius[3] !== 8) bad.push(`input radius ${m.inputRadius}, want 0,0,8,8`);
   if (m.noticeBorder.bottomWidth !== '0px') bad.push(`notice draws a bottom line: ${m.noticeBorder.bottomWidth}`);
   if (m.noticeBorder.width !== '1px' || m.inputBorder.width !== '1px') bad.push(`border widths ${m.noticeBorder.width} / ${m.inputBorder.width}`);
   if (m.noticeBorder.left !== m.inputBorder.left || m.noticeBorder.right !== m.inputBorder.right) bad.push(`side lines differ: notice ${m.noticeBorder.left}, input ${m.inputBorder.left}`);
@@ -218,7 +218,7 @@ export default async function (ui) {
   log('upgradingTitle', await ui.eval(title)); log('upgradingBody', await ui.eval(body));
   result.shell.upgrading = { a: p1, b: p2 };
   checkShell({ ...p1, button: undefined }, 'upgrading state');
-  if (!p1.progress || p1.progress.rect[3] !== 4 || p1.progress.radius !== '999px' || p1.progress.role !== 'progressbar') throw new Error(`Progress bar is wrong: ${JSON.stringify(p1.progress)}`);
+  if (!p1.progress || p1.progress.rect[3] !== 4 || p1.progress.radius !== '2px' || p1.progress.role !== 'progressbar') throw new Error(`Progress bar is wrong: ${JSON.stringify(p1.progress)}`);
   if (!/^dispatch-notice-sweep 1.5s linear/.test(p1.progress.anim)) throw new Error(`Progress animation is ${p1.progress.anim}`);
   if (p2?.progress && p1.progress.band[0] === p2.progress.band[0]) throw new Error('The progress band did not move between the two frames'); // gone by the second frame: the upgrade was done sooner
   const upgradingInput = await ui.eval(inputRect);

@@ -26,6 +26,8 @@ export interface IDockedAuxiliaryBarHost {
 	setEditorContentRightInset(px: number): void;
 	/** Height of the editor tabs above the optional header. */
 	getTabsHeight(): number;
+	/** Dispatch IDE: the room under the editor kept for the side chat's pane (contrib/dispatchSideChat). */
+	getContentBottomInset?(): number;
 	/** Dispatch IDE: the editor in front, and showing or hiding the detail (dispatchDockedDetailFit.ts). */
 	activeEditor(): EditorInput | undefined;
 	hasDockedDetails(): boolean;
@@ -116,7 +118,8 @@ export class DockedAuxiliaryBarController extends Disposable {
 			this._layoutState = undefined;
 		}
 		const top = this._getTop();
-		const height = Math.max(0, editorRect.height - top);
+		// Dispatch IDE: it ends where the side chat's pane begins (contrib/dispatchSideChat, task-5im8n)
+		const height = Math.max(0, editorRect.height - top - (this.host.getContentBottomInset?.() ?? 0));
 
 		auxiliaryBarContainer.style.display = '';
 		auxiliaryBarContainer.style.position = 'absolute';
@@ -177,7 +180,7 @@ export class DockedAuxiliaryBarController extends Disposable {
 				return Math.max(0, width - auxWidth);
 			},
 			getVerticalSashTop: () => this._getTop(),
-			getVerticalSashHeight: () => Math.max(0, editorPartContainer.clientHeight - this._getTop()),
+			getVerticalSashHeight: () => Math.max(0, editorPartContainer.clientHeight - this._getTop() - (this.host.getContentBottomInset?.() ?? 0)),
 		};
 
 		const sash = this._register(new Sash(editorPartContainer, layoutProvider, { orientation: SashOrientation.VERTICAL }));

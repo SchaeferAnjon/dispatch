@@ -152,7 +152,7 @@
 	gap: 4px;
 	height: 22px;
 	padding: 0 8px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
 	font-size: 12px;
 	color: var(--vscode-descriptionForeground);
@@ -169,7 +169,7 @@
 	height: 32px;
 	padding: 0 14px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-foreground);
 	font: inherit;
@@ -220,7 +220,7 @@
 	width: 32px;
 	height: 32px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-row);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	cursor: pointer;
@@ -230,7 +230,7 @@
 	height: 24px;
 	padding: 0 8px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-textLink-foreground);
 	font: inherit;
@@ -244,7 +244,7 @@
 	align-items: center;
 	gap: 12px;
 	padding: 10px 12px 10px 14px;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-card);
 	background: color-mix(in srgb, var(--dispatch-state-waiting) 8%, transparent);
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dispatch-state-waiting) 45%, transparent);
 }
@@ -707,7 +707,7 @@
 	height: 20px;
 	margin-left: 8px;
 	padding: 0 8px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	font-size: 11px;
 	font-weight: 500;
 	vertical-align: 1px;
@@ -726,7 +726,7 @@
 	flex-direction: column;
 	gap: 4px;
 	padding: 14px 16px 16px;
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-card);
 	background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
 	box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 45%, transparent), 0 10px 28px -14px rgba(0, 0, 0, 0.35);
 	color: var(--vscode-foreground);
@@ -837,7 +837,7 @@
 /* nothing in the last hours */
 .dt-empty {
 	padding: 20px var(--dt-pad);
-	border-radius: 16px;
+	border-radius: var(--dispatch-radius-card);
 	border: 1px dashed var(--dt-dash);
 }
 .dt-empty-title {
@@ -1046,7 +1046,7 @@
 	flex-direction: column;
 	gap: 10px;
 	padding: 14px 16px;
-	border-radius: 16px;
+	border-radius: var(--dispatch-radius-card);
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 35%, transparent);
 }
 .dt-plan-row {
@@ -1069,7 +1069,7 @@
 	height: 28px;
 	padding: 0 10px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
 	color: var(--vscode-foreground);
@@ -1152,7 +1152,7 @@
 	align-items: flex-start;
 	gap: 10px;
 	padding: 16px 20px;
-	border-radius: 16px;
+	border-radius: var(--dispatch-radius-card);
 	background: color-mix(in srgb, var(--vscode-sideBar-background, var(--vscode-editor-background)) 82%, transparent);
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 30%, transparent);
 	animation: dispatch-turbo-fade 400ms var(--dispatch-ease-out, ease-out) 900ms both;
@@ -1212,7 +1212,7 @@
 /* the first time: the inverse note of DESIGN.md's tooltip, beside the switch, clear of the send button */
 .dispatch-turbo-note.first {
 	padding: 8px 12px;
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-card);
 	background: var(--vscode-foreground);
 	color: var(--vscode-editor-background);
 	animation: dispatch-turbo-fade 200ms var(--dispatch-ease-out, ease-out) both;

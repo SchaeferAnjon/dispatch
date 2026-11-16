@@ -2672,7 +2672,7 @@ class AgentOverlay {
 				display: flex; align-items: center; gap: 8px;
 				height: 32px; box-sizing: border-box; padding: 0 4px 0 12px;
 				max-width: min(440px, calc(100vw - 24px));
-				border-radius: 16px;
+				border-radius: 6px; /* Dispatch IDE: --dispatch-radius-row, written out: this page has none of the window's variables */
 				background: var(--bar-bg, #1c1917);
 				color: var(--bar-fg, #fafaf9);
 				border: 1px solid var(--bar-border, rgba(255, 255, 255, 0.1));
@@ -2696,7 +2696,7 @@ class AgentOverlay {
 			.bar .text { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 			.bar .button {
 				all: unset; flex: none; box-sizing: border-box;
-				height: 24px; padding: 0 10px; border-radius: 12px;
+				height: 24px; padding: 0 10px; border-radius: 4px; /* --dispatch-radius-button */
 				font: 500 12px/24px var(--bar-font, -apple-system, BlinkMacSystemFont, sans-serif);
 				color: var(--bar-fg, #fafaf9);
 				background: color-mix(in srgb, var(--bar-fg, #fafaf9) 10%, transparent);

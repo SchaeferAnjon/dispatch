@@ -6,10 +6,10 @@
  *  here still exists in src/vs, so a VS Code update that renames one fails the build.
  *--------------------------------------------------------------------------------------------*/
 
-/* cards: 12 */
+/* cards: --dispatch-radius-card (VS Code's own 8) */
 .agent-sessions-workbench .agents-part-card,
 .agent-sessions-workbench .part.panel {
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-card);
 }
 
 /* new session page: the column is 768 like a running session */
@@ -21,13 +21,13 @@
 	max-width: 768px;
 }
 
-/* the input box: radius 24, one surface (text 14 / 21 is the editor's own option, patches/030-shell-style.patch,
+/* the input box: --dispatch-radius-input (8, VS Code's chat input), one surface (text 14 / 21 is the editor's own option, patches/030-shell-style.patch,
    so the cursor and the placeholder measure the same font). The editor inside draws no second
    background and no focus rectangle of its own; the box's border shows focus. The editor itself is
    not rounded: its overflow guard would clip the caret in the top left corner. */
 .agent-sessions-workbench .new-chat-input-area,
 .agent-sessions-workbench .interactive-input-part .chat-input-container {
-	border-radius: 24px;
+	border-radius: var(--dispatch-radius-input);
 }
 .agent-sessions-workbench .new-chat-input-area .monaco-editor-background,
 .agent-sessions-workbench .new-chat-input-area .monaco-editor .margin,
@@ -43,18 +43,18 @@
 	border: none !important;
 }
 
-/* pickers in the input (harness, agent, model, permissions): 24 high capsules, 12px */
+/* pickers in the input (harness, agent, model, permissions): 24 high, button corners, 12px */
 .agent-sessions-workbench .sessions-chat-config-toolbar .action-label,
 .agent-sessions-workbench .interactive-input-part .chat-input-toolbars .chat-input-picker-item .action-label,
 .agent-sessions-workbench .interactive-input-part .chat-secondary-toolbar .action-label,
 .agent-sessions-workbench .new-chat-bottom-container .action-label {
 	height: 24px;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-button);
 	box-sizing: border-box;
 }
 .agent-sessions-workbench .interactive-input-part .model-picker-section {
 	height: 24px;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-button);
 }
 .agent-sessions-workbench .sessions-chat-config-toolbar .sessions-chat-dropdown-label,
 .agent-sessions-workbench .sessions-chat-config-toolbar .chat-input-picker-label,
@@ -64,7 +64,7 @@
 	font-size: 12px;
 }
 
-/* send: a 32 circle */
+/* send: a 32 square block, row corners (DESIGN.md: direction A「Dispatch blocks」) */
 .agent-sessions-workbench .sessions-chat-send-button,
 .agent-sessions-workbench .sessions-chat-send-button .monaco-button,
 .agent-sessions-workbench .interactive-input-part .chat-submit-button,
@@ -72,7 +72,7 @@
 	width: 32px;
 	min-width: 32px;
 	height: 32px;
-	border-radius: 50%;
+	border-radius: var(--dispatch-radius-row);
 }
 .agent-sessions-workbench .interactive-input-part .chat-submit-button .action-label {
 	display: flex;
@@ -91,10 +91,17 @@
 	padding: 6px 12px;
 	box-sizing: border-box;
 }
+/* VS Code draws these chips and the round icon buttons in the box as capsules and circles; Dispatch's are button
+   corners (DESIGN.md「尺寸」圆角) */
+.agent-sessions-workbench .sessions-chat-picker-slot.sessions-workspace-category-picker-slot .action-label,
+.agent-sessions-workbench .sessions-chat-voice-toolbar .monaco-action-bar .action-item > .action-label,
+.agent-sessions-workbench .sessions-chat-stt-button {
+	border-radius: var(--dispatch-radius-button);
+}
 
-/* the user's message: a 24 round bubble, 16 / 12 inside (its color is chat.requestBubbleBackground) */
+/* the user's message: a bubble with VS Code's request corners (--dispatch-radius-bubble, 6), 16 / 12 inside (its color is chat.requestBubbleBackground) */
 .monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .interactive-item-container.interactive-request .value .rendered-markdown {
-	border-radius: 24px;
+	border-radius: var(--dispatch-radius-bubble);
 	padding: 12px 16px;
 }
 
@@ -112,44 +119,44 @@
 /* the message you sent, once it has scrolled away above: one quiet line at the top of the column (user 2026-11-15,
    task-wdjpl, design/sticky-ask B). 12px --text-2, cut to one line, a thin ↑ at its end; see-through chat colour with a
    light blur and a 1px --hair line under it, 28 high (chatListRenderer.ts sizes the pinned row from this line: 8 + 20).
-   A click scrolls back to the message (dispatchStickyAsk.ts). While any of the message is still on screen nothing is
-   pinned: the bubble is where it is. */
+   A click scrolls back to the message (dispatchStickyAsk.ts); the side chat's pane has the same line (task-5im8n). While
+   any of the message is still on screen nothing is pinned: the bubble is where it is. */
 /* every pinned row in this window is the line (chatListRenderer.ts), so these need no :has() */
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session > .interactive-list > .monaco-list > .monaco-scrollable-element > .monaco-tree-sticky-container {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session > .interactive-list > .monaco-list > .monaco-scrollable-element > .monaco-tree-sticky-container {
 	background-color: transparent !important;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session > .interactive-list > .monaco-list > .monaco-scrollable-element > .monaco-tree-sticky-container > .monaco-tree-sticky-container-shadow {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session > .interactive-list > .monaco-list > .monaco-scrollable-element > .monaco-tree-sticky-container > .monaco-tree-sticky-container-shadow {
 	display: none;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session > .interactive-list > .monaco-list > .monaco-scrollable-element > .monaco-tree-sticky-container.source-node-partially-visible,
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session > .interactive-list > .monaco-list > .monaco-scrollable-element > .monaco-tree-sticky-container.dispatch-sticky-ask-ghost {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session > .interactive-list > .monaco-list > .monaco-scrollable-element > .monaco-tree-sticky-container.source-node-partially-visible,
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session > .interactive-list > .monaco-list > .monaco-scrollable-element > .monaco-tree-sticky-container.dispatch-sticky-ask-ghost {
 	pointer-events: none;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask {
 	background-color: transparent !important;
 	overflow: visible;
 }
 /* it fades in and out in 150 ms, opacity only (user 2026-11-15, task-vk9nq,「钉住那一行出现要丝滑」): in as it is drawn
    or as the message's last line leaves the top, out as the message comes back into view; a line taken away while
    shown leaves a copy that fades out (dispatchStickyAsk.ts); the same message drawn again in place does not fade */
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
 	opacity: 1;
 	transition: opacity 150ms ease-out, visibility 0s;
 }
 @starting-style {
-	.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
+	.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
 		opacity: 0;
 	}
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask.source-node-partially-visible .interactive-item-container.interactive-request {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask.source-node-partially-visible .interactive-item-container.interactive-request {
 	opacity: 0;
 	visibility: hidden;
 	transition: opacity 150ms ease-out, visibility 0s linear 150ms;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask.dispatch-sticky-ask-steady .interactive-item-container.interactive-request {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask.dispatch-sticky-ask-steady .interactive-item-container.interactive-request {
 	transition: none;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .dispatch-sticky-ask-ghost .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .dispatch-sticky-ask-ghost .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
 	/* the delay (0 or less) carries on from where the line's own fade had got (dispatchStickyAsk.ts) */
 	animation: dispatch-sticky-ask-out 150ms ease-out var(--dispatch-sticky-ask-out-delay, 0ms) forwards;
 	transition: none !important;
@@ -167,12 +174,12 @@
 		transition: none !important;
 	}
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask > .monaco-tl-row,
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask > .monaco-tl-row > .monaco-tl-contents {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask > .monaco-tl-row,
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask > .monaco-tl-row > .monaco-tl-contents {
 	height: 100%;
 	overflow: visible;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
 	display: flex;
 	/* VS Code lays a message out as a column (chat.css); the line is one row: words, then the ↑ */
 	flex-direction: row;
@@ -187,22 +194,22 @@
 	color: var(--vscode-descriptionForeground);
 	cursor: pointer;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request > :not(.value) {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request > :not(.value) {
 	display: none;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request::after {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request::after {
 	content: '\2191';
 	flex: none;
 	font-size: 12px;
 	line-height: 20px;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value {
 	flex: 1 1 auto;
 	min-width: 0;
 	/* the bubble sits right (chat.css); the line starts at the column's left like the words of a reply */
 	align-items: stretch !important;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown {
 	display: block;
 	width: auto !important;
 	max-width: none !important;
@@ -217,9 +224,11 @@
 	overflow: hidden;
 	pointer-events: none;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown > p:first-child,
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown .chat-request-text {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown > p:first-child,
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown .chat-request-text {
 	display: block;
+	/* not the bubble's fit-content (chat.css): the line is as wide as its row, so a long message is cut with … */
+	width: auto;
 	margin: 0;
 	white-space: nowrap;
 	overflow: hidden;
@@ -227,17 +236,17 @@
 	-webkit-line-clamp: none;
 	line-clamp: none;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown > p:first-child ~ *,
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown.chat-request-has-more > p:first-child::after {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown > p:first-child ~ *,
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown.chat-request-has-more > p:first-child::after {
 	display: none;
 	content: none;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown * {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request .value .rendered-markdown * {
 	font-size: inherit;
 	line-height: inherit;
 	color: inherit;
 }
-.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request:hover {
+.monaco-workbench.agent-sessions-workbench :is(.part.sessionspart, .dispatch-side-chat-pane) .chat-view .interactive-session .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request:hover {
 	color: var(--vscode-foreground);
 }
 
@@ -263,23 +272,42 @@
 	background-color: var(--vscode-agentsPanel-background);
 }
 
-/* session rows: inset 8 from the panel edge, radius 20 (28 outside minus the 8 inset) */
+/* session rows: inset 8 from the panel edge, row corners. The hover and selection background is drawn inside the
+   padding (content-box), and a corner drawn there is the row's corner less the padding beside it, side by side:
+   so each corner here is --dispatch-radius-row plus the padding next to it, across (left, right) and down (bottom),
+   and every corner you see is 6. A row that sits further in (a project's, dispatchProjects.css) or has a gap under it
+   (VS Code's inset rows) says how much in the two variables. */
 .agent-sessions-workbench .sessions-list-control .monaco-list-row {
+	--dispatch-row-pad-left: 8px;
+	--dispatch-row-pad-bottom: 0px;
 	padding: 0 8px;
 	background-clip: content-box;
-	border-radius: 28px;
+	border-radius:
+		calc(var(--dispatch-radius-row) + var(--dispatch-row-pad-left)) calc(var(--dispatch-radius-row) + 8px)
+		calc(var(--dispatch-radius-row) + 8px) calc(var(--dispatch-radius-row) + var(--dispatch-row-pad-left)) /
+		var(--dispatch-radius-row) var(--dispatch-radius-row)
+		calc(var(--dispatch-radius-row) + var(--dispatch-row-pad-bottom)) calc(var(--dispatch-radius-row) + var(--dispatch-row-pad-bottom));
+}
+/* VS Code's inset rows keep a gap under them (sessionsList.css: padding-bottom spacing-size20) */
+.agent-sessions-workbench .sessions-list-control.session-list-row-spacing .monaco-list-row:where(.session-list-inset-row, .session-list-show-more-row, .session-list-show-more-folders-row) {
+	--dispatch-row-pad-bottom: var(--vscode-spacing-size20, 2px);
+}
+/* the row's contents sit inside that padding: their outline (high contrast) takes the corner you see, not the row's */
+.agent-sessions-workbench .sessions-list-control .monaco-list-row > .monaco-tl-row,
+.agent-sessions-workbench .sessions-list-control.session-list-row-spacing .monaco-list-row:is(.session-list-inset-row, .session-list-show-more-row, .session-list-show-more-folders-row) > .monaco-tl-row {
+	border-radius: var(--dispatch-radius-row);
 }
 
-/* New ⌘N: a capsule */
+/* New ⌘N: button corners */
 .agent-sessions-workbench .agent-sessions-compact-new-button.monaco-button {
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-button);
 }
 
-/* Customizations: cards on --chip-2, radius 16, heading 17 */
+/* Customizations: cards on --chip-2, card corners, heading 17 */
 .monaco-workbench .ai-customization-management-editor .welcome-prompts-card,
 .monaco-workbench .ai-customization-management-editor .welcome-prompts-primary {
 	background: var(--vscode-textCodeBlock-background);
-	border-radius: 16px;
+	border-radius: var(--dispatch-radius-card);
 }
 .monaco-workbench .ai-customization-management-editor .welcome-prompts-heading {
 	font-size: 17px;

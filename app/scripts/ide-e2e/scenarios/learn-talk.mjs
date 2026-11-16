@@ -21,7 +21,7 @@ import { until, offscreen, onDemo, toDemo, focusInput, chooseCheapModel, closeTi
 
 const SCALE = Math.max(1, Number(process.env.DISPATCH_E2E_TIME_SCALE) || 1);
 const CARD = ".dispatch-talk-card";
-const SIDE = ".dispatch-side-chat-card";
+const SIDE = ".dispatch-side-chat-pane";
 const RUNNING = `!!document.querySelector('.session-view .interactive-input-part .chat-execute-toolbar .codicon-stop-circle')`;
 const LAST = `(() => { const r = [...document.querySelectorAll('.session-view .interactive-response')].at(-1); return r ? r.innerText.trim() : ''; })()`;
 
@@ -203,7 +203,7 @@ export default async function (ui) {
   qa.states.createShownMs = lastSay && createLeave ? createLeave.t - lastSay.t : null;
   check("left alone, a card goes 7 s after its last words", qa.states.createShownMs !== null && qa.states.createShownMs >= 6600 && qa.states.createShownMs <= 7800, qa.states.createShownMs);
   const wantW = both.part ? Math.min(340, both.part.w - 32) : 340;
-  check("the cards are the side chat card's family: corner 12, 340 wide (the pane less 16 each side when narrower), line one 13px/500, not tabbable", !!both.cards.length && both.cards.every(c => c.radius === "12px" && Math.abs(c.box.w - wantW) <= 1 && c.font === "13px/500" && c.tabbable === -1), { wantW, cards: both.cards });
+  check("the cards are the side chat card's family: corner 8 (--dispatch-radius-card), 340 wide (the pane less 16 each side when narrower), line one 13px/500, not tabbable", !!both.cards.length && both.cards.every(c => c.radius === "8px" && Math.abs(c.box.w - wantW) <= 1 && c.font === "13px/500" && c.tabbable === -1), { wantW, cards: both.cards });
   check("16 from the side pane's right and bottom edges, newest at the bottom", !!both.part && both.cards.length >= 1 && Math.abs(both.part.r - both.cards.at(-1).box.r - 16) <= 1.5 && Math.abs(both.part.b - both.cards.at(-1).box.b - 16) <= 1.5, { part: both.part, cards: both.cards.map(c => c.box) });
 
   // ======== 2. Settings › Learning: Quiet; a second turn that does the same says nothing ========
@@ -279,10 +279,10 @@ export default async function (ui) {
   const fromCard = qa.states.fromCard = await read();
   check("a click on the card: the side chat card, its quote the file (learn/notes.ts · notes.ts · New file)", fromCard.sideCount === 1 && fromCard.side.q1 === "learn/notes.ts" && fromCard.side.q2 === "notes.ts · New file", fromCard.side);
   check("the small card went when the side chat card came", fromCard.cards.length === 0, fromCard.cards);
-  check("the small card and the side chat card are one family: the same corner and background", !!codexCard.cards[0] && codexCard.cards[0].radius === fromCard.side.radius && codexCard.cards[0].bg === fromCard.side.bg, { card: codexCard.cards[0], side: fromCard.side });
+  check("a click on the small card opens the side chat's pane under the tab (no corner, no card: direction B, task-5im8n)", !!fromCard.side && fromCard.side.radius === "0px", fromCard.side);
   await rest();
   await ui.screenshot("06-side-chat-from-card-dark");
-  await ui.mark({ css: `${SIDE} .dsc-quote` }, { what: "点小卡开的旁聊卡：引用卡是那个文件", where: "右栏右下角，卡顶", how: "点引用卡打开这个文件" });
+  await ui.mark({ css: `${SIDE} .dsc-quote` }, { what: "点小卡开的旁聊：引用卡是那个文件", where: "右栏下格，消息最上面", how: "点引用卡打开这个文件" });
   await turnEnds();
 
   // ---- the side chat card's ⋯: Quiet and Talk, the same setting ----
@@ -325,8 +325,9 @@ export default async function (ui) {
   const fromEditor = qa.states.fromEditor = await read();
   check("the editor's line: the same card, the quote `notes.ts · line 2`", fromEditor.sideCount === 1 && fromEditor.side.q2 === "notes.ts · line 2" && /export const notes/.test(fromEditor.side.q1), fromEditor.side);
   // the side pane widens for a file and gets shorter under the terminal: the card keeps its corner of the pane
-  const corner = s => !!s.side && !!s.part && Math.abs(s.part.r - s.side.box.r - 16) <= 1.5 && Math.abs(s.part.b - s.side.box.b - 16) <= 1.5;
-  check("the same card in the same corner as the one the small card opened (16 from the pane's right and bottom)", corner(fromCard) && corner(fromEditor), [fromCard.part, fromCard.side.box, fromEditor.part, fromEditor.side.box]);
+  // the side chat's pane spans the side pane's width at its bottom (direction B「Split pane」, task-5im8n)
+  const corner = s => !!s.side && !!s.part && Math.abs(s.part.b - s.side.box.b) <= 2 && s.side.box.w >= s.part.w - 4;
+  check("the same pane in the same place as the one the small card opened (the side pane's bottom, its whole width)", corner(fromCard) && corner(fromEditor), [fromCard.part, fromCard.side.box, fromEditor.part, fromEditor.side.box]);
 
   // ---- Ask Question on a line of its diff in Changes ----
   await ui.openTab("Changes");
@@ -344,7 +345,7 @@ export default async function (ui) {
   await until(ui, async () => { const s = await read(); return s.side && /Changes$/.test(s.side.q2 || "") ? s : null; }, 30000, "the side chat card on the diff's line", 400);
   const fromDiff = qa.states.fromDiff = await read();
   check("the diff's line: the same card, the quote `notes.ts · line 2 · Changes`", fromDiff.sideCount === 1 && fromDiff.side.q2 === "notes.ts · line 2 · Changes", fromDiff.side);
-  check("still the same corner", corner(fromDiff), [fromDiff.part, fromDiff.side.box]);
+  check("still the same place", corner(fromDiff), [fromDiff.part, fromDiff.side.box]);
 
   // ---- Ask Question on the terminal's output ----
   await ui.click({ css: '[data-part="terminal-top"]' });
@@ -384,10 +385,10 @@ export default async function (ui) {
   await until(ui, async () => { const s = await read(); return s.side && s.side.q2 === "Terminal" ? s : null; }, 30000, "the side chat card on the terminal's output", 400);
   const fromTerminal = qa.states.fromTerminal = await read();
   check("the terminal's output: the same card, the quote `LEARN-TERMINAL-42 · Terminal`", fromTerminal.sideCount === 1 && fromTerminal.side.q1 === "LEARN-TERMINAL-42" && fromTerminal.side.q2 === "Terminal" && /codicon-terminal/.test(fromTerminal.side.icon), fromTerminal.side);
-  check("still the same corner", corner(fromTerminal), [fromTerminal.part, fromTerminal.side.box]);
+  check("still the same place", corner(fromTerminal), [fromTerminal.part, fromTerminal.side.box]);
   await rest();
   await ui.screenshot("11-terminal-side-chat-dark");
-  await ui.mark({ css: `${SIDE} .dsc-quote` }, { what: "终端里问的：引用卡第二行写 Terminal", where: "旁聊卡顶", how: "在卡里打问题接着问" });
+  await ui.mark({ css: `${SIDE} .dsc-quote` }, { what: "终端里问的：引用卡第二行写 Terminal", where: "旁聊下格，消息最上面", how: "在下格里打问题接着问" });
 
   // ---- a reply's words bring the same box ----
   const reply = await ui.eval(`(() => { const v = [...document.querySelectorAll('.session-view .interactive-response .value .rendered-markdown')].filter(e => e.getClientRects().length && e.innerText.trim()).at(-1); if (!v) return null; const range = document.createRange(); range.selectNodeContents(v); const rects = [...range.getClientRects()].filter(r => r.width > 0); const a = rects[0], z = rects.at(-1); return { x1: a.left + 1, y1: a.top + a.height / 2, x2: z.right - 1, y2: z.top + z.height / 2 }; })()`);
@@ -398,7 +399,7 @@ export default async function (ui) {
     await ui.mouse("mouseReleased", reply.x2, reply.y2, { clickCount: 1 });
     const replyBox = await until(ui, () => ui.eval(`(() => { const w = [...document.querySelectorAll('.session-view .agent-feedback-input-widget')].find(e => e.offsetParent); return w ? { placeholder: w.querySelector('textarea').placeholder, actions: [...w.querySelectorAll('.agent-feedback-input-leading-action')].map(b => b.innerText.trim()) } : null; })()`), 10000, "the reply's box", 300).catch(() => null);
     qa.states.replyBox = replyBox;
-    check("a reply's words: the Ask Question box (asking there opens the same card, side-chat-card.mjs sends one)", !!replyBox && replyBox.placeholder === "Ask Question", replyBox);
+    check("a reply's words: the Ask Question box (asking there opens the same side chat pane, side-chat-pane.mjs sends one)", !!replyBox && replyBox.placeholder === "Ask Question", replyBox);
     if (replyBox) {
       await ui.screenshot("12-reply-ask-dark");
       await ui.mark({ css: ".session-view .agent-feedback-input-widget" }, { what: "回复里选字：同样的 Ask Question 框", where: "对话里选区下面", how: "打问题回车，答案在旁聊卡里" });

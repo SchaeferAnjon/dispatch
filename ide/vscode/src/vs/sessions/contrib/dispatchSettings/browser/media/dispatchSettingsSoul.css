@@ -6,7 +6,7 @@
 .dispatch-settings-page .dset-soul-kind { margin-left: 8px; }
 .dispatch-settings-page .dset-soul-editor {
 	background: var(--dset-chip-2);
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-input);
 	padding: 0 4px 0 12px;
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dset-hair) 60%, transparent);
 	transition: box-shadow 150ms var(--dset-ease-out), opacity 150ms var(--dset-ease-out);

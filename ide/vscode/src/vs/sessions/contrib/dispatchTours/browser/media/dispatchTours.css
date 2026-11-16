@@ -15,7 +15,7 @@
 	padding: 14px 14px 12px;
 	display: grid;
 	gap: 6px;
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-card);
 	border: 1px solid var(--vscode-editorHoverWidget-border);
 	background: var(--vscode-sideBar-background);
 	color: var(--vscode-foreground);
@@ -56,7 +56,7 @@
 	display: grid;
 	place-items: center;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	cursor: pointer;
@@ -97,7 +97,7 @@
 	height: 28px;
 	padding: 0 12px;
 	border: 1px solid var(--vscode-editorHoverWidget-border);
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-foreground);
 	font: inherit;
@@ -210,7 +210,7 @@
 /* ---- the checklist card: in a hover, like the What's new card ---- */
 
 .monaco-hover.dispatch-checklist-hover {
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-card);
 	background-color: var(--vscode-sideBar-background);
 	border-color: var(--vscode-editorHoverWidget-border);
 	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
@@ -270,7 +270,7 @@
 	box-sizing: border-box;
 	padding: 8px;
 	border: 0;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-row);
 	background: transparent;
 	color: inherit;
 	font: inherit;
@@ -298,7 +298,7 @@
 	display: grid;
 	place-items: center;
 	border: 1.5px solid var(--vscode-descriptionForeground);
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	color: var(--vscode-sideBar-background);
 }
 
@@ -356,7 +356,7 @@
 	height: 28px;
 	padding: 0 10px;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;

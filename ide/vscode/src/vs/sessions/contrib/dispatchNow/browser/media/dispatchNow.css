@@ -23,7 +23,7 @@
 	--now-ease-out: cubic-bezier(0, 0, 0.2, 1);
 	/* the side bar's session rows show about 10px of corner on their hover (their 28px is cut by the list; looked at
 	   2026-11-11), its entries 4px: 10 here, as design/home-now's prototype has it; 28 on a 32 high row would be a pill */
-	--now-row-radius: 10px;
+	--now-row-radius: var(--dispatch-radius-row);
 	box-sizing: border-box;
 	height: 100%;
 	overflow-y: auto;
@@ -35,6 +35,12 @@
 	outline: none;
 }
 
+/* the tab takes the keyboard when it comes in front (focus(), never Tab): no frame round it (VS Code frames every
+   focused [tabindex]) */
+.monaco-workbench .dispatch-now-tab:focus {
+	outline: none !important;
+}
+
 /* the tab's icon: a thin pulse line, drawn a little heavier on the tab that is showing (DESIGN.md: selected icons
    are --text with a 2 stroke) */
 .monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active .monaco-icon-label.codicon-pulse::before {
@@ -43,6 +49,71 @@
 }
 
 /* ---- the head: state, the line, and what goes under it ----------------------------------------------------- */
+
+/* the step it is on, said only in the head's one line below */
+.dispatch-now-count {
+	display: none;
+}
+
+/* one line: the side chat's pane under the tab took the room, less than 120 is left (task-5im8n, design/side-chat-now
+   B1): the state's mark, the agent's line cut to one (the whole line on the pointer), the step at its end. A click
+   puts the line between Now and the side chat back where it starts. */
+.dispatch-now-tab.one-line {
+	padding: 0 8px 0 20px;
+	overflow: hidden;
+	cursor: pointer;
+}
+
+.dispatch-now-tab.one-line:hover {
+	background: color-mix(in srgb, var(--now-hover) 50%, transparent);
+}
+
+.dispatch-now-tab.one-line > :not(.dispatch-now-top) {
+	display: none;
+}
+
+.dispatch-now-tab.one-line .dispatch-now-top {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	box-sizing: border-box;
+	padding: 0;
+	border-bottom: 1px solid color-mix(in srgb, var(--now-hair) 40%, transparent);
+}
+
+.dispatch-now-tab.one-line .dispatch-now-top > :not(.dispatch-now-status, .dispatch-now-say, .dispatch-now-count) {
+	display: none;
+}
+
+.dispatch-now-tab.one-line .dispatch-now-status {
+	display: contents;
+}
+
+.dispatch-now-tab.one-line .dispatch-now-state {
+	display: none;
+}
+
+.dispatch-now-tab.one-line .dispatch-now-say {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	display: block;
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 31px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dispatch-now-tab.one-line .dispatch-now-count {
+	display: block;
+	flex: none;
+	font-size: 11px;
+	color: var(--now-text-2);
+	font-variant-numeric: tabular-nums;
+}
 
 .dispatch-now-top {
 	padding: 0 12px;
@@ -153,7 +224,7 @@
 	height: 32px;
 	padding: 0 12px;
 	border: 1px solid transparent;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--now-text);
 	font: inherit;
@@ -434,7 +505,7 @@ li.dispatch-now-body { position: relative; }
 	margin-top: 8px;
 	padding: 0 8px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--vscode-toolbar-hoverBackground);
 	color: var(--vscode-foreground);
 	font: inherit;
@@ -452,7 +523,7 @@ li.dispatch-now-body { position: relative; }
 }
 .dispatch-now-skeleton > span {
 	height: 10px;
-	border-radius: 5px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--now-hover);
 	animation: dispatch-now-skeleton 2s linear infinite;
 }

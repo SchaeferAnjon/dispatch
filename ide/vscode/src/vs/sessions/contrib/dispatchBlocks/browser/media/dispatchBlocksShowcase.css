@@ -29,7 +29,7 @@
 	gap: 8px;
 	height: 40px;
 	padding: 0 12px;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-row);
 	color: var(--vscode-descriptionForeground);
 }
 
@@ -46,7 +46,7 @@
 	gap: 8px;
 	height: 32px;
 	padding: 0 12px 0 8px;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--vscode-sideBar-background);
 	font-size: 12px;
 }
@@ -59,7 +59,7 @@
 
 .dispatch-blocks-showcase .dbs-card {
 	padding: 12px 14px 14px;
-	border-radius: 16px;
+	border-radius: var(--dispatch-radius-card);
 	background: var(--vscode-sideBar-background);
 	border: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 18%, transparent);
 }
@@ -70,7 +70,7 @@
 	flex-direction: column;
 	justify-content: center;
 	gap: 2px;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-card);
 	background: var(--vscode-editor-background);
 	padding: 0 8px;
 	overflow: hidden;
@@ -84,7 +84,7 @@
 .dispatch-blocks-showcase .dbs-replay {
 	height: 24px;
 	padding: 0 10px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	border: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent);
 	background: transparent;
 	color: var(--vscode-foreground);
@@ -101,7 +101,7 @@
 	gap: 8px;
 	height: 32px;
 	padding: 0 10px;
-	border-radius: 20px;
+	border-radius: var(--dispatch-radius-row);
 	white-space: nowrap;
 }
 
@@ -118,7 +118,7 @@
 	gap: 10px;
 	height: 28px;
 	padding: 0 10px;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-button);
 	border: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 18%, transparent);
 	font-size: 12px;
 }

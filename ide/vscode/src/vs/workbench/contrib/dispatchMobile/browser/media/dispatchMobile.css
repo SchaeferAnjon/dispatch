@@ -11,7 +11,7 @@
 	justify-content: center;
 	height: 22px;
 	padding: 0 3px;
-	border-radius: 5px;
+	border-radius: var(--dispatch-radius-button);
 	color: var(--vscode-descriptionForeground);
 	cursor: pointer;
 	width: auto !important;
@@ -31,7 +31,7 @@
 /* the panel */
 .monaco-hover.workbench-hover.dispatch-mobile-panel-hover {
 	border-color: var(--vscode-menu-border, var(--vscode-editorHoverWidget-border));
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-card);
 	overflow: hidden;
 	outline: none;
 }
@@ -76,7 +76,7 @@
 	box-sizing: border-box;
 	width: 240px;
 	height: 240px;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-card);
 	background: #ffffff;
 	overflow: hidden;
 	display: flex;
@@ -164,7 +164,7 @@
 	gap: 6px;
 	height: 24px;
 	padding: 0 10px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
 	background: transparent;
 	color: var(--vscode-foreground);
@@ -240,7 +240,7 @@
 	height: 22px;
 	padding: 0 8px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;

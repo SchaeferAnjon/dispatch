@@ -1,6 +1,6 @@
 // A long message in a session is one bubble (kanban task-2lobp): scrolled under the top, its pinned first line and the
 // rest still on screen read as one rounded rectangle, square where they meet; once the rest has gone the pinned line
-// is a whole bubble of its own, the same height. A short message keeps its 24 round bubble. And the "Finished with
+// is a whole bubble of its own, the same height. A short message keeps its 6 round bubble. And the "Finished with
 // 2 steps" line above a reply opens to its steps and closes again, live and from history, with its chevron showing
 // without a hover; while the reply runs the line shows the step under way.
 // On OpenCode (the instance's cheap model). steps-codex.mjs and steps-claude.mjs walk the steps line on the other two.
@@ -206,11 +206,11 @@ export default async function (ui) {
   await ui.sleep(1500);
   bad.push(...await walkStepsLine(ui, note, '03-history-steps', /README|NOTES|read/i));
 
-  // a short message: the 24 round bubble, 12 / 16 inside
+  // a short message: the 6 round bubble, 12 / 16 inside
   await send(ui, 'hi, reply with OK only. Do not use any tools.', /\bOK\b/);
   const short = await ui.eval(SHORT);
   note('short', short);
-  if (!short || short.radius.some(r => r !== 24) || short.padding !== '12px 16px') bad.push(`the short bubble changed: ${JSON.stringify(short)}`);
+  if (!short || short.radius.some(r => r !== 6) || short.padding !== '12px 16px') bad.push(`the short bubble changed: ${JSON.stringify(short)}`);
 
   // a long message: one bubble while it scrolls under the top
   await send(ui, EMAIL, /\b60\b/);
@@ -223,7 +223,7 @@ export default async function (ui) {
   await ui.screenshot('10-long-top');
   const top = await ui.eval(BUBBLE);
   note('top', top);
-  if (!top.src || top.src.radius.some(r => r !== 24)) bad.push(`the long bubble at rest: corners ${top.src && top.src.radius} (want 24 all round)`);
+  if (!top.src || top.src.radius.some(r => r !== 6)) bad.push(`the long bubble at rest: corners ${top.src && top.src.radius} (want 6 all round)`);
 
   note('partial_at', await placeBubble(ui, -Math.round(h / 3)));
   const partial = await ui.eval(BUBBLE);
@@ -232,8 +232,8 @@ export default async function (ui) {
   if (!partial.pin || !partial.partial) bad.push(`no pinned line while the rest is on screen: ${JSON.stringify(partial)}`);
   else {
     const p = partial.pin, s = partial.src;
-    if (p.radius[0] !== 24 || p.radius[1] !== 24 || p.radius[2] !== 0 || p.radius[3] !== 0) bad.push(`pinned line corners while the rest is below: ${p.radius} (want 24 24 0 0)`);
-    if (!s || s.radius[2] !== 24 || s.radius[3] !== 24) bad.push(`the rest's bottom corners: ${s && s.radius} (want 24)`);
+    if (p.radius[0] !== 6 || p.radius[1] !== 6 || p.radius[2] !== 0 || p.radius[3] !== 0) bad.push(`pinned line corners while the rest is below: ${p.radius} (want 6 6 0 0)`);
+    if (!s || s.radius[2] !== 6 || s.radius[3] !== 6) bad.push(`the rest's bottom corners: ${s && s.radius} (want 6)`);
     if (!s || Math.abs(p.left - s.left) > 1 || Math.abs(p.right - s.right) > 1) bad.push(`pinned line and the rest differ in width: ${JSON.stringify([p.left, p.right, s && s.left, s && s.right])}`);
     if (!s || p.bg !== s.bg) bad.push(`pinned line and the rest differ in colour: ${p.bg} / ${s && s.bg}`);
     if (!partial.underIsSource) bad.push('right under the pinned line is not the rest of the same bubble (a gap)');
@@ -261,7 +261,7 @@ export default async function (ui) {
   await ui.screenshot('12-long-pinned-alone');
   if (!collapsed.pin || collapsed.partial) bad.push(`no pinned line once the rest has gone: ${JSON.stringify(collapsed)}`);
   else {
-    if (collapsed.pin.radius.some(r => r !== 24)) bad.push(`pinned line alone: corners ${collapsed.pin.radius} (want 24 all round)`);
+    if (collapsed.pin.radius.some(r => r !== 6)) bad.push(`pinned line alone: corners ${collapsed.pin.radius} (want 6 all round)`);
     if (collapsed.underIsSource) bad.push('pinned line alone: a piece of the bubble still shows under it');
     if (!collapsed.topIsPin) bad.push('pinned line alone: something else is drawn over it');
     if (collapsed.fade) bad.push(`pinned line alone: a fade hangs under it: ${JSON.stringify(collapsed.fade)}`);

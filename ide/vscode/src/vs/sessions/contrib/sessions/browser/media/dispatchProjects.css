@@ -155,7 +155,7 @@
 	flex-direction: column;
 	gap: 2px;
 	padding: 7px 12px 8px;
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-row);
 	cursor: pointer;
 	transition: background-color 150ms ease;
 }
@@ -223,7 +223,7 @@
 	height: 18px;
 	line-height: 18px;
 	padding: 0 8px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background-color: var(--vscode-list-hoverBackground);
 	color: var(--vscode-descriptionForeground);
 	font-size: 11px;
@@ -247,7 +247,7 @@
 	flex: none;
 	height: 24px;
 	padding: 0 10px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
 	background: transparent;
 	color: var(--vscode-foreground);
@@ -325,7 +325,7 @@
 	column-gap: 12px;
 	align-items: center;
 	height: 32px;
-	border-radius: 20px;
+	border-radius: var(--dispatch-radius-row);
 	transition: background-color 150ms ease;
 }
 .dispatch-projects-tl-row[role="button"] {
@@ -454,7 +454,7 @@
 	height: 28px;
 	padding: 0 12px 0 10px;
 	border: none;
-	border-radius: 20px;
+	border-radius: var(--dispatch-radius-row);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;
@@ -593,7 +593,7 @@
 	padding: 0 6px 0 2px;
 	margin-left: -2px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;
@@ -656,7 +656,7 @@
 	gap: 8px;
 	min-height: 32px;
 	padding: 0 12px;
-	border-radius: 20px;
+	border-radius: var(--dispatch-radius-row);
 	font-size: 13px;
 	transition: background-color 150ms ease;
 }
@@ -716,6 +716,8 @@
    of their own left padding, so the indent does not pile up into a blank strip left of every title. */
 .agent-sessions-viewpane .sessions-list-control .monaco-list-row.dispatch-in-project {
 	padding-left: 20px;
+	/* the corners of the background follow the padding (dispatch-shell.css, session rows) */
+	--dispatch-row-pad-left: 20px;
 	background-clip: content-box;
 }
 .agent-sessions-viewpane .sessions-list-control .monaco-list-row.dispatch-in-project .session-item {

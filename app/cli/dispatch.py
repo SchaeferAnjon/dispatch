@@ -10037,7 +10037,7 @@ def win_empty_listing(a):
 
 
 # `dispatch <cmd> …` handed whole to a sibling module's main(argv): the full IDE and its Agent tools.
-DELEGATED = {"ide": "ide", "checkpoint": "checkpoint", "code-search": "code_search", "browser": "browser", "computer": "computer", "attribution": "attribution"}
+DELEGATED = {"ide": "ide", "checkpoint": "checkpoint", "code-search": "code_search", "browser": "browser", "computer": "computer", "attribution": "attribution", "point-talk": "point_talk"}
 
 
 def parse_args_compat(p, sub, argv=None):
@@ -10320,7 +10320,8 @@ def _parser():
                         ("attribution", "who wrote each changed line, the agent or you: mark|show|files|note|steps|config|prune"),
                         ("code-search", "semantic code search over a project: \"<question>\" --root DIR | index | status"),
                         ("browser", "a Chromium window an Agent drives: open|shot|click|type|press|eval|logs|snapshot|close; --ide drives the built-in browser in Dispatch IDE's right panel"),
-                        ("computer", "an Agent uses another Mac app after the person allows it: check|apps|start|look|click|fill|type|press|scroll|stop|status (computer.py)")):
+                        ("computer", "an Agent uses another Mac app after the person allows it: check|apps|start|look|click|fill|type|press|scroll|stop|status (computer.py)"),
+                        ("point-talk", "Point and talk's speech recognition (Soniox, your SONIOX_API_KEY): status|key|transcribe FILE (point_talk.py)")):
         s = sub.add_parser(name, help=help_); s.add_argument("args", nargs=argparse.REMAINDER)
     s = sub.add_parser("env", help="API keys / secrets store (~/.config/dispatch/env, 0600)"); s.add_argument("op", choices=["list", "get", "set", "unset", "undo", "export", "import", "path", "forget-missing"], help="forget-missing: accept that keys the store had at its last write are gone (a write refuses until then)"); s.add_argument("name", nargs="?", help="the key; undo: the change id `set` / `unset` printed"); s.add_argument("value", nargs="?"); s.add_argument("--note", help="what it is for, in one sentence"); s.add_argument("--project", "-P", default=None, help="set/import: belongs to this project only; list: this project's only. An empty string clears it"); s.add_argument("--stdin", action="store_true", help="set: read the value from stdin (it stays out of the shell's history)"); s.add_argument("--fish", action="store_true", help="export: fish syntax"); s.add_argument("--by", default=None, help=argparse.SUPPRESS); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_env)
     s = sub.add_parser("title-summary", help=argparse.SUPPRESS); s.add_argument("id"); s.add_argument("--was", default=""); s.add_argument("--timeout", type=float, default=45.0); s.add_argument("full", nargs="*"); s.set_defaults(fn=cmd_title_summary)

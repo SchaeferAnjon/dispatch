@@ -3,7 +3,7 @@
 .dispatch-life-context, .dispatch-handoff-marker { font:inherit; color:inherit; cursor:pointer; border:0; background:transparent; padding:4px 8px; border-radius:4px; }
 .dispatch-life-context:hover, .dispatch-handoff-marker:hover { background:var(--vscode-list-hoverBackground); }
 .dispatch-life-context:focus-visible, .dispatch-handoff-marker:focus-visible { outline:1px solid var(--vscode-focusBorder); }
-.dispatch-life-detail { position:fixed; z-index:2550; width:420px; max-width:calc(100vw - 16px); box-sizing:border-box; padding:14px 16px; background:var(--vscode-editorWidget-background); color:var(--vscode-foreground); border:1px solid var(--vscode-widget-border); border-radius:12px; box-shadow:0 8px 24px var(--vscode-widget-shadow); font-family:var(--vscode-font-family); font-size:12px; line-height:18px; }
+.dispatch-life-detail { position:fixed; z-index:2550; width:420px; max-width:calc(100vw - 16px); box-sizing:border-box; padding:14px 16px; background:var(--vscode-editorWidget-background); color:var(--vscode-foreground); border:1px solid var(--vscode-widget-border); border-radius:var(--dispatch-radius-card); box-shadow:0 8px 24px var(--vscode-widget-shadow); font-family:var(--vscode-font-family); font-size:12px; line-height:18px; }
 .dispatch-life-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px; }
 .dispatch-life-title { font-size:13px; font-weight:600; color:var(--vscode-foreground); }
 .dispatch-life-total { color:var(--vscode-descriptionForeground); font-variant-numeric:tabular-nums; }

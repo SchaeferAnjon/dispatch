@@ -57,7 +57,7 @@ import { writerOf } from '../../dispatchFixit/browser/dispatchFixitWriter.js';
 import { addQuoteToWidget, toQuoteEntry } from '../../dispatchQuote/browser/dispatchQuote.js';
 import { DISPATCH_SIDE_CHAT_ASK_COMMAND, ISideChatAsk } from '../../dispatchSideChat/browser/dispatchSideChatAsk.js';
 import { IDispatchSideChatService } from '../../dispatchSideChat/browser/dispatchSideChatService.js';
-import { cardBox, pillOffset } from '../../dispatchSideChat/common/dispatchSideChatModel.js';
+import { cardBox, cornerFloor, pillOffset } from '../../dispatchSideChat/common/dispatchSideChatModel.js';
 import { filesInMessage, headerComment, LEARN_MODE_SETTING, learnMode, lastSentence, why, WRITE_TOOLS } from '../common/dispatchLearnModel.js';
 import { asSentence, assignSaid, hunkOf, IWalkFile, IWalkHunk, IWalkStop, linesSentence, stopCode, stopLines, stopTag, walkStops, WalkSource } from '../common/dispatchWalkModel.js';
 import { localPath, localRoots } from './dispatchLearnTurn.js';
@@ -907,8 +907,8 @@ export class DispatchWalkService extends Disposable implements IDispatchWalkServ
 		const pane = container.getBoundingClientRect();
 		const off = pillOffset(win.innerWidth);
 		const side = this.sideCardMode();
-		// above the side chat's pill when it is folded there
-		const bottom = off + (side === 'min' ? 32 + 8 : 0);
+		// 8 over the side chat's head when its pane is folded at the side pane's bottom (task-5im8n)
+		const bottom = cornerFloor(side, win.innerWidth);
 		const w = this._sessionId ? this._watch.get(this._sessionId) : undefined;
 		const mode = learnMode(this._configurationService.getValue(LEARN_MODE_SETTING));
 		// not while the small cards of the turn are still up: the pill would push them under the pointer (they stack

@@ -134,7 +134,7 @@
 	height: 24px;
 	padding: 0 10px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 55%, transparent);
 	color: var(--vscode-foreground);
@@ -152,7 +152,7 @@
 	width: min(560px, 100%);
 	box-sizing: border-box;
 	padding: 4px;
-	border-radius: 16px;
+	border-radius: var(--dispatch-radius-card);
 	background: var(--vscode-sideBar-background, var(--vscode-editor-background));
 	border: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border, var(--vscode-foreground)) 35%, transparent);
 	animation: dispatch-capture-in 150ms ease-out;
@@ -176,7 +176,7 @@
 	column-gap: 10px;
 	align-items: center;
 	padding: 7px 10px;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-row);
 	transition: background-color 150ms ease-out;
 }
 .dispatch-capture-row:hover,
@@ -243,7 +243,7 @@
 	padding: 0 6px;
 	margin: 0 -6px 0 0;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;
@@ -292,7 +292,7 @@
 	height: 22px;
 	padding: 0 8px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;
@@ -476,7 +476,7 @@
 	margin-left: auto;
 	padding: 0 8px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;
@@ -640,7 +640,7 @@
 	height: 22px;
 	padding: 0 8px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;

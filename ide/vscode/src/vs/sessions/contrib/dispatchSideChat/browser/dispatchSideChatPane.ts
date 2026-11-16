@@ -1,27 +1,30 @@
 /*---------------------------------------------------------------------------------------------
- *  Dispatch IDE: the side chat card (direction A「Bottom-right card」, user 2026-11-15, task-23iin, kanban
- *  design/side-chat: "这样能融入到我们这个教学里面"). A side chat no longer splits the conversation column into two
- *  narrow ones: it floats in the side pane's bottom right corner, about half the pane wide and a little more than half
- *  its height, and the conversation keeps its whole column.
+ *  Dispatch IDE: the side chat's pane (direction B「Split pane」, user 2026-11-16, task-5im8n, design/side-chat-now;
+ *  it replaces direction A's card in the corner, task-23iin, which covered Now). The side pane is split in two under
+ *  its tabs: the tab in front (Now, a document, Changes) over the side chat, a 1px line between them. Nothing floats
+ *  over anything: the editor (and the docked detail beside it) is laid out shorter by the pane's height
+ *  (EditorGroupView.setContentBottomInset), and the pane sits in the room that leaves.
  *
- *  - Its own head: "Side chat · from <session>", and its own ⋯ (Rename…, Delete Side Chat, the session's other side
- *    chats), – (folds it into the pill) and × (closes it; the title bar's session menu brings it back).
- *  - On top the quoted passage (the quote card's look): the pointer on it lights the passage in the document, a click
- *    scrolls the document back to it.
- *  - Under it the side chat itself, the same chat view the conversation has (the same engine and the same chat), so
- *    a follow-up is typed in its own input.
- *  - Once an answer is in, over the input: Add to chat (the answer goes into the conversation's input as a quote
- *    card, not sent), Keep as comment (the answer stays on the passage in the document) and Copy.
- *  - Folded, the card is a pill at the same corner: "Side chat · Answering" while it writes, "Side chat · 1 new
- *    answer" in 500 once it has; a click opens the card again.
- *  The sizes are dispatchSideChatModel.ts's cardBox: 380 × at most 470 at 16 from the corner, and the pane's whole
- *  width (12 each side) in a window narrower than 1200.
+ *  - The line is VS Code's own sash: dragged it moves, a double-click puts it back (55% of the room for the pane, the
+ *    old card's height in a window 1200 wide or less). Over the pane at least 32 stays, the pane at least 200; under
+ *    120 Now folds into its one line (dispatchNowEditor.ts), whose click puts the line back.
+ *  - The head, 28 high: chevron, "Side chat", "· from <session>", and on the pointer ⋯ (Rename…, Delete Side Chat,
+ *    the session's other side chats) and × (closes it; the title bar's session menu brings it back). A click on the
+ *    head folds the pane to the head alone, at the side pane's bottom, which then says "· Answering" while it writes
+ *    and "· 1 new answer" in 500 once it has; another click opens it again.
+ *  - The quoted passage at the top of the side chat's list, scrolling with it: the pointer on it lights the passage in
+ *    the document, a click scrolls the document back to it.
+ *  - The side chat itself is the chat view the conversation has (the same engine and the same chat); the message you
+ *    sent, once it has scrolled away, is one quiet line at the top that scrolls back to it (dispatchStickyAsk.ts).
+ *  - Once an answer is in, over the input: Add to chat, Keep as comment and Copy.
+ *  The sums are dispatchSideChatModel.ts's splitRoom.
  *--------------------------------------------------------------------------------------------*/
 
 import * as dom from '../../../../base/browser/dom.js';
+import { Orientation, Sash, SashState } from '../../../../base/browser/ui/sash/sash.js';
 import { Action, IAction, Separator } from '../../../../base/common/actions.js';
 import { Codicon } from '../../../../base/common/codicons.js';
-import { Disposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, IDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { autorun, observableFromEvent, observableValue } from '../../../../base/common/observable.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { URI } from '../../../../base/common/uri.js';
@@ -39,6 +42,7 @@ import { IQuickInputService } from '../../../../platform/quickinput/common/quick
 import { IChatWidget, IChatWidgetService } from '../../../../workbench/contrib/chat/browser/chat.js';
 import { IChatSideChatService } from '../../../../workbench/contrib/chat/common/chatSideChatService.js';
 import { IChatModel } from '../../../../workbench/contrib/chat/common/model/chatModel.js';
+import { IEditorGroupsService } from '../../../../workbench/services/editor/common/editorGroupsService.js';
 import { AbstractChatView } from '../../../browser/parts/chatView.js';
 import { isSessionConversationSideChat } from '../../../browser/sessionConversationGroups.js';
 import { IChatViewFactory } from '../../../services/chatView/browser/chatViewFactory.js';
@@ -49,31 +53,49 @@ import { IActiveSession, ISessionsManagementService } from '../../../services/se
 import { DISPATCH_REVEAL_QUOTE_COMMAND, addQuoteToWidget, toQuoteEntry } from '../../dispatchQuote/browser/dispatchQuote.js';
 import { LEARN_MODE_SETTING, LearnMode, learnMode } from '../../dispatchLearn/common/dispatchLearnModel.js';
 import { IDispatchWalkService } from '../../dispatchLearn/browser/dispatchWalkService.js';
-import { cardBox, fileName, ISideChatPassage, passageLine, passageSource, passageWhere, pillLabel, pillOffset, SideChatCardMode, splitSelection } from '../common/dispatchSideChatModel.js';
+import { fileName, foldedBadge, ISideChatPassage, ISideChatSplit, passageLine, passageSource, passageWhere, shareForTop, SIDE_CHAT_HEAD, SIDE_CHAT_THIN_PANE, SideChatCardMode, splitRoom, splitSelection } from '../common/dispatchSideChatModel.js';
 import { docReaderBody, lightPassage, onDidRenderDoc, PassageLight, scrollToPassage } from './dispatchDocPassage.js';
 import { DISPATCH_SIDE_CHAT_CARD_KEY, IDispatchSideChatService } from './dispatchSideChatService.js';
 
 /** `dispatch.openDoc` (dispatchDocsOpen.ts): opens a document's tab in the side pane; by id, not imported. */
 const OPEN_DOC_COMMAND = 'dispatch.openDoc';
-const HEAD_HEIGHT = 40;
 
-export class DispatchSideChatCard extends Disposable {
+/** The room over the first message for the quote: 12, its 48, 12. */
+const QUOTE_ROOM = 72;
+
+/** What the pane needs of the side pane's editor group (EditorGroupView, with Dispatch's hooks in it). */
+interface IInsetGroup {
+	readonly element: HTMLElement;
+	readonly titleHeight: { readonly offset: number };
+	readonly contentTopInset?: number;
+	setContentBottomInset?(inset: number): void;
+	readonly onDidRelayout?: (listener: () => void) => IDisposable;
+}
+
+export class DispatchSideChatPane extends Disposable {
 
 	readonly element: HTMLElement;
-	readonly pill: HTMLElement;
 
+	private readonly _head: HTMLElement;
+	private readonly _badge: HTMLElement;
 	private readonly _view: AbstractChatView;
 	private readonly _quote: HTMLElement | undefined;
 	private readonly _chatHost: HTMLElement;
 	private readonly _acts: HTMLElement;
-	private readonly _pillLabel: HTMLElement;
+	private readonly _sash: Sash;
 	private readonly _passage: ISideChatPassage | undefined;
 	private readonly _answering = observableValue(this, false);
 	private readonly _unread = observableValue(this, 0);
 	private readonly _flash = this._register(new MutableDisposable());
 	private readonly _didTimer = this._register(new MutableDisposable());
 	private readonly _relayout = this._register(new MutableDisposable());
+	private readonly _groupWatch = this._register(new MutableDisposable());
+	private _watchedGroup: IInsetGroup | undefined;
 	private _laidOut: { width: number; height: number } | undefined;
+	private _split: ISideChatSplit = { top: 0, pane: 0, oneLine: false };
+	private _dragFrom: number | undefined;
+	private _layingOut = false;
+	private _quoteRoom = false;
 	private _paneHidden = false;
 	private _mode: SideChatCardMode = 'open';
 	private _hover = false;
@@ -99,6 +121,7 @@ export class DispatchSideChatCard extends Disposable {
 		@ILogService private readonly _logService: ILogService,
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
 		@IDispatchWalkService private readonly _walkService: IDispatchWalkService,
+		@IEditorGroupsService private readonly _editorGroupsService: IEditorGroupsService,
 	) {
 		super();
 		const win = dom.getWindow(_container);
@@ -106,51 +129,68 @@ export class DispatchSideChatCard extends Disposable {
 			_container.style.position = 'relative';
 		}
 
-		// ---- the card ----
-		this.element = dom.$('.dispatch-side-chat-card', { role: 'complementary', 'data-part': 'side-chat-card' });
+		// ---- the pane ----
+		this.element = dom.$('.dispatch-side-chat-pane', { role: 'complementary', 'data-part': 'side-chat-pane' });
 		this.element.setAttribute('aria-label', localize('dispatchSideChat.aria', "Side chat"));
 		_container.appendChild(this.element);
 		this._register(toDisposable(() => this.element.remove()));
 
-		const head = dom.append(this.element, dom.$('.dsc-head'));
+		// ---- the line over it: VS Code's sash; dragged it moves, a double-click puts it back ----
+		this._sash = this._register(new Sash(this.element, { getHorizontalSashTop: () => 0 }, { orientation: Orientation.HORIZONTAL }));
+		this._register(this._sash.onDidStart(() => { this._dragFrom = this._split.top; this.element.classList.add('dragging'); }));
+		this._register(this._sash.onDidChange(e => {
+			if (this._dragFrom !== undefined) {
+				this._sideChats.setShare(shareForTop(this.room(), this._dragFrom + e.currentY - e.startY));
+			}
+		}));
+		this._register(this._sash.onDidEnd(() => { this._dragFrom = undefined; this.element.classList.remove('dragging'); }));
+		this._register(this._sash.onDidReset(() => this._sideChats.setShare(undefined)));
+
+		// ---- the head: a click folds the pane to it, and opens it again ----
+		const head = this._head = dom.append(this.element, dom.$('.dsc-head', { role: 'button', tabindex: '0', 'data-part': 'side-chat-head' }));
+		head.title = localize('dispatchSideChat.headTip', "Collapse or expand the side chat");
+		dom.append(head, dom.$(`span.dsc-car${ThemeIcon.asCSSSelector(Codicon.chevronDown)}`, { 'aria-hidden': 'true' }));
 		dom.append(head, dom.$(`span.dsc-ic${ThemeIcon.asCSSSelector(Codicon.commentDiscussion)}`, { 'aria-hidden': 'true' }));
 		dom.append(head, dom.$('span.dsc-t', undefined, localize('dispatchSideChat.title', "Side chat")));
 		const from = dom.append(head, dom.$('span.dsc-from'));
+		this._badge = dom.append(head, dom.$('span.dsc-badge', { 'data-part': 'side-chat-badge' }));
+		dom.append(head, dom.$('span.dsc-sp'));
 		this._register(autorun(reader => {
 			const title = _session.title.read(reader);
 			from.textContent = title ? localize('dispatchSideChat.from', "· from {0}", title) : '';
 			from.title = title;
 		}));
 		const more = this.iconButton(head, Codicon.ellipsis, localize('dispatchSideChat.more', "More Actions for This Side Chat"), 'more');
-		const min = this.iconButton(head, Codicon.chromeMinimize, localize('dispatchSideChat.minimize', "Minimize"), 'minimize');
 		const close = this.iconButton(head, Codicon.close, localize('dispatchSideChat.close', "Close Side Chat"), 'close');
 		this._register(dom.addDisposableListener(more, dom.EventType.CLICK, e => { dom.EventHelper.stop(e, true); this.showMenu(more); }));
-		this._register(dom.addDisposableListener(min, dom.EventType.CLICK, e => { dom.EventHelper.stop(e, true); this._sideChats.setMode(_session.sessionId, 'min'); }));
 		this._register(dom.addDisposableListener(close, dom.EventType.CLICK, e => { dom.EventHelper.stop(e, true); this._sideChats.setMode(_session.sessionId, 'closed'); }));
-
-		// ---- the pill ----
-		this.pill = dom.$('button.dispatch-side-chat-pill', { type: 'button', 'data-part': 'side-chat-pill' });
-		dom.append(this.pill, dom.$(`span.dsc-ic${ThemeIcon.asCSSSelector(Codicon.commentDiscussion)}`, { 'aria-hidden': 'true' }));
-		this._pillLabel = dom.append(this.pill, dom.$('span.dsc-pill-t'));
-		_container.appendChild(this.pill);
-		this._register(toDisposable(() => this.pill.remove()));
-		this._register(dom.addDisposableListener(this.pill, dom.EventType.CLICK, e => { dom.EventHelper.stop(e, true); this._sideChats.setMode(_session.sessionId, 'open'); }));
+		const toggle = () => this._sideChats.setMode(_session.sessionId, this._mode === 'open' ? 'min' : 'open');
+		this._register(dom.addDisposableListener(head, dom.EventType.CLICK, e => {
+			if (!(dom.isHTMLElement(e.target) && e.target.closest('.dsc-ib'))) {
+				toggle();
+			}
+		}));
+		this._register(dom.addDisposableListener(head, dom.EventType.KEY_DOWN, (e: KeyboardEvent) => {
+			if ((e.key === 'Enter' || e.key === ' ') && e.target === head) {
+				dom.EventHelper.stop(e, true);
+				toggle();
+			}
+		}));
 		this._register(autorun(reader => {
-			const label = pillLabel(this._answering.read(reader), this._unread.read(reader));
-			this._pillLabel.textContent = label.text;
-			this.pill.classList.toggle('unread', label.bold);
-			this.pill.classList.toggle('answering', label.answering);
-			this.pill.setAttribute('aria-label', localize('dispatchSideChat.pillAria', "{0}: open the side chat", label.text));
+			const badge = foldedBadge(this._answering.read(reader), this._unread.read(reader));
+			this._badge.textContent = badge.text;
+			this._badge.classList.toggle('new', badge.bold);
+			this._badge.classList.toggle('answering', badge.answering);
 		}));
 
 		const body = dom.append(this.element, dom.$('.dsc-body'));
 
-		// ---- the quoted passage ----
+		// ---- the quoted passage: at the top of the side chat's list, it scrolls with it (placeQuote puts it there) ----
 		this._passage = _sideChats.passageOf(_chat.resource);
 		const sel = splitSelection(_chat.origin?.selection?.text);
 		const words = this._passage?.text ?? sel.text;
 		if (words.trim()) {
-			const q = this._quote = dom.append(body, dom.$('button.dsc-quote', { type: 'button', 'data-part': 'side-chat-quote' }));
+			const q = this._quote = dom.$('button.dsc-quote', { type: 'button', 'data-part': 'side-chat-quote' });
 			this.element.classList.add('has-quote');
 			// a terminal's output and a command say so in the icon; everything else is a quote (task-q9x2r)
 			const quoteIcon = this._passage?.from === 'terminal' ? Codicon.terminal : this._passage?.from === 'learn' && !this._passage.path ? Codicon.package : Codicon.quote;
@@ -166,7 +206,10 @@ export class DispatchSideChatCard extends Disposable {
 					: localize('dispatchSideChat.quoteTipOther', "Show where this was asked");
 			this._register(dom.addDisposableListener(q, dom.EventType.MOUSE_ENTER, () => { this._hover = true; this.relight(); }));
 			this._register(dom.addDisposableListener(q, dom.EventType.MOUSE_LEAVE, () => { this._hover = false; this.relight(); }));
+			// the list under it would take the press as a row's (focus, selection): the quote keeps it
+			this._register(dom.addDisposableListener(q, dom.EventType.MOUSE_DOWN, e => e.stopPropagation()));
 			this._register(dom.addDisposableListener(q, dom.EventType.CLICK, e => { dom.EventHelper.stop(e, true); void this.goToPassage(); }));
+			this._register(toDisposable(() => q.remove()));
 		}
 		if (this._passage?.inDocs) {
 			const path = this._passage.path;
@@ -176,7 +219,7 @@ export class DispatchSideChatCard extends Disposable {
 		// ---- the side chat: the conversation's own chat view, in its own scope for this session ----
 		this._chatHost = dom.append(body, dom.$('.dsc-chat'));
 		const scopedKeys = this._register(contextKeyService.createScoped(this._chatHost));
-		// the chat view starts its input one line high in here (chatView.ts reads it): the card is short
+		// the chat view starts its input one line high in here (chatView.ts reads it)
 		scopedKeys.createKey(DISPATCH_SIDE_CHAT_CARD_KEY, true);
 		this._register(autorun(reader => setActiveSessionContextKeys(_session, scopedKeys, reader)));
 		const sessionObs = observableValue<IActiveSession | undefined>(this, _session);
@@ -192,6 +235,7 @@ export class DispatchSideChatCard extends Disposable {
 		// sized before its chat comes: a chat that already has answers draws them at once, at the size it has then
 		this.layout();
 		this._view.setChat(_chat, _session.sessionId, _session);
+		this.placeQuote();
 
 		// ---- Add to chat, Keep as comment, Copy: over the input once an answer is in ----
 		this._acts = dom.$('.dsc-acts', { 'data-part': 'side-chat-answer-actions' });
@@ -204,15 +248,20 @@ export class DispatchSideChatCard extends Disposable {
 		const widget = this.widget();
 		if (widget) {
 			this.watchAnswers(widget);
+			this._register(widget.onDidChangeViewModel(() => this.placeQuote()));
 		}
 
-		// ---- size: follows the side pane and the window ----
+		// ---- size: follows the side pane, its tabs, the line's place and the window ----
 		const ro = new ResizeObserver(() => this.layout());
 		ro.observe(_container);
 		this._register(toDisposable(() => ro.disconnect()));
 		this._register(dom.addDisposableListener(win, dom.EventType.RESIZE, () => this.layout()));
+		this._register(this._editorGroupsService.mainPart.onDidLayout(() => this.layout()));
+		this._register(this._editorGroupsService.mainPart.onDidActivateGroup(() => this.layout()));
+		this._register(autorun(reader => { this._sideChats.share.read(reader); this.layout(); }));
+		// gone: the editors get their room back
+		this._register(toDisposable(() => this.inset(0)));
 		this.setMode('open', 0);
-		this.layout();
 	}
 
 	get chat(): IChat {
@@ -227,12 +276,13 @@ export class DispatchSideChatCard extends Disposable {
 		const was = this._mode;
 		this._mode = mode;
 		this._unread.set(unread, undefined);
-		this.element.classList.toggle('hidden', mode !== 'open');
-		this.pill.classList.toggle('hidden', mode !== 'min');
+		this.element.classList.toggle('folded', mode === 'min');
+		this.element.classList.toggle('hidden', mode === 'closed');
+		this._head.setAttribute('aria-expanded', String(mode === 'open'));
 		this._view.setVisible(mode === 'open' && !this._paneHidden);
+		this.layout();
 		if (mode === 'open' && was !== 'open') {
-			this.layout();
-			// once the card is drawn again, its list measures its rows at the card's real size and shows the end
+			// once the pane is drawn again, its list measures its rows at the pane's real size and shows the end
 			this.settle();
 		}
 		this.relight();
@@ -246,12 +296,44 @@ export class DispatchSideChatCard extends Disposable {
 		}
 	}
 
+	/** The editor group the pane sits under (the side pane has one). */
+	private group(): IInsetGroup | undefined {
+		return this._editorGroupsService.mainPart.activeGroup as unknown as IInsetGroup | undefined;
+	}
+
+	/** The room under the side pane's tabs: what the tab in front and the pane share. */
+	private room(): number {
+		const g = this.group();
+		return g ? Math.max(0, g.element.getBoundingClientRect().height - g.titleHeight.offset - (g.contentTopInset ?? 0)) : 0;
+	}
+
+	/** Keeps `px` under every editor of the side pane (and the docked detail beside it) for the pane. */
+	private inset(px: number): void {
+		for (const g of this._editorGroupsService.mainPart.groups) {
+			(g as unknown as IInsetGroup).setContentBottomInset?.(px);
+		}
+	}
+
 	layout(): void {
-		const win = dom.getWindow(this._container);
+		// the first readings come before the chat view is there; the inset set here lays the group out again, and that
+		// comes back here
+		if (!this._view || this._layingOut) {
+			return;
+		}
+		this._layingOut = true;
+		try {
+			this.doLayout();
+		} finally {
+			this._layingOut = false;
+		}
+	}
+
+	private doLayout(): void {
 		const pane = this._container.getBoundingClientRect();
+		const g = this.group();
 		// the side pane put away (Settings over the window, the pane hidden): the chat is not drawn at no size, and is
-		// drawn again at the card's size when the pane is back
-		const hidden = pane.width < 1 || pane.height < 1;
+		// drawn again at the pane's size when the side pane is back
+		const hidden = !g || pane.width < 1 || pane.height < 1;
 		if (hidden !== this._paneHidden) {
 			this._paneHidden = hidden;
 			this._view.setVisible(!hidden && this._mode === 'open');
@@ -260,40 +342,74 @@ export class DispatchSideChatCard extends Disposable {
 				this.settle();
 			}
 		}
-		if (hidden) {
+		if (!g || hidden) {
 			return;
 		}
-		const box = cardBox(pane.width, pane.height, win.innerWidth);
+		this.watchGroup(g);
+		const win = dom.getWindow(this._container);
+		const split = this._split = splitRoom(this.room(), win.innerWidth, this._mode, this._sideChats.share.get());
+		this.inset(split.pane);
+		const box = g.element.getBoundingClientRect();
 		const s = this.element.style;
-		s.right = `${box.right}px`;
-		s.bottom = `${box.bottom}px`;
-		s.width = `${box.width}px`;
-		s.height = `${box.height}px`;
-		this.element.classList.toggle('narrow', box.narrow);
-		const off = pillOffset(win.innerWidth);
-		this.pill.style.right = `${off}px`;
-		this.pill.style.bottom = `${off}px`;
+		s.left = `${Math.round(box.left - pane.left - this._container.clientLeft)}px`;
+		s.width = `${Math.round(box.width)}px`;
+		s.top = `${Math.round(box.bottom - pane.top - this._container.clientTop - split.pane)}px`;
+		s.height = `${split.pane}px`;
+		this.element.classList.toggle('thin', box.width < SIDE_CHAT_THIN_PANE);
+		this.element.dataset.top = String(split.top);
+		this._sash.state = this._mode === 'open' ? SashState.Enabled : SashState.Disabled;
+		this._sash.layout();
 		if (this._mode !== 'open') {
 			return;
 		}
-		const quote = this._quote ? this._quote.offsetHeight + 12 : 0; // the quote and the room above it
-		const inner = box.width - 2; // the card's 1px border on each side
-		const height = Math.max(120, box.height - 2 - HEAD_HEIGHT - quote);
+		const inner = Math.round(box.width);
+		const height = Math.max(0, split.pane - 1 - SIDE_CHAT_HEAD);
 		this._chatHost.style.height = `${height}px`;
 		this._view.layout(inner, height, 0, 0);
+		this.placeQuote();
 		if (this._laidOut && (this._laidOut.width !== inner || this._laidOut.height !== height)) {
 			this.settle();
 		}
 		this._laidOut = { width: inner, height };
 	}
 
-	/** On the next frame: the list measures its rows again at the card's size and shows the end of the chat. */
+	/** Lays the pane out again when the group does (its tabs come or go, a header shows). */
+	private watchGroup(g: IInsetGroup): void {
+		if (this._watchedGroup === g) {
+			return;
+		}
+		this._watchedGroup = g;
+		this._groupWatch.value = g.onDidRelayout?.(() => this.layout());
+	}
+
+	/**
+	 * The quote goes at the top of the list's rows, so it scrolls with the messages; the list keeps room for it above
+	 * the first message (its own top padding: 12, the quote's 48, 12). The chat widget does not hand out its tree, so it
+	 * is reached by name here.
+	 */
+	private placeQuote(): void {
+		const q = this._quote;
+		const rows = q && this._chatHost.querySelector<HTMLElement>('.interactive-list .monaco-list-rows');
+		if (q && rows && q.parentElement !== rows) {
+			rows.prepend(q);
+		}
+		if (q && !this._quoteRoom) {
+			const tree = (this.widget() as unknown as { readonly listWidget?: { readonly _tree?: { updateOptions(o: { paddingTop?: number }): void } } } | undefined)?.listWidget?._tree;
+			if (tree) {
+				tree.updateOptions({ paddingTop: QUOTE_ROOM });
+				this._quoteRoom = true;
+			}
+		}
+	}
+
+	/** On the next frame: the list measures its rows again at the pane's size and shows the end of the chat. */
 	private settle(): void {
 		const win = dom.getWindow(this._container);
 		this._relayout.value = dom.scheduleAtNextAnimationFrame(win, () => {
 			if (this._laidOut && this._mode === 'open') {
 				this._view.layout(this._laidOut.width, this._laidOut.height, 0, 0);
 			}
+			this.placeQuote();
 			const widget = this.widget(), last = widget?.viewModel?.getItems().at(-1);
 			if (widget && last) {
 				widget.reveal(last);
@@ -502,7 +618,7 @@ export class DispatchSideChatCard extends Disposable {
 		}
 	}
 
-	/** Deleting a chat asks first (sessionsManagementService's own question); a side chat that is gone closes its card. */
+	/** Deleting a chat asks first (sessionsManagementService's own question); a side chat that is gone closes its pane. */
 	private async delete(): Promise<void> {
 		const session = this._session, id = this._chat.resource.toString(), chat = this._chat.resource, sideChats = this._sideChats;
 		try {

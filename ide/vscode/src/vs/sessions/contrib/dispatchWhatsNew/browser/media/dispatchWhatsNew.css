@@ -17,7 +17,7 @@
 	padding: 0 var(--vscode-spacing-size40, 4px);
 	box-sizing: border-box;
 	border: var(--vscode-strokeThickness, 1px) solid var(--vscode-descriptionForeground);
-	border-radius: var(--vscode-cornerRadius-circle, 999px);
+	border-radius: var(--dispatch-radius-button);
 	color: var(--vscode-foreground);
 	font-size: var(--vscode-fontSize-label3, 10px);
 	font-weight: var(--vscode-fontWeight-semiBold, 600);
@@ -67,10 +67,10 @@
 	border-radius: 6px;
 }
 
-/* ---- hovers that hold a card: the hover's own frame becomes the card's (radius 14, --bg-2, padding 8) ---- */
+/* ---- hovers that hold a card: the hover's own frame becomes the card's (card corners, --bg-2, padding 8) ---- */
 
 .monaco-hover.dispatch-whats-new-hover {
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-card);
 	background-color: var(--vscode-sideBar-background);
 	border-color: var(--vscode-editorHoverWidget-border);
 	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
@@ -134,7 +134,7 @@
 	align-items: center;
 	padding: 8px;
 	border: 0;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-row);
 	background: transparent;
 	color: inherit;
 	font: inherit;

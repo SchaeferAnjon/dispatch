@@ -43,6 +43,7 @@ import { IActiveSession } from '../../../services/sessions/common/sessionsManage
 import { addQuoteToWidget, toQuoteEntry } from '../../dispatchQuote/browser/dispatchQuote.js';
 import { DISPATCH_SIDE_CHAT_ASK_COMMAND, ISideChatAsk } from '../../dispatchSideChat/browser/dispatchSideChatAsk.js';
 import { IDispatchSideChatService } from '../../dispatchSideChat/browser/dispatchSideChatService.js';
+import { cornerFloor } from '../../dispatchSideChat/common/dispatchSideChatModel.js';
 import { askText, cardFor, ILearnCard, ILearnEvent, LEARN_MODE_SETTING, learnMode, LearnKind, mergeEvents, NO_KNOWN_WORDS, shouldTalk } from '../common/dispatchLearnModel.js';
 import { eventsOfCall, eventsOfEdit, ITurnContext, localRoots } from './dispatchLearnTurn.js';
 import { DispatchTalkCards } from './dispatchTalkCards.js';
@@ -128,7 +129,9 @@ class DispatchLearn extends Disposable implements IWorkbenchContribution {
 				const box = part?.getBoundingClientRect();
 				return part && box && box.width > 0 && box.height > 0 ? part : undefined;
 			},
-			pillShown: () => (this.cardMode() === 'min' ? 1 : 0) + (this._walk.pillShown.get() ? 1 : 0),
+			pillShown: () => this._walk.pillShown.get() ? 1 : 0,
+			// 8 over the side chat's folded head at the side pane's bottom (task-5im8n)
+			floor: () => cornerFloor(this.cardMode(), mainWindow.innerWidth),
 			activate: (_key, card) => void this.ask(card),
 			dismissed: key => { const g = this._groups.get(key); if (g) { g.dismissed = true; } },
 		}));

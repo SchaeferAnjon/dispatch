@@ -160,7 +160,8 @@
     "computer/DispatchComputer.swift",
     "cli/builtin_agents.py",
     "cli/agent_builtins.py",
-    "cli/neat_auto.py"
+    "cli/neat_auto.py",
+    "cli/point_talk.py"
   ],
   "dirs": {
     "../agent/rules/": "agent/rules/",

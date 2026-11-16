@@ -15,7 +15,7 @@
 .chat-input-notice.chat-input-notification-widget.severity-error {
 	padding: 12px 16px;
 	border-color: var(--vscode-agentsChatInput-border, var(--vscode-input-border, transparent));
-	border-radius: 24px 24px 0 0;
+	border-radius: var(--dispatch-radius-input) var(--dispatch-radius-input) 0 0;
 	background-color: var(--vscode-agentsChatInput-background, var(--vscode-input-background));
 }
 
@@ -71,7 +71,7 @@
 	min-height: 24px;
 	padding: 0 8px;
 	border-width: 0 !important;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	font-size: 12px;
 	font-weight: 500;
 	line-height: 24px;
@@ -86,14 +86,14 @@
 	margin-top: calc(-1 * var(--dispatch-notice-height, 0px));
 }
 
-/* 5. wait bar (DESIGN.md "install or update": 4 high, capsule, --fill on a track, 1.5s linear loop) */
+/* 5. wait bar (DESIGN.md "install or update": 4 high, 2 corners, --fill on a track, 1.5s linear loop) */
 .chat-input-notification-widget .chat-input-notification-progress {
 	position: relative;
 	flex-shrink: 0;
 	height: 4px;
 	margin: 6px 0 0 22px;
 	overflow: hidden;
-	border-radius: 999px;
+	border-radius: 2px;
 	/* --hair: --chip (f2f1f0) is nearly the notice's own fill (f5f5f4) and the track would disappear */
 	background-color: var(--vscode-input-border, var(--vscode-toolbar-hoverBackground));
 }
@@ -103,7 +103,7 @@
 	inset-block: 0;
 	left: 0;
 	width: 30%;
-	border-radius: 999px;
+	border-radius: 2px;
 	background-color: var(--vscode-progressBar-background, var(--vscode-button-background));
 	animation: dispatch-notice-sweep 1.5s linear infinite alternate;
 }

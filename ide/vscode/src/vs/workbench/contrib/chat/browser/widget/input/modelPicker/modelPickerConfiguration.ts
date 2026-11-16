@@ -16,6 +16,7 @@ import { ILanguageModelChatMetadataAndIdentifier } from '../../../../common/lang
 import { withChatInputPickerMotion } from '../chatInputPickerActionItem.js';
 import { getModelConfigProperty, IModelConfigurationAccess, MODEL_CONFIG_GROUP_CONTEXT, MODEL_CONFIG_GROUP_EFFORT } from './modelPickerModelConfig.js';
 import { logModelConfigurationChange } from './modelPickerTelemetry.js';
+import { dispatchConfigNote } from './dispatchConfigNote.js'; // Dispatch IDE: Default / Last picked after an option
 
 export interface IModelPickerConfigurationHost {
 	readonly getSelectedModel: () => ILanguageModelChatMetadataAndIdentifier | undefined;
@@ -114,7 +115,6 @@ export class ModelPickerConfiguration {
 		};
 
 		button.setAttribute('aria-expanded', 'true');
-		const showCacheBreakHint = this._host.shouldShowCacheBreakHint();
 		this._actionWidgetService.show(
 			'ChatModelConfigPicker',
 			false,
@@ -129,10 +129,7 @@ export class ModelPickerConfiguration {
 				getWidgetRole: () => 'menu' as const,
 			},
 			withChatInputPickerMotion({
-				headerText: showCacheBreakHint ? localize('chat.config.cacheBreakHint', "Changing these options mid-session resets the prompt cache and may increase cost.") : undefined,
-				headerIcon: showCacheBreakHint ? Codicon.info : undefined,
-				headerLink: showCacheBreakHint ? this._host.getCacheBreakLearnMoreLink() : undefined,
-				headerDismiss: showCacheBreakHint ? this._host.dismissCacheBreakHint : undefined,
+				// Dispatch IDE: the thinking-level menu holds only its options, no prompt-cache banner above them
 				reserveSubmenuSpace: false,
 			}),
 		);
@@ -160,6 +157,7 @@ export class ModelPickerConfiguration {
 		const configurationAccess = this._host.getConfigurationAccess();
 		const items: IActionListItem<IActionWidgetDropdownAction>[] = [];
 		const defaultLabel = localize('models.configDefault', "Default");
+		const lastPickedLabel = localize('models.configLastPicked', "Last picked");
 		const appendConfigSection = (
 			group: string,
 			fallbackHeaderLabel: string,
@@ -178,10 +176,12 @@ export class ModelPickerConfiguration {
 			for (let index = 0; index < enumValues.length; index++) {
 				const value = enumValues[index];
 				const displayLabel = formatValueLabel(value, config.schema.enumItemLabels?.[index]);
-				// Dispatch IDE: no second "Default" next to an option that is already called Default (OpenCode's)
-				const isDefault = value === config.schema.default && displayLabel !== defaultLabel;
+				// Dispatch IDE: "Default" on the model's default (none after an option already called Default,
+				// OpenCode's), "Last picked" on a checked option that is not the default (dispatchConfigNote.ts)
+				const note = dispatchConfigNote(value, config.value, config.schema.default, displayLabel === defaultLabel);
+				const noteLabel = note === 'default' ? defaultLabel : note === 'lastPicked' ? lastPickedLabel : undefined;
 				const enumDescription = config.schema.enumDescriptions?.[index];
-				const ariaDescriptionParts = [isDefault ? defaultLabel : undefined, enumDescription].filter((part): part is string => !!part);
+				const ariaDescriptionParts = [noteLabel, enumDescription].filter((part): part is string => !!part);
 				const checked = config.value === value;
 				items.push({
 					item: {
@@ -199,7 +199,7 @@ export class ModelPickerConfiguration {
 					kind: ActionListItemKind.Action,
 					className: 'chat-model-picker-config-option',
 					label: displayLabel,
-					description: isDefault ? defaultLabel : undefined,
+					description: noteLabel,
 					ariaDescription: ariaDescriptionParts.length ? ariaDescriptionParts.join(', ') : undefined,
 					hover: enumDescription ? { content: enumDescription } : undefined,
 					group: { title: '', icon: ThemeIcon.fromId(checked ? Codicon.check.id : Codicon.blank.id) },

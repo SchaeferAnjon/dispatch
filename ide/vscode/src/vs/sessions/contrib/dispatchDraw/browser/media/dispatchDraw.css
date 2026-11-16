@@ -64,7 +64,7 @@
 	height: 28px;
 	padding: 0;
 	border: 0;
-	border-radius: 50%;
+	border-radius: var(--dispatch-radius-row);
 	background: transparent;
 	display: grid;
 	place-items: center;
@@ -143,12 +143,12 @@
 	flex: 1;
 }
 
-/* capsules: Cancel is a plain word, the filled one is the only solid button here */
+/* buttons: Cancel is a plain word, the filled one is the only solid button here */
 .dispatch-draw .dpill {
 	height: 24px;
 	padding: 0 8px;
 	border: 1px solid transparent;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--dd-text-2);
 	font: inherit;
@@ -427,7 +427,7 @@
 	cursor: pointer;
 }
 
-/* the pen: 22 round at the bottom right corner, the one thing to click */
+/* the pen: a 22 button at the bottom right corner, the one thing to click */
 .dispatch-draw-pen {
 	position: absolute;
 	right: -6px;
@@ -436,7 +436,7 @@
 	height: 22px;
 	padding: 0;
 	border: 0;
-	border-radius: 50%;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--dd-bg);
 	box-shadow: 0 0 0 1px var(--dd-hair-2);
 	color: var(--dd-text);
@@ -466,7 +466,7 @@
 	padding: 0 !important;
 	margin: 0 !important;
 	border: 0 !important;
-	border-radius: 50% !important;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--dd-bg) !important;
 	box-shadow: 0 0 0 1px var(--dd-hair-2);
 	color: var(--dd-text-2);

@@ -93,7 +93,7 @@
 	align-items: center;
 	height: 18px;
 	padding: 0 7px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	font-size: 11px;
 	font-weight: 500;
 	font-variant-numeric: tabular-nums;
@@ -130,7 +130,7 @@
 .dispatch-settings-nav .dsn-clear {
 	width: 20px;
 	height: 20px;
-	border-radius: 50%;
+	border-radius: var(--dispatch-radius-button);
 	display: none;
 	place-items: center;
 	padding: 0;
@@ -239,7 +239,7 @@
 
 .dispatch-settings-page .dset-rows {
 	background: var(--dset-bg-2);
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-card);
 	padding: 4px;
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dset-hair) 50%, transparent);
 }
@@ -250,7 +250,7 @@
 	gap: 12px;
 	min-height: 48px;
 	padding: 8px 12px;
-	border-radius: 9px;
+	border-radius: var(--dispatch-radius-row);
 	box-sizing: border-box;
 	position: relative;
 	outline-offset: -1px;
@@ -310,7 +310,7 @@
 	align-items: center;
 	height: 20px;
 	padding: 0 8px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	font-size: 11px;
 	font-weight: 500;
 	white-space: nowrap;
@@ -324,7 +324,7 @@
 .dispatch-settings-page .dset-ibtn {
 	width: 28px;
 	height: 28px;
-	border-radius: 50%;
+	border-radius: var(--dispatch-radius-row);
 	border: 0;
 	background: none;
 	display: grid;
@@ -347,7 +347,7 @@
 	padding: 0 12px;
 	margin-top: 2px;
 	border: 0;
-	border-radius: 9px;
+	border-radius: var(--dispatch-radius-row);
 	background: none;
 	color: var(--dset-text-2);
 	cursor: pointer;
@@ -435,7 +435,7 @@
 /* allowance */
 .dispatch-settings-page .dset-meters { display: grid; gap: 6px; padding: 2px 12px 12px 52px; }
 .dispatch-settings-page .dset-meter { display: grid; grid-template-columns: 110px 160px 40px 1fr; align-items: center; gap: 10px; font-size: 12px; color: var(--dset-text-2); }
-.dispatch-settings-page .dset-meter-bar { height: 4px; border-radius: 999px; background: var(--dset-sel); overflow: hidden; }
+.dispatch-settings-page .dset-meter-bar { height: 4px; border-radius: 2px; background: var(--dset-sel); overflow: hidden; }
 .dispatch-settings-page .dset-meter-bar i { display: block; height: 100%; border-radius: inherit; background: var(--dset-text); transform-origin: left; animation: dset-grow 280ms var(--dset-ease-std) both 80ms; }
 .dispatch-settings-page .dset-meter.warn .dset-meter-bar i { background: var(--dset-amber); }
 .dispatch-settings-page .dset-meter-v { text-align: right; color: var(--dset-text); font-variant-numeric: tabular-nums; }
@@ -447,7 +447,7 @@
 /* ---- Overview ---- */
 
 .dispatch-settings-page .dset-who { display: flex; align-items: center; gap: 12px; margin: 16px 0 20px; }
-.dispatch-settings-page .dset-who-ic { font-size: 24px !important; color: var(--dset-text) !important; width: 40px; height: 40px; border-radius: 10px; background: var(--dset-bg-2); display: grid; place-items: center; }
+.dispatch-settings-page .dset-who-ic { font-size: 24px !important; color: var(--dset-text) !important; width: 40px; height: 40px; border-radius: var(--dispatch-radius-row); background: var(--dset-bg-2); display: grid; place-items: center; }
 .dispatch-settings-page .dset-who-name { font-size: 15px; font-weight: 600; }
 .dispatch-settings-page .dset-who-sub { font-size: 12px; color: var(--dset-text-2); }
 
@@ -459,7 +459,7 @@
 	min-height: 104px;
 	padding: 14px 16px;
 	border: 0;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-card);
 	background: var(--dset-bg-2);
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dset-hair) 55%, transparent);
 	text-align: left;
@@ -498,7 +498,7 @@
 	width: 100%;
 	padding: 12px 16px;
 	border: 0;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-card);
 	background: var(--dset-bg-2);
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dset-hair) 55%, transparent);
 	font-size: 12px;
@@ -515,7 +515,7 @@
 .dispatch-settings-page .dset-strip-end { margin-left: auto; }
 
 /* Keep awake: a cup with steam while it holds the Mac awake, z z when it lets it sleep */
-.dispatch-settings-page .dset-hero { display: flex; align-items: center; gap: 18px; padding: 18px 20px; margin-top: 16px; border-radius: 12px; background: var(--dset-bg-2); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dset-hair) 50%, transparent); }
+.dispatch-settings-page .dset-hero { display: flex; align-items: center; gap: 18px; padding: 18px 20px; margin-top: 16px; border-radius: var(--dispatch-radius-card); background: var(--dset-bg-2); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dset-hair) 50%, transparent); }
 .dispatch-settings-page .dset-hero-h { font-size: 15px; font-weight: 600; }
 .dispatch-settings-page .dset-hero-s { font-size: 12px; color: var(--dset-text-2); }
 .dispatch-settings-page .dset-cup { position: relative; width: 56px; height: 56px; flex: none; display: grid; place-items: center; }
@@ -540,7 +540,7 @@
 .dispatch-settings-page .dset-themes { display: flex; gap: 16px; flex-wrap: wrap; }
 .dispatch-settings-page .dset-thm { width: 168px; border: 0; background: none; padding: 0; cursor: pointer; text-align: center; font-size: 12px; color: var(--dset-text-2); }
 .dispatch-settings-page .dset-thm.on { color: var(--dset-text); font-weight: 500; }
-.dispatch-settings-page .dset-thm-pv { position: relative; height: 100px; border-radius: 10px; overflow: hidden; margin-bottom: 8px; box-shadow: inset 0 0 0 1px var(--dset-hair-2); transition: box-shadow 150ms ease; }
+.dispatch-settings-page .dset-thm-pv { position: relative; height: 100px; border-radius: var(--dispatch-radius-card); overflow: hidden; margin-bottom: 8px; box-shadow: inset 0 0 0 1px var(--dset-hair-2); transition: box-shadow 150ms ease; }
 .dispatch-settings-page .dset-thm.on .dset-thm-pv { box-shadow: 0 0 0 2px var(--dset-text); }
 .dispatch-settings-page .dset-thm:hover:not(.on) .dset-thm-pv { box-shadow: inset 0 0 0 1px var(--dset-text-2); }
 .dispatch-settings-page .dset-mw { position: absolute; inset: 0; display: grid; grid-template-columns: 34% 1fr; gap: 4px; padding: 10px; }
@@ -551,7 +551,7 @@
 .dispatch-settings-page .dset-mw-s i:nth-child(3) { width: 80%; }
 .dispatch-settings-page .dset-mw-s i:nth-child(4) { width: 60%; }
 .dispatch-settings-page .dset-mw-c { position: relative; border-radius: 4px; }
-.dispatch-settings-page .dset-mw-c i { position: absolute; left: 18%; right: 18%; bottom: 14%; height: 10px; border-radius: 5px; }
+.dispatch-settings-page .dset-mw-c i { position: absolute; left: 18%; right: 18%; bottom: 14%; height: 10px; border-radius: 2px; }
 /* the two palettes as they are, whichever one the window shows now */
 .dispatch-settings-page .dset-mw.light { background: #fafaf9; }
 .dispatch-settings-page .dset-mw.light .dset-mw-s i { background: #e7e5e4; }
@@ -590,12 +590,12 @@
 .dispatch-settings-page .dset-content > .dset-section:first-child > .dset-gh:first-child { margin-top: 24px; }
 .dispatch-settings-page .dset-tiles { gap: 16px; }
 .dispatch-settings-page .dset-tile-s:empty::before { content: '\00a0'; }
-/* buttons in rows: ghost capsules; the one main button stays solid */
+/* buttons in rows: ghost buttons; the one main button stays solid */
 .dispatch-settings-page .dset-btn-ghost.monaco-button {
 	height: 28px;
 	padding: 0 12px;
 	border: 0 !important;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent !important;
 	font-size: 12px;
 	font-weight: 500;
@@ -603,7 +603,7 @@
 	transition: background-color 150ms ease, color 150ms ease;
 }
 .dispatch-settings-page .dset-btn-ghost.monaco-button:hover { background: var(--dset-hover) !important; color: var(--dset-text); }
-.dispatch-settings-page .dset-btn-solid.monaco-button { height: 32px; padding: 0 16px; border-radius: 999px; }
+.dispatch-settings-page .dset-btn-solid.monaco-button { height: 32px; padding: 0 16px; border-radius: var(--dispatch-radius-button); }
 /* the row's chevron always last */
 .dispatch-settings-page .dset-row-ctl > .dset-go { order: 99; }
 /* the radio's ring readable */

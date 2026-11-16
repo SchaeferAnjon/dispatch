@@ -1,0 +1,758 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Point and talk (task-0y0km; kanban design/screen-talk direction A). Values from the design's
+ *  prototype; colours are theme colours standing for DESIGN.md's tokens (--bg editor, --bg-2 side bar, --sel list
+ *  selection, --text foreground, --text-2 description, --hair hover border, --hair-2 input border, --fill button).
+ *  Corners follow the person's VS Code corners (pref「VS Code 方圆角」): box 8, bubble and pictures 6, buttons 4.
+ *  The red of the boxes is picture content (DESIGN.md「第四处颜色」); the interface itself has no red.
+ *--------------------------------------------------------------------------------------------*/
+
+.dispatch-pt-slot,
+.dispatch-pt-card,
+.dispatch-pt-sent,
+.dispatch-pt-bubble,
+.dispatch-pt-where,
+.pt-chiprow.sent,
+.pt-frames.sent {
+	--pt-bg: var(--vscode-editor-background);
+	--pt-bg-2: var(--vscode-sideBar-background);
+	--pt-sel: var(--vscode-list-activeSelectionBackground);
+	--pt-text: var(--vscode-foreground);
+	--pt-text-2: var(--vscode-descriptionForeground);
+	--pt-hair: var(--vscode-editorHoverWidget-border);
+	--pt-hair-2: var(--vscode-input-border);
+	--pt-fill: var(--vscode-button-background);
+	--pt-fill-text: var(--vscode-button-foreground);
+	--pt-chip: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	--pt-ease: cubic-bezier(0, 0, .2, 1);
+}
+
+/* ---- the box while recording (A1) and while reviewing (A2) ---- */
+
+.agent-sessions-workbench .interactive-session .chat-input-container.dispatch-pt-recording {
+	border-color: color-mix(in srgb, var(--vscode-foreground) 30%, transparent) !important;
+}
+
+.chat-input-container.dispatch-pt-recording > .chat-editor-container,
+.chat-input-container.dispatch-pt-recording > .chat-input-toolbars,
+.chat-input-container.dispatch-pt-recording > .chat-attachments-container,
+.chat-input-container.dispatch-pt-review > .chat-editor-container {
+	display: none !important;
+}
+
+/* the keyframes are attachments of the box (they go to the agent) but the review draws them */
+.chat-attached-context-attachment.dispatch-pt-hidden {
+	display: none !important;
+}
+
+.chat-input-container.dispatch-pt-review > .chat-attachments-container:not(:has(.chat-attached-context-attachment:not(.dispatch-pt-hidden))) {
+	display: none !important;
+}
+
+.dispatch-pt-slot {
+	display: block;
+	min-width: 0;
+	outline: none;
+	color: var(--pt-text);
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.dispatch-pt-slot .pt-live {
+	min-height: 48px;
+	max-height: calc(14px * 1.6 * 3 + 16px);
+	overflow: hidden;
+	padding: 12px 5px 4px;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	color: var(--pt-text-2);
+	box-sizing: border-box;
+	-webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+	mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+}
+
+.dispatch-pt-slot .pt-tools {
+	height: 40px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 5px 0 4px;
+	font-size: 12px;
+}
+
+.dispatch-pt-slot .pt-cam {
+	color: var(--pt-text);
+	font-size: 16px;
+	animation: pt-breathe 2s ease-in-out infinite;
+}
+
+@keyframes pt-breathe {
+	50% {
+		opacity: .8;
+	}
+}
+
+.dispatch-pt-slot .pt-clock {
+	width: 36px;
+	margin-left: 4px;
+	color: var(--pt-text);
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-pt-slot .pt-meter {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	width: 18px;
+	height: 10px;
+	margin-left: 4px;
+}
+
+.dispatch-pt-slot .pt-meter i {
+	width: 2px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--pt-text);
+	transition: height .12s;
+}
+
+.dispatch-pt-slot .pt-dot {
+	margin-left: 8px;
+}
+
+.dispatch-pt-slot .pt-grow,
+.dispatch-pt-card .pt-grow,
+.dispatch-pt-where .pt-grow {
+	flex: 1;
+}
+
+.pt-nd {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	box-sizing: border-box;
+	border-radius: 8px;
+	background: var(--pt-text);
+	color: var(--pt-bg);
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 16px;
+	font-variant-numeric: tabular-nums;
+}
+
+.pt-nd.pop {
+	animation: pt-pop .15s ease-out;
+}
+
+@keyframes pt-pop {
+	50% {
+		transform: scale(1.15);
+	}
+}
+
+.dispatch-pt-slot .pt-discard,
+.pt-link {
+	height: 28px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 4px;
+	background: none;
+	color: var(--pt-text-2);
+	font: inherit;
+	font-size: 13px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.dispatch-pt-slot .pt-discard:hover,
+.pt-link:hover {
+	background: var(--pt-chip);
+	color: var(--pt-text);
+}
+
+.dispatch-pt-slot .pt-stop {
+	height: 28px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 4px;
+	background: var(--pt-fill);
+	color: var(--pt-fill-text);
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.dispatch-pt-slot .pt-stop .codicon {
+	font-size: 14px;
+	color: inherit;
+}
+
+.dispatch-pt-slot button:focus-visible,
+.dispatch-pt-card button:focus-visible,
+.dispatch-pt-where button:focus-visible,
+.dispatch-pt-bubble .pt-nd:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+/* the words still being heard, and "Picking frames…": the same 2 s shimmer as Now's "Right now" */
+.pt-shim {
+	background: linear-gradient(90deg, var(--pt-text-2) 0%, var(--pt-text-2) 40%, var(--pt-text) 50%, var(--pt-text-2) 60%, var(--pt-text-2) 100%);
+	background-size: 300% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: pt-shim 2s linear infinite;
+}
+
+@keyframes pt-shim {
+	from {
+		background-position: 100% 0;
+	}
+
+	to {
+		background-position: 0 0;
+	}
+}
+
+/* ---- A2: the keyframes, the video, the lines ---- */
+
+.dispatch-pt-slot.review .pt-frames {
+	display: flex;
+	gap: 8px;
+	padding: 12px 6px 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.pt-ph {
+	display: block;
+	flex: none;
+	width: 144px;
+	height: 96px;
+	border-radius: 6px;
+	background: var(--pt-sel);
+	animation: pt-ph 2s ease-in-out infinite;
+}
+
+@keyframes pt-ph {
+	50% {
+		opacity: .55;
+	}
+}
+
+.pt-th {
+	position: relative;
+	flex: none;
+	width: 144px;
+	height: 96px;
+	border-radius: 6px;
+	transition: box-shadow .15s;
+}
+
+.pt-th.new {
+	animation: pt-in .3s var(--pt-ease);
+}
+
+@keyframes pt-in {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+.pt-th .dispatch-where-thumb {
+	cursor: zoom-in;
+	background-color: var(--pt-bg);
+}
+
+.pt-th.hl .dispatch-where-thumb {
+	box-shadow: 0 0 0 2px var(--pt-text);
+}
+
+.pt-th .pt-lab {
+	position: absolute;
+	left: 4px;
+	bottom: 4px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 4px 0 2px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--pt-bg) 88%, transparent);
+	color: var(--pt-text);
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	pointer-events: none;
+}
+
+.pt-th .pt-x,
+.pt-th .pt-pen {
+	position: absolute;
+	display: none;
+	place-items: center;
+	padding: 0;
+	border: 1px solid var(--pt-hair);
+	border-radius: var(--dispatch-radius-button);
+	background: var(--pt-bg);
+	color: var(--pt-text);
+	box-shadow: 0 8px 24px -8px var(--vscode-widget-shadow);
+	cursor: pointer;
+}
+
+.pt-th .pt-x {
+	right: 4px;
+	top: 4px;
+	width: 18px;
+	height: 18px;
+}
+
+.pt-th .pt-x .codicon {
+	font-size: 12px;
+}
+
+.pt-th .pt-pen {
+	right: 4px;
+	bottom: 4px;
+	width: 22px;
+	height: 22px;
+}
+
+.pt-th .pt-pen .codicon {
+	font-size: 14px;
+}
+
+.pt-th:hover .pt-x,
+.pt-th:hover .pt-pen,
+.pt-th:focus-within .pt-x,
+.pt-th:focus-within .pt-pen {
+	display: grid;
+}
+
+.pt-chiprow {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 6px 0;
+}
+
+.dispatch-pt-slot .pt-chiprow .pt-discard {
+	margin-left: auto;
+}
+
+.pt-vchip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 8px;
+	border: 1px solid var(--pt-hair);
+	border-radius: 6px;
+	background: var(--pt-bg);
+	color: var(--pt-text);
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.pt-vchip .codicon {
+	font-size: 14px;
+	color: var(--pt-text-2);
+}
+
+.pt-vchip .m {
+	color: var(--pt-text-2);
+	font-variant-numeric: tabular-nums;
+}
+
+.pt-vchip.big {
+	height: 28px;
+	padding: 0 10px;
+	font-size: 13px;
+}
+
+.dispatch-pt-slot.review .pt-lines {
+	padding: 8px 6px 4px;
+}
+
+.pt-lines {
+	display: grid;
+	grid-template-columns: 16px 36px 1fr;
+	column-gap: 8px;
+	row-gap: 4px;
+	align-items: start;
+}
+
+.pt-lines > .pt-shim,
+.pt-lines > .pt-note {
+	grid-column: 1 / -1;
+	font-size: 12px;
+	color: var(--pt-text-2);
+}
+
+.pt-row {
+	display: contents;
+}
+
+.pt-row > .pt-nd {
+	margin-top: 3px;
+}
+
+.pt-row .pt-ts {
+	padding-top: 1px;
+	color: var(--pt-text-2);
+	font-size: 12px;
+	line-height: 22px;
+	font-variant-numeric: tabular-nums;
+}
+
+.pt-row .pt-tx {
+	min-width: 0;
+	outline: none;
+	border-radius: 4px;
+	overflow-wrap: anywhere;
+}
+
+.dispatch-pt-slot .pt-row .pt-tx {
+	cursor: text;
+}
+
+.dispatch-pt-slot .pt-row .pt-tx:focus {
+	background: var(--pt-chip);
+	box-shadow: 0 0 0 2px var(--pt-chip);
+}
+
+.pt-row.hl > * {
+	background: color-mix(in srgb, var(--pt-sel) 60%, transparent);
+}
+
+/* ---- the card above the box (A0) ---- */
+
+.dispatch-pt-card-slot:empty {
+	display: none;
+}
+
+.dispatch-pt-card-slot {
+	margin-bottom: 4px;
+}
+
+.dispatch-pt-card {
+	padding: 12px 16px;
+	border: 1px solid var(--pt-hair);
+	border-radius: 8px;
+	background: var(--pt-bg-2);
+	color: var(--pt-text);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.vs-dark .dispatch-pt-card,
+.hc-black .dispatch-pt-card {
+	background: var(--pt-sel);
+}
+
+.dispatch-pt-card.enter {
+	animation: pt-in .2s var(--pt-ease);
+}
+
+.dispatch-pt-card .pt-ct {
+	font-weight: 500;
+}
+
+.dispatch-pt-card p {
+	margin: 4px 0 0;
+	color: var(--pt-text-2);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.dispatch-pt-card .pt-pr {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+}
+
+.dispatch-pt-card .pt-pr:first-of-type {
+	margin-top: 12px;
+}
+
+.dispatch-pt-card .pt-pr > .codicon {
+	color: var(--pt-text-2);
+	font-size: 16px;
+}
+
+.dispatch-pt-card .pt-r {
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	color: var(--pt-text-2);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.dispatch-pt-card .pt-r .codicon {
+	font-size: 14px;
+	color: var(--pt-text-2);
+}
+
+.pt-btn {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border-radius: 4px;
+	font: inherit;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.pt-btn.line {
+	height: 24px;
+	padding: 0 8px;
+	border: 1px solid var(--pt-hair-2);
+	background: none;
+	color: var(--pt-text);
+	font-size: 12px;
+}
+
+.pt-btn.line:hover {
+	background: var(--pt-chip);
+}
+
+.pt-btn.fill {
+	height: 28px;
+	padding: 0 12px;
+	border: 0;
+	background: var(--pt-fill);
+	color: var(--pt-fill-text);
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.dispatch-pt-card .pt-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.dispatch-pt-card p.pt-after {
+	margin-top: 4px;
+}
+
+/* ---- the sent message (A3) and Where to look (A4) ---- */
+
+.agent-sessions-workbench .interactive-session .interactive-item-container.interactive-request .value .chat-attached-context-attachment.image-attachment.dispatch-pt-sent,
+.pt-frames.sent .dispatch-pt-sent {
+	width: 144px !important;
+	height: 96px !important;
+	border: 0 !important;
+	border-radius: 6px !important;
+	background: transparent !important;
+	overflow: visible !important;
+	padding: 0 !important;
+	cursor: zoom-in;
+}
+
+.agent-sessions-workbench .interactive-item-container.interactive-request .chat-attached-context-attachment.dispatch-pt-sent > :not(.pt-th) {
+	display: none !important;
+}
+
+.pt-frames.sent {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+	align-self: flex-end;
+}
+
+.pt-chiprow.sent {
+	align-self: flex-end;
+	display: flex;
+	justify-content: flex-end;
+	padding: 0;
+	margin: 3px 0 8px;
+}
+
+.monaco-workbench .interactive-item-container.interactive-request .value .rendered-markdown.dispatch-pt-raw {
+	display: none !important;
+}
+
+.monaco-workbench.agent-sessions-workbench .part.sessionspart .chat-view .interactive-session .interactive-item-container.interactive-request .value .rendered-markdown.dispatch-pt-bubble {
+	align-self: flex-end;
+	max-width: 100%;
+	border-radius: 6px;
+}
+
+.dispatch-pt-bubble .pt-note-text {
+	margin: 0 0 8px;
+}
+
+.dispatch-pt-bubble .pt-lines {
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.dispatch-pt-bubble .pt-row .pt-nd {
+	cursor: pointer;
+}
+
+.dispatch-pt-where {
+	align-self: flex-end;
+	box-sizing: border-box;
+	width: min(100%, 560px);
+	margin-top: 2px;
+	padding: 8px 8px 6px;
+	border: 1px solid var(--pt-hair);
+	border-radius: 8px;
+	background: var(--pt-bg);
+	color: var(--pt-text);
+	font-size: 13px;
+}
+
+.dispatch-pt-where .pt-wvh {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	padding: 0 4px 4px 8px;
+}
+
+.dispatch-pt-where .pt-wvh b {
+	font-weight: 500;
+}
+
+.dispatch-pt-where .pt-ts {
+	color: var(--pt-text-2);
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+}
+
+.dispatch-pt-where .pt-wvp {
+	position: relative;
+	margin: 0 auto;
+	border: 1px solid var(--pt-hair);
+	border-radius: 6px;
+	background-repeat: no-repeat;
+	overflow: hidden;
+}
+
+.dispatch-pt-where .pt-rb {
+	position: absolute;
+	box-shadow: inset 0 0 0 1.5px #dc2626;
+	border-radius: 3px;
+	pointer-events: none;
+}
+
+.dispatch-pt-where .pt-rk {
+	position: absolute;
+	left: 0;
+	top: -18px;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 4px;
+	box-sizing: border-box;
+	border-radius: 3px 3px 0 0;
+	background: #dc2626;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 500;
+	font-style: normal;
+	display: grid;
+	place-items: center;
+}
+
+.dispatch-pt-where .pt-wvl {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin-top: 8px;
+}
+
+.dispatch-pt-where .pt-wvr {
+	display: grid;
+	grid-template-columns: 16px 36px 1fr;
+	gap: 8px;
+	align-items: center;
+	padding: 4px 8px;
+	border: 0;
+	border-radius: 4px;
+	background: none;
+	color: var(--pt-text-2);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.dispatch-pt-where .pt-wvr:hover {
+	background: var(--pt-sel);
+}
+
+.dispatch-pt-where .pt-wvr.on {
+	color: var(--pt-text);
+	background: color-mix(in srgb, var(--pt-sel) 60%, transparent);
+}
+
+/* the side chat card has its own small box: Point and talk records into the session's own */
+.dispatch-side-chat-card .action-item:has(> .action-label.codicon-device-camera-video) {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-pt-slot .pt-cam,
+	.pt-shim,
+	.pt-ph,
+	.pt-th.new,
+	.pt-nd.pop,
+	.dispatch-pt-card.enter {
+		animation: none;
+	}
+
+	.pt-shim {
+		color: var(--pt-text-2);
+		background: none;
+	}
+
+	.dispatch-pt-slot .pt-meter i {
+		transition: none;
+	}
+}
+
+/* a frame with the keyboard focus: its ring, and its × and pen show (see .pt-th:focus-within above) */
+.pt-th:focus {
+	outline: none;
+}
+
+.pt-th:focus-visible .dispatch-where-thumb {
+	box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+}
+
+/* dark: the video chip one step up from the box, Where to look the conversation's own ground (designer review) */
+.vs-dark .pt-vchip,
+.hc-black .pt-vchip {
+	background: var(--pt-sel);
+}
+
+.vs-dark .dispatch-pt-where,
+.hc-black .dispatch-pt-where {
+	background: var(--pt-bg-2);
+}

@@ -96,7 +96,7 @@
 	font-size: 12px !important;
 }
 
-/* ×: the thumbnails' one (18 round, top right, on hover) */
+/* ×: the thumbnails' one (18 square, button corners, top right, on hover) */
 .agent-sessions-workbench .chat-attached-context-attachment.dispatch-quote > .monaco-button.dispatch-quote-rm {
 	position: absolute;
 	right: -6px;
@@ -107,7 +107,7 @@
 	padding: 0 !important;
 	margin: 0 !important;
 	border: 0 !important;
-	border-radius: 50% !important;
+	border-radius: var(--dispatch-radius-button) !important;
 	background: var(--dq-bg) !important;
 	box-shadow: 0 0 0 1px var(--dq-hair-2);
 	color: var(--dq-text-2);

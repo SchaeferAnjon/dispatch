@@ -64,6 +64,8 @@ import { ago, deliverableLabel, deliverableTooltip, DISPATCH_OPEN_TASK_COMMAND, 
 import { dispatchProjectsRegistry, projectOfSession } from '../../sessions/browser/dispatchProjectsModel.js';
 import { waitingChangedAt } from '../../sessions/browser/dispatchWaitingGroups.js';
 import { dispatchWaitingVisible, findWaitingItem, IDispatchWaitingItem, isDesignDecide, waitingDetail } from '../../sessions/browser/dispatchWaitingModel.js';
+import { NOW_ONE_LINE_BELOW } from '../../dispatchSideChat/common/dispatchSideChatModel.js';
+import { DISPATCH_SIDE_CHAT_RESET_SPLIT_COMMAND } from '../../dispatchSideChat/browser/dispatchSideChatService.js';
 import { agentAnchor, deliveryPage, isUnfinished, lastTerminalLine, NowMode, NowSpan, NowStepKind, nowMode, spanOf, splitTasks, stepKinds, stepOf, stoppedByPerson } from './dispatchNowModel.js';
 
 const POLL_MS = 6_000;
@@ -248,6 +250,11 @@ export class DispatchNowEditor extends EditorPane {
 	private _mark: { readonly key: string; readonly el: Element; readonly disposable?: IDisposable } | undefined;
 	/** Next in <project> once the session is done (patches/dispatch-nextup.patch's line). */
 	private _nextUp!: DispatchNextUpView;
+	/** The tab is shorter than 120 (the side chat's pane under it, task-5im8n): the head is one line, which a click
+	 *  puts the side chat's line back from. */
+	private _oneLine = false;
+	/** The agent's line in the head, for the one line's tooltip. */
+	private _sayText = '';
 
 	constructor(
 		group: IEditorGroup,
@@ -274,6 +281,12 @@ export class DispatchNowEditor extends EditorPane {
 		this._nextUp = this._register(this._instantiationService.createInstance(DispatchNextUpView));
 		this._register(this._nextUp.onDidChange(() => this.isVisible() && this.render()));
 		this._register(toDisposable(() => this._mark?.disposable?.dispose()));
+		// one line (the side chat's pane took the room): a click puts the line between them back where it starts
+		this._register(dom.addDisposableListener(this._root, dom.EventType.CLICK, () => {
+			if (this._oneLine) {
+				void this._commandService.executeCommand(DISPATCH_SIDE_CHAT_RESET_SPLIT_COMMAND);
+			}
+		}));
 		// Waiting for you says what the session asks: the head follows it
 		this._register(autorun(reader => {
 			dispatchWaitingVisible.read(reader);
@@ -347,7 +360,21 @@ export class DispatchNowEditor extends EditorPane {
 		this._root?.focus();
 	}
 
-	override layout(_dimension: dom.Dimension): void { }
+	override layout(dimension: dom.Dimension): void {
+		this._oneLine = dimension.height < NOW_ONE_LINE_BELOW;
+		this.syncOneLine();
+	}
+
+	/** The head as one line (design/side-chat-now B1): the state's mark, the agent's line cut to one, the step. */
+	private syncOneLine(): void {
+		this._root.classList.toggle('one-line', this._oneLine);
+		this._root.title = this._oneLine ? this._sayText : '';
+		if (this._oneLine) {
+			this._root.setAttribute('aria-label', localize('dispatchNow.oneLineAria', "{0}. Click for the default split", this._sayText));
+		} else {
+			this._root.removeAttribute('aria-label');
+		}
+	}
 
 	async refresh(): Promise<void> {
 		this._nextUp?.ensure();
@@ -712,6 +739,13 @@ export class DispatchNowEditor extends EditorPane {
 						: own || (d?.task ? withoutTaskId(d.task.title) : d ? localize('dispatchNow.resting', "Finished its last turn. Send a message to go on.") : localize('dispatchNow.looking', "Looking..."));
 		const sayEl = dom.append(top, dom.$('.dispatch-now-say', undefined, say));
 		sayEl.dataset.part = 'say';
+		this._sayText = say;
+		// the step it is on, for the head's one line ("3/5")
+		const at = d?.task && d.task.status !== 'done' ? stepOf(d.task.plan ?? []) : undefined;
+		if (at) {
+			dom.append(top, dom.$('span.dispatch-now-count', { 'data-part': 'now-count' }, `${at.at}/${at.of}`));
+		}
+		this.syncOneLine();
 		if (!own && d && !d.error && mode !== 'waiting') {
 			sayEl.title = localize('dispatchNow.howTo', "The agent writes this line itself with dispatch now \"…\" when it moves on to a new step.");
 		}

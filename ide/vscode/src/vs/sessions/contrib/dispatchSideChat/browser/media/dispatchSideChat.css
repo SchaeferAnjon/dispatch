@@ -1,70 +1,90 @@
 /*---------------------------------------------------------------------------------------------
- *  Dispatch IDE: the side chat card in the side pane's bottom right corner, its pill, the passage it lights in the
- *  Docs reader and the answers kept there as comments (direction A, user 2026-11-15, task-23iin, design/side-chat;
- *  DESIGN.md「组件」旁聊卡). Sizes and places are set in dispatchSideChatCard.ts (cardBox).
+ *  Dispatch IDE: the side chat's pane under the side pane's tab, the passage it lights in the Docs reader and the
+ *  answers kept there as comments (direction B「Split pane」, user 2026-11-16, task-5im8n, design/side-chat-now;
+ *  DESIGN.md「组件」旁聊). Where the pane sits and how high is set in dispatchSideChatPane.ts (splitRoom). Corners are
+ *  VS Code's (preference「VS Code 方圆角」): input 8, bubble 6, buttons 4; the pane itself has none.
  *--------------------------------------------------------------------------------------------*/
 
-.dispatch-side-chat-card,
-.dispatch-side-chat-pill {
-	--dsc-bg: var(--vscode-agentsPanel-background, var(--vscode-editor-background));
+.dispatch-side-chat-pane {
+	--dsc-bg: var(--vscode-editor-background);
 	--dsc-hair: var(--vscode-editorWidget-border);
-	--dsc-hair-2: var(--vscode-input-border, var(--vscode-editorWidget-border));
 	--dsc-chip: var(--vscode-toolbar-hoverBackground);
 	--dsc-text-2: var(--vscode-descriptionForeground);
-	--dsc-shadow: 0 12px 40px -8px var(--vscode-widget-shadow), 0 4px 12px -4px var(--vscode-widget-shadow);
 	position: absolute;
 	z-index: 20;
 	box-sizing: border-box;
-	background: var(--dsc-bg);
-	border: 1px solid var(--dsc-hair-2);
-	box-shadow: var(--dsc-shadow);
-	color: var(--vscode-foreground);
-	transition: opacity 0.2s cubic-bezier(0, 0, 0.2, 1), transform 0.2s cubic-bezier(0, 0, 0.2, 1), visibility 0s;
-}
-
-.dispatch-side-chat-card.hidden,
-.dispatch-side-chat-pill.hidden {
-	opacity: 0;
-	transform: translateY(8px);
-	visibility: hidden;
-	pointer-events: none;
-	transition: opacity 0.2s cubic-bezier(0, 0, 0.2, 1), transform 0.2s cubic-bezier(0, 0, 0.2, 1), visibility 0s linear 0.2s;
-}
-
-.dispatch-side-chat-card {
 	display: flex;
 	flex-direction: column;
-	border-radius: 12px;
-	overflow: hidden;
+	/* the 1px line between the tab and the side chat; the sash on it is VS Code's (hover 300 ms, then lit) */
+	border-top: 1px solid var(--dsc-hair);
+	background: var(--dsc-bg);
+	color: var(--vscode-foreground);
+	/* the sash reaches 2 above the line */
+	overflow: visible;
 }
 
-/* the head: "Side chat · from <session>" and the card's own ⋯ – × */
-.dispatch-side-chat-card .dsc-head {
+.dispatch-side-chat-pane.hidden {
+	display: none;
+}
+
+.dispatch-side-chat-pane > .monaco-sash {
+	z-index: 1;
+}
+
+.dispatch-side-chat-pane.dragging {
+	user-select: none;
+}
+
+/* the head: chevron, "Side chat", "· from <session>"; ⋯ and × only on the pointer. A click folds the pane to it */
+.dispatch-side-chat-pane .dsc-head {
 	flex: none;
-	height: 40px;
+	height: 28px;
 	box-sizing: border-box;
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 0 6px 0 12px;
-	border-bottom: 1px solid color-mix(in srgb, var(--dsc-hair) 40%, transparent);
+	gap: 6px;
+	padding: 0 6px 0 20px;
+	cursor: pointer;
+	user-select: none;
+	outline: none;
 }
 
-.dispatch-side-chat-card .dsc-ic,
-.dispatch-side-chat-pill .dsc-ic {
+.dispatch-side-chat-pane .dsc-head:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+/* a click on the head is not the keyboard: no frame then (VS Code frames every focused [tabindex]) */
+.monaco-workbench .dispatch-side-chat-pane .dsc-head:focus:not(:focus-visible) {
+	outline: none;
+}
+
+.dispatch-side-chat-pane .dsc-car {
+	flex: none;
+	font-size: 12px;
+	color: var(--dsc-text-2);
+	transition: transform 0.2s ease;
+}
+
+.dispatch-side-chat-pane.folded .dsc-car {
+	transform: rotate(-90deg);
+}
+
+.dispatch-side-chat-pane .dsc-ic {
+	flex: none;
 	font-size: 14px;
 	color: var(--dsc-text-2);
-	flex: none;
 }
 
-.dispatch-side-chat-card .dsc-t {
+.dispatch-side-chat-pane .dsc-t {
+	flex: none;
 	font-size: 13px;
 	font-weight: 500;
 	white-space: nowrap;
 }
 
-.dispatch-side-chat-card .dsc-from {
-	flex: 1;
+.dispatch-side-chat-pane .dsc-from,
+.dispatch-side-chat-pane .dsc-badge {
 	min-width: 0;
 	font-size: 12px;
 	color: var(--dsc-text-2);
@@ -73,7 +93,50 @@
 	text-overflow: ellipsis;
 }
 
-.dispatch-side-chat-card .dsc-ib {
+.dispatch-side-chat-pane .dsc-badge:empty {
+	display: none;
+}
+
+.dispatch-side-chat-pane .dsc-sp {
+	flex: 1;
+}
+
+/* folded, or a narrow side pane: the head says only what is new, not where it is from */
+.dispatch-side-chat-pane.folded .dsc-from,
+.dispatch-side-chat-pane.thin .dsc-from {
+	display: none;
+}
+
+.dispatch-side-chat-pane:not(.folded) .dsc-badge {
+	display: none;
+}
+
+.dispatch-side-chat-pane .dsc-badge.new {
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+/* answering: the words shimmer, as the chat's own "Working" does */
+.dispatch-side-chat-pane .dsc-badge.answering {
+	background: linear-gradient(90deg, var(--dsc-text-2) 0 40%, var(--vscode-foreground) 50%, var(--dsc-text-2) 60% 100%);
+	background-size: 200% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: dispatch-side-chat-shimmer 2s linear infinite;
+}
+
+@keyframes dispatch-side-chat-shimmer {
+	from {
+		background-position: 100% 0;
+	}
+
+	to {
+		background-position: -100% 0;
+	}
+}
+
+.dispatch-side-chat-pane .dsc-ib {
 	flex: none;
 	width: 24px;
 	height: 24px;
@@ -81,49 +144,106 @@
 	place-items: center;
 	padding: 0;
 	border: 0;
-	border-radius: 6px;
+	border-radius: 4px;
 	background: none;
 	color: var(--dsc-text-2);
 	cursor: pointer;
+	/* shown at once when the pointer comes onto the head, as the prototype has it (no fade) */
+	opacity: 0;
 	transition: background-color 0.15s ease;
 }
 
-.dispatch-side-chat-card .dsc-ib .codicon {
+.dispatch-side-chat-pane .dsc-head:hover .dsc-ib,
+.dispatch-side-chat-pane .dsc-head:focus-within .dsc-ib,
+.dispatch-side-chat-pane .dsc-ib.open {
+	opacity: 1;
+}
+
+.dispatch-side-chat-pane .dsc-ib .codicon {
 	font-size: 14px;
 }
 
-.dispatch-side-chat-card .dsc-ib:hover,
-.dispatch-side-chat-card .dsc-ib.open {
+.dispatch-side-chat-pane .dsc-ib:hover,
+.dispatch-side-chat-pane .dsc-ib.open {
 	background: var(--dsc-chip);
 	color: var(--vscode-foreground);
 }
 
-.dispatch-side-chat-card .dsc-ib:focus-visible,
-.dispatch-side-chat-card .dsc-quote:focus-visible,
-.dispatch-side-chat-pill:focus-visible,
+.dispatch-side-chat-pane .dsc-ib:focus-visible,
+.dispatch-side-chat-pane .dsc-quote:focus-visible,
 .dispatch-side-chat-act:focus-visible,
 .dispatch-doc-comment-head:focus-visible {
 	outline: 1px solid var(--vscode-focusBorder);
 	outline-offset: -1px;
 }
 
-.dispatch-side-chat-card .dsc-body {
+.dispatch-side-chat-pane .dsc-body {
 	flex: 1;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
+	overflow: hidden;
 }
 
-/* the quoted passage, the quote card's look (DESIGN.md 引用片): 48 high, corner 6, 13px words over a 12px place */
-.dispatch-side-chat-card .dsc-quote {
+.dispatch-side-chat-pane.folded .dsc-body {
+	display: none;
+}
+
+/* the side chat: the conversation's chat view on the pane's ground; its messages, the pinned line's words and the
+   input start 20 in, under the head's chevron and Now's state mark, and the pinned line's rule runs edge to edge */
+.dispatch-side-chat-pane .dsc-chat {
 	flex: none;
-	margin: 12px 12px 0;
-	min-height: 48px;
+	overflow: hidden;
+	position: relative;
+}
+
+.dispatch-side-chat-pane .dsc-chat .interactive-session,
+.dispatch-side-chat-pane .dsc-chat .chat-view {
+	--vscode-chat-list-background: var(--dsc-bg);
+	background: var(--dsc-bg);
+}
+
+.dispatch-side-chat-pane .dsc-chat .interactive-session .interactive-item-container {
+	padding-left: 20px;
+	padding-right: 20px;
+}
+
+/* the input: 20 in from each side, 12 off the bottom (the sessions window keeps its editor inside the box) */
+.dispatch-side-chat-pane .dsc-chat .interactive-session .interactive-input-part {
+	width: 100%;
+	margin: 0;
+	padding: 4px 20px 12px;
+	box-sizing: border-box;
+}
+
+/* the pinned line's row is drawn at the width the list had when it was pinned: it follows the pane's now */
+.dispatch-side-chat-pane .dsc-chat .monaco-tree-sticky-row.dispatch-sticky-ask .monaco-tl-contents {
+	width: auto !important;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* the question pinned at the top once it has scrolled away: the conversation's own line (dispatch-shell.css), 28 high
+   with its 1px line */
+.dispatch-side-chat-pane .dsc-chat .monaco-tree-sticky-row.dispatch-sticky-ask .interactive-item-container.interactive-request {
+	box-sizing: border-box;
+}
+
+/* the quoted passage, the quote card's look (DESIGN.md 引用片): 48 high, corner 6, 13px words over a 12px place; it
+   sits at the top of the list's rows and scrolls with them, in the room the list keeps over the first message
+   (dispatchSideChatPane.ts, QUOTE_ROOM) */
+.dispatch-side-chat-pane .dsc-quote {
+	position: absolute;
+	top: 12px;
+	left: 20px;
+	right: 20px;
+	z-index: 1;
+	height: 48px;
 	box-sizing: border-box;
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 6px 10px;
+	padding: 0 10px;
 	border: 1px solid var(--dsc-hair);
 	border-radius: 6px;
 	background: var(--dsc-bg);
@@ -134,108 +254,96 @@
 	transition: background-color 0.15s ease;
 }
 
-.dispatch-side-chat-card .dsc-quote:hover {
+.dispatch-side-chat-pane .dsc-quote:hover {
 	background: var(--vscode-list-hoverBackground);
 }
 
-.dispatch-side-chat-card .dsc-quote-ic {
+.dispatch-side-chat-pane .dsc-quote-ic {
 	font-size: 14px;
 	color: var(--dsc-text-2);
 	flex: none;
 }
 
-.dispatch-side-chat-card .dsc-quote-t {
+.dispatch-side-chat-pane .dsc-quote-t {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
 }
 
-.dispatch-side-chat-card .dsc-quote-1,
-.dispatch-side-chat-card .dsc-quote-2 {
+.dispatch-side-chat-pane .dsc-quote-1,
+.dispatch-side-chat-pane .dsc-quote-2 {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	line-height: 1.5;
+	line-height: 1.4;
 }
 
-.dispatch-side-chat-card .dsc-quote-1 {
+.dispatch-side-chat-pane .dsc-quote-1 {
 	font-size: 13px;
 }
 
-.dispatch-side-chat-card .dsc-quote-2 {
+.dispatch-side-chat-pane .dsc-quote-2 {
 	font-size: 12px;
 	color: var(--dsc-text-2);
 }
 
-/* the side chat: the conversation's chat view, on the card's ground */
-.dispatch-side-chat-card .dsc-chat {
-	flex: none;
-	overflow: hidden;
-	position: relative;
-}
-
-.dispatch-side-chat-card .dsc-chat .interactive-session,
-.dispatch-side-chat-card .dsc-chat .chat-view {
-	--vscode-chat-list-background: var(--dsc-bg);
-	background: var(--dsc-bg);
-}
-
-/* inside the card everything starts 12 in from its edge, as the head does: the messages, the input */
-.dispatch-side-chat-card .dsc-chat .interactive-session .interactive-item-container {
-	padding-left: 12px;
-	padding-right: 12px;
-}
-
-/* the person's words: the conversation's bubble (24 round, 16 / 12 inside, at most 80% of the row) */
-.dispatch-side-chat-card .dsc-chat .interactive-session .interactive-item-container.interactive-request .value .rendered-markdown {
-	border-radius: 24px;
-	padding: 12px 16px;
+/* the person's words: a bubble 6 round, 8 / 12 inside, at most 80% of the row */
+.dispatch-side-chat-pane .dsc-chat .interactive-session .interactive-item-container.interactive-request .value .rendered-markdown {
+	border-radius: 6px;
+	padding: 8px 12px;
 	max-width: 80%;
 	box-sizing: border-box;
 }
 
-/* the input: 10 round inside the 12 round card (an inner corner never rounder than the outer one) */
-.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-input-container {
-	border-radius: 10px;
+/* the input: 8 round */
+.dispatch-side-chat-pane .dsc-chat .interactive-input-part .chat-input-container {
+	border-radius: 8px;
 }
 
 /* the side chat runs on its session's engine and permissions: no engine switch and no status row under the input
    (the conversation's input has them); the model's name gets the room */
-.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-secondary-toolbar,
-.dispatch-side-chat-card .dsc-chat .interactive-input-part .dispatch-harness-picker-item {
+.dispatch-side-chat-pane .dsc-chat .interactive-input-part .chat-secondary-toolbar,
+.dispatch-side-chat-pane .dsc-chat .interactive-input-part .dispatch-harness-picker-item {
 	display: none !important;
 }
 
 /* the agent and the mode keep their icons and give their words' room to the model's name */
-.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-mode-picker-item .codicon ~ .chat-input-picker-label,
-.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-agent-picker-item .sessions-chat-dropdown-label,
-.dispatch-side-chat-card .dsc-chat .interactive-input-part .chat-agent-picker-item .sessions-chat-dropdown-chevron {
+.dispatch-side-chat-pane .dsc-chat .interactive-input-part .chat-mode-picker-item .codicon ~ .chat-input-picker-label,
+.dispatch-side-chat-pane .dsc-chat .interactive-input-part .chat-agent-picker-item .sessions-chat-dropdown-label,
+.dispatch-side-chat-pane .dsc-chat .interactive-input-part .chat-agent-picker-item .sessions-chat-dropdown-chevron {
 	display: none;
 }
 
-/* an answer's own row of icons (copy, …): the card's Add to chat, Keep as comment and Copy say it once */
-.dispatch-side-chat-card .dsc-chat .interactive-item-container .chat-footer-toolbar {
+/* an answer's own row of icons (copy, …): the pane's Add to chat, Keep as comment and Copy say it once */
+.dispatch-side-chat-pane .dsc-chat .interactive-item-container .chat-footer-toolbar {
 	display: none !important;
 }
 
-/* the card's quote says what was asked about; the chat's own "from" row would say it again */
-.dispatch-side-chat-card.has-quote .chat-request-origin {
+/* the pane's quote says what was asked about; the chat's own "from" row would say it again */
+.dispatch-side-chat-pane.has-quote .chat-request-origin {
 	display: none;
 }
 
-/* Add to chat, Keep as comment, Copy: over the input, where the session's pills float */
-.dispatch-side-chat-card .dsc-acts {
+/* Add to chat, Keep as comment, Copy: over the input, where the session's pills float; on the pane's ground from edge
+   to edge and down to the input, so the messages scrolling under it do not show through */
+.dispatch-side-chat-pane .dsc-acts {
 	display: none;
+	flex-wrap: wrap;
 	gap: 4px;
 	align-items: center;
-	padding: 4px 0;
-	margin-bottom: 8px;
+	margin: 0 -20px;
+	padding: 4px 20px 8px;
 	pointer-events: auto;
 	background: var(--dsc-bg);
 }
 
-.dispatch-side-chat-card .dsc-acts.on {
+/* a narrow side pane: the three say it in words alone */
+.dispatch-side-chat-pane.thin .dispatch-side-chat-act .codicon {
+	display: none;
+}
+
+.dispatch-side-chat-pane .dsc-acts.on {
 	display: flex;
 }
 
@@ -247,7 +355,7 @@
 	align-items: center;
 	gap: 5px;
 	border: 0;
-	border-radius: 999px;
+	border-radius: 4px;
 	background: none;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;
@@ -267,48 +375,7 @@
 	color: var(--vscode-foreground);
 }
 
-/* the folded card: a pill where the card's corner was */
-.dispatch-side-chat-pill {
-	height: 32px;
-	padding: 0 14px 0 10px;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	border-radius: 999px;
-	font: inherit;
-	font-size: 13px;
-	cursor: pointer;
-}
-
-.dispatch-side-chat-pill:hover {
-	background: color-mix(in srgb, var(--vscode-toolbar-hoverBackground) 100%, var(--dsc-bg));
-}
-
-.dispatch-side-chat-pill.unread .dsc-pill-t {
-	font-weight: 500;
-}
-
-/* answering: the words shimmer, as the chat's own "Working" does */
-.dispatch-side-chat-pill.answering .dsc-pill-t {
-	background: linear-gradient(90deg, var(--dsc-text-2) 0 40%, var(--vscode-foreground) 50%, var(--dsc-text-2) 60% 100%);
-	background-size: 200% 100%;
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-	animation: dispatch-side-chat-shimmer 2s linear infinite;
-}
-
-@keyframes dispatch-side-chat-shimmer {
-	from {
-		background-position: 100% 0;
-	}
-
-	to {
-		background-position: -100% 0;
-	}
-}
-
-/* the passage in the Docs reader: softly while its card is open, fully while the pointer is on the card's quote */
+/* the passage in the Docs reader: softly while its pane is open, fully while the pointer is on the pane's quote */
 ::highlight(dispatch-side-chat-soft) {
 	background-color: var(--vscode-editor-inactiveSelectionBackground);
 }
@@ -384,12 +451,7 @@
 	transition: transform 0.2s ease;
 }
 
-.dispatch-doc-comment.open /* open, the whole answer is below: the row says only Comment */
-.dispatch-doc-comment.open .dispatch-doc-comment-head .s {
-	visibility: hidden;
-}
-
-.dispatch-doc-comment-head .car {
+.dispatch-doc-comment.open .dispatch-doc-comment-head .car {
 	transform: rotate(180deg);
 }
 
@@ -420,7 +482,7 @@
 	margin-left: -8px;
 }
 
-/* the same small buttons as the card's (the reader's own button and icon sizes do not reach in) */
+/* the same small buttons as the pane's (the reader's own button and icon sizes do not reach in) */
 .dispatch-docs-md .dispatch-doc-comment .dispatch-side-chat-act {
 	height: 24px;
 	font-size: 12px;
@@ -436,21 +498,15 @@
 	color: var(--vscode-foreground);
 }
 
-@media (prefers-reduced-motion: reduce) {
-	.dispatch-side-chat-card,
-	.dispatch-side-chat-pill,
-	.dispatch-side-chat-card.hidden,
-	.dispatch-side-chat-pill.hidden,
-	/* open, the whole answer is below: the row says only Comment */
-.dispatch-doc-comment.open .dispatch-doc-comment-head .s {
-	visibility: hidden;
-}
 
-.dispatch-doc-comment-head .car {
+@media (prefers-reduced-motion: reduce) {
+	.dispatch-side-chat-pane .dsc-car,
+	.dispatch-side-chat-pane .dsc-ib,
+	.dispatch-doc-comment-head .car {
 		transition: none;
 	}
 
-	.dispatch-side-chat-pill.answering .dsc-pill-t {
+	.dispatch-side-chat-pane .dsc-badge.answering {
 		animation: none;
 		background: none;
 		color: var(--dsc-text-2);

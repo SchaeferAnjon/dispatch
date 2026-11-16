@@ -95,7 +95,7 @@ function createTierModel(): ILanguageModelChatMetadataAndIdentifier {
  * returns a snapshot of everything the user can see: the button label, its
  * accessible name, the list options and the option rows.
  */
-function render(model: ILanguageModelChatMetadataAndIdentifier, configuration: Record<string, unknown> = {}) {
+function render(model: ILanguageModelChatMetadataAndIdentifier, configuration: Record<string, unknown> = {}, cacheWarm = false) {
 	const access: IModelConfigurationAccess = {
 		getModelConfiguration: () => configuration,
 		setModelConfiguration: async (_modelId, values) => { Object.assign(configuration, values); },
@@ -125,7 +125,7 @@ function render(model: ILanguageModelChatMetadataAndIdentifier, configuration: R
 		getSelectedModel: () => model,
 		getConfigurationAccess: () => access,
 		isDisabled: () => false,
-		shouldShowCacheBreakHint: () => false,
+		shouldShowCacheBreakHint: () => cacheWarm,
 		getCacheBreakLearnMoreLink: () => undefined,
 		dismissCacheBreakHint: () => { },
 	}, actionWidgetService, { publicLog2: () => { } } as unknown as ITelemetryService);
@@ -139,6 +139,7 @@ function render(model: ILanguageModelChatMetadataAndIdentifier, configuration: R
 		ariaLabel: button.ariaLabel,
 		listOptions: {
 			reserveSubmenuSpace: shownOptions?.reserveSubmenuSpace,
+			...(shownOptions?.headerText !== undefined ? { headerText: shownOptions.headerText } : {}),
 		},
 		sections: shownItems.map(item => item.kind === ActionListItemKind.Action ? {
 			className: item.className,
@@ -153,6 +154,7 @@ suite('ModelPickerConfiguration', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
 
+	// Dispatch IDE: a checked option that is not the default says "Last picked" (dispatchConfigNote.ts, task-tpnwq)
 	test('renders the combined label and builds accessible option sections', () => {
 		assert.deepStrictEqual(render(createModel(), { effort: 'medium', context: 65536 }), {
 			label: 'Medium 64K',
@@ -163,11 +165,11 @@ suite('ModelPickerConfiguration', () => {
 			sections: [
 				{ kind: ActionListItemKind.Header, label: 'Thinking Effort' },
 				{ className: 'chat-model-picker-config-option', label: 'Low', checked: false, ariaDescription: 'Default, Faster' },
-				{ className: 'chat-model-picker-config-option', label: 'Medium', checked: true, ariaDescription: 'Balanced' },
+				{ className: 'chat-model-picker-config-option', label: 'Medium', checked: true, ariaDescription: 'Last picked, Balanced' },
 				{ kind: ActionListItemKind.Separator, label: undefined },
 				{ kind: ActionListItemKind.Header, label: 'Context Size' },
 				{ className: 'chat-model-picker-config-option', label: '32K', checked: false, ariaDescription: 'Default' },
-				{ className: 'chat-model-picker-config-option', label: '64K', checked: true, ariaDescription: undefined },
+				{ className: 'chat-model-picker-config-option', label: '64K', checked: true, ariaDescription: 'Last picked' },
 			],
 		});
 	});
@@ -194,6 +196,11 @@ suite('ModelPickerConfiguration', () => {
 		});
 	});
 
+	// Dispatch IDE: the menu holds only its options, even mid-session when the prompt cache is warm (task-tpnwq)
+	test('shows no prompt-cache banner above the options', () => {
+		assert.deepStrictEqual(render(createModel(), { effort: 'low' }, true).listOptions, { reserveSubmenuSpace: false });
+	});
+
 	// With nothing to summarize the button falls back to a generic label so the
 	// configuration stays reachable — it must not read "undefined undefined".
 	test('falls back to a generic label when no group resolves a value', () => {
@@ -217,7 +224,7 @@ suite('ModelPickerConfiguration', () => {
 				{ kind: ActionListItemKind.Header, label: 'Optimize for' },
 				{ className: 'chat-model-picker-config-option', label: 'Efficiency', checked: false, ariaDescription: 'Cheaper models' },
 				{ className: 'chat-model-picker-config-option', label: 'Balance', checked: false, ariaDescription: 'Default, Balances capability and cost' },
-				{ className: 'chat-model-picker-config-option', label: 'Intelligence', checked: true, ariaDescription: 'Most capable models' },
+				{ className: 'chat-model-picker-config-option', label: 'Intelligence', checked: true, ariaDescription: 'Last picked, Most capable models' },
 			],
 		});
 	});

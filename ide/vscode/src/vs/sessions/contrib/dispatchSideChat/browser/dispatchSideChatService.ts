@@ -1,10 +1,12 @@
 /*---------------------------------------------------------------------------------------------
- *  Dispatch IDE: what the side chat card remembers (direction A「Bottom-right card」, user 2026-11-15, task-23iin,
- *  kanban design/side-chat).
+ *  Dispatch IDE: what the side chat's pane remembers (direction B「Split pane」, user 2026-11-16, task-5im8n,
+ *  design/side-chat-now; it was direction A's card, task-23iin).
  *
- *  - Per session, the side chat its card shows and how: open, folded into the pill, or closed; and how many answers
- *    came while nobody looked. The card itself is dispatchSideChatCard.ts, put up by dispatchSideChat.contribution.ts.
- *  - Per side chat, the passage it was asked about (a document's lines and words), so the card's quote lights the
+ *  - Per session, the side chat its pane shows and how: open, folded to its head, or closed; and how many answers
+ *    came while nobody looked. The pane itself is dispatchSideChatPane.ts, put up by dispatchSideChat.contribution.ts.
+ *  - The pane's share of the side pane once the person dragged the line over it (undefined: the default), kept
+ *    across restarts.
+ *  - Per side chat, the passage it was asked about (a document's lines and words), so the pane's quote lights the
  *    passage and goes back to it; kept across restarts.
  *  - The answers kept as comments on a document's passage (Keep as comment); the Docs reader draws them
  *    (dispatchDocPassage.ts).
@@ -19,31 +21,37 @@ import { createDecorator } from '../../../../platform/instantiation/common/insta
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IDocComment, ISideChatPassage, parseComments, SideChatCardMode, unreadAfterAnswer, withComment } from '../common/dispatchSideChatModel.js';
 
-/** The card of one session. */
+/** The pane of one session. */
 export interface ISideChatCard {
 	/** The side chat's resource. */
 	readonly chat: string;
 	readonly mode: SideChatCardMode;
-	/** Answers that came while the card was folded or closed. */
+	/** Answers that came while the pane was folded or closed. */
 	readonly unread: number;
-	/** Bumped when the card should take the keyboard (a new side chat to type in). */
+	/** Bumped when the pane should take the keyboard (a new side chat to type in). */
 	readonly focus: number;
 }
 
-/** A context key, true inside a side chat's card: the chat view there starts its input one line high (chatView.ts). */
+/** A context key, true inside a side chat's pane: the chat view there starts its input one line high (chatView.ts). */
 export const DISPATCH_SIDE_CHAT_CARD_KEY = 'dispatchSideChatCard';
 
-/** `dispatch.sideChat.open(sessionId, chatResource)`: the session's card on that side chat, the keyboard in it. */
+/** `dispatch.sideChat.open(sessionId, chatResource)`: the session's pane on that side chat, the keyboard in it. */
 export const DISPATCH_SIDE_CHAT_OPEN_COMMAND = 'dispatch.sideChat.open';
+
+/** `dispatch.sideChat.resetSplit`: the line between the tab and the side chat back where it starts (Now's one line). */
+export const DISPATCH_SIDE_CHAT_RESET_SPLIT_COMMAND = 'dispatch.sideChat.resetSplit';
 
 export const IDispatchSideChatService = createDecorator<IDispatchSideChatService>('dispatchSideChatService');
 
 export interface IDispatchSideChatService {
 	readonly _serviceBrand: undefined;
 
-	/** The cards, by session id. */
+	/** The panes, by session id. */
 	readonly cards: IObservable<ReadonlyMap<string, ISideChatCard>>;
-	/** Opens the card of `sessionId` on this side chat (another one it showed is replaced). */
+	/** The pane's share of the room under the side pane's tabs, once dragged; undefined: the default. */
+	readonly share: IObservable<number | undefined>;
+	setShare(share: number | undefined): void;
+	/** Opens the pane of `sessionId` on this side chat (another one it showed is replaced). */
 	show(sessionId: string, chat: URI, options?: { readonly focus?: boolean }): void;
 	setMode(sessionId: string, mode: SideChatCardMode): void;
 	/** A turn of this side chat ended: unread while nobody looks. */
@@ -51,7 +59,7 @@ export interface IDispatchSideChatService {
 
 	passageOf(chat: URI): ISideChatPassage | undefined;
 	setPassage(chat: URI, passage: ISideChatPassage): void;
-	/** The side chat was deleted: its card closes and its passage is forgotten. */
+	/** The side chat was deleted: its pane closes and its passage is forgotten. */
 	forget(sessionId: string, chat: URI): void;
 
 	readonly comments: IObservable<readonly IDocComment[]>;
@@ -61,6 +69,7 @@ export interface IDispatchSideChatService {
 
 const PASSAGES_KEY = 'dispatch.sideChat.passages';
 const COMMENTS_KEY = 'dispatch.docs.comments';
+const SHARE_KEY = 'dispatch.sideChat.share';
 /** Passages kept for at most this many side chats (the oldest go first). */
 const MAX_PASSAGES = 300;
 
@@ -73,12 +82,17 @@ export class DispatchSideChatService extends Disposable implements IDispatchSide
 	private readonly _comments = observableValue<readonly IDocComment[]>(this, []);
 	readonly comments: IObservable<readonly IDocComment[]> = this._comments;
 
+	private readonly _share = observableValue<number | undefined>(this, undefined);
+	readonly share: IObservable<number | undefined> = this._share;
+
 	private _passages: Record<string, ISideChatPassage & { readonly at?: number }>;
 	private _focus = 0;
 
 	constructor(@IStorageService private readonly storageService: IStorageService) {
 		super();
 		this._passages = this.readPassages();
+		const share = Number(storageService.get(SHARE_KEY, StorageScope.APPLICATION));
+		this._share.set(share > 0 && share < 1 ? share : undefined, undefined);
 		this._comments.set(parseComments(storageService.get(COMMENTS_KEY, StorageScope.APPLICATION)), undefined);
 		this._register(storageService.onDidChangeValue(StorageScope.APPLICATION, COMMENTS_KEY, this._store)(() => {
 			this._comments.set(parseComments(storageService.get(COMMENTS_KEY, StorageScope.APPLICATION)), undefined);
@@ -103,6 +117,19 @@ export class DispatchSideChatService extends Disposable implements IDispatchSide
 			next.delete(sessionId);
 		}
 		this._cards.set(next, undefined);
+	}
+
+	setShare(share: number | undefined): void {
+		const next = share !== undefined && share > 0 && share < 1 ? share : undefined;
+		if (next === this._share.get()) {
+			return;
+		}
+		this._share.set(next, undefined);
+		if (next === undefined) {
+			this.storageService.remove(SHARE_KEY, StorageScope.APPLICATION);
+		} else {
+			this.storageService.store(SHARE_KEY, String(next), StorageScope.APPLICATION, StorageTarget.MACHINE);
+		}
 	}
 
 	show(sessionId: string, chat: URI, options?: { readonly focus?: boolean }): void {

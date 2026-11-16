@@ -2596,11 +2596,12 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 			dispose(templateData.renderedParts);
 		}
 		templateData.renderedParts = parts;
-		// Dispatch IDE: a sent picture's boxes, one line each in the bubble (patches/320-draw-and-ask.patch)
+		// Dispatch IDE: a sent picture's boxes, one line each in the bubble (patches/320-draw-and-ask.patch); Point and talk's timed lines (task-0y0km)
 		if (!isStickyScrollRow) {
 			const dispatchLines = getDispatchChatPictureHooks()?.decorateRequest?.({
 				container: templateData.value,
 				variables: element.variables,
+				text: element.messageText,
 				reveal: relativeTop => (this.chatWidgetService.getWidgetBySessionResource(element.sessionResource) as { reveal(item: ChatTreeItem, relativeTop?: number): void } | undefined)?.reveal(element, relativeTop),
 			});
 			if (dispatchLines) {

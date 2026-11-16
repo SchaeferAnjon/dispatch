@@ -1,0 +1,24 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: Dispatch's corner radii (DESIGN.md「尺寸」圆角, user 2026-11-16, task-n1o60): VS Code's own small
+ *  rounded rectangles, no big round capsules. Each is one of VS Code 1.139.1's cornerRadius sizes
+ *  (platform/theme/common/sizes/baseSizes.ts), written out so they also hold outside .monaco-workbench, where those
+ *  variables are not set. Dispatch's CSS and inline styles use these, never a radius above 12 or a 999px capsule;
+ *  a circle (a dot, a ping ring) is written 50%. ide/tests/corners.test.mjs keeps it that way.
+ *--------------------------------------------------------------------------------------------*/
+
+:root {
+	/* buttons, tags, chips, key caps, counts, pickers in the input, switches, segmented controls, tooltips, avatars:
+	   cornerRadius.small (the .monaco-button's 4) */
+	--dispatch-radius-button: 4px;
+	/* list rows, group heads, tool rows, icon buttons, menu rows, toasts, the send key: cornerRadius.medium */
+	--dispatch-radius-row: 6px;
+	/* the user's message: cornerRadius.medium, as VS Code's own request bubble (chat.css) */
+	--dispatch-radius-bubble: 6px;
+	/* the input box: cornerRadius.large, as VS Code's .chat-input-container */
+	--dispatch-radius-input: 8px;
+	/* cards, panels, popovers, menus, hovers, command blocks, the side chat card: cornerRadius.large, as the
+	   Agents window's content card */
+	--dispatch-radius-card: 8px;
+	/* dialogs only: cornerRadius.xLarge, the largest */
+	--dispatch-radius-dialog: 12px;
+}

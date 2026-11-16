@@ -161,6 +161,8 @@ export class SinglePaneMainEditorPart extends MainEditorPart {
 				setEditorContentRightInset: (px: number) => this.setContentRightInset(px),
 				// Dispatch IDE: below the room a card keeps above the tabs too (the Now card), not over it
 				getTabsHeight: () => (this.activeGroup as EditorGroupView).titleHeight.offset + (this.activeGroup as EditorGroupView).contentTopInset,
+				// Dispatch IDE: the docked detail ends where the side chat's pane begins (contrib/dispatchSideChat)
+				getContentBottomInset: () => (this.activeGroup as EditorGroupView).contentBottomInset,
 				// Dispatch IDE: the detail fills the pane with no file open or no room (dispatchDockedDetailFit.ts)
 				activeEditor: () => this.activeGroup.activeEditor ?? undefined,
 				hasDockedDetails: () => this._dispatchContextKeys.getContextKeyValue(HasDockedDetailsContext.key) === true,

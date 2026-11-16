@@ -1,5 +1,5 @@
 // 10-10 用户拍板（偏好「Editor 和 Terminal 挨着标题」, task-24xd4; replaces 10-09's「Editor 回右上」): Terminal sits
-// left of the session title in the middle of the title bar and Editor right of it, both New ⌘N's capsule with the
+// left of the session title in the middle of the title bar and Editor right of it, both New ⌘N's button with the
 // icon in front of the word, only the icons in a narrow window; Settings is the first block of the bottom bar, where
 // Terminal was, and the side bar has no foot. New ⌘N shows once: in the side bar's head while the side bar is open,
 // in the title bar once it is closed. Walked as a person does it: Terminal, Settings and Editor clicked, the side
@@ -105,13 +105,13 @@ export default async function (ui) {
   checkFoot(wide);
   assert.equal(wide.news.length, 1, `one New with the side bar open: ${JSON.stringify(wide.news)}`);
   assert.equal(wide.news[0].where, 'sidebar', 'and it is the side bar\'s');
-  assert.equal(wide.editor.radius, '12px', 'the same capsule as New ⌘N');
+  assert.equal(wide.editor.radius, '4px', 'the same button corner as New ⌘N (--dispatch-radius-button)');
   await ui.screenshot('01-1600-sidebar-open');
   await ui.mark({ css: '[data-part="terminal-top"]' }, { what: 'Terminal：会话标题左边，和 New ⌘N 一样的胶囊', where: '标题栏中间', how: '点一下开关底部的终端，开着时按下' });
   await ui.mark({ css: '[data-part="editor-top"]' }, { what: 'Editor：会话标题右边', where: '标题栏中间', how: '点一下在编辑器窗口打开这个文件夹' });
   await ui.mark({ css: '.dispatch-status-bar [data-part="settings"]' }, { what: 'Settings：底栏第一块，原来 Terminal 的位置', where: '底栏最左', how: '点一下打开设置' });
 
-  // Terminal: a click opens the terminal and the capsule stays pressed; a second click closes it
+  // Terminal: a click opens the terminal and the button stays pressed; a second click closes it
   const panelWas = wide.panelOpen;
   await ui.click({ css: '[data-part="terminal-top"]' });
   const opened1 = await until(ui, async () => { const L = await layout(ui); return L.panelOpen !== panelWas ? L : null; }, 'the terminal toggled by Terminal', 10000);

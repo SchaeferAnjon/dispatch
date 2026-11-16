@@ -143,6 +143,8 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	private _contentTopInset = 0;
 	// Dispatch IDE: the part of it the last layout could give (a docked side pane starts below it, 150-side-pane.patch)
 	private _appliedContentTopInset = 0;
+	// Dispatch IDE: room kept under the editor for the side chat's pane (contrib/dispatchSideChat, task-5im8n)
+	private _contentBottomInset = 0;
 
 	private readonly _onDidRelayout = this._register(new Emitter<void>());
 	readonly onDidRelayout = this._onDidRelayout.event;
@@ -2254,7 +2256,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 
 		// The editor pane is inset on the right by `_contentRightInset` so a docked
 		// panel can sit beside it under the full-width title (0 = fill the group).
-		const editorHeight = Math.max(0, height - titleControlSize.height);
+		const editorHeight = Math.max(0, height - titleControlSize.height - this._contentBottomInset); // Dispatch IDE: less the side chat's pane
 		this.editorContainer.style.width = `${contentWidth}px`;
 		this.editorContainer.style.height = `${editorHeight}px`;
 		this.editorPane.layout({ width: contentWidth, height: editorHeight, top: top + titleControlSize.height, left });
@@ -2285,6 +2287,21 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 			return;
 		}
 		this._contentTopInset = next;
+		this.relayout();
+	}
+
+	/** Dispatch IDE: the room kept under the editor (and the docked detail beside it) for the side chat's pane. */
+	get contentBottomInset(): number {
+		return this._contentBottomInset;
+	}
+
+	/** Dispatch IDE: keeps `inset` pixels under the editor for an element the caller puts there (0 = none). */
+	setContentBottomInset(inset: number): void {
+		const next = Math.max(0, Math.round(inset));
+		if (next === this._contentBottomInset) {
+			return;
+		}
+		this._contentBottomInset = next;
 		this.relayout();
 	}
 

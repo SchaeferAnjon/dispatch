@@ -34,7 +34,7 @@
 	z-index: 5;
 	max-width: calc(100% - 48px);
 	padding: 4px 12px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--vscode-editorWidget-background);
 	color: var(--vscode-foreground);
 	border: 1px solid var(--vscode-widget-border, transparent);
@@ -58,14 +58,14 @@
 .dispatch-terminal-view .dispatch-terminal-switch {
 	display: inline-flex;
 	padding: 2px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--vscode-toolbar-hoverBackground);
 }
 
 .dispatch-terminal-view .dts-tab {
 	border: 0;
 	padding: 1px 12px;
-	border-radius: 999px;
+	border-radius: 2px;
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;
@@ -108,7 +108,7 @@
 
 .dispatch-terminal-chat .dtc-line.user {
 	padding: 6px 12px;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-bubble);
 	background: var(--vscode-toolbar-hoverBackground);
 }
 
@@ -146,7 +146,7 @@
 	box-sizing: border-box;
 	resize: none;
 	padding: 10px 12px;
-	border-radius: 12px;
+	border-radius: var(--dispatch-radius-input);
 	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
 	background: var(--vscode-input-background);
 	color: var(--vscode-input-foreground);
@@ -213,7 +213,7 @@
 	width: 28px;
 	height: 12px;
 	margin-left: -14px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--vscode-toolbar-hoverBackground);
 	color: var(--vscode-descriptionForeground);
 	cursor: grab;
@@ -292,7 +292,7 @@
 .dispatch-terminal-chat .dtc-record-back {
 	flex: none;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	padding: 3px 12px;
 	background: var(--vscode-button-secondaryBackground);
 	color: var(--vscode-button-secondaryForeground);
@@ -331,7 +331,7 @@
 	height: 22px;
 	border: 0;
 	padding: 0 10px;
-	border-radius: 999px;
+	border-radius: var(--dispatch-radius-button);
 	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	font: inherit;

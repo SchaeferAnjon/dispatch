@@ -305,7 +305,7 @@ export default async function (ui) {
     return { sendRadius: send && getComputedStyle(send).borderRadius, arrowFont: arrow && getComputedStyle(arrow, '::before').fontFamily,
       engineBox: eng && [getComputedStyle(eng).width, getComputedStyle(eng).borderRadius], labels: perm };
   })()`);
-  assert(box.sendRadius === "10px", "send key is not a block: " + JSON.stringify(box));
+  assert(box.sendRadius === "6px", "send key is not a block: " + JSON.stringify(box));
   assert(/dispatch-blocks/.test(box.arrowFont || ""), "send arrow is not Dispatch's: " + JSON.stringify(box));
   assert(box.engineBox && box.engineBox[0] === "18px" && box.engineBox[1] === "5px", "engine is not in a small block: " + JSON.stringify(box));
   if (box.labels.some(l => /Ask Before Edits|Manual permissions|^Default$/i.test(l))) throw new Error("permission still in engine words: " + JSON.stringify(box.labels));

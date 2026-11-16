@@ -1,14 +1,16 @@
 /*---------------------------------------------------------------------------------------------
- *  Dispatch IDE: side chats open in a card in the side pane's bottom right corner (direction A「Bottom-right card」,
- *  user 2026-11-15, task-23iin, kanban design/side-chat), not in a second column beside the conversation.
+ *  Dispatch IDE: side chats open in a pane under the side pane's tab (direction B「Split pane」, user 2026-11-16,
+ *  task-5im8n, design/side-chat-now; before it a card in the corner, direction A, task-23iin), not in a second column
+ *  beside the conversation.
  *
  *  A side chat is the same as before: a chat of the session, branched from the conversation, on the same engine
  *  (Ask Question in the Docs tab, the Markdown editor, Changes and a reply; /btw). Only where it shows changed:
  *  - visibleSessions.ts leaves side chats out of the conversation's chat groups, so nothing splits the column;
  *  - whatever makes a side chat the session's active chat (Ask Question, /btw, the Side Chats menu, reopening it) puts
- *    it in this card instead, and the conversation the person was in stays the active chat;
- *  - the card (dispatchSideChatCard.ts) belongs to the session on screen; folded it is the pill, closed the title
- *    bar's session menu lists the session's side chats (dispatchPlace.ts) and `dispatch.sideChat.open` reopens one.
+ *    it in this pane instead, and the conversation the person was in stays the active chat;
+ *  - the pane (dispatchSideChatPane.ts) belongs to the session on screen; folded it is its head at the side pane's
+ *    bottom, closed the title bar's session menu lists the session's side chats (dispatchPlace.ts) and
+ *    `dispatch.sideChat.open` reopens one.
  *--------------------------------------------------------------------------------------------*/
 
 import './media/dispatchSideChat.css';
@@ -26,14 +28,14 @@ import { ISessionsService } from '../../../services/sessions/browser/sessionsSer
 import { IActiveSession } from '../../../services/sessions/common/sessionsManagement.js';
 import { docCommentsHost } from './dispatchDocPassage.js';
 import { askInSideChat, DISPATCH_SIDE_CHAT_ASK_COMMAND, ISideChatAsk } from './dispatchSideChatAsk.js';
-import { DispatchSideChatCard } from './dispatchSideChatCard.js';
-import { DISPATCH_SIDE_CHAT_OPEN_COMMAND, IDispatchSideChatService } from './dispatchSideChatService.js';
+import { DispatchSideChatPane } from './dispatchSideChatPane.js';
+import { DISPATCH_SIDE_CHAT_OPEN_COMMAND, DISPATCH_SIDE_CHAT_RESET_SPLIT_COMMAND, IDispatchSideChatService } from './dispatchSideChatService.js';
 
-class DispatchSideChatCards extends Disposable implements IWorkbenchContribution {
+class DispatchSideChatPanes extends Disposable implements IWorkbenchContribution {
 
-	static readonly ID = 'workbench.contrib.dispatchSideChatCards';
+	static readonly ID = 'workbench.contrib.dispatchSideChatPanes';
 
-	private readonly _card = this._register(new MutableDisposable<DispatchSideChatCard>());
+	private readonly _pane = this._register(new MutableDisposable<DispatchSideChatPane>());
 
 	constructor(
 		@ISessionsService _sessionsService: ISessionsService,
@@ -59,7 +61,7 @@ class DispatchSideChatCards extends Disposable implements IWorkbenchContribution
 		};
 		this._register({ dispose: () => { docCommentsHost.current = undefined; } });
 
-		// a side chat that becomes a session's active chat goes into the card; the chat the person was in stays active
+		// a side chat that becomes a session's active chat goes into the pane; the chat the person was in stays active
 		const before = new Map<string, URI>();
 		this._register(autorun(reader => {
 			for (const session of _sessionsService.visibleSessions.read(reader)) {
@@ -83,36 +85,36 @@ class DispatchSideChatCards extends Disposable implements IWorkbenchContribution
 			}
 		}));
 
-		// the card of the session on screen
+		// the pane of the session on screen
 		this._register(autorun(reader => {
 			const session = _sessionsService.activeSession.read(reader);
 			const card = session && _sideChats.cards.read(reader).get(session.sessionId);
 			if (!session || !card || card.mode === 'closed') {
-				this._card.clear();
+				this._pane.clear();
 				return;
 			}
 			const chat = session.chats.read(reader).find(c => c.resource.toString() === card.chat);
 			if (!chat) {
 				// not loaded yet, or deleted elsewhere
 				if (!session.loading.read(reader)) {
-					this._card.clear();
+					this._pane.clear();
 				}
 				return;
 			}
-			const ui = this._card.value;
+			const ui = this._pane.value;
 			if (!ui || ui.session !== session || ui.chat.resource.toString() !== card.chat) {
 				const part = _layoutService.getContainer(mainWindow, Parts.EDITOR_PART);
 				if (!part) {
 					return;
 				}
-				this._card.value = _instantiationService.createInstance(DispatchSideChatCard, part, session, chat);
+				this._pane.value = _instantiationService.createInstance(DispatchSideChatPane, part, session, chat);
 			}
-			this._card.value!.setMode(card.mode, card.unread);
-			this._card.value!.focus(card.focus);
+			this._pane.value!.setMode(card.mode, card.unread);
+			this._pane.value!.focus(card.focus);
 		}));
 	}
 
-	/** Opens the card on this side chat; the side pane comes out if it was put away. */
+	/** Opens the pane on this side chat; the side pane comes out if it was put away. */
 	open(session: IActiveSession, chat: URI, focus: boolean): void {
 		if (!this._layoutService.isVisible(Parts.EDITOR_PART, mainWindow)) {
 			this._layoutService.setPartHidden(false, Parts.EDITOR_PART);
@@ -121,11 +123,13 @@ class DispatchSideChatCards extends Disposable implements IWorkbenchContribution
 	}
 }
 
-registerWorkbenchContribution2(DispatchSideChatCards.ID, DispatchSideChatCards, WorkbenchPhase.AfterRestored);
+registerWorkbenchContribution2(DispatchSideChatPanes.ID, DispatchSideChatPanes, WorkbenchPhase.AfterRestored);
 
 CommandsRegistry.registerCommand(DISPATCH_SIDE_CHAT_ASK_COMMAND, (accessor: ServicesAccessor, ask: ISideChatAsk) => ask?.passage ? askInSideChat(accessor, ask) : false);
 
-CommandsRegistry.registerCommand(DISPATCH_SIDE_CHAT_OPEN_COMMAND,(accessor: ServicesAccessor, sessionId: unknown, chat: unknown) => {
+CommandsRegistry.registerCommand(DISPATCH_SIDE_CHAT_RESET_SPLIT_COMMAND, (accessor: ServicesAccessor) => accessor.get(IDispatchSideChatService).setShare(undefined));
+
+CommandsRegistry.registerCommand(DISPATCH_SIDE_CHAT_OPEN_COMMAND, (accessor: ServicesAccessor, sessionId: unknown, chat: unknown) => {
 	const sessionsService = accessor.get(ISessionsService);
 	const layoutService = accessor.get(IWorkbenchLayoutService);
 	const sideChats = accessor.get(IDispatchSideChatService);

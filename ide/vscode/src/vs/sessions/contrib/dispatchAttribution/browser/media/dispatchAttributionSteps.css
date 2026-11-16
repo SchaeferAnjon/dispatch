@@ -81,7 +81,7 @@
 	box-sizing: border-box;
 	width: 100%;
 	padding: 10px 12px;
-	border-radius: 14px;
+	border-radius: var(--dispatch-radius-card);
 	/* a card lifts off the conversation (DESIGN.md: cards are the raised surface, never a hole in it) */
 	background: var(--dispatch-attr-chip-2);
 	box-shadow: inset 0 0 0 1px var(--dispatch-attr-hair-2);
@@ -196,7 +196,7 @@
 .dispatch-attr-commit pre {
 	margin: 8px 0 0;
 	padding: 10px 12px;
-	border-radius: 10px;
+	border-radius: var(--dispatch-radius-button);
 	background: var(--vscode-editor-background);
 	box-shadow: inset 0 0 0 1px var(--dispatch-attr-hair);
 	font: 12px/1.6 var(--monaco-monospace-font);

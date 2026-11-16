@@ -194,6 +194,8 @@ import './contrib/dispatchMachines/electron-browser/dispatchMachines.js';
 import './contrib/dispatchMobile/browser/dispatchMobile.js';
 // Dispatch IDE: Motion Less, decoration stops (patches/055-motion-setting.patch)
 import './contrib/dispatchMotion/browser/dispatchMotion.contribution.js';
+// Dispatch IDE: Dispatch's corner radii, --dispatch-radius-* (task-n1o60)
+import './contrib/dispatchRadius/browser/dispatchRadius.contribution.js';
 // Dispatch IDE: Tab completion and ⌘K in the editor window's own Settings (patches/530-editor-settings.patch)
 import './contrib/dispatchEditorSettings/browser/dispatchEditorSettings.contribution.js';
 // Dispatch IDE: F1 and ⇧⌘P over a modal editor such as Settings (patches/075-modal-palette.patch)

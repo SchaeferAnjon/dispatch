@@ -128,3 +128,17 @@ work.
    里的其他 Agent）只用来标明会话或设置属于哪个 Agent，是各自所有者的商标；Dispatch
    与它们没有隶属、赞助或背书关系。图标来自 Orca，Orca 的 MIT 许可只管它的代码，
    不授予这些商标的任何权利。
+
+
+11. Blurt
+
+   Source: https://github.com/AGIHunt/blurt
+   License: MIT License, Copyright (c) 2026 blurt contributors.
+   Ported from or based on Blurt (Point and talk, task-0y0km):
+   - turning Soniox tokens into sentences (soniox_segments in
+     skills/blurt/scripts/transcribe.py), in ide/vscode/src/vs/sessions/
+     contrib/dispatchPointTalk/common/dispatchPointTalkModel.ts;
+   - the Soniox async call over one kept-alive connection (class Soniox in
+     the same file), in app/cli/point_talk.py.
+   Point and talk (Dispatch 的录屏口述) 的这两处借自 Blurt：Soniox 词元断句、
+   Soniox 异步接口的调用方式。

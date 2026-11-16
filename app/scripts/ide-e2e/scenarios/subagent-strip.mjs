@@ -94,7 +94,7 @@ export default async function (ui) {
   qa.reads.working = s1;
   check("the strip sits 8 above the message box", s1.above === true && s1.gap === 8, { gap: s1.gap, above: s1.above });
   check("as wide as the message box, on its left edge", s1.width === s1.boxWidth && s1.left === s1.boxLeft, { width: s1.width, box: s1.boxWidth, left: s1.left, boxLeft: s1.boxLeft });
-  check("the block: 16 round, 4 inside", s1.radius === "16px" && s1.padding === "4px", { radius: s1.radius, padding: s1.padding });
+  check("the block: 8 round (--dispatch-radius-card), 4 inside", s1.radius === "8px" && s1.padding === "4px", { radius: s1.radius, padding: s1.padding });
   check("the block stands off the conversation behind it (dark)", s1.bg !== s1.under, { bg: s1.bg, under: s1.under });
   check("the head: the agent mark, \"1 agent working\", open, 32 high, 12px", s1.head.icon && s1.head.text === "1 agent working" && s1.head.expanded === "true" && s1.head.h === 32 && /^12px/.test(s1.head.font), s1.head);
   const row = s1.rows.find(r => r.state === "sub-agent");

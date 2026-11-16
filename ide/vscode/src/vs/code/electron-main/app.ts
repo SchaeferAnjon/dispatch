@@ -43,6 +43,9 @@ import { BrowserViewMainService, IBrowserViewMainService } from '../../platform/
 import { BrowserViewGroupMainService, IBrowserViewGroupMainService } from '../../platform/browserView/electron-main/browserViewGroupMainService.js';
 import { IBrowserImportService, ipcBrowserImportChannelName } from '../../platform/browserView/common/browserImport.js';
 import { BrowserImportMainService } from '../../platform/browserView/electron-main/browserImportMainService.js';
+// Dispatch IDE: Point and talk records the display under the pointer, with its bar, frame and shortcut (task-0y0km)
+import { DISPATCH_POINT_TALK_CHANNEL, IDispatchPointTalkMainService } from '../../platform/dispatchPointTalk/common/dispatchPointTalk.js';
+import { DispatchPointTalkMainService, takeDispatchPointTalkDisplay } from '../../platform/dispatchPointTalk/electron-main/dispatchPointTalkMainService.js';
 import { NativeParsedArgs } from '../../platform/environment/common/argv.js';
 import { IEnvironmentMainService } from '../../platform/environment/electron-main/environmentMainService.js';
 import { isLaunchedFromCli } from '../../platform/environment/node/argvHelper.js';
@@ -324,6 +327,8 @@ export class CodeApplication extends Disposable {
 						y: winBounds.y + winBounds.height / 2,
 					});
 				}
+				// Dispatch IDE: Point and talk chose the display under the pointer just before (task-0y0km)
+				targetDisplay = takeDispatchPointTalkDisplay(win?.id) ?? targetDisplay;
 
 				if (!cachedScreenSources) {
 					cachedScreenSources = await desktopCapturer.getSources({
@@ -1234,6 +1239,8 @@ export class CodeApplication extends Disposable {
 		services.set(IBrowserViewMainService, new SyncDescriptor(BrowserViewMainService, undefined, false /* proxied to other processes */));
 		services.set(IBrowserViewGroupMainService, new SyncDescriptor(BrowserViewGroupMainService, undefined, false /* proxied to other processes */));
 		services.set(IBrowserImportService, new SyncDescriptor(BrowserImportMainService));
+		// Dispatch IDE: Point and talk (task-0y0km)
+		services.set(IDispatchPointTalkMainService, new SyncDescriptor(DispatchPointTalkMainService));
 
 		// Keyboard Layout
 		services.set(IKeyboardLayoutMainService, new SyncDescriptor(KeyboardLayoutMainService));
@@ -1414,6 +1421,8 @@ export class CodeApplication extends Disposable {
 
 		// Browser Import (Dispatch: Import from Chrome...)
 		mainProcessElectronServer.registerChannel(ipcBrowserImportChannelName, ProxyChannel.fromService(accessor.get(IBrowserImportService), disposables));
+		// Dispatch IDE: Point and talk (task-0y0km)
+		mainProcessElectronServer.registerChannel(DISPATCH_POINT_TALK_CHANNEL, ProxyChannel.fromService(accessor.get(IDispatchPointTalkMainService), disposables));
 
 		// Signing
 		const signChannel = ProxyChannel.fromService(accessor.get(ISignService), disposables);

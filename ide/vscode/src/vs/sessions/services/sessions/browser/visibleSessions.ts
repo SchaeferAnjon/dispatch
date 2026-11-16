@@ -113,7 +113,7 @@ export class VisibleSession extends Disposable implements IActiveSession {
 		this.visibleChatTabs = derived(this, reader => {
 			const shownRelatedChats = this._shownRelatedChatUris.read(reader);
 			return this.openChats.read(reader).filter(c =>
-				// Dispatch IDE: a side chat opens in its card in the side pane (contrib/dispatchSideChat), never as a tab or
+				// Dispatch IDE: a side chat opens in its pane in the side pane (contrib/dispatchSideChat), never as a tab or
 				// a second column beside the conversation
 				c.origin?.kind !== ChatOriginKind.SideChat && (
 					c.origin?.kind !== ChatOriginKind.Tool ||

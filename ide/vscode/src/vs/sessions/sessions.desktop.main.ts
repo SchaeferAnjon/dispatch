@@ -250,6 +250,8 @@ import './contrib/chat/electron-browser/chat.contribution.js';
 // Dispatch IDE: drawing boxes on a picture before asking, in the input, the side pane and on a page (patches/320-draw-and-ask.patch)
 import './contrib/dispatchDraw/browser/dispatchDraw.contribution.js';
 import './contrib/dispatchDraw/electron-browser/dispatchDrawBrowser.js';
+// Dispatch IDE: Point and talk: the camera in the message box (and ⌃⇧S) records the screen under the pointer and your voice (contrib/dispatchPointTalk, task-0y0km)
+import './contrib/dispatchPointTalk/electron-browser/dispatchPointTalk.contribution.js';
 
 // Local Agent Host
 import './contrib/providers/agentHost/browser/localAgentHost.contribution.js';
@@ -281,7 +283,7 @@ import './contrib/dispatchSubagents/browser/dispatchSubagents.contribution.js';
 import './contrib/dispatchCapture/browser/dispatchCapture.contribution.js';
 // Dispatch IDE: the Docs tab and the open-path commands the chat's path links use
 import './contrib/dispatchDocs/browser/dispatchDocs.contribution.js';
-// Dispatch IDE: side chats open in a card in the side pane's bottom right corner (contrib/dispatchSideChat, task-23iin)
+// Dispatch IDE: side chats open in a pane under the side pane's tab (contrib/dispatchSideChat, task-23iin, task-5im8n)
 import './contrib/dispatchSideChat/browser/dispatchSideChat.contribution.js';
 // Dispatch IDE: learning while the agent works: Talk's small cards, Quiet or Talk, Ask Question on the terminal (contrib/dispatchLearn, task-q9x2r)
 import './contrib/dispatchLearn/browser/dispatchLearn.contribution.js';
@@ -321,6 +323,8 @@ import './contrib/dispatchTitleBar/browser/dispatchEditorEntry.js';
 import './contrib/dispatchTitleBar/browser/dispatchPlace.js';
 // Dispatch IDE: Motion Less, decoration stops (patches/055-motion-setting.patch)
 import '../workbench/contrib/dispatchMotion/browser/dispatchMotion.contribution.js';
+// Dispatch IDE: Dispatch's corner radii, --dispatch-radius-* (task-n1o60)
+import '../workbench/contrib/dispatchRadius/browser/dispatchRadius.contribution.js';
 // Dispatch IDE: F1 and ⇧⌘P over a modal editor such as Settings (patches/075-modal-palette.patch)
 import '../workbench/contrib/dispatchModalPalette/browser/dispatchModalPalette.contribution.js';
 // Dispatch IDE: what you type and save in the editor counts as yours in who wrote which line (task-m6hek)

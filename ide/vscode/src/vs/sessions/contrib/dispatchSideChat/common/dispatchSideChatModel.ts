@@ -1,8 +1,8 @@
 /*---------------------------------------------------------------------------------------------
- *  Dispatch IDE: the side chat card's sums, worked out without the window (direction A「Bottom-right card」, user
- *  2026-11-15, task-23iin, kanban design/side-chat). dispatchSideChatCard.ts draws the card, dispatchDocPassage.ts
- *  finds the passage in a document; ide/tests/side-chat-card.test.mjs tests this file. No imports: Node runs it as
- *  it is.
+ *  Dispatch IDE: the side chat's sums, worked out without the window. The side chat is a pane under the side pane's
+ *  tab (direction B「Split pane」, user 2026-11-16, task-5im8n, design/side-chat-now; before it, direction A's card in
+ *  the corner, task-23iin). dispatchSideChatPane.ts draws the pane, dispatchDocPassage.ts finds the passage in a
+ *  document; ide/tests/side-chat-card.test.mjs tests this file. No imports: Node runs it as it is.
  *--------------------------------------------------------------------------------------------*/
 
 /** The passage a side chat was asked about, in a document of the Docs tab or a file (1-based lines). */
@@ -25,7 +25,7 @@ export interface ISideChatPassage {
 
 export type SideChatPassageFrom = 'file' | 'diff' | 'terminal' | 'learn';
 
-/** The card is open, folded into the pill at the bottom right, or closed (the title bar's menu brings it back). */
+/** The pane is open, folded to its head at the side pane's bottom, or closed (the title bar's menu brings it back). */
 export type SideChatCardMode = 'open' | 'min' | 'closed';
 
 /** The file name of a path. */
@@ -76,23 +76,24 @@ export function splitSelection(selection: string | undefined): { where: string; 
 	return { where: '', text: selection };
 }
 
-export interface ISideChatPill {
+export interface ISideChatBadge {
+	/** After "Side chat" on the folded pane's head: `· Answering`, `· 1 new answer`, or nothing. */
 	readonly text: string;
-	/** A new answer came while the card was folded: the pill's words are 500. */
+	/** A new answer came while the pane was folded: the words are 500. */
 	readonly bold: boolean;
 	/** The answer is still being written: the words shimmer. */
 	readonly answering: boolean;
 }
 
-/** What the folded card's pill says. */
-export function pillLabel(answering: boolean, unread: number): ISideChatPill {
+/** What the folded pane's head says after "Side chat" (the head says only what is new; no "from <session>"). */
+export function foldedBadge(answering: boolean, unread: number): ISideChatBadge {
 	if (answering) {
-		return { text: 'Side chat · Answering', bold: false, answering: true };
+		return { text: '· Answering', bold: false, answering: true };
 	}
 	if (unread > 0) {
-		return { text: unread === 1 ? 'Side chat · 1 new answer' : `Side chat · ${unread} new answers`, bold: true, answering: false };
+		return { text: unread === 1 ? '· 1 new answer' : `· ${unread} new answers`, bold: true, answering: false };
 	}
-	return { text: 'Side chat', bold: false, answering: false };
+	return { text: '', bold: false, answering: false };
 }
 
 /** A turn of the side chat ended: one more unread answer when nobody saw it (folded or closed), none when open. */
@@ -100,8 +101,62 @@ export function unreadAfterAnswer(mode: SideChatCardMode, unread: number): numbe
 	return mode === 'open' ? 0 : unread + 1;
 }
 
-/** Below this window width the card fills the side pane's width (the prototype's narrow window, 1100 wide). */
+/** At or below this window width the pane keeps the old card's height (58% of the room, 420 at most). */
 export const SIDE_CHAT_NARROW_WINDOW = 1200;
+/** The pane's head (the folded pane is this and the 1px line over it). */
+export const SIDE_CHAT_HEAD = 28;
+/** The pane is never shorter than this under its line: head 28, the pinned line 28, input 72, answer 72. */
+export const SIDE_CHAT_MIN = 200;
+/** What is over the pane (Now, a document) is never shorter than this: Now's one line. */
+export const SIDE_CHAT_TOP_MIN = 32;
+/** Shorter than this, Now folds into its one line. */
+export const NOW_ONE_LINE_BELOW = 120;
+/** The head's "· from <session>" goes when the side pane is narrower than this. */
+export const SIDE_CHAT_THIN_PANE = 340;
+
+export interface ISideChatSplit {
+	/** The room left over the pane, under the tabs (Now, a document, Changes). */
+	readonly top: number;
+	/** The pane with its 1px line on top; 0 when closed. */
+	readonly pane: number;
+	/** What is over it is short: Now shows its one line. */
+	readonly oneLine: boolean;
+}
+
+/** The pane's default height with its line: 55% of the room in a wide window; at most 58% and 420 in a narrow one. */
+export function defaultPaneHeight(room: number, windowWidth: number): number {
+	return windowWidth <= SIDE_CHAT_NARROW_WINDOW
+		? Math.min(420, Math.round(room * 0.58)) + 1
+		: room - Math.round(room * 0.45);
+}
+
+/**
+ * How the room under the side pane's tabs is shared (direction B「Split pane」, design/side-chat-now): the tab's
+ * content over the side chat's pane, a 1px line between. `share` is the part of the room the person dragged the pane
+ * to (undefined: the default). Over the pane at least 32 stays, the pane at least 200 under its line; when both do not
+ * fit, the 32 wins. Folded, only the head and its line are left.
+ */
+export function splitRoom(room: number, windowWidth: number, mode: SideChatCardMode, share?: number): ISideChatSplit {
+	const h = Math.max(0, Math.round(room));
+	if (mode === 'closed') {
+		return { top: h, pane: 0, oneLine: false };
+	}
+	if (mode === 'min') {
+		const pane = Math.min(h, SIDE_CHAT_HEAD + 1);
+		return { top: h - pane, pane, oneLine: false };
+	}
+	const want = share === undefined ? defaultPaneHeight(h, windowWidth) : Math.round(h * share);
+	const top = Math.max(SIDE_CHAT_TOP_MIN, Math.min(h - 1 - SIDE_CHAT_MIN, h - want));
+	const pane = Math.max(0, h - top);
+	return { top: h - pane, pane, oneLine: h - pane < NOW_ONE_LINE_BELOW };
+}
+
+/** Dragging the line: the pane's new share of the room for a line moved to `top` (clamped as splitRoom clamps). */
+export function shareForTop(room: number, top: number): number {
+	const h = Math.max(1, room);
+	const t = Math.max(SIDE_CHAT_TOP_MIN, Math.min(h - 1 - SIDE_CHAT_MIN, top));
+	return Math.max(0, Math.min(1, (h - t) / h));
+}
 
 export interface ISideChatBox {
 	/** From the side pane's right and bottom edges, CSS px. */
@@ -113,7 +168,8 @@ export interface ISideChatBox {
 }
 
 /**
- * Where the card sits in the side pane (the prototype's `.card`): 16 from the right and bottom, 380 wide and at most
+ * A card in the side pane's bottom right corner (Walk me through's card, task-fktjx; the side chat's own card of
+ * direction A had this box): 16 from the right and bottom, 380 wide and at most
  * 470 high, leaving the pane's top 96 (its tabs and the document's head) free. In a window narrower than 1200 the card
  * fills the pane's width with 12 on each side and takes at most 58% of its height (420 at most).
  */
@@ -128,9 +184,17 @@ export function cardBox(paneWidth: number, paneHeight: number, windowWidth: numb
 	return { right: gap, bottom: gap, width, height, narrow };
 }
 
-/** The pill sits where the card's bottom right corner was. */
+/** The corner's gap from the side pane's right and bottom edges. */
 export function pillOffset(windowWidth: number): number {
 	return windowWidth <= SIDE_CHAT_NARROW_WINDOW ? 12 : 16;
+}
+
+/**
+ * How far from the side pane's bottom the small cards of the corner start (Talk's cards, Walk me through's pill):
+ * 8 over the folded pane's head, else the corner's own gap.
+ */
+export function cornerFloor(mode: SideChatCardMode | undefined, windowWidth: number): number {
+	return mode === 'min' ? SIDE_CHAT_HEAD + 1 + 8 : windowWidth <= SIDE_CHAT_NARROW_WINDOW ? 12 : 16;
 }
 
 /**
