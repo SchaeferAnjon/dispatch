@@ -141,6 +141,9 @@ import { isAskQuestionsToolInvocation, isCarouselToolConfirmation, isMcpToolInvo
 import { removeDispatchPrefsFooter, renderDispatchPrefsFooter } from './chatContentParts/dispatchPrefs.js';
 import { getDispatchChatResponseHooks } from './dispatchChatResponseHooks.js';
 import { attachDispatchStickyAsk } from './dispatchStickyAsk.js';
+// Dispatch IDE: a finished reply folds only its steps; what was written to the person stays outside (task-hlkrw)
+import { isTextForPerson, splitCompletedResponseSteps } from './dispatchCompletedResponse.js';
+import './media/dispatchCompletedResponse.css';
 import { removeDispatchRequestLine, renderDispatchRequestLine } from './chatContentParts/dispatchRequestHook.js';
 import { AgentSessionProviders, isAgentHostTarget } from '../agentSessions/agentSessions.js';
 
@@ -172,6 +175,8 @@ export interface IChatListItemTemplate {
 	renderedPartsMounted?: boolean;
 	renderedContent?: ReadonlyArray<IChatRendererContent>;
 	completedResponseDisclosure?: HTMLDetailsElement;
+	// Dispatch IDE: the later runs of steps, between texts that stay outside, opened and closed with the first (task-hlkrw)
+	completedResponseContinuations?: HTMLDetailsElement[];
 	completedResponseCollapseStartIndex?: number;
 	completedResponseCollapseEndIndex?: number;
 	completedResponseStepCount?: number;
@@ -3378,10 +3383,23 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 			return;
 		}
 
+		// Dispatch IDE: what the agent wrote to the person stays outside the fold, in order; only the steps
+		// between those texts fold, in runs that the one summary line opens and closes together (task-hlkrw)
+		const textNodes = new Set<Node>();
+		for (let index = collapseStartIndex; index < collapseEndIndex; index++) {
+			const part = content[index];
+			const renderedPart = templateData.renderedParts?.[index];
+			if (part.kind === 'markdownContent' && isTextForPerson(part.content.value) && renderedPart instanceof ChatMarkdownContentPart && !this.thinkingPartOwners.has(renderedPart)) {
+				textNodes.add(renderedPart.domNode);
+			}
+		}
+
 		let existingDisclosure = templateData.completedResponseDisclosure;
-		if (existingDisclosure?.contains(collapseEndNode)) {
+		let existingGroups = existingDisclosure ? [existingDisclosure, ...(templateData.completedResponseContinuations ?? [])] : [];
+		if (existingGroups.some(group => group.contains(collapseEndNode))) {
 			this.removeCompletedResponseDisclosure(templateData);
 			existingDisclosure = undefined;
+			existingGroups = [];
 		}
 
 		let collapseEndRoot = collapseEndNode;
@@ -3393,14 +3411,22 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 			return;
 		}
 
+		// Dispatch IDE: texts may sit between the last run of steps and the final answer (task-hlkrw)
+		let afterLastGroup = existingGroups.at(-1)?.nextSibling;
+		while (afterLastGroup && afterLastGroup !== collapseEndRoot && textNodes.has(afterLastGroup)) {
+			afterLastGroup = afterLastGroup.nextSibling;
+		}
 		if (existingDisclosure
 			&& templateData.completedResponseCollapseStartIndex === collapseStartIndex
 			&& templateData.completedResponseCollapseEndIndex === collapseEndIndex
-			&& existingDisclosure.nextSibling === collapseEndRoot
-			&& templateData.renderedParts?.slice(collapseStartIndex, collapseEndIndex).every(part => !part?.domNode || existingDisclosure.contains(part.domNode))
+			&& afterLastGroup === collapseEndRoot
+			&& templateData.renderedParts?.slice(collapseStartIndex, collapseEndIndex).every(part => {
+				const partNode = part?.domNode;
+				return !partNode || (textNodes.has(partNode) ? partNode.parentElement === templateData.value : existingGroups.some(group => group.contains(partNode)));
+			})
 			// Chain rows can be removed after completion (hidden tools flush on the next frame), so the
 			// label must follow the rows that are actually left.
-			&& getVisibleCompletedResponseItemCount(Array.from(existingDisclosure.children).filter(child => child.tagName !== 'SUMMARY')) === templateData.completedResponseStepCount
+			&& existingGroups.reduce((count, group) => count + getVisibleCompletedResponseItemCount(Array.from(group.children).filter(child => child.tagName !== 'SUMMARY')), 0) === templateData.completedResponseStepCount
 		) {
 			return;
 		}
@@ -3420,7 +3446,9 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 				collapseStartChildIndex = workspaceTransitionChildIndex + 1;
 			}
 		}
-		const nodesToCollapse = valueChildren.slice(collapseStartChildIndex, collapseEndChildIndex);
+		// Dispatch IDE: fold the steps only, in runs between the texts (task-hlkrw)
+		const stepRuns = splitCompletedResponseSteps(valueChildren.slice(collapseStartChildIndex, collapseEndChildIndex), node => textNodes.has(node));
+		const nodesToCollapse = stepRuns.flat();
 		const stepCount = getVisibleCompletedResponseItemCount(nodesToCollapse);
 		if (stepCount < 2) {
 			const nextPart = templateData.renderedParts?.[collapseEndIndex];
@@ -3482,8 +3510,20 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 		};
 		updateExpansionState();
 
-		templateData.value.insertBefore(details, collapseEndRoot);
-		details.append(...nodesToCollapse);
+		// Dispatch IDE: the summary line sits at the first run of steps; each later run folds in a
+		// details of its own without a summary of its own, opened and closed with this one (task-hlkrw)
+		templateData.value.insertBefore(details, stepRuns[0][0]);
+		details.append(...stepRuns[0]);
+		const continuations = stepRuns.slice(1).map(run => {
+			const continuation = document.createElement('details');
+			continuation.classList.add('completed-response-disclosure', 'dispatch-completed-response-continuation');
+			continuation.appendChild(document.createElement('summary'));
+			templateData.value.insertBefore(continuation, run[0]);
+			continuation.append(...run);
+			continuation.open = details.open;
+			return continuation;
+		});
+		templateData.completedResponseContinuations = continuations;
 		templateData.completedResponseDisclosure = details;
 		templateData.completedResponseCollapseStartIndex = collapseStartIndex;
 		templateData.completedResponseCollapseEndIndex = collapseEndIndex;
@@ -3495,6 +3535,7 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 		}
 		templateData.completedResponseDisclosureDisposables.add(dom.addDisposableListener(details, 'toggle', () => {
 			templateData.completedResponseDisclosureOpen = details.open;
+			continuations.forEach(continuation => continuation.open = details.open); // Dispatch IDE: task-hlkrw
 			updateExpansionState();
 		}));
 
@@ -3547,13 +3588,18 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 		}
 
 		const activeElement = dom.getActiveElement();
-		const focusedContent = dom.isHTMLElement(activeElement) && details.contains(activeElement) && !details.firstElementChild?.contains(activeElement)
+		// Dispatch IDE: the later runs of steps come out too (task-hlkrw)
+		const groups = [details, ...(templateData.completedResponseContinuations ?? [])];
+		const focusedContent = dom.isHTMLElement(activeElement) && groups.some(group => group.contains(activeElement)) && !details.firstElementChild?.contains(activeElement)
 			? activeElement
 			: undefined;
-		while (details.childNodes.length > 1) {
-			details.before(details.childNodes[1]);
+		for (const group of groups) {
+			while (group.childNodes.length > 1) {
+				group.before(group.childNodes[1]);
+			}
+			group.remove();
 		}
-		details.remove();
+		templateData.completedResponseContinuations = undefined;
 		if (focusedContent?.isConnected) {
 			focusedContent.focus({ preventScroll: true });
 		}

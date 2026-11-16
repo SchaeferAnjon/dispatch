@@ -5,6 +5,21 @@
 	"releaseNotes": "https://github.com/SchaeferAnjon/dispatch/releases",
 	"features": [
 		{
+			"id": "recording-you-can-see",
+			"title": "Recording you can see",
+			"description": "While Point and talk records, the message box shows a red dot, Recording and the time. A red line runs around the recorded screen, over every app but not in the video.",
+			"where": "The left end of the message box's bottom row, and the edges of the recorded screen",
+			"icon": "eye",
+			"version": "2026-11-16",
+			"badge": false,
+			"target": {
+				"selector": ".action-label.codicon-device-camera-video"
+			},
+			"image": "recording-you-can-see.png",
+			"marks": "recording-you-can-see.json",
+			"mark": 1
+		},
+		{
 			"id": "point-and-talk",
 			"title": "Point and talk",
 			"description": "Record the screen under your pointer and your voice, no picking an app. Your words come out as text, the spots you point at become pictures, and it all goes to the agent in one message.",
@@ -53,21 +68,6 @@
 			"badge": false,
 			"image": "thinking-level.png",
 			"marks": "thinking-level.json",
-			"mark": 1
-		},
-		{
-			"id": "turbo",
-			"title": "Turbo",
-			"description": "Splits one message into parts that run at the same time. The Timeline page shows them side by side.",
-			"where": "Under the message box of a new chat (the + on Chats)",
-			"icon": "zap",
-			"version": "2026-10-06",
-			"badge": true,
-			"anchor": {
-				"selector": ".dispatch-turbo-chip"
-			},
-			"image": "turbo.png",
-			"marks": "turbo.json",
 			"mark": 1
 		}
 	]

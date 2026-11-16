@@ -17,6 +17,14 @@ class Bundle(unittest.TestCase):
         modules = {f for f in os.listdir(HERE) if f.endswith(".py") and not f.startswith("test_")}
         self.assertEqual(sorted(modules - listed), [])
 
+    def test_every_e2e_script_is_in_the_package_list(self):
+        # task-vcg2w: hide-windows.mjs was missing, so a test instance started by the packaged CLI showed its windows
+        # on the person's screen. Every script the e2e runner starts from scripts/ide-e2e/ has to be packed.
+        folder = os.path.join(os.path.dirname(HERE), "scripts", "ide-e2e")
+        listed = set(json.load(open(os.path.join(HERE, "bundle.json")))["files"])
+        scripts = {"scripts/ide-e2e/" + f for f in os.listdir(folder) if f.endswith(".mjs") and not f.endswith(".test.mjs")}
+        self.assertEqual(sorted(scripts - listed), [])
+
     def test_the_engine_adapters_go_in_as_a_folder(self):
         # engines/ is a package: one file per agent engine, packed as a whole so a new engine is one new file
         conf = json.load(open(os.path.join(HERE, "bundle.json")))

@@ -1,0 +1,12 @@
+/*---------------------------------------------------------------------------------------------
+ *  Dispatch IDE: the later runs of a finished reply's steps (task-hlkrw). They open and close with the
+ *  "Completed N steps" line above them, so they have no summary of their own and take no room while closed.
+ *--------------------------------------------------------------------------------------------*/
+
+.interactive-item-container .completed-response-disclosure.dispatch-completed-response-continuation > summary {
+	display: none;
+}
+
+.interactive-session .interactive-item-container.interactive-response .value > .completed-response-disclosure.dispatch-completed-response-continuation:not([open]) {
+	margin-block: 0;
+}

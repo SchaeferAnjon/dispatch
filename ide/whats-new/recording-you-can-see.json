@@ -1,0 +1,24 @@
+{
+ "v": 1,
+ "image": "recording-you-can-see.png",
+ "size": [
+  1480,
+  340
+ ],
+ "scale": 2,
+ "marks": [
+  {
+   "n": 1,
+   "box": [
+    52,
+    178,
+    240,
+    54
+   ],
+   "color": "red",
+   "what": "Recording",
+   "where": "The left end of the message box's bottom row",
+   "how": "A red dot, Recording and the time while Point and talk records"
+  }
+ ]
+}

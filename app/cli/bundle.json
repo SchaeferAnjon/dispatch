@@ -141,6 +141,7 @@
     "scripts/ide-e2e/README.md",
     "scripts/ide-e2e/cdp.mjs",
     "scripts/ide-e2e/focus.mjs",
+    "scripts/ide-e2e/hide-windows.mjs",
     "scripts/ide-e2e/keep-clear.mjs",
     "scripts/ide-e2e/locate.mjs",
     "scripts/ide-e2e/runner.mjs",

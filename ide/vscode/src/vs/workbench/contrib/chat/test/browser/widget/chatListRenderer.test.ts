@@ -2905,7 +2905,8 @@ suite('ChatListRenderer', () => {
 						ariaExpanded: summary?.getAttribute('aria-expanded'),
 						hasFooter: !!template.value.querySelector('.chat-working-progress'),
 						finalOutside: [...template.value.querySelectorAll(':scope > .chat-markdown-part')].some(part => part.textContent?.includes('Final review.')),
-						collapsedTools: disclosure?.querySelectorAll('.chat-tool-invocation-part').length ?? 0,
+						// Dispatch IDE: the steps fold in runs around the text between them (task-hlkrw)
+						collapsedTools: [disclosure, ...(template.completedResponseContinuations ?? [])].reduce((count, group) => count + (group?.querySelectorAll('.chat-tool-invocation-part').length ?? 0), 0),
 					};
 					assert.deepStrictEqual({ inProgress, completed }, {
 						inProgress: initiallyComplete ? undefined : { hasDisclosure: false, hasFooter: animation !== ChatProgressAnimation.Off, tools: 3 },
@@ -2925,7 +2926,8 @@ suite('ChatListRenderer', () => {
 			await addCompletedProgressResponse(setup);
 			request.response?.complete();
 			renderer.renderElement(node, 0, template);
-			const getLayout = (parent: HTMLElement) => [...parent.children]
+			// Dispatch IDE: laid out from a list, so the expanded runs of steps and the text between them read as one (task-hlkrw)
+			const getLayout = (parts: Element[]) => parts
 				.filter(part => part.getBoundingClientRect().height > 0 && !part.classList.contains('completed-response-summary') && !part.textContent?.includes('Final review.'))
 				.map(part => {
 					const style = mainWindow.getComputedStyle(part);
@@ -2943,7 +2945,7 @@ suite('ChatListRenderer', () => {
 						paragraphMargins: [...part.querySelectorAll(':scope > p')].map(p => mainWindow.getComputedStyle(p).margin),
 					};
 				});
-			const before = getLayout(template.value);
+			const before = getLayout([...template.value.children]);
 			const finalResponse = template.value.lastElementChild;
 			const setCollapse = (value: boolean) => {
 				configurationService.setUserConfiguration(ChatConfiguration.CollapseCompletedResponses, value);
@@ -2961,7 +2963,7 @@ suite('ChatListRenderer', () => {
 			const initiallyClosed = !disclosure.open;
 			summary.click();
 			await timeout(0);
-			const expandedLayout = getLayout(disclosure);
+			const expandedLayout = getLayout([...template.value.children].flatMap(child => child.classList.contains('completed-response-disclosure') ? [...child.children] : [child]));
 			renderer.renderElement(node, 0, template);
 			const staysOpen = template.completedResponseDisclosure === disclosure && disclosure.open;
 			const reasoningHeader = disclosure.querySelector<HTMLElement>('.chat-persistent-reasoning > .chat-used-context-label .monaco-button');
@@ -2970,14 +2972,15 @@ suite('ChatListRenderer', () => {
 			setCollapse(false);
 			const withoutDisclosure = {
 				removed: !template.completedResponseDisclosure,
-				layout: getLayout(template.value),
+				layout: getLayout([...template.value.children]),
 				focusPreserved: mainWindow.document.activeElement === reasoningHeader,
 				finalPreserved: template.value.lastElementChild === finalResponse,
 			};
 			setCollapse(true);
 			assert.deepStrictEqual({ initiallyClosed, expandedLayout, staysOpen, withoutDisclosure, focusedWorkStaysOpen: template.completedResponseDisclosure?.open }, {
 				initiallyClosed: true,
-				expandedLayout: before.map((part, index) => index === before.length - 1 ? { ...part, margin: '0px' } : part),
+				// Dispatch IDE: the last step of each run sits on its run's own bottom margin (task-hlkrw)
+				expandedLayout: before.map((part, index) => index === 1 || index === before.length - 1 ? { ...part, margin: '0px' } : part),
 				staysOpen: true,
 				withoutDisclosure: { removed: true, layout: before, focusPreserved: true, finalPreserved: true },
 				focusedWorkStaysOpen: true,
@@ -3444,7 +3447,8 @@ suite('ChatListRenderer', () => {
 		// A hidden-after-complete tool is flushed out of its chain on the next frame, after the disclosure was built.
 		rows[rows.length - 1].remove();
 		renderer.renderElement(node, 0, template);
-		assert.deepStrictEqual({ before, after: label() }, { before: 'Completed 6 steps', after: 'Completed 5 steps' });
+		// Dispatch IDE: the text between the steps stays outside and is not counted (task-hlkrw)
+		assert.deepStrictEqual({ before, after: label() }, { before: 'Completed 5 steps', after: 'Completed 4 steps' });
 	});
 
 	test('completed edit totals react to late diffs without replacing the disclosure or losing focus', async () => {
@@ -5045,6 +5049,104 @@ suite('ChatListRenderer', () => {
 		disposables.dispose();
 	});
 
+	// Dispatch IDE: a long answer, a few more tools, then one short line; the answer stays outside the fold (task-hlkrw)
+	test('keeps every text written to the person outside collapsed completed steps', async () => {
+		const disposables = store.add(new DisposableStore());
+		const instantiationService = workbenchInstantiationService(undefined, disposables);
+		const configurationService = new TestConfigurationService();
+		configurationService.setUserConfiguration(ChatConfiguration.IncrementalRendering, false);
+		configurationService.setUserConfiguration(ChatConfiguration.CollapseCompletedResponses, true);
+		configurationService.setUserConfiguration('chat.checkpoints.enabled', false);
+		configurationService.setUserConfiguration('chat.checkpoints.showFileChanges', false);
+		configurationService.setUserConfiguration(ChatConfiguration.Verbose, false);
+		instantiationService.stub(IConfigurationService, configurationService);
+		instantiationService.stub(IChatService, new MockChatService());
+		instantiationService.stub(IChatModelFeedbackSurveyService, new MockChatModelFeedbackSurveyService());
+		instantiationService.stub(IChatAgentService, disposables.add(instantiationService.createInstance(ChatAgentService)));
+
+		const model = disposables.add(instantiationService.createInstance(ChatModel, undefined, { initialLocation: ChatAgentLocation.Chat, canUseTools: true }));
+		const viewModel = disposables.add(instantiationService.createInstance(ChatViewModel, model, undefined));
+		const text = 'test';
+		const request = model.addRequest({
+			text,
+			parts: [new ChatRequestTextPart(new OffsetRange(0, text.length), new Range(1, 1, 1, text.length + 1), text)]
+		}, { variables: [] }, 0);
+		const response = viewModel.getItems().find(isResponseVM);
+		assert.ok(response);
+
+		const container = mainWindow.document.createElement('div');
+		mainWindow.document.body.appendChild(container);
+		disposables.add(toDisposable(() => container.remove()));
+		const renderer = disposables.add(instantiationService.createInstance(
+			ChatListItemRenderer,
+			{} as ChatEditorOptions,
+			{},
+			{
+				getListLength: () => 1,
+				onDidScroll: () => toDisposable(() => { }),
+				container,
+				currentChatMode: () => ChatModeKind.Agent,
+				isStickyScrollEnabled: () => false,
+				refreshStickyScroll: () => { },
+				stickyScrollTopPadding: 0,
+			},
+			undefined,
+			viewModel,
+		));
+		const template = renderer.renderTemplate(container);
+		disposables.add(toDisposable(() => renderer.disposeTemplate(template)));
+		const node = { element: response, children: [], depth: 0, visibleChildrenCount: 0, visibleChildIndex: 0, collapsible: false, collapsed: false, visible: true, filterData: undefined };
+
+		const runTools = async (...callIds: string[]) => {
+			for (const callId of callIds) {
+				const toolInvocation = new ChatToolInvocation({
+					invocationMessage: 'Running tool...',
+					pastTenseMessage: 'Tool completed',
+				}, {
+					id: 'my-tool',
+					displayName: 'My Tool',
+					modelDescription: 'Test tool',
+					source: ToolDataSource.Internal,
+				}, callId, undefined, {}, {}, request.id);
+				model.acceptResponseProgress(request, toolInvocation);
+				await toolInvocation.didExecuteTool(undefined);
+			}
+		};
+		await runTools('call-1', 'call-2');
+		model.acceptResponseProgress(request, { kind: 'markdownContent', content: new MarkdownString('Long answer') });
+		await runTools('call-3', 'call-4');
+		model.acceptResponseProgress(request, { kind: 'markdownContent', content: new MarkdownString('Short last line') });
+		request.response?.complete();
+		renderer.renderElement(node, 0, template);
+
+		const disclosures = [...container.querySelectorAll<HTMLDetailsElement>('.completed-response-disclosure')];
+		const markdown = (words: string) => [...container.querySelectorAll<HTMLElement>('.rendered-markdown')].find(element => element.textContent === words);
+		const longAnswer = markdown('Long answer');
+		const lastLine = markdown('Short last line');
+		const follows = (a: Node | undefined, b: Node | undefined) => !!a && !!b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+		assert.deepStrictEqual({
+			groups: disclosures.length,
+			summaryLabel: disclosures[0]?.querySelector('.completed-response-summary')?.textContent,
+			allClosed: disclosures.every(disclosure => !disclosure.open),
+			longAnswerInsideFold: !!longAnswer?.closest('.completed-response-disclosure'),
+			lastLineInsideFold: !!lastLine?.closest('.completed-response-disclosure'),
+			inOrder: follows(disclosures[0], longAnswer) && follows(longAnswer, disclosures[1]) && follows(disclosures[1], lastLine),
+		}, {
+			groups: 2,
+			summaryLabel: 'Completed 4 steps',
+			allClosed: true,
+			longAnswerInsideFold: false,
+			lastLineInsideFold: false,
+			inOrder: true,
+		});
+
+		disclosures[0].querySelector<HTMLElement>('.completed-response-summary')?.click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+		assert.deepStrictEqual(disclosures.map(disclosure => disclosure.open), [true, true]);
+
+		disposables.dispose();
+	});
+
 	test('keeps a workspace transition outside collapsed completed steps', async () => {
 		const disposables = store.add(new DisposableStore());
 		const instantiationService = workbenchInstantiationService(undefined, disposables);
@@ -5202,6 +5304,18 @@ suite('ChatListRenderer', () => {
 		disposables.add(toDisposable(() => renderer.disposeTemplate(template)));
 		const node = { element: response, children: [], depth: 0, visibleChildrenCount: 0, visibleChildIndex: 0, collapsible: false, collapsed: false, visible: true, filterData: undefined };
 		return { disposables, instantiationService, model, viewModel, request, response, container, renderer, template, configurationService, render: () => renderer.renderElement(node, 0, template) };
+	}
+
+	// Dispatch IDE: text is not a step that folds any more (task-hlkrw), so the tests that used a line of text
+	// to make two steps add an earlier tool of its own instead (an MCP tool, which no tool group takes in)
+	async function addEarlierStep(model: ChatModel, request: Parameters<ChatModel['acceptResponseProgress']>[0]): Promise<void> {
+		const earlier = new ChatToolInvocation(
+			{ invocationMessage: 'Earlier work', pastTenseMessage: 'Did earlier work' },
+			{ id: 'mcp_earlier_work', displayName: 'Earlier work', modelDescription: 'Earlier work', source: { type: 'mcp', label: 'Reference', serverLabel: 'Reference', collectionId: 'reference', definitionId: 'reference', instructions: '' } },
+			'earlier', undefined, {},
+		);
+		model.acceptResponseProgress(request, earlier);
+		await earlier.didExecuteTool(undefined);
 	}
 
 	function createSubagentTool(toolCallId: string, data: IChatSubagentToolInvocationData, parentToolCallId?: string): ChatToolInvocation {
@@ -6410,7 +6524,7 @@ suite('ChatListRenderer', () => {
 			{ id: 'test_tool', displayName: 'Test Tool', modelDescription: 'Test tool', source: ToolDataSource.Internal },
 			'ordinary', undefined, {},
 		);
-		model.acceptResponseProgress(request, { kind: 'markdownContent', content: new MarkdownString('Earlier work.') });
+		await addEarlierStep(model, request);
 		model.acceptResponseProgress(request, ordinary);
 		await ordinary.didExecuteTool(undefined);
 		model.acceptResponseProgress(request, invocation);
@@ -6450,7 +6564,7 @@ suite('ChatListRenderer', () => {
 			);
 			const invocation = createSubagentTool('launch', data);
 			if (retainDisclosure) {
-				model.acceptResponseProgress(request, { kind: 'markdownContent', content: new MarkdownString('Earlier work.') });
+				await addEarlierStep(model, request);
 			}
 			model.acceptResponseProgress(request, ordinary);
 			await ordinary.didExecuteTool({ content: [], toolResultDetails: { input: '{}', output: [{ type: 'embed', value: 'Checked work', isText: true }] } });
@@ -6544,7 +6658,7 @@ suite('ChatListRenderer', () => {
 			chatResource: 'ahp-chat://subagent/Y29waWxvdGNsaTovc2Vzc2lvbg/nested',
 		};
 		const nested = createSubagentTool('nested', nestedData, root.toolCallId);
-		model.acceptResponseProgress(request, { kind: 'markdownContent', content: new MarkdownString('Earlier work.') });
+		await addEarlierStep(model, request);
 		model.acceptResponseProgress(request, root);
 		await root.didExecuteTool(undefined);
 		model.acceptResponseProgress(request, nested);
@@ -6592,7 +6706,7 @@ suite('ChatListRenderer', () => {
 			text: 'next',
 			parts: [new ChatRequestTextPart(new OffsetRange(0, 4), new Range(1, 1, 1, 5), 'next')],
 		}, { variables: [] }, 0);
-		model.acceptResponseProgress(replacementRequest, { kind: 'markdownContent', content: new MarkdownString('Replacement work.') });
+		await addEarlierStep(model, replacementRequest);
 		const ordinary = new ChatToolInvocation(
 			{ invocationMessage: 'Replacement check', pastTenseMessage: 'Checked replacement' },
 			{ id: 'test_tool', displayName: 'Test Tool', modelDescription: 'Test tool', source: ToolDataSource.Internal },
