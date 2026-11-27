@@ -1,12 +1,12 @@
 {
-  "url": "https://github.com/SchaeferAnjon/dispatch/releases/download/v0.9.8/Dispatch-IDE-0.9.8-macos-apple-silicon.zip",
-  "name": "0.9.8 (2026-11-16 21:35)",
-  "version": "80982930bb4667f97f4f3fc0926ef2016e2c5ad3",
-  "productVersion": "0.9.8 (2026-11-16 21:35)",
-  "hash": "4bb790cf74162723df4fd7f2b3325f487560ab04",
-  "sha256hash": "96910ed6a53e2f172ab8cfdc60fb1251fecb5797d264877ebd955a2db4d52904",
-  "timestamp": 1794861345955,
-  "notes": "80982930bb4667f97f4f3fc0926ef2016e2c5ad3",
+  "url": "https://github.com/SchaeferAnjon/dispatch/releases/download/v0.9.9/Dispatch-IDE-0.9.9-macos-apple-silicon.zip",
+  "name": "0.9.9 (2026-11-27 23:46)",
+  "version": "4d11b1624db0771963d0abfee674c3083569b14c",
+  "productVersion": "0.9.9 (2026-11-27 23:46)",
+  "hash": "3438858b7975450bb9ddc6a590b28d7f73365952",
+  "sha256hash": "f86d48e4a956fba5014b5152cad54f3148814d7563c8491188c8cd8de9c520f4",
+  "timestamp": 1795819610922,
+  "notes": "4d11b1624db0771963d0abfee674c3083569b14c",
   "whatsNew": [
     {
       "title": "Recording you can see",
