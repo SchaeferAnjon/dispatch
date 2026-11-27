@@ -105,8 +105,8 @@ import { getSessionDiffStats, getSessionSummaryHoverData } from '../sessionHover
 import { SessionSummaryHoverWidget } from '../../../../../workbench/contrib/chat/browser/agentSessions/sessionSummaryHover.js';
 import { SessionStatusIcon } from '../../../../browser/sessionStatusIcon.js';
 import { renderDispatchRowMark } from '../../../../browser/dispatchSessionRowMarks.js';
-import { decorateSubAgentRow, isSubAgentChat, onDidChangeSubAgentRows, onSubAgentRowClick, withSubAgentRows } from '../../../../browser/dispatchSubAgentRows.js';
-import { IChatService } from '../../../../../workbench/contrib/chat/common/chatService/chatService.js';
+import { decorateSubAgentRow, onDidChangeSubAgentRows, onSubAgentRowClick, subAgentRowHeight, withSubAgentRows } from '../../../../browser/dispatchSubAgentRows.js';
+import { isSubAgentChat } from '../../../../browser/dispatchSubAgents.js';
 import { ChatAutomationsEnabledContext } from '../../../../../workbench/contrib/chat/common/automations/automationsEnabled.js';
 import { IAutomationService } from '../../../../../workbench/contrib/chat/common/automations/automationService.js';
 import { ICustomViewService } from '../../../../services/customView/browser/customViewService.js';
@@ -114,8 +114,6 @@ import { AUTOMATIONS_CUSTOM_VIEW_ID } from '../automationsConstants.js';
 import { AutomationsNewBadgeState, type AutomationsNewBadgeStyle } from '../automationsNewBadge.js';
 import { Menus } from '../../../../browser/menus.js';
 import { dispatchProjectsRegistry, dispatchSidebarSession } from '../dispatchProjectsModel.js';
-// Dispatch IDE: what works for a project right now, under the project (dispatchProjectWork.ts)
-import { insertProjectWorkRows, setProjectWorkRows } from './dispatchProjectWork.js';
 import { markProjectRows, withProjectIndent } from './dispatchProjectIndent.js';
 import { renderRunOnRowTag } from '../../../dispatchRunOn/browser/dispatchRunOn.js';
 import { DISPATCH_PROJECTS_SECTION_ID, registerProjectsRowActions, renderProjectsSectionRow } from '../dispatchProjects.js';
@@ -240,7 +238,7 @@ function getChatTitle(chat: IChat, reader?: IReader): string {
 
 function getSessionListChats(session: ISession, reader?: IReader): readonly IChat[] {
 	const mainChat = session.mainChat.read(reader);
-	// Dispatch IDE: the sub-agents it sent out come back as rows under it (patches/135-sub-agent-rows.patch)
+	// Dispatch IDE: the sub-agents it sent out come back as rows under it, working ones and "N finished" (dispatchSubAgentRows.ts)
 	return withSubAgentRows(session, session.chats.read(reader).filter(chat =>
 		!isEqual(chat.resource, mainChat.resource) &&
 		chat.origin?.kind !== ChatOriginKind.Tool &&
@@ -377,6 +375,11 @@ class SessionsTreeDelegate implements IListVirtualDelegate<SessionListItem> {
 	}
 
 	getHeight(element: SessionListItem): number {
+		// Dispatch IDE: a sub-agent's row under its session (dispatchSubAgentRows.ts)
+		const subAgentHeight = isSessionChatItem(element) ? subAgentRowHeight(element.chat) : undefined;
+		if (subAgentHeight !== undefined) {
+			return this.withInsetRowSpacing(subAgentHeight);
+		}
 		if (isSessionChatItem(element)) {
 			let chatHeight = this._isPhone() ? SessionsTreeDelegate.CHAT_ITEM_HEIGHT_PHONE : SessionsTreeDelegate.CHAT_ITEM_HEIGHT;
 			if (this._approvalModel) {
@@ -576,12 +579,12 @@ class SessionChatItemRenderer implements ITreeRenderer<SessionListItem, FuzzySco
 			);
 			template.container.classList.toggle('needs-input', status === SessionStatus.NeedsInput);
 		}));
-		decorateSubAgentRow(template.container, element.chat, template.elementDisposables, element.session, this.hoverService, () => this.instantiationService.invokeFunction(accessor => accessor.get(IChatService).getSession(element.session.mainChat.get().resource)?.getRequests().at(-1)?.modelId));
+		decorateSubAgentRow(template.container, element.chat, template.elementDisposables, element.session, this.instantiationService);
 		template.elementDisposables.add(autorun(reader => {
 			const showGuides = this.activeGuideSessionIds.read(reader).has(element.session.sessionId);
 			template.container.classList.toggle('session-hierarchy-guides-visible', showGuides);
 		}));
-		// Dispatch IDE: a sub-agent's row has its own card (dispatchSubAgentRows.ts), not the plain title one
+		// Dispatch IDE: a sub-agent's row is VS Code's sub-agent pill with its own hover (dispatchSubAgentRows.ts), not the plain title one
 		if (!isSubAgentChat(element.chat)) {
 			template.elementDisposables.add(this.hoverService.setupDelayedHover(template.title.element, () => ({
 				content: getChatTitle(element.chat),
@@ -1219,7 +1222,7 @@ class SessionItemRenderer implements ITreeRenderer<SessionListItem, FuzzyScore, 
 		template.elementDisposables.clear();
 		const dispatchMark = template.container.querySelector<HTMLElement>('.dispatch-row-mark');
 		if (dispatchMark) {
-			renderDispatchRowMark(dispatchMark, element, template.elementDisposables);
+			renderDispatchRowMark(dispatchMark, element);
 		}
 		template.renderedSession.set(element, undefined);
 		template.elementDisposables.add(toDisposable(() => {
@@ -3528,7 +3531,7 @@ export class SessionsList extends Disposable implements ISessionsList {
 			if (isSessionChatItem(element)) {
 				const isLeftClick = DOM.isMouseEvent(e.browserEvent) && e.browserEvent.button === 0;
 				const preserveFocus = isLeftClick ? false : (e.editorOptions.preserveFocus ?? false);
-				// Dispatch IDE: "Show N finished", or a sub-agent its session kind opens itself (patches/135-sub-agent-rows.patch)
+				// Dispatch IDE: "N finished" opens in place; a sub-agent opens read only next to the conversation (dispatchSubAgentRows.ts)
 				if (onSubAgentRowClick(element.session, element.chat)) {
 					this.tree.setSelection([]);
 					return;
@@ -3810,8 +3813,6 @@ export class SessionsList extends Disposable implements ISessionsList {
 		}
 
 		const grouping = this.options.grouping();
-		// Dispatch IDE: a sub-agent working for another project is listed under that project (dispatchProjectWork.ts)
-		setProjectWorkRows(grouping === SessionsGrouping.Workspace);
 		const sorting = this.options.sorting();
 		const sortKeyForGrouping = (s: ISession, srt: SessionsSorting) => this._sessionsListModelService.getSortKey(s, sortingToMode(srt));
 
@@ -4155,7 +4156,6 @@ export class SessionsList extends Disposable implements ISessionsList {
 			c => c.collapsed === true || c.collapsed === ObjectTreeElementCollapseState.Collapsed || c.collapsed === ObjectTreeElementCollapseState.PreserveOrCollapsed,
 			(e): e is ISession => isSessionItem(e as SessionListItem));
 		watchLiveSessions(this, this.sessions);
-		insertProjectWorkRows(children, this.sessions, (session, chat) => new SessionChatItem(session, chat));
 		insertTurboRows(children, this);
 		markProjectRows(grouping === SessionsGrouping.Workspace ? children : [], DISPATCH_PROJECTS_SECTION_ID, new Set(['pinned', QUICK_CHATS_SECTION_ID, 'archived']));
 		this.tree.setChildren(null, children);

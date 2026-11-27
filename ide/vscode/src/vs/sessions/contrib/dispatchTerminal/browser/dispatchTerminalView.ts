@@ -25,7 +25,7 @@ import { Codicon } from '../../../../base/common/codicons.js';
 import { ISession, SessionStatus } from '../../../services/sessions/common/session.js';
 import { ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { autorun } from '../../../../base/common/observable.js';
-import { modelLabel, registerSubAgentOpener } from '../../../browser/dispatchSubAgentRows.js';
+import { modelLabel, registerSubAgentOpener } from '../../../browser/dispatchSubAgents.js';
 import { ISessionsProvidersService } from '../../../services/sessions/browser/sessionsProvidersService.js';
 import { DISPATCH_TERMINAL_PROVIDER_ID, DispatchTerminalSession, DispatchTerminalSessionsProvider } from './dispatchTerminalSessionsProvider.js';
 import { DispatchTerminalPanes } from './dispatchTerminalPanes.js';
@@ -266,7 +266,7 @@ class DispatchTerminalViews extends Disposable {
 		@ISessionsService sessions: ISessionsService,
 	) {
 		super();
-		// a sub-agent's row under a terminal session (browser/dispatchSubAgentRows.ts): the session opens and its view
+		// a sub-agent of a terminal session (browser/dispatchSubAgents.ts): the session opens and its view
 		// shows the sub-agent's record, read only
 		this._register(registerSubAgentOpener((session, chat) => {
 			if (session.providerId !== DISPATCH_TERMINAL_PROVIDER_ID) {

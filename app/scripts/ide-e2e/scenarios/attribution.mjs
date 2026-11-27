@@ -1,48 +1,19 @@
 // Who wrote which line (task-6qpx, task-m6hek): an OpenCode session appends four lines to NOTES.md; then a script,
 // with no agent's turn open, writes a hook script of its own and appends a line to NOTES.md; then the person changes
-// one of the agent's lines and adds one of their own by typing in the Changes diff and pressing ⌘S. Changes marks the
-// person's lines with the person, the script's with a dashed block that says "Not from an agent in Dispatch", the
-// agent's not at all; the agent's next turn hears about the person's two lines only. Test model: OpenCode DeepSeek
-// Flash (GLM Flash, else OpenCode's free MiMo Flash).
+// one of the agent's lines and adds one of their own by typing in the Changes diff and pressing ⌘S. The record knows
+// whose lines are whose: the agent's next turn hears about the person's two lines only, nothing of the script's.
+// Changes itself marks nobody's lines (VS Code's as it is, the user 2026-11-16, task-rinkm): no person blocks, no
+// dashed blocks, no grey line above the diff, the A / M / D letters as VS Code draws them. Test model: OpenCode
+// DeepSeek Flash (GLM Flash, else OpenCode's free MiMo Flash).
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 const SCALE = Math.max(1, Number(process.env.DISPATCH_E2E_TIME_SCALE) || 1); // a loaded Mac's waits (runner.mjs TIME_SCALE)
-export const meta = { needs: ['opencode'], title: 'Who wrote which line', description: 'The agent writes four lines, a script writes a file and a line, you type two in the editor; Changes marks yours with the person, the script\'s as not from an agent, the agent\'s not at all; the next turn hears about yours only.', timeout: 1500 };
+export const meta = { needs: ['opencode'], title: 'Who wrote which line', description: 'The agent writes four lines, a script writes a file and a line, you type two in the editor; Changes marks nobody\'s lines (VS Code\'s as it is); the next turn hears about yours only.', timeout: 1500 };
 
 const fresh = '.sessions-chat-editor';
 const AGENT_LINES = ['- Alpha: written by the agent', '- Beta: written by the agent', '- Gamma: written by the agent', '- Delta: written by the agent'];
 const PROMPT = `Append exactly these four lines to the end of NOTES.md, keep everything else as it is, use your file edit tool, then reply DONE:\n${AGENT_LINES.join('\n')}`;
-
-/** Hover a mark until its hover says `re` (the editor's hover can miss the first pointer move). */
-async function hoverText(ui, css, re) {
-  const log = [];
-  for (let i = 0; i < 5; i++) {
-    await ui.hover({ css: '.monaco-editor .view-lines' });
-    await ui.sleep(300);
-    await ui.hover({ css });
-    // the editor shows a glyph's hover once the pointer rests on it; its text has non-breaking spaces
-    for (let j = 0; j < 16; j++) {
-      await ui.sleep(500);
-      const seen = await ui.eval(`[...document.querySelectorAll('.monaco-hover')].map(h => ({ w: Math.round(h.getBoundingClientRect().width), cls: String(h.className), text: (h.innerText || '').replace(/\\u00a0/g, ' ').slice(0, 120) }))`);
-      log.push({ i, j, seen });
-      const hit = (seen || []).find(h => h.w > 0 && new RegExp(re.slice(1, -1)).test(h.text));
-      if (hit) {
-        const full = await ui.eval(`[...document.querySelectorAll('.monaco-hover')].map(h => (h.innerText || '').replace(/\\u00a0/g, ' ')).find(x => ${re}.test(x)) || ''`);
-        return full || hit.text;
-      }
-    }
-  }
-  writeFileSync(`${ui.out}/hover-log.json`, JSON.stringify(log, null, 1));
-  const seen = await ui.eval(`(() => {
-    const m = document.querySelector('${css}'); if (!m) return { mark: 'none' };
-    const r = m.getBoundingClientRect(); const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    const chain = []; for (let e = at; e && chain.length < 6; e = e.parentElement) chain.push(e.tagName + '.' + String(e.className).split(' ').slice(0, 3).join('.'));
-    const hovers = [...document.querySelectorAll('[class*="hover"]')].filter(h => h.getBoundingClientRect().width > 0).map(h => String(h.className).slice(0, 60) + ': ' + (h.innerText || '').slice(0, 80));
-    return { chain, hovers: hovers.slice(0, 8) };
-  })()`);
-  throw new Error(`No hover matching ${re} on ${css}: ${JSON.stringify(seen)}`);
-}
 
 async function until(ui, fn, what, ms = 120000) {
   const end = Date.now() + ms * SCALE;
@@ -115,14 +86,12 @@ function diagnose(ui) {
   writeFileSync(`${ui.out}/diagnose.json`, JSON.stringify(d, null, 2));
 }
 
-const marks = (cls) => `document.querySelectorAll('.monaco-editor .dispatch-attr-mark.dispatch-attr-${cls}').length`;
-/** The marks in one file's diff (Changes shows every changed file's diff at once): the one whose text has `needle`. */
-const marksIn = (cls, needle) => `(() => {
-  const d = [...document.querySelectorAll('.monaco-diff-editor')].find(d => (d.querySelector('.editor.modified')?.textContent || '').replace(/\\u00a0/g, ' ').includes(${JSON.stringify(needle)}));
-  return d ? d.querySelectorAll('.dispatch-attr-mark.dispatch-attr-${cls}').length : 0;
-})()`;
-const NOTES = 'Alpha: written by the agent';
-const TOOL = 'written by a tool';
+/** Anything Changes used to add about who wrote a line: marks in the diffs, the grey line, the person on a file row. */
+const ADDED = `({ marks: document.querySelectorAll('.monaco-editor .dispatch-attr-mark').length, hint: document.querySelectorAll('.dispatch-attr-hint').length,
+  grey: /Lines without a mark/.test(document.querySelector('.session-changes-editor')?.innerText || ''),
+  rowChips: document.querySelectorAll('.changes-file-list .dispatch-attr-chip, .changes-file-list .dispatch-attr-row').length,
+  letters: [...document.querySelectorAll('.changes-file-list .changes-decoration-badge')].map(e => ({ text: e.textContent, display: getComputedStyle(e).display })) })`;
+const none = (a) => !a.marks && !a.hint && !a.grey && !a.rowChips;
 
 /** The pointer goes to an empty part of the window before a picture, as a hand rests off the buttons
  *  (a tooltip left under it would cover the diff's header). */
@@ -200,7 +169,21 @@ export default async function (ui) {
   }
 }
 
+/** The editor's screen reader mode off (an instance can switch it on by itself): with it on, a narrow diff stays side by
+ *  side and wraps a line of NOTES.md over several rows, and the line a person clicks is not one row any more. */
+export function screenReaderOff(ui) {
+  for (const dir of [ui.rec.user_data_dir, ui.rec.agents_user_data_dir].filter(Boolean)) {
+    const f = join(dir, 'User', 'settings.json');
+    let j = {};
+    try { j = JSON.parse(readFileSync(f, 'utf8')); } catch { j = {}; }
+    j['editor.accessibilitySupport'] = 'off';
+    mkdirSync(dirname(f), { recursive: true });
+    writeFileSync(f, JSON.stringify(j, null, 1));
+  }
+}
+
 async function run(ui) {
+  screenReaderOff(ui);
   await ui.openAgents(ui.demoFolder);
   await offScreen(ui);
   await newSessionInProject(ui, ui.demoFolder);
@@ -241,13 +224,12 @@ async function run(ui) {
   // the change list fills in a moment after the tab opens
   await ui.waitFor({ text: 'NOTES.md', exact: true, within: '.changes-file-list', webview: false }, { timeoutMs: 60000 });
   await ui.click({ text: 'NOTES.md', exact: true, within: '.changes-file-list', webview: false });
-  await ui.waitFor({ css: '.dispatch-attr-hint' }, { timeoutMs: 60000 });
+  await ui.waitFor({ css: '.monaco-diff-editor .editor.modified' }, { timeoutMs: 60000 });
+  await ui.sleep(3000); // the marks used to come a moment after the diff: give them the time to (not) come
   await closeTips(ui);
-  const before = await ui.eval(`({ you: ${marks('you')}, mix: ${marks('mix')}, unsure: ${marks('unsure')}, hint: document.querySelector('.dispatch-attr-hint')?.textContent || '', rowChips: [...document.querySelectorAll('.dispatch-attr-row')].filter(e => !e.hidden).length })`);
-  await closeTips(ui);
+  const before = await ui.eval(ADDED);
   await restPointer(ui);
   await ui.screenshot('01-agent-only');
-  await ui.mark({ css: '.dispatch-attr-hint' }, { what: '灰字：没标记的行是 Agent 写的', where: '右栏 Changes 里 diff 的上方', how: '会话改完文件后打开 Changes，点文件' });
 
   // something with no agent's turn open (bd writing its hook scripts, a code generator): a file of its own and a line
   // at the end of NOTES.md. Past the turn's end and its grace (a write within 6 s of it is the agent finishing up).
@@ -261,62 +243,13 @@ async function run(ui) {
 
   // you: change the agent's Beta line and add a line of your own, typed in the Changes diff and saved with ⌘S
   await editInEditor(ui, file, { after: 'Beta: written by the agent', add: ', then edited by you', append: '- Epsilon: a line you added' });
-  let reopened = 0;
-  let lastOpen = Date.now();
-  await until(ui, async () => {
-    // (the script's line is checked below: a build before task-m6hek marks it with the person, which the pictures show)
-    if ((await ui.eval(marksIn('you', NOTES))) >= 1 && (await ui.eval(marksIn('mix', NOTES))) >= 1 && (await ui.eval(`${marksIn('you', NOTES)} + ${marksIn('other', NOTES)}`)) >= 2) return true;
-    // the diff can close while the change list refreshes (or a tip took a click): open the file again, as a person would
-    const shown = await ui.eval(`[...document.querySelectorAll('.monaco-diff-editor .editor.modified')].some(e => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0)`);
-    if (!shown || Date.now() - lastOpen > 15000) {
-      lastOpen = Date.now();
-      reopened++;
-      await closeTips(ui);
-      await ui.click({ text: 'NOTES.md', exact: true, within: '.changes-file-list', webview: false });
-    }
-    return false;
-  }, 'the marks on your two lines and the script\'s line', 90000);
-  // the file row asks for its counts again once your save is in the record (a busy Mac answers in a few seconds)
-  await until(ui, async () => ui.eval(`[...document.querySelectorAll('.dispatch-attr-row')].some(e => !e.hidden && /You changed 2 lines/.test(e.getAttribute('aria-label') || ''))`), 'the person mark on the file row', 30000).catch(() => null);
-  await ui.sleep(1500);
-  const counts = `({ you: ${marksIn('you', NOTES)}, mix: ${marksIn('mix', NOTES)}, unsure: ${marksIn('unsure', NOTES)}, other: ${marksIn('other', NOTES)}, hint: document.querySelector('.dispatch-attr-hint')?.textContent || '',
-    rows: [...document.querySelectorAll('.changes-file-list .monaco-list-row')].map(r => ({ name: (r.innerText || '').split('\\n')[0].trim(), chip: [...r.querySelectorAll('.dispatch-attr-row')].filter(e => !e.hidden).map(e => e.getAttribute('aria-label')) })),
-    letters: [...document.querySelectorAll('.changes-decoration-badge')].map(e => getComputedStyle(e).display) })`;
-  const after = await ui.eval(counts);
+  await until(ui, async () => readEdits(ui).some(e => e.event === 'save' && e.path === 'NOTES.md'), 'your save in the record', 30000);
+  // Branch Changes lists only the session's own changes (task-0nr72): the script's file is not there, NOTES.md is
+  await ui.sleep(5000);
+  const after = await ui.eval(ADDED);
   await closeTips(ui);
   await restPointer(ui);
-  await ui.screenshot('02-three-kinds');
-  await ui.mark({ css: '.dispatch-attr-mark.dispatch-attr-mix' }, { what: '人形加星：Agent 写的、你在编辑器里又改过', where: 'diff 里那一行的左边', how: '在 Changes 的 diff 里改 Agent 写的一行，⌘S 存盘' });
-  await ui.mark({ css: '.dispatch-attr-mark.dispatch-attr-you' }, { what: '人形：你在编辑器里自己加的行', where: 'diff 里那一行的左边', how: '在 diff 里打字加一行，⌘S 存盘' });
-  if (after.other) await ui.mark({ css: '.dispatch-attr-mark.dispatch-attr-other' }, { what: '虚线方块：脚本加的行，不是 Agent 也不是你', where: 'diff 里那一行的左边', how: '没有 Agent 在跑、编辑器也没看到有人打字时改出来的行' });
-
-  // the script's own file: no person anywhere, every line not from an agent
-  await closeTips(ui);
-  await ui.waitFor({ text: 'post-commit', exact: true, within: '.changes-file-list', webview: false }, { timeoutMs: 60000 });
-  await ui.click({ text: 'post-commit', exact: true, within: '.changes-file-list', webview: false });
-  const scriptFile = await until(ui, async () => {
-    const c = await ui.eval(`({ you: ${marksIn('you', TOOL)}, mix: ${marksIn('mix', TOOL)}, other: ${marksIn('other', TOOL)} })`);
-    return c.other + c.you + c.mix >= 3 ? c : null;
-  }, 'marks on the script\'s three lines', 60000);
-  await ui.sleep(1500);
-  const rowsAfter = await ui.eval(counts);
-  await restPointer(ui);
-  await ui.screenshot('03-script-file');
-  if (scriptFile.other) await ui.mark({ css: '.dispatch-attr-mark.dispatch-attr-other' }, { what: '工具生成的文件：每行虚线方块，没有人形', where: 'Changes 里 tools/post-commit 的 diff', how: '没人打字、也没 Agent 在跑时出现的文件' });
-  const hoverScript = await hoverText(ui, '.dispatch-attr-mark.dispatch-attr-other, .dispatch-attr-mark.dispatch-attr-you', '/Not from an agent in Dispatch|You changed this line/');
-  await ui.screenshot('04-hover-script-file');
-
-  await closeTips(ui);
-  await ui.click({ text: 'NOTES.md', exact: true, within: '.changes-file-list', webview: false });
-  await until(ui, async () => (await ui.eval(marks('mix'))) >= 1, 'the marks of NOTES.md again', 30000);
-  const hoverMix = await hoverText(ui, '.dispatch-attr-mark.dispatch-attr-mix', '/then you changed it/');
-  await ui.screenshot('05-hover-mixed-line');
-  await closeTips(ui);
-  const hoverYou = await hoverText(ui, '.dispatch-attr-mark.dispatch-attr-you', '/You changed this line/');
-  await ui.screenshot('06-hover-your-line');
-  await closeTips(ui);
-  const hoverOther = await hoverText(ui, '.dispatch-attr-mark.dispatch-attr-other', '/Not from an agent in Dispatch/');
-  await ui.screenshot('07-hover-script-line');
+  await ui.screenshot('02-your-lines-unmarked');
 
   // what the agent's next turn hears: your two lines, nothing of the script's (the plugin passes it on at the start)
   const turn1End = lastEnd(ui);
@@ -328,33 +261,17 @@ async function run(ui) {
     return ui.eval(`(() => { const last = [...document.querySelectorAll('.interactive-response')].at(-1); return !!last && !last.classList.contains('chat-response-loading') && /READY/.test(last.innerText); })()`);
   }, 'the second turn to end', 240000);
   await until(ui, async () => (marksOf(ui).filter(m => m.event === 'start' && m.ts > turn1End.ts).length ? true : null), 'the second turn\'s start in the record', 60000);
-  // the open diff asks again after each mark and once more a while after a turn starts (when the agent's plugin has
-  // passed the note on): no need to open it again
-  await ui.sleep(14000);
-  await ui.click({ text: 'NOTES.md', exact: true, within: '.changes-file-list', webview: false });
-  await until(ui, async () => (await ui.eval(marks('mix'))) >= 1, 'the marks of NOTES.md after the next turn', 30000);
-  const told = await hoverText(ui, '.dispatch-attr-mark.dispatch-attr-you', '/was told to keep it/');
-  const toldOther = await hoverText(ui, '.dispatch-attr-mark.dispatch-attr-other', '/Not from an agent in Dispatch/');
-  await ui.screenshot('08-told-after-next-turn');
 
   const edits = readEdits(ui);
-  const result = { file, before, after, hoverMix, hoverYou, hoverOther, hoverScript, scriptFile, rowsAfter, note, told, toldOther, edits, reopened };
+  const result = { file, before, after, note, edits };
   writeFileSync(`${ui.out}/result.json`, JSON.stringify(result, null, 2));
-  if (before.you || before.mix || before.unsure) throw new Error(`The agent's own lines were marked: ${JSON.stringify(before)}`);
-  if (!/written by OpenCode/.test(before.hint)) throw new Error(`The grey line says: ${before.hint}`);
+  for (const [when, a] of [['after the agent\'s turn', before], ['after your edit', after]]) {
+    if (!none(a)) throw new Error(`Changes marks who wrote a line ${when}: ${JSON.stringify(a)}`);
+    if (a.letters.some(l => l.display === 'none' || !/^[AMD]$/.test(l.text))) throw new Error(`The A / M / D letters are not VS Code's ${when}: ${JSON.stringify(a.letters)}`);
+  }
   if (!edits.some(e => e.event === 'save' && e.path === 'NOTES.md' && e.base && e.sha)) throw new Error(`The editor recorded no save of NOTES.md: ${JSON.stringify(edits)}`);
-  if (after.you !== 1 || after.mix !== 1 || after.other !== 1 || after.unsure !== 0) throw new Error(`Expected one your line, one mixed line and one script line: ${JSON.stringify(after)}`);
-  if (!/Beta: written by the agent/.test(hoverMix)) throw new Error(`The mixed line's hover lacks the agent's text: ${hoverMix}`);
-  if (scriptFile.you || scriptFile.mix || scriptFile.other < 3) throw new Error(`The script's file is marked as yours: ${JSON.stringify(scriptFile)}`);
-  if (!/^\s*Not from an agent in Dispatch\s*$/.test(hoverOther) || !/^\s*Not from an agent in Dispatch\s*$/.test(hoverScript)) throw new Error(`The script line's hover says more than it knows: ${JSON.stringify(hoverOther)}`);
-  const notesRow = rowsAfter.rows.find(r => r.name.startsWith('NOTES.md')), scriptRow = rowsAfter.rows.find(r => r.name.startsWith('post-commit'));
-  if (!notesRow || !notesRow.chip.some(c => /You changed 2 lines/.test(c || ''))) throw new Error(`NOTES.md's row has no person mark for your 2 lines: ${JSON.stringify(rowsAfter.rows)}`);
-  if (!scriptRow || scriptRow.chip.length) throw new Error(`The script's file row has a person mark: ${JSON.stringify(rowsAfter.rows)}`);
-  if (after.letters.some(d => d !== 'none')) throw new Error('The A / M / D letter still shows');
   if (!note.files || note.files.length !== 1 || note.files[0].path !== 'NOTES.md' || note.files[0].count !== 2) throw new Error(`The next turn would hear about more than your two lines: ${JSON.stringify(note)}`);
   if (/post-commit|Zeta/.test(note.text)) throw new Error(`The note names the script's changes: ${note.text}`);
-  if (!/OpenCode was told to keep it/.test(told)) throw new Error(`Your line's hover does not say OpenCode was told: ${told}`);
-  if (/told/.test(toldOther)) throw new Error(`The script line says the agent was told: ${toldOther}`);
 }
 
 /** The editor's record of your typing (attribution edits.jsonl), every project. */

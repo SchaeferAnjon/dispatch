@@ -1044,6 +1044,8 @@ export interface IAgentSubagentCompletedSignal {
 	readonly kind: 'subagent_completed';
 	readonly chat: URI;
 	readonly toolCallId: string;
+	/** Dispatch IDE: it ended without finishing (killed, stopped, failed, or gone with its process): shown stopped (task-518qw). */
+	readonly stopped?: string;
 }
 
 /** A steering message was consumed (sent to the model). */

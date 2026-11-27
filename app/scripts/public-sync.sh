@@ -108,6 +108,6 @@ git add -A --force   # every file here is tracked in the private repository, als
 if git diff --cached --quiet; then echo "the public checkout already holds this snapshot"; exit 0; fi
 echo "to publish: $(git diff --cached --shortstat)"
 NAME="$(git -C "$ROOT" config user.name)"
-git -c user.name="$NAME" -c user.email="${PUBLIC_SYNC_EMAIL:-$NAME@users.noreply.github.com}" commit -q -m "sync: 同步到 $SHA（$VERSION）"
-echo "committed $(git rev-parse --short HEAD) in $DEST: sync: 同步到 $SHA（$VERSION）"
+git -c user.name="$NAME" -c user.email="${PUBLIC_SYNC_EMAIL:-$NAME@users.noreply.github.com}" commit -q -m "sync: 同步到 ${SHA}（${VERSION}）"
+echo "committed $(git rev-parse --short HEAD) in $DEST: sync: 同步到 ${SHA}（${VERSION}）"
 echo "not pushed; to publish: git -C \"$DEST\" push origin main"

@@ -796,10 +796,20 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 			}
 			this._iconPath = iconPath ? URI.file(iconPath) : undefined;
 
+			// Dispatch IDE: a test instance's window comes up without activating the app, so it never takes the person's
+			// keyboard focus (task-4cpnb). A window created shown makes macOS bring the app to the front at once.
+			const showInactive = !!process.env['DISPATCH_E2E_INSTANCE'] && options.show !== false;
+			if (showInactive) {
+				options.show = false;
+			}
+
 			// Create the browser window
 			mark('code/willCreateCodeBrowserWindow');
 			this._win = new electron.BrowserWindow(options);
 			mark('code/didCreateCodeBrowserWindow');
+			if (showInactive) {
+				this._win.showInactive();
+			}
 
 			this._id = this._win.id;
 			this.setWin(this._win, options);

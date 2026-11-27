@@ -959,6 +959,10 @@ def start(name=DEFAULT_NAME, app=None, folder="", agents=False, do_seed=True, po
     binary = app_binary(app)
     if not os.path.isfile(binary):
         raise E2EError("no_app", "App 里没有可执行文件：%s" % binary)
+    hider = os.path.join(SCRIPTS, "hide-windows.mjs")
+    if hiding_wanted() and not os.path.isfile(hider):
+        # without it the windows would come up in front of the person: nothing is started (task-4cpnb)
+        raise E2EError("not_hidden", "这份 dispatch CLI 缺 %s，藏不住测试窗口，没起实例；换带它的 CLI（仓库里的 app/cli/dispatch.py 或新版 App）" % hider)
     root = os.path.join(root_dir(), name)
     if os.path.lexists(root):
         if not os.path.isfile(os.path.join(root, MARKER)):
@@ -1118,7 +1122,8 @@ def start(name=DEFAULT_NAME, app=None, folder="", agents=False, do_seed=True, po
     if rec.get("inspect_port"):
         rec["hidden"] = hide_windows(rec)  # before its first window: off the person's screen from the start
         if not rec["hidden"].get("ok"):
-            log("注意：没能把测试实例 %s 的窗口藏起来：%s" % (name, rec["hidden"].get("error")))
+            # a start that went on here put both windows in front of the person (task-4cpnb): stop it instead
+            not_hidden(rec, "没能把窗口藏起来：%s" % rec["hidden"].get("error"), log)
     pages = wait_ready(p, port, wait, log)
     if not pages:
         stop(name, log=log)
@@ -1127,8 +1132,18 @@ def start(name=DEFAULT_NAME, app=None, folder="", agents=False, do_seed=True, po
         pages = open_agents(rec, rec["folder"], log=log) or pages
     rec["windows"] = [t.get("title", "") for t in pages]
     rec["on_screen"] = check_hidden(rec, log=log)
+    if rec["on_screen"]:
+        not_hidden(rec, "%d 个窗口在屏幕上看得见（%s），再藏一次也没藏住" % (len(rec["on_screen"]), rec["on_screen"]), log)
     write_record(rec)
     return rec
+
+
+def not_hidden(rec, why, log=print):
+    """A test window the person could see: the instance is stopped and the start fails (DISPATCH_E2E_SHOW=1 is
+    for someone who wants to watch)."""
+    write_record(rec)
+    stop(rec["name"], log=log)
+    raise E2EError("not_hidden", "测试实例 %s %s；已结束这个实例，免得它留在你屏幕上。想看着它跑就设 DISPATCH_E2E_SHOW=1" % (rec["name"], why))
 
 
 def open_agents(rec, folder, wait=90, log=print):
@@ -1213,15 +1228,28 @@ def hiding_wanted():
 
 def hide_windows(rec, wait=60):
     """Put the hiding into the instance's main process (hide-windows.mjs, run by the app's own Electron as
-    Node). Returns its answer: {"ok": bool, "windows": n, "error": …}."""
+    Node). Returns its answer: {"ok": bool, "windows": n, "error": …}. When the helper gives no answer, the error
+    says why in its own words (exit code, stderr): an empty stdout read as "list index out of range" hid that the
+    app's CLI had no hide-windows.mjs (task-4cpnb)."""
+    script = os.path.join(SCRIPTS, "hide-windows.mjs")
+    if not os.path.isfile(script):
+        return {"ok": False, "error": "%s is missing: this copy of the dispatch CLI cannot hide test windows" % script}
     env = {k: v for k, v in os.environ.items() if not k.startswith(("VSCODE_", "ELECTRON_"))}
     env["ELECTRON_RUN_AS_NODE"] = "1"
     try:
-        r = subprocess.run([rec["binary"], os.path.join(SCRIPTS, "hide-windows.mjs"), str(rec["inspect_port"]), str(int(wait * 1000)), str(rec.get("port") or 0)],
+        r = subprocess.run([rec["binary"], script, str(rec["inspect_port"]), str(int(wait * 1000)), str(rec.get("port") or 0)],
                            env=env, capture_output=True, text=True, timeout=wait + 20, stdin=subprocess.DEVNULL)
-        return json.loads(r.stdout.strip().splitlines()[-1])
-    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired) as e:
+    except (OSError, subprocess.TimeoutExpired) as e:
         return {"ok": False, "error": str(e)[:300]}
+    for line in reversed(r.stdout.strip().splitlines()):
+        try:
+            got = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(got, dict) and "ok" in got:
+            return got
+    said = (r.stderr.strip() or r.stdout.strip() or "nothing")[-300:]
+    return {"ok": False, "error": "hide-windows.mjs gave no answer (exit %s): %s" % (r.returncode, said)}
 
 
 def onscreen_windows(pid):
@@ -1236,17 +1264,22 @@ def onscreen_windows(pid):
 
 
 def check_hidden(rec, tries=10, log=print):
-    """After the start: say loudly when a window of the instance can be seen on the screen."""
+    """After the start: the instance's windows a person can see now ([] none, None cannot be read). A window still
+    seen after `tries` looks is hidden once more (the hook in the main process hides the windows it finds) and
+    looked at again; what is still seen then is said loudly and returned."""
     if not rec.get("inspect_port"):
         return None
     shown = None
-    for _ in range(tries):
-        shown = onscreen_windows(rec["pid"])
-        if not shown:
-            return shown
-        time.sleep(0.5)
-    if shown:
-        log("注意：测试实例 %s 有 %d 个窗口在屏幕上看得见（%s），没能藏起来" % (rec["name"], len(shown), shown))
+    for again in (False, True):
+        if again:
+            log("测试实例 %s 有 %d 个窗口在屏幕上看得见（%s），再藏一次" % (rec["name"], len(shown), shown))
+            rec["hidden_again"] = hide_windows(rec, wait=15)
+        for _ in range(tries):
+            shown = onscreen_windows(rec["pid"])
+            if not shown:
+                return shown
+            time.sleep(0.5)
+    log("注意：测试实例 %s 有 %d 个窗口在屏幕上看得见（%s），没能藏起来" % (rec["name"], len(shown), shown))
     return shown
 
 

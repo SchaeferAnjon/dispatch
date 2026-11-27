@@ -109,5 +109,5 @@ test('one sub-agent\'s step: its own newest running call in the reply that sent 
 	assert.equal(M.subagentStep(parts, { resource: 'agent-host://s/1#subagent/call-b', fragment: 'subagent/call-b' }), 'Reading b.md', 'by the call in the chat\'s fragment');
 	assert.equal(M.subagentStep(parts, { resource: 'agent-host://s/2/subagent/call-b', fragment: '' }), 'Reading b.md', 'by the call at the end of its path');
 	assert.equal(M.subagentStep(parts, { resource: 'agent-host://s/1/subagent/call-c', fragment: '' }), '', 'a sub-agent not in this reply: nothing');
-	assert.equal(M.subagentStep(parts.slice(0, 2), { resource: 'agent-host://s/1/subagent/call-a', fragment: '' }), '', 'between calls: nothing running');
+	assert.equal(M.subagentStep(parts.slice(0, 2), { resource: 'agent-host://s/1/subagent/call-a', fragment: '' }), 'Reading a.md', 'between calls: the last one it ran, as VS Code\'s block shows it (task-518qw)');
 });

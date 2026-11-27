@@ -1,129 +1,41 @@
-/* Dispatch IDE: sub-agents under their session in the sessions list (dispatchSubAgentRows.ts). */
+/* Dispatch IDE: sub-agents under their session in the sessions list (dispatchSubAgentRows.ts): VS Code's sub-agent pill
+   in place of the chat row's title line (dispatchSubAgentPill.css), "N finished" below the working ones. */
 
-.session-chat-item.dispatch-subagent .session-chat-title-row {
-	gap: 4px;
-}
-
-.session-chat-item.dispatch-subagent .session-chat-title {
-	flex: 0 1 auto;
-	min-width: 0;
-}
-
-/* in a narrow list the model gives way first, the name keeps its words */
-.session-chat-item.dispatch-subagent .dispatch-subagent-model {
-	flex: 0 1000 auto;
-	min-width: 0;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-	color: var(--vscode-descriptionForeground);
-}
-
-.session-chat-item.dispatch-subagent .dispatch-subagent-time {
-	flex: none;
-	margin-left: auto;
-	padding-left: 6px;
-	font-size: 11px;
-	font-variant-numeric: tabular-nums;
-	color: var(--vscode-descriptionForeground);
-	opacity: 0.8;
-}
-
-/* the state block in place of the row's status icon: purple breathing while it works, teal once back, coral stopped */
-.session-chat-item.dispatch-subagent .session-chat-icon {
+.session-chat-item:is(.dispatch-subagent, .dispatch-subagent-more) > :is(.session-chat-title-row, .session-approval-row) {
 	display: none;
 }
 
-.session-chat-item.dispatch-subagent .dispatch-subagent-block {
-	flex: none;
-	display: inline-flex;
-	align-items: center;
+/* the pill draws its own L-shaped line to the step: the list's own guide lines would be a second set */
+.session-chat-item:is(.dispatch-subagent, .dispatch-subagent-more)::before,
+.session-chat-item:is(.dispatch-subagent, .dispatch-subagent-more)::after {
+	display: none;
+}
+
+/* the sidebar is narrow: the name and how long it has run stay, the agent's kind goes (it is in the pill's hover) */
+.session-chat-item.dispatch-subagent .chat-subagent-pill-agent-type {
+	display: none;
+}
+
+.session-chat-item.dispatch-subagent {
+	flex-direction: row;
+	align-items: flex-start;
+	gap: var(--vscode-spacing-size40);
+	padding-top: var(--vscode-spacing-size20);
+}
+
+.session-chat-item.dispatch-subagent > .dispatch-subagent-pill {
+	flex: 1 1 auto;
+}
+
+.session-chat-item.dispatch-subagent > .dispatch-subagent-dismiss {
+	margin-top: var(--vscode-spacing-size20);
+}
+
+.session-chat-item.dispatch-subagent-more {
 	justify-content: center;
-	width: 16px;
-	height: 16px;
-	margin-right: 2px;
 }
 
-/* "Show N finished": a quiet link row, no status blocks */
-.session-chat-item.dispatch-subagent-more .session-chat-icon {
-	visibility: hidden;
-}
 
-.session-chat-item.dispatch-subagent-more .session-chat-title {
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--vscode-descriptionForeground);
-	opacity: 0.8;
-}
-
-/* the count at the end of a session's row */
-/* the count right after the session's name: the name keeps its own width, the rest of the row moves right */
-.session-item .dispatch-has-subagents .session-title {
-	flex: 0 1 auto;
-	min-width: 0;
-}
-
-.session-item .dispatch-has-subagents .dispatch-subagent-count {
-	margin-right: auto;
-}
-
-/* the count stays under the pointer when the row shows its own buttons on hover (Pin, Done …, sessionsList.css):
-   on a row with sub-agents what comes and goes with the hover keeps its room and only shows or hides, so the name
-   does not narrow and the count does not slide; else a press on the count landed on Pin (10-09) */
-.sessions-list-control .monaco-list-row .session-title-row.dispatch-has-subagents .session-title {
-	margin-right: 0;
-}
-
-.sessions-list-control .monaco-list-row .session-title-row.dispatch-has-subagents .session-title-toolbar {
-	display: block;
-	visibility: hidden;
-}
-
-.sessions-list-control.compact .monaco-list-row .session-item:not(.quick-chat):not(.renaming) .session-title-row.dispatch-has-subagents .session-compact-hover-description {
-	display: flex;
-	visibility: hidden;
-}
-
-.sessions-list-control .monaco-list-row:hover .session-title-row.dispatch-has-subagents :is(.session-title-toolbar, .session-compact-hover-description),
-.sessions-list-control .monaco-list-row.focused:not(.selected) .session-title-row.dispatch-has-subagents :is(.session-title-toolbar, .session-compact-hover-description),
-.sessions-list-control .monaco-list:focus-within .monaco-list-row.focused .session-title-row.dispatch-has-subagents :is(.session-title-toolbar, .session-compact-hover-description),
-.sessions-list-control .session-item.archive-onboarding .session-title-row.dispatch-has-subagents .session-title-toolbar {
-	visibility: visible;
-}
-
-/* the waiting phrase and the unread dot give their place to the buttons by hiding, not by leaving the line */
-.agent-sessions-viewpane .monaco-list-row:is(:hover, .focused:not(.selected)) .session-item.dispatch-waiting .session-title-row.dispatch-has-subagents .dispatch-waiting-row-phrase,
-.agent-sessions-viewpane .monaco-list:focus-within .monaco-list-row.focused .session-item.dispatch-waiting .session-title-row.dispatch-has-subagents .dispatch-waiting-row-phrase,
-.agent-sessions-viewpane .monaco-list-row:is(:hover, .focused:not(.selected)) .session-item.unread:not(.needs-input):not(.dispatch-waiting) .session-title-row.dispatch-has-subagents .dispatch-waiting-row-unread,
-.agent-sessions-viewpane .monaco-list:focus-within .monaco-list-row.focused .session-item.unread:not(.needs-input):not(.dispatch-waiting) .session-title-row.dispatch-has-subagents .dispatch-waiting-row-unread {
-	display: block !important;
-	visibility: hidden;
-}
-
-.session-item .dispatch-subagent-count {
-	display: inline-flex;
-	align-items: center;
-	gap: 1px;
-	height: 16px;
-	margin-left: 6px;
-	padding: 0 6px 0 2px;
-	border: 0;
-	border-radius: var(--dispatch-radius-button);
-	/* a quiet chip, not a blue badge (DESIGN.md: colour only for status) */
-	background: var(--vscode-toolbar-hoverBackground);
-	color: var(--vscode-descriptionForeground);
-	font: inherit;
-	font-size: 11px;
-	font-weight: 500;
-	font-variant-numeric: tabular-nums;
-	cursor: pointer;
-}
-
-.session-item .dispatch-subagent-count .codicon {
-	font-size: 10px;
-	transition: transform 0.2s ease-out;
-}
-
-.session-item .dispatch-subagent-count .codicon.shut {
-	transform: rotate(-90deg);
+.session-chat-item.dispatch-subagent-more .dispatch-subagent-dismiss {
+	margin-left: auto;
 }

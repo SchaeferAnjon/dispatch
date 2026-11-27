@@ -20,7 +20,7 @@ then). Nothing here changes the project.
   dispatch write commit-message [--folder F] [--agent A] [--json]   (everything uncommitted, as a commit takes it)
   dispatch write pr             [--folder F] [--base B] [--agent A] [--json]
   dispatch write branch         [--folder F] [--from TEXT] [--agent A] [--json]
-  dispatch write walk           [--agent A] [--model M] [--json]   ({request, stops: [{file, start, end, kind, code}], why?}
+  dispatch write walk           [--agent A] [--model M] [--json]   ({request, stops: [{file, start, end, kind, code}]}
                                 on stdin: one sentence per stop of a turn's Walk me through, in one answer)
 
 The writing is done by the default agent (`dispatch engines use --default`, else the first agent Dispatch runs
@@ -994,30 +994,6 @@ def walk_prompt(request, stops):
     return "\n".join(lines)
 
 
-WHY_MAX_STOPS = 16  # Why on the blocks of the Changes tab (task-39x97): every block shown with nothing said, at once
-
-
-def why_prompt(request, stops):
-    """Why on the blocks of Changes (task-39x97): for every block, why the agent changed it this way, one call."""
-    request = (request or "").strip()
-    share = max(300, WALK_BUDGET // max(1, len(stops)))
-    lines = [
-        "An agent changed code" + (f" while working on this request:\n{request[:600]}" if request else "."), "",
-        f"Below are {len(stops)} blocks it changed. For each block write one or two plain sentences, at most 40 words "
-        "together, that say why it was changed this way: what it is for and what would be missing without it, for a "
-        "person who does not read code. Do not retell the syntax and do not start with \"This code\" or \"This change\".",
-        "Write in the language of the request (English when there is none).",
-        f"Return a JSON array of exactly {len(stops)} strings, in the same order as the blocks.", ""]
-    for i, s in enumerate(stops, 1):
-        start, end = s.get("start") or 1, s.get("end") or s.get("start") or 1
-        where = "a new file" if s.get("kind") == "new" else (f"line {start}" if start == end else f"lines {start}-{end}")
-        code = str(s.get("code") or "")
-        if len(code) > share:
-            code = code[:share].rsplit("\n", 1)[0] + "\n…"
-        lines += [f"Block {i}: {s.get('file') or '?'} ({where}; - was there before, + is there now)", "```", code, "```", ""]
-    return "\n".join(lines)
-
-
 def parse_walk(raw, n):
     """The sentences of an answer, exactly `n` of them ('' where it gave none); [] when it is not a JSON list."""
     text = THINK.sub("", raw or "")
@@ -1034,12 +1010,11 @@ def parse_walk(raw, n):
 
 def write_walk(data, prefer="", timeout=90, model="", only=False):
     """One answer for every stop of a turn's walk that the agent's own words did not cover: one model call a turn."""
-    why = bool(data.get("why"))
-    stops = [s for s in (data.get("stops") or []) if isinstance(s, dict)][:WHY_MAX_STOPS if why else WALK_MAX_STOPS]
+    stops = [s for s in (data.get("stops") or []) if isinstance(s, dict)][:WALK_MAX_STOPS]
     if not stops:
         return {"kind": "walk", "texts": [], "ai": False, "by": "", "by_label": "", "reason": "no stops"}
     t0 = time.time()
-    prompt = (why_prompt if why else walk_prompt)(str(data.get("request") or ""), stops)
+    prompt = walk_prompt(str(data.get("request") or ""), stops)
     raw, by, errors = ask_writers(WALK_SYSTEM, prompt, prefer, timeout, model=model, only=only)
     texts = parse_walk(raw, len(stops)) if raw else []
     ai = any(texts)

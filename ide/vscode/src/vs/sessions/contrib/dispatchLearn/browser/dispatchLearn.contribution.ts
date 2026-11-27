@@ -14,10 +14,10 @@
  *    and the lines lit, one sentence each; under Talk a pill offers it when the turn ends, Now and the side chat
  *    card's ⋯ offer it always.
  *  Words you know (the prototype's frame 7) is only a seam this time: ILearnKnownWords in dispatchLearnModel.ts.
- *  - The third part (task-39x97): Now's why line (dispatchNowEditor.ts, the sums in common/dispatchExplainModel.ts),
+ *  - The third part (task-39x97): Now's why line (dispatchNowEditor.ts, the sums in common/dispatchExplainModel.ts) and
  *    Explain terms (the dotted line under a developer word, workbench/.../dispatchTermMarks.ts; Ask more is
- *    dispatchAskTerm.ts) and Why / More on every block of Changes (dispatchHunkWhy.ts, the words from
- *    IDispatchWalkService.why).
+ *    dispatchAskTerm.ts). Changes has no Why / More of its own: it is VS Code's as it is (the user, 2026-11-16); a
+ *    question about a diff goes through Ask Question on its selected text.
  *--------------------------------------------------------------------------------------------*/
 
 import './media/dispatchLearn.css';
@@ -49,7 +49,6 @@ import { eventsOfCall, eventsOfEdit, ITurnContext, localRoots } from './dispatch
 import { DispatchTalkCards } from './dispatchTalkCards.js';
 import './dispatchTerminalAsk.js';
 import './dispatchWalk.js';
-import './dispatchHunkWhy.js';
 import './dispatchAskTerm.js';
 import { EXPLAIN_TERMS_SETTING } from '../../../../workbench/contrib/chat/common/dispatchTerms.js';
 import { IDispatchWalkService } from './dispatchWalkService.js';

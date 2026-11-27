@@ -42,7 +42,7 @@ import { DISPATCH_POINT_TALK_CHANNEL, IDispatchPointTalkMainService, IPointTalkA
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../../workbench/common/contributions.js';
 import { IsSessionsWindowContext } from '../../../../workbench/common/contextkeys.js';
 import { IHostService } from '../../../../workbench/services/host/browser/host.js';
-import { IChatWidget, IChatWidgetService } from '../../../../workbench/contrib/chat/browser/chat.js';
+import { IChatWidgetService } from '../../../../workbench/contrib/chat/browser/chat.js';
 import { IChatExecuteActionContext } from '../../../../workbench/contrib/chat/browser/actions/chatExecuteActions.js';
 import { setDispatchChatPictureHooks } from '../../../../workbench/contrib/chat/browser/attachments/dispatchChatPictureHooks.js';
 import { IChatRequestVariableEntry } from '../../../../workbench/contrib/chat/common/attachments/chatVariableEntries.js';
@@ -55,6 +55,7 @@ import { onDidChangeDispatchKeys } from '../../dispatchSettings/browser/dispatch
 import { clock, composeMessage, ILine, liveWords, pickFrames, sentencesOf, spotBox } from '../common/dispatchPointTalkModel.js';
 import { IPointTalkPermissionState, PointTalkCard } from '../browser/dispatchPointTalkCards.js';
 import { IPointTalkReviewFrame, PointTalkInputSlot } from '../browser/dispatchPointTalkInput.js';
+import { chatBoxOnScreen, DispatchPointTalkNewSessionMenu, IPointTalkBox, isPointTalkBox, onDidAddPointTalkComposer, onDidRemovePointTalkComposer, onDidSendPointTalkComposer, POINT_TALK_NEW_SESSION, pointTalkChatBox, pointTalkComposers } from '../browser/dispatchPointTalkBox.js';
 import { IPointTalkSavedTake, POINT_TALK_FRAME_META, PointTalkMessages } from '../browser/dispatchPointTalkMessage.js';
 import { IPointTalkCapture, IPointTalkSources, IPointTalkTake, PointTalkRecording } from '../browser/dispatchPointTalkRecorder.js';
 import { IPointTalkTestTake, pointTalkTest, PointTalkTestSources, TEST_DISPLAY } from '../browser/dispatchPointTalkTestSources.js';
@@ -113,7 +114,7 @@ interface IReview {
 }
 
 interface IRecordingState {
-	readonly widget: IChatWidget;
+	readonly box: IPointTalkBox;
 	readonly recording: PointTalkRecording;
 	readonly slot: PointTalkInputSlot;
 	readonly prepared: IPointTalkPrepared;
@@ -140,8 +141,8 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 	private starting = false;
 	private readonly reviews = new Map<string, IReview>();
 	/** The review drawn in a box right now, and the box's slot. */
-	private shown: { widget: IChatWidget; slot: PointTalkInputSlot; review: IReview; store: DisposableStore } | undefined;
-	private card: { widget: IChatWidget; card: PointTalkCard; timer: number; wants: 'start' | 'none'; sim?: IPointTalkPermissionState; keyWatch?: IDisposable } | undefined;
+	private shown: { box: IPointTalkBox; slot: PointTalkInputSlot; review: IReview; store: DisposableStore } | undefined;
+	private card: { box: IPointTalkBox; card: PointTalkCard; timer: number; wants: 'start' | 'none'; sim?: IPointTalkPermissionState; keyWatch?: IDisposable } | undefined;
 	private readonly messages: PointTalkMessages;
 	private shortcutWarned = false;
 
@@ -184,9 +185,17 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			this.syncShortcut();
 		});
 		this._register(this.keybindingService.onDidUpdateKeybindings(() => this.syncShortcut()));
-		this._register(this.chatWidgetService.onDidAddWidget(w => this.watchWidget(w)));
+		this._register(this.chatWidgetService.onDidAddWidget(w => this.watchBox(pointTalkChatBox(w))));
 		for (const w of this.chatWidgetService.getAllWidgets()) {
-			this.watchWidget(w);
+			this.watchBox(pointTalkChatBox(w));
+		}
+		// the new-session composer (task-3w0lf): drawn again, it shows its review again; its send ends the review even
+		// when sending took it down already
+		this._register(onDidAddPointTalkComposer(b => this.showReviewFor(b)));
+		this._register(onDidRemovePointTalkComposer(b => this.boxGone(b)));
+		this._register(onDidSendPointTalkComposer(b => this.sent(b)));
+		for (const b of pointTalkComposers()) {
+			this.showReviewFor(b);
 		}
 		this._register(toDisposable(() => {
 			void this.rec?.recording.discard();
@@ -217,32 +226,49 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 
 	// ---------------------------------------------------------------- which box
 
-	private widgetFor(context: IChatExecuteActionContext | undefined): IChatWidget | undefined {
+	/** The camera's own box; from the keyboard (⌃⇧S): the new-session composer with the focus, the open session's box
+	 *  in sight, the new-session composer in sight, the open session's box. */
+	private boxFor(context: IChatExecuteActionContext | IPointTalkBox | undefined): IPointTalkBox | undefined {
+		if (isPointTalkBox(context)) {
+			return context.shown() ? context : undefined;
+		}
 		const fromToolbar = context?.widget;
 		if (fromToolbar && fromToolbar.input?.element?.isConnected) {
-			return fromToolbar;
+			return pointTalkChatBox(fromToolbar);
+		}
+		const composers = pointTalkComposers().filter(b => b.shown());
+		const focused = mainWindow.document.activeElement;
+		const withFocus = focused && composers.find(b => b.box()?.contains(focused));
+		if (withFocus) {
+			return withFocus;
 		}
 		const session = this.sessionsService.activeSession.get();
 		const widget = session && this.chatWidgetService.getWidgetBySessionResource(session.mainChat.get().resource);
-		return widget?.input?.element?.isConnected ? widget : undefined;
+		const connected = widget?.input?.element?.isConnected ? widget : undefined;
+		if (connected && chatBoxOnScreen(connected)) {
+			return pointTalkChatBox(connected);
+		}
+		return composers.at(-1) ?? (connected ? pointTalkChatBox(connected) : undefined);
 	}
 
-	private boxOf(widget: IChatWidget): HTMLElement | undefined {
-		return widget.input.element.querySelector<HTMLElement>('.chat-input-container') ?? undefined;
+	private watchBox(box: IPointTalkBox): void {
+		this._register(box.onDidChangeKey(() => this.showReviewFor(box)));
+		this._register(box.onDidSend(() => this.sent(box)));
 	}
 
-	private sessionOf(widget: IChatWidget): string | undefined {
-		return widget.viewModel?.sessionResource.toString();
-	}
-
-	private watchWidget(widget: IChatWidget): void {
-		this._register(widget.onDidChangeViewModel(() => this.showReviewFor(widget)));
-		this._register(widget.onDidAcceptInput(() => this.sent(widget)));
+	/** A new-session composer was taken down: its review waits for the next one (its draft brings the text back). */
+	private boxGone(box: IPointTalkBox): void {
+		if (this.shown?.box === box) {
+			this.hideShown();
+		}
+		if (this.card?.box === box) {
+			this.hideCard();
+		}
 	}
 
 	// ---------------------------------------------------------------- start and stop
 
-	async toggle(context?: IChatExecuteActionContext): Promise<void> {
+	async toggle(context?: IChatExecuteActionContext | IPointTalkBox): Promise<void> {
 		if (this.rec) {
 			if (!this.rec.stopping) {
 				await this.stop();
@@ -252,12 +278,12 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		if (this.starting) {
 			return;
 		}
-		const widget = this.widgetFor(context);
-		if (!widget) {
+		const box = this.boxFor(context);
+		if (!box) {
 			this.notificationService.info(localize('dispatchPointTalk.noSession', "Open a session first: Point and talk sends to the session that is open."));
 			return;
 		}
-		const session = this.sessionOf(widget);
+		const session = box.key();
 		if (session && this.reviews.has(session)) {
 			this.shown?.slot.focus();
 			return;
@@ -265,16 +291,16 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		this.starting = true;
 		try {
 			if (!await this.hasKey()) {
-				this.showCard(widget, 'key');
+				this.showCard(box, 'key');
 				return;
 			}
 			const access = await this.access();
 			if (access.microphone !== 'granted' || access.screen !== 'granted' || access.relaunch) {
-				this.showCard(widget, 'permissions', access);
+				this.showCard(box, 'permissions', access);
 				return;
 			}
 			this.hideCard();
-			await this.start(widget);
+			await this.start(box);
 		} finally {
 			this.starting = false;
 		}
@@ -298,8 +324,8 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		return { microphone: a.microphone, screen: a.screen, relaunch: a.relaunch };
 	}
 
-	private async start(widget: IChatWidget): Promise<void> {
-		const box = this.boxOf(widget);
+	private async start(target: IPointTalkBox): Promise<void> {
+		const box = target.box();
 		if (!box) {
 			return;
 		}
@@ -335,7 +361,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			openVideo: () => undefined,
 			send: () => undefined,
 		}));
-		const state: IRecordingState = { widget, recording, slot, prepared, note: widget.getInput(), store, bar: false, stopping: false };
+		const state: IRecordingState = { box: target, recording, slot, prepared, note: target.getInput(), store, bar: false, stopping: false };
 		this.rec = state;
 		slot.showRecording({ clock: '0:00', level: [0, 0, 0, 0, 0], words: '', spot: 0 });
 		try {
@@ -414,7 +440,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			state.bar = false;
 			void this.main.hideBar();
 		}
-		const { widget, recording, slot } = state;
+		const { recording, slot } = state;
 		slot.showPicking(recording.elapsed, recording.videoUri?.fsPath ?? '');
 		// Dispatch comes to the front, the cursor in the box
 		if (!mainWindow.document.hasFocus()) {
@@ -433,15 +459,19 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		}
 		const review = await this.pick(take, state.note);
 		this.rec = undefined;
-		state.store.dispose();
-		const session = this.sessionOf(widget);
-		if (!session) {
+		// the box recorded into, or the one drawn in its place meanwhile (a new-session composer drawn again)
+		const key = state.box.key();
+		const box = state.box.shown() ? state.box : pointTalkComposers().find(b => b.shown() && b.key() === key);
+		if (!key || !box) {
+			state.store.dispose();
 			review.store.dispose();
 			return;
 		}
-		this.reviews.set(session, review);
-		await this.applyToBox(widget, review);
-		this.showReviewFor(widget, true);
+		this.reviews.set(key, review);
+		await this.applyToBox(box, review);
+		// "Picking frames…" stays until the review takes its place: the box never shows its bare editor in between
+		state.store.dispose();
+		this.showReviewFor(box, true);
 		pointTalkTest.events.push('review');
 	}
 
@@ -454,7 +484,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		await state.recording.discard();
 		state.store.dispose();
 		pointTalkTest.events.push('discarded');
-		state.widget.focusInput?.();
+		state.box.focusInput();
 	}
 
 	// ---------------------------------------------------------------- the frames picked
@@ -476,7 +506,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 	}
 
 	/** The message into the box: the keyframes as attachments (boxes burned in), the text hidden behind the review. */
-	private async applyToBox(widget: IChatWidget, review: IReview): Promise<void> {
+	private async applyToBox(box: IPointTalkBox, review: IReview): Promise<void> {
 		const entries: IChatRequestVariableEntry[] = [];
 		const stamp = generateUuid().slice(0, 8);
 		for (const f of review.frames) {
@@ -503,12 +533,12 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 				_meta: { [DispatchMarksMetadataKey]: meta, [POINT_TALK_FRAME_META]: { n: f.n, t: f.t, folder: review.take.folder.fsPath } },
 			} as IChatRequestVariableEntry);
 		}
-		widget.attachmentModel.addContext(...entries);
-		this.writeText(widget, review);
+		box.addAttachments(entries);
+		this.writeText(box, review);
 	}
 
-	private writeText(widget: IChatWidget, review: IReview): void {
-		widget.setInput(composeMessage({ note: review.note, duration: review.take.duration, lines: review.lines, folder: review.take.folder.fsPath, video: review.take.video.fsPath }));
+	private writeText(box: IPointTalkBox, review: IReview): void {
+		box.setInput(composeMessage({ note: review.note, duration: review.take.duration, lines: review.lines, folder: review.take.folder.fsPath, video: review.take.video.fsPath }));
 		void this.save(review);
 	}
 
@@ -527,35 +557,43 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 
 	// ---------------------------------------------------------------- reviewing in the box
 
-	private showReviewFor(widget: IChatWidget, fresh = false): void {
-		const session = this.sessionOf(widget);
+	private showReviewFor(target: IPointTalkBox, fresh = false): void {
+		const session = target.key();
 		const review = session ? this.reviews.get(session) : undefined;
-		if (this.shown && (this.shown.widget !== widget || this.shown.review !== review)) {
-			if (this.shown.widget === widget) {
-				this.hideShown();
-			}
+		if (this.shown && this.shown.box === target && this.shown.review !== review) {
+			this.hideShown();
 		}
-		if (!review || (this.shown?.review === review && this.shown.widget === widget && !fresh)) {
+		if (!session || !review || (this.shown?.review === review && this.shown.box === target && !fresh)) {
 			return;
 		}
-		const box = this.boxOf(widget);
+		const box = target.box();
 		if (!box) {
+			return;
+		}
+		// a new-session composer drawn again without the keyframes (its draft did not keep them): the review is over
+		const ids = new Set(target.attachments.map(a => a.id));
+		if (review.frames.some(f => !ids.has(f.entryId))) {
+			this.reviews.delete(session);
+			if (this.shown?.review === review) {
+				this.hideShown();
+			}
+			review.store.dispose();
 			return;
 		}
 		this.hideShown();
 		const store = new DisposableStore();
 		const slot = store.add(new PointTalkInputSlot(box, {
-			discard: () => this.dropReview(review, widget, true),
+			discard: () => this.dropReview(review, target, true),
 			stop: () => undefined,
-			removeFrame: n => this.removeFrame(widget, review, n),
-			drawFrame: n => this.drawFrame(widget, review, n),
-			editLine: (i, text) => this.editLine(widget, review, i, text),
+			removeFrame: n => this.removeFrame(target, review, n),
+			drawFrame: n => this.drawFrame(target, review, n),
+			editLine: (i, text) => this.editLine(target, review, i, text),
 			openVideo: () => this.openVideo(review.take.video.fsPath),
-			send: () => void widget.acceptInput(),
+			send: () => target.send(),
 		}));
-		this.shown = { widget, slot, review, store };
+		this.shown = { box: target, slot, review, store };
 		// the pen's draw tool swapped a frame's attachment: the frame follows it
-		store.add(widget.attachmentModel.onDidChange(() => this.followAttachments(widget, review)));
+		store.add(target.onDidChangeAttachments(() => this.followAttachments(target, review)));
 		this.render(fresh);
 		slot.focus();
 	}
@@ -581,7 +619,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		this.shown = undefined;
 	}
 
-	private removeFrame(widget: IChatWidget, review: IReview, n: number): void {
+	private removeFrame(box: IPointTalkBox, review: IReview, n: number): void {
 		const f = review.frames.find(x => x.n === n);
 		if (!f) {
 			return;
@@ -592,30 +630,30 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 				l.n = undefined;
 			}
 		}
-		widget.attachmentModel.delete(f.entryId);
-		this.writeText(widget, review);
+		box.deleteAttachments([f.entryId]);
+		this.writeText(box, review);
 		this.render();
 		pointTalkTest.events.push(`removed ${n}`);
 	}
 
-	private drawFrame(widget: IChatWidget, review: IReview, n: number): void {
+	private drawFrame(target: IPointTalkBox, review: IReview, n: number): void {
 		const f = review.frames.find(x => x.n === n);
-		const box = this.boxOf(widget);
+		const box = target.box();
 		if (!f || !box) {
 			return;
 		}
 		void dispatchDrawInputController()?.openFor({
 			box,
-			row: box.querySelector<HTMLElement>('.chat-attachments-container') ?? undefined,
-			entries: () => widget.attachmentModel.attachments,
-			replace: (oldId, entry) => widget.attachmentModel.updateContext([oldId], [entry]),
+			row: target.attachRow(),
+			entries: () => target.attachments,
+			replace: (oldId, entry) => target.replaceAttachment(oldId, entry),
 			focus: () => this.shown?.slot.focus(),
 		}, f.entryId);
 	}
 
-	private followAttachments(widget: IChatWidget, review: IReview): void {
+	private followAttachments(box: IPointTalkBox, review: IReview): void {
 		const byN = new Map<number, IChatRequestVariableEntry>();
-		for (const e of widget.attachmentModel.attachments) {
+		for (const e of box.attachments) {
 			const meta = e._meta?.[POINT_TALK_FRAME_META] as { n?: number } | undefined;
 			if (typeof meta?.n === 'number') {
 				byN.set(meta.n, e);
@@ -643,27 +681,27 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		}
 	}
 
-	private editLine(widget: IChatWidget, review: IReview, index: number, text: string): void {
+	private editLine(box: IPointTalkBox, review: IReview, index: number, text: string): void {
 		const line = review.lines[index];
 		if (!line) {
 			return;
 		}
 		line.text = text;
 		const f = line.n !== undefined ? review.frames.find(x => x.n === line.n) : undefined;
-		const entry = f && widget.attachmentModel.attachments.find(e => e.id === f.entryId);
+		const entry = f && box.attachments.find(e => e.id === f.entryId);
 		const marks = entry && readDispatchMarksMeta(entry);
 		if (entry && marks) {
 			const meta: IDispatchMarksMetadata = { ...marks, marks: marks.marks.map(m => m.n === line.n ? { ...m, note: text || undefined } : m) };
-			widget.attachmentModel.updateContext([entry.id], [{ ...entry, _meta: { ...entry._meta, [DispatchMarksMetadataKey]: meta } } as IChatRequestVariableEntry]);
+			box.replaceAttachment(entry.id, { ...entry, _meta: { ...entry._meta, [DispatchMarksMetadataKey]: meta } } as IChatRequestVariableEntry);
 		}
-		this.writeText(widget, review);
+		this.writeText(box, review);
 		this.render();
 		pointTalkTest.events.push(`edited ${index}`);
 	}
 
 	/** Sent: the box goes back to normal; the recording's folder stays (the bubble reads it). */
-	private sent(widget: IChatWidget): void {
-		const session = this.sessionOf(widget);
+	private sent(box: IPointTalkBox): void {
+		const session = box.key();
 		const review = session ? this.reviews.get(session) : undefined;
 		if (!review || !session) {
 			return;
@@ -676,13 +714,13 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 		pointTalkTest.events.push('sent');
 	}
 
-	private dropReview(review: IReview, widget: IChatWidget, deleteFolder: boolean): void {
-		const session = this.sessionOf(widget);
+	private dropReview(review: IReview, box: IPointTalkBox, deleteFolder: boolean): void {
+		const session = box.key();
 		if (session) {
 			this.reviews.delete(session);
 		}
-		widget.attachmentModel.delete(...review.frames.map(f => f.entryId));
-		widget.setInput(review.note);
+		box.deleteAttachments(review.frames.map(f => f.entryId));
+		box.setInput(review.note);
 		if (this.shown?.review === review) {
 			this.hideShown();
 		}
@@ -691,7 +729,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			void this.fileService.del(review.take.folder, { recursive: true }).catch(() => undefined);
 		}
 		pointTalkTest.events.push('review-discarded');
-		widget.focusInput?.();
+		box.focusInput();
 	}
 
 	private openVideo(path: string): void {
@@ -704,12 +742,12 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 
 	// ---------------------------------------------------------------- the card
 
-	private showCard(widget: IChatWidget, kind: 'permissions' | 'key', access?: IPointTalkPermissionState): void {
-		if (this.card && this.card.widget !== widget) {
+	private showCard(box: IPointTalkBox, kind: 'permissions' | 'key', access?: IPointTalkPermissionState): void {
+		if (this.card && this.card.box !== box) {
 			this.hideCard();
 		}
 		if (!this.card) {
-			const card = new PointTalkCard(widget.input.element, {
+			const card = new PointTalkCard(box.cardHost(), {
 				allowMicrophone: () => void this.allowMicrophone(),
 				openScreenSettings: () => void this.openScreenSettings(),
 				relaunch: () => void this.relaunch(),
@@ -721,7 +759,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 				close: () => this.hideCard(),
 			});
 			const timer = mainWindow.setInterval(() => void this.pollCard(), 1000);
-			this.card = { widget, card, timer, wants: 'start' };
+			this.card = { box, card, timer, wants: 'start' };
 		}
 		pointTalkTest.events.push(`card ${kind}`);
 		if (kind === 'key') {
@@ -745,7 +783,7 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			this.hideCard();
 			void this.main.closeScreenHelp();
 			// everything is there now: the recording the person asked for starts
-			void this.toggle({ widget: c.widget });
+			void this.toggle(c.box);
 			return;
 		}
 		if (access.screen === 'granted') {
@@ -836,6 +874,8 @@ class DispatchPointTalkController extends Disposable implements IWorkbenchContri
 			words: r ? liveWords(r.recording.finalTokens, r.recording.pendingTokens) : '',
 			liveError: r?.recording.liveError,
 			reviews: this.reviews.size,
+			// which box records or reviews: the new-session composer or a session's input (task-3w0lf)
+			box: (shown?.box ?? r?.box)?.key() === POINT_TALK_NEW_SESSION ? 'new-session' : (shown ?? r) ? 'session' : undefined,
 			review: shown ? { frames: shown.review.frames.map(f => ({ n: f.n, t: f.t, box: f.box })), lines: shown.review.lines, folder: shown.review.take.folder.fsPath, video: shown.review.take.video.fsPath, duration: shown.review.take.duration } : undefined,
 			card: this.card?.card.showing,
 			events: pointTalkTest.events.slice(),
@@ -861,16 +901,21 @@ registerAction2(class extends Action2 {
 				weight: KeybindingWeight.WorkbenchContrib,
 				when: IsSessionsWindowContext,
 			},
-			menu: {
+			menu: [{
 				id: MenuId.ChatExecute,
 				group: 'navigation',
 				// after the dictation microphone (3), before send (4)
 				order: 3.5,
 				when: ContextKeyExpr.and(IsSessionsWindowContext, ChatContextKeys.location.isEqualTo(ChatAgentLocation.Chat)),
-			},
+			}, {
+				// the new-session composer's tool row, right before its send button (task-3w0lf)
+				id: DispatchPointTalkNewSessionMenu,
+				group: 'navigation',
+				when: IsSessionsWindowContext,
+			}],
 		});
 	}
-	async run(_accessor: ServicesAccessor, context?: IChatExecuteActionContext): Promise<void> {
+	async run(_accessor: ServicesAccessor, context?: IChatExecuteActionContext | IPointTalkBox): Promise<void> {
 		await controller?.toggle(context && typeof context === 'object' ? context : undefined);
 	}
 });

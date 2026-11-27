@@ -55,6 +55,7 @@ import { hasClientPluginMcpDefaultCwds, readClientPluginMcpDefaultCwd } from '..
 import { ClaudeSdkPipeline, IRematerializer, type ISdkResolvedCustomizations } from './claudeSdkPipeline.js';
 import type { IClaudeSlashCommandSnapshot } from './claudeSlashCommands.js';
 import { SubagentRegistry } from './claudeSubagentRegistry.js';
+import { DispatchSubagentMetaWatch } from './dispatchSubagentEnd.js';
 import { ClaudePermissionKind } from './claudeToolDisplay.js';
 import { getSdkMcpServerEnablement, isCustomizationSdkEligible, resolveCustomizationEnablement } from '../shared/customizationEnablementGate.js';
 import { McpServerType, type IMcpServerConfiguration } from '../../../mcp/common/mcpPlatformTypes.js';
@@ -696,6 +697,11 @@ export class ClaudeAgentSession extends Disposable {
 		}
 		this._register(pipeline.onDidProduceSignal(s => this._onDidSessionProgress.fire(this._enrichSignalWithMcpContributor(this._enrichSignalWithCredits(s)))));
 		this._pipeline = pipeline;
+		// Dispatch IDE: a background sub-agent whose end note never came ends by its meta.json (dispatchSubagentEnd.ts)
+		this._register(new DispatchSubagentMetaWatch(
+			() => DispatchSubagentMetaWatch.folder(process.env['CLAUDE_CONFIG_DIR'] || `${this._environmentService.userHome.fsPath}/.claude`, this.workingDirectory?.fsPath, this.sessionId),
+			() => !!this._pipeline && !this._pipeline.isAborted,
+			this._chatChannelUri, this.subagents, signal => this._onDidSessionProgress.fire(signal), this._fileService, this._logService));
 		// Dispatch IDE: the customizations are read when the session materializes, with the plugins' MCP servers still
 		// starting, and nothing read them again, so "Starting MCP server" showed on every turn. Read again once the SDK is up
 		// and after a turn that ended with one still starting.

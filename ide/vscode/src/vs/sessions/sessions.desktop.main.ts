@@ -296,6 +296,8 @@ import './contrib/dispatchHistory/browser/dispatchHistory.contribution.js';
 import './contrib/dispatchWhatsNew/browser/dispatchWhatsNew.contribution.js';
 // Dispatch IDE: tips that point at the real thing and the Getting started checklist (patches/475-tours.patch)
 import './contrib/dispatchTours/browser/dispatchTours.contribution.js';
+// Dispatch IDE: who wrote which line, recorded per turn, and the rows under a reply (contrib/dispatchAttribution)
+import './contrib/dispatchAttribution/browser/dispatchAttribution.js';
 // Dispatch IDE: "Let the agent fix it" and the agent-written commit message in the Changes tab (patches/dispatch-fixit.patch)
 import './contrib/dispatchFixit/browser/dispatchFixit.contribution.js';
 // Dispatch IDE: the side pane's tabs switch on a click on their name and fit a narrow pane (contrib/dispatchTabs)

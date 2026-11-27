@@ -73,7 +73,7 @@ function iconFor(agent: ITerminalAgentMeta | undefined): ThemeIcon {
 /**
  * A sub-agent Claude Code sent out from a terminal session, as a chat of that session started by a tool (the way the
  * Agent Host gives a chat session's sub-agents): the sessions list draws it under the session
- * (browser/dispatchSubAgentRows.ts), and opening it shows its own record, read only (dispatchTerminalView.ts).
+ * (browser/dispatchSubAgentRows.ts, browser/dispatchSubAgents.ts), and opening it shows its own record, read only (dispatchTerminalView.ts).
  */
 export class DispatchSubAgentChat implements IChat {
 	readonly resource: URI;

@@ -2,7 +2,7 @@
 """docs_view.py: the Docs tab's list (groups, one row per document, tasks, where) and the
 registrations `docs add --task`, `docs seen`, "Remove from Docs" and `task deliver` write."""
 import copy
-import json, os, sys, tempfile, time, unittest
+import io, json, os, shutil, subprocess, sys, tempfile, time, unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -277,7 +277,7 @@ class Registering(unittest.TestCase):
         self.store = {}
         V.D = dispatch
         p1 = patch.object(dispatch, "docs_registered", side_effect=lambda p: dispatch.docs_entries_parse(json.dumps(self.store.get(p, []))))
-        p2 = patch.object(dispatch, "docs_save", side_effect=lambda p, e: self.store.__setitem__(p, json.loads(json.dumps(e))))
+        p2 = patch.object(dispatch, "docs_save", side_effect=lambda p, e, keep="": self.store.__setitem__(p, json.loads(json.dumps(e))))
         p1.start(); p2.start(); self.addCleanup(p1.stop); self.addCleanup(p2.stop)
 
     def write(self, rel, text="# Title\n"):
@@ -403,6 +403,130 @@ class Annotate(unittest.TestCase):
         import annotate
         with self.assertRaises(ValueError):
             annotate.font_path(("/nowhere/*.ttc",))
+
+
+class DocsFit(unittest.TestCase):
+    """dispatch.docs_fit: what goes when a project's Docs list would not fit in one bd memory (task-w97qw)."""
+
+    def entry(self, n, kind="交付", hidden=False, path=None):
+        e = {"id": "id%d" % n, "path": path or "/nowhere/%d.md" % n, "title": "x" * 200, "kind": kind, "added_at": float(n)}
+        if hidden:
+            e["hidden"] = True
+        return e
+
+    def test_order_of_what_goes(self):
+        with tempfile.NamedTemporaryFile(suffix=".md") as live:
+            rows = [self.entry(1, hidden=True, path=live.name), self.entry(2), self.entry(3, "handoff"), self.entry(4, hidden=True),
+                    self.entry(5, "handoff"), self.entry(6)]
+            size = lambda r: len(dispatch._docs_json(r).encode())
+            self.assertIs(dispatch.docs_fit(rows, limit=size(rows)), rows)
+            got = lambda limit, keep="": [e["id"] for e in dispatch.docs_fit(rows, keep, limit)]
+            # a tombstone of a file that is gone, then the oldest handoff, then the newer one, then other documents
+            self.assertEqual(got(size(rows) - 1), ["id1", "id2", "id3", "id5", "id6"])
+            self.assertEqual(got(size(rows[:2] + rows[4:])), ["id1", "id2", "id5", "id6"])
+            self.assertEqual(got(size(rows[:2] + rows[5:])), ["id1", "id2", "id6"])
+            self.assertEqual(got(size(rows[:1] + rows[5:])), ["id1", "id6"])
+            # the tombstone of a file still there goes last; the entry just registered never goes
+            self.assertEqual(got(size(rows[:1])), ["id1"])
+            self.assertEqual(got(1, keep="id3"), ["id3"])
+            self.assertLessEqual(size(dispatch.docs_fit(rows, limit=size(rows) // 2)), size(rows) // 2)
+
+    def test_a_board_entry_that_is_too_large_says_which_and_what_to_do(self):
+        bd_says = "Error: storing memory: set config kv.memory.dispatch-x: Error 1105: string '" + "y" * 70000 + "' is too large for column 'value'"
+        err = io.StringIO()
+        with patch.object(dispatch, "sh", return_value=(1, "", bd_says)), patch("sys.stderr", err), patch.object(dispatch.L, "t", side_effect=lambda en, zh: en):
+            with self.assertRaises(SystemExit):
+                dispatch.wiki_store("dispatch-x", "y" * 70000)
+        msg = err.getvalue()
+        self.assertIn("dispatch-x", msg); self.assertIn("70,000 bytes", msg); self.assertIn("65,535", msg)
+        self.assertLess(len(msg), 600)
+
+
+BD = shutil.which("bd")
+
+
+@unittest.skipUnless(BD and os.name == "posix", "needs bd")
+class FullDocsListOnARealBoard(unittest.TestCase):
+    """A project's Docs list is one bd memory, and bd keeps a memory in a Dolt column that takes 65,535 bytes. On the
+    other Mac (2026-11-24/26) canvas-notes reached 65,535 bytes after 188 deliveries and handoffs, and from then on
+    every `handoff write` and `task deliver` failed with "Error 1105: string '…' is too large for column 'value'"
+    (task-w97qw). A real embedded board in a temp folder, so the limit is bd's own and not a copy of it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = tempfile.mkdtemp(prefix="ddocs-")
+        board, home = os.path.join(cls.root, "board"), os.path.join(cls.root, "home")
+        cls.folder = os.path.join(home, "Projects", "notes")
+        os.makedirs(board); os.makedirs(cls.folder)
+        cls.env = {"HOME": home, "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "DISPATCH_DIR": os.path.join(cls.root, "dd"),
+                   "DISPATCH_HOME": os.path.join(cls.root, "dh"), "BEADS_DIR": os.path.join(board, ".beads"),
+                   "DISPATCH_BOARD_SERVICE": "0", "PYTHONDONTWRITEBYTECODE": "1", "DISPATCH_LANG": "en"}
+        r = subprocess.run([BD, "init", "--prefix", "task", "--non-interactive", "--skip-hooks", "--quiet"], cwd=board, env=cls.env,
+                           capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr
+        subprocess.run(["git", "init", "-q"], cwd=cls.folder, env=cls.env, check=True, timeout=30)
+        cls.cli("projects-view", "add", cls.folder, "--name", "notes", "--json")
+        cls.task = cls.cli("begin", "Ship the notes app", "--force", "-P", "notes", "-d", "a task with a long Docs list", "--json")["id"]
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.root, True)
+
+    @classmethod
+    def run_cli(cls, *args, stdin=None):
+        return subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "dispatch.py"), *args],
+                              env=cls.env, cwd=cls.folder, input=stdin, capture_output=True, text=True, timeout=300)
+
+    @classmethod
+    def cli(cls, *args):
+        r = cls.run_cli(*args)
+        assert r.returncode == 0, (args, r.stdout, r.stderr)
+        out = r.stdout.strip()
+        return json.loads(out[out.find("{"):])
+
+    def stored(self):
+        r = subprocess.run([BD, "memories", "--json"], env=self.env, cwd=self.root, capture_output=True, text=True, timeout=120)
+        raw = json.loads(r.stdout[r.stdout.find("{"):])["dispatch-docs-notes"]
+        return raw, json.loads(raw)
+
+    def fill(self):
+        """The list as the other Mac had it: just under the limit, mostly handoffs and deliveries of old tasks."""
+        rows, n = [], 0
+        while len(json.dumps(rows, ensure_ascii=False, sort_keys=True).encode()) < 65000:
+            kind = "handoff" if n % 2 else "交付"
+            path = os.path.join(self.root, "old", f"{n:04d}.md")
+            rows.append({"id": "%016x" % n, "path": path, "title": "Context handoff: 第二轮：梦游、全局速记、搜索删除 %d" % n,
+                         "kind": kind, "added_at": 1790000000 + n, "tasks": ["task-old%02d" % (n % 50)],
+                         "session": "claude-code:f580257b-5baf-4082-9cda-93713adce2e3"})
+            n += 1
+        r = subprocess.run([BD, "remember", json.dumps(rows, ensure_ascii=False, sort_keys=True), "--key", "dispatch-docs-notes"],
+                           env=self.env, cwd=self.root, capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return rows
+
+    def test_a_handoff_and_a_delivery_still_save_when_the_list_is_full(self):
+        old = self.fill()
+        r = self.run_cli("handoff", "write", self.task, "--session", "claude-code:abc", "--stdin", "--json",
+                         stdin=json.dumps({"goal": "Ship the notes app", "completed": ["wrote the list view, commit a1b2c3d"],
+                                           "next": "run the tests", "pitfalls": "none"}))
+        self.assertEqual(r.returncode, 0, r.stderr[-600:])
+        self.assertNotIn("1105", r.stderr)
+        raw, rows = self.stored()
+        self.assertLessEqual(len(raw.encode()), dispatch.DOCS_MAX_BYTES)
+        new = [e for e in rows if self.task in (e.get("tasks") or [])]
+        self.assertEqual([e["kind"] for e in new], ["handoff"])
+        # the oldest handoffs made room; every delivery and the newest handoffs stay
+        kept = {e["id"] for e in rows}
+        gone = [e for e in old if e["id"] not in kept]
+        self.assertTrue(gone)
+        self.assertEqual({e["kind"] for e in gone}, {"handoff"})
+        self.assertEqual(max(e["added_at"] for e in gone) < min(e["added_at"] for e in rows if e["kind"] == "handoff"), True)
+        note = os.path.join(self.folder, "README.md")
+        open(note, "w").write("# Notes\n")
+        self.cli("docs", "add", "notes", note, "--task", self.task, "--json")
+        raw, rows = self.stored()
+        self.assertLessEqual(len(raw.encode()), dispatch.DOCS_MAX_BYTES)
+        self.assertIn(note, [e["path"] for e in rows])
 
 
 class ShowRequest(unittest.TestCase):

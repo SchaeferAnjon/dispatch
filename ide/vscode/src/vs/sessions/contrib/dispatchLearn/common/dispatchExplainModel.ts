@@ -6,9 +6,6 @@
  *  - Now's why line: one plain sentence under the agent's line, what this turn does and why. Its words come from the
  *    agent only: the line it wrote itself with `dispatch now` (when the head shows something else there), else what
  *    it wrote at the start of the turn before it did anything (its plan); no model is asked for it.
- *  - Why on a block of Changes: what is already said about the block (the walk's sentence for the same lines, a new
- *    file's first comment, the agent's own sentence before it changed the file), else one model call for every block
- *    shown that has nothing, the clicked one first.
  *
  *  ide/tests/learn-explain.test.mjs tests this file. No imports: Node runs it as it is.
  *--------------------------------------------------------------------------------------------*/
@@ -106,58 +103,3 @@ export function nowWhy(i: INowWhyInput): { readonly text: string; readonly from:
 	}
 	return undefined;
 }
-
-// ---- Changes: Why on a block of lines --------------------------------------------------------------------------
-
-/** A block of lines in one file, on the side the file is now (1-based, inclusive). */
-export interface IWhyBlock {
-	readonly path: string;
-	readonly start: number;
-	readonly end: number;
-}
-
-export function blockKey(b: IWhyBlock): string {
-	return `${b.path}:${b.start}-${b.end}`;
-}
-
-/** Whether two blocks of the same file share a line. */
-export function overlaps(a: IWhyBlock, b: IWhyBlock): boolean {
-	return a.path === b.path && a.start <= b.end && b.start <= a.end;
-}
-
-/** What is already said about a block: the first known block of the same file that shares a line with it. */
-export function knownFor<T extends IWhyBlock>(block: IWhyBlock, known: readonly T[]): T | undefined {
-	return known.find(k => k.path === block.path && k.start === block.start && k.end === block.end) ?? known.find(k => overlaps(k, block));
-}
-
-/** At most this many blocks in the one model call (fixit.py's WHY_MAX_STOPS). */
-export const WHY_MAX_BLOCKS = 16;
-
-/**
- * The blocks one model call asks about: the clicked one first, then the others shown that nothing says anything about
- * yet, in their order, at most `max`; none when the clicked one is already said.
- */
-export function blocksToAsk<T extends IWhyBlock>(clicked: T, all: readonly T[], said: (b: T) => boolean, max = WHY_MAX_BLOCKS): T[] {
-	if (said(clicked)) {
-		return [];
-	}
-	const out: T[] = [clicked];
-	const seen = new Set([blockKey(clicked)]);
-	for (const b of all) {
-		if (out.length >= max) {
-			break;
-		}
-		const k = blockKey(b);
-		if (!seen.has(k) && !said(b)) {
-			seen.add(k);
-			out.push(b);
-		}
-	}
-	return out;
-}
-
-/** What a block's Why says when nothing could be found. */
-export const WHY_NONE = 'The agent did not say why it changed these lines. Use More to ask.';
-
-/** Where a block's Why came from: the walk's sentence, a new file's comment, the agent, the model, nothing. */
-export type WhySource = 'walk' | 'comment' | 'agent' | 'model' | 'none';

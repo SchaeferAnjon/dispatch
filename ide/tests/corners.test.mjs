@@ -58,6 +58,8 @@ const BASELINE = {
 	'sessions/contrib/dispatchBlocks/browser/media/dispatchBlocks.css': { circle: 2, 'off-scale': 2 },
 	'sessions/contrib/dispatchCommon/browser/media/dispatchWhere.css': { circle: 2 },
 	'sessions/contrib/dispatchDraw/browser/media/dispatchDraw.css': { circle: 1 },
+	// the 8px recording dot of Point and talk (task-dd4hw)
+	'sessions/contrib/dispatchPointTalk/browser/media/dispatchPointTalk.css': { circle: 1 },
 	'sessions/contrib/dispatchInbox/electron-browser/media/dispatchInbox.css': { circle: 1 },
 	'sessions/contrib/dispatchOnboarding/browser/media/dispatchOnboarding.css': { circle: 2 },
 	'sessions/contrib/dispatchProjectCustom/browser/media/dispatchProjectCustom.css': { circle: 1 },

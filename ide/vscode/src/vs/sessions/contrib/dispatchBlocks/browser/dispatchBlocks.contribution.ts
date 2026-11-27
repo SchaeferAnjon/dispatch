@@ -6,7 +6,6 @@
 
 import './media/dispatchBlocksSidebar.css';
 import { dispatchStateBlocks } from '../../../browser/dispatchStatusBlocks.js';
-import { subAgentRowBlocks } from '../../../browser/dispatchSubAgentRows.js';
 import { DISPATCH_STATE_LABEL, knock } from './dispatchBlocks.js';
 import { stateMark } from './dispatchMarks.js';
 import './dispatchBlocksShowcase.js';
@@ -38,14 +37,5 @@ dispatchStateBlocks.render = (state, play) => {
 	if (state === 'waiting' && play) {
 		knock(el);
 	}
-	return el;
-};
-
-// a sub-agent's row under its session (browser/dispatchSubAgentRows.ts, patches/135-sub-agent-rows.patch): the purple
-// filled circle while it works, the grey filled check once it is back, the coral one when it stopped; the row's card
-// says it in words
-subAgentRowBlocks.render = state => {
-	const el = slot(state, undefined);
-	el.appendChild(stateMark(state === 'done' ? 'seen' : state));
 	return el;
 };

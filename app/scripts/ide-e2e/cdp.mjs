@@ -142,6 +142,8 @@ export async function offscreen(rec, cdp) {
 // ---- the main process: windows transparent, click-through, never activating (hide-windows.mjs) ----------
 
 const hideSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// a busy main process takes the connection and does not answer (15 s seen): a fetch stops at the deadline, not 300 s later
+const hideLeft = (until) => AbortSignal.timeout(Math.max(1, until - Date.now()));
 
 const HIDE_HOOK = `(() => {
   const { app, BrowserWindow } = require("electron");
@@ -170,13 +172,13 @@ export async function hideMain(port, waitMs = 30000, cdpPort = 0) {
   // the app's DevTools port answers once its browser side is up (after ready, before VS Code's first window):
   // nothing in the main process is touched before that
   for (let up = !cdpPort; !up && Date.now() < until; ) {
-    up = await fetch(`http://127.0.0.1:${cdpPort}/json/version`).then((res) => res.ok, () => false);
+    up = await fetch(`http://127.0.0.1:${cdpPort}/json/version`, { signal: hideLeft(until) }).then((res) => res.ok, () => false);
     if (!up) await hideSleep(50);
   }
   let target = null;
   while (Date.now() < until && !target) {
     try {
-      const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+      const list = await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: hideLeft(until) })).json();
       target = list.find((t) => t.webSocketDebuggerUrl);
     } catch {
       /* not listening yet */

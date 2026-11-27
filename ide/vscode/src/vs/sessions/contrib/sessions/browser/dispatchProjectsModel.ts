@@ -48,21 +48,6 @@ export interface IDispatchSidebarSession {
 
 let sidebarSessions: Readonly<Record<string, IDispatchSidebarSession>> = {};
 
-/** What a sub-agent works for, by the tool call that sent it out (the CLI's `subagents_at_work`). */
-export interface IDispatchSubAgentWork {
-	/** The registered project's name. */
-	readonly project: string;
-	readonly task: string;
-	readonly task_title: string;
-}
-
-let subAgentWork: Readonly<Record<string, IDispatchSubAgentWork>> = {};
-
-/** The project a sub-agent works for, by the id of the tool call that sent it out. */
-export function dispatchSubAgentWork(toolUseId: string): IDispatchSubAgentWork | undefined {
-	return subAgentWork[toolUseId];
-}
-
 /** Visibility and grouping are CLI decisions. Search still reads the complete host catalog. */
 export function dispatchSidebarSession(session: ISession): IDispatchSidebarSession | undefined {
 	const provider = session.resource.scheme.replace(/^(?:vscode-)?agent-host-/, '');
@@ -73,9 +58,8 @@ export function dispatchSidebarSession(session: ISession): IDispatchSidebarSessi
 const registry = observableValue<readonly IDispatchProject[] | undefined>('dispatchProjectsRegistry', undefined);
 export const dispatchProjectsRegistry: IObservable<readonly IDispatchProject[] | undefined> = registry;
 
-export function setDispatchProjectsRegistry(value: readonly IDispatchProject[] | undefined, sessions: Readonly<Record<string, IDispatchSidebarSession>> = {}, subagents: Readonly<Record<string, IDispatchSubAgentWork>> = {}): void {
+export function setDispatchProjectsRegistry(value: readonly IDispatchProject[] | undefined, sessions: Readonly<Record<string, IDispatchSidebarSession>> = {}): void {
 	sidebarSessions = sessions;
-	subAgentWork = subagents;
 	registry.set(value, undefined);
 }
 
@@ -201,14 +185,13 @@ class DispatchProjectsRegistryPoller extends Disposable {
 	refresh(): Promise<void> {
 		this.running ??= (async () => {
 			try {
-				const answer = await this.commandService.executeCommand<{ projects?: IDispatchProject[]; sessions?: Record<string, IDispatchSidebarSession>; subagents?: Record<string, IDispatchSubAgentWork> }>('dispatch.projects', 'sidebar');
+				const answer = await this.commandService.executeCommand<{ projects?: IDispatchProject[]; sessions?: Record<string, IDispatchSidebarSession> }>('dispatch.projects', 'sidebar');
 				if (answer && Array.isArray(answer.projects)) {
 					const rows = answer.projects.filter(r => r && typeof r.name === 'string');
 					const sessions = answer.sessions ?? {};
-					const subagents = answer.subagents ?? {};
 					const before = registry.get();
-					if (!before || JSON.stringify(before) !== JSON.stringify(rows) || JSON.stringify(sidebarSessions) !== JSON.stringify(sessions) || JSON.stringify(subAgentWork) !== JSON.stringify(subagents)) {
-						setDispatchProjectsRegistry(rows, sessions, subagents);
+					if (!before || JSON.stringify(before) !== JSON.stringify(rows) || JSON.stringify(sidebarSessions) !== JSON.stringify(sessions)) {
+						setDispatchProjectsRegistry(rows, sessions);
 					}
 				}
 			} catch (e) {

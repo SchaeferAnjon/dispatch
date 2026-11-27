@@ -1,7 +1,7 @@
 // Direction A of the terminal design (design/terminal-merge, A3 and A5): the sub-agents a session sends out are rows
-// under it in the sessions list (name, model, how long; working first, the finished ones behind "Show N finished"; a
-// count at the end of the session's row folds them away and back), opening one shows its own record read only, and
-// a terminal session has its own tabs ("+ Shell", side by side or one at a time).
+// under it in the sessions list, since 2026-11-16 VS Code's own sub-agent pill (task-518qw: name, model, how long; the
+// working ones, the finished ones behind "N finished"), opening one shows its own record read only, and a terminal
+// session has its own tabs ("+ Shell", side by side or one at a time).
 // It opens Claude Code in a terminal (its own screen only: nothing is sent to it) and writes the record Claude Code
 // would write for two sub-agents into ~/.claude/projects/<the demo folder>/ (removed at the end). Stops the
 // instance's terminal daemon at the end.
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 const SCALE = Math.max(1, Number(process.env.DISPATCH_E2E_TIME_SCALE) || 1); // a loaded Mac's waits (runner.mjs TIME_SCALE)
 
-export const meta = { title: '子 Agent 挂在会话下', description: '会话派出的子 Agent 列在左栏这条会话下面：名字、模型、跑了多久；在跑的在前，做完的收进「Show N finished」；行尾数字一点收起；点开读它的记录（只读）。终端会话自己的页签：+ Shell、并排或一次一个。' };
+export const meta = { title: '子 Agent 挂在会话下', description: '会话派出的子 Agent 列在左栏这条会话下面，是 VS Code 原版子 Agent 胶囊：名字、模型、跑了多久；在跑的一行一个，做完的收进「N finished」；点开读它的记录（只读）。终端会话自己的页签：+ Shell、并排或一次一个。' };
 
 const META = 4;
 
@@ -37,11 +37,6 @@ const MINE = `(() => {
 const subRows = ui => ui.eval(`(() => ${MINE}.chats.map(e => ({
   text: e.innerText.replace(/\\s+/g, ' ').trim(), sub: e.classList.contains('dispatch-subagent'), more: e.classList.contains('dispatch-subagent-more'), title: e.title || '' })))()`);
 
-/** Marks this session's count (data-e2e-mine) so a click or a mark finds it and not another session's. */
-const MY_COUNT = '.dispatch-subagent-count[data-e2e-mine]';
-const markMine = ui => ui.eval(`(() => { document.querySelectorAll('[data-e2e-mine]').forEach(e => e.removeAttribute('data-e2e-mine')); const s = ${MINE}.session; const b = s && s.querySelector('.dispatch-subagent-count'); if (b) b.setAttribute('data-e2e-mine', ''); return !!b; })()`);
-
-const count = ui => ui.eval(`(() => { const s = ${MINE}.session; const b = s && [...s.querySelectorAll('.dispatch-subagent-count')].find(e => e.offsetParent); return b ? { text: b.innerText.trim(), title: b.title } : null; })()`);
 
 async function until(ui, test, what, ms = 20000) {
   let last;
@@ -104,29 +99,25 @@ export default async function (ui) {
       line({ type: 'user', isSidechain: true, timestamp: t0, message: { role: 'user', content: 'Port the restore code from Orca.' } }) +
       line({ type: 'assistant', isSidechain: true, timestamp: t0, message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'Porting the restore code now.' }] } }));
 
-    // 2 the rows: the working one, then "Show 1 finished"; the count at the end of the session's row
-    let rows = await until(ui, async () => { const r = await subRows(ui); return { ok: r.some(x => x.sub && x.text.startsWith('Port the restore code')) && r.some(x => x.more), rows: r }; }, 'the working sub-agent and Show 1 finished under the session');
+    // 2 the rows: the working one as VS Code's pill, then "1 finished"; no count on the session's row
+    let rows = await until(ui, async () => { const r = await subRows(ui); return { ok: r.some(x => x.sub && x.text.startsWith('Port the restore code')) && r.some(x => x.more), rows: r }; }, 'the working sub-agent and 1 finished under the session');
     facts.rows = rows.rows;
     const port = rows.rows.find(x => x.sub);
-    assert.match(port.text, /Port the restore code · Opus 5 \d+m/, 'name, model, how long: ' + port.text);
-    assert.ok(rows.rows.find(x => x.more).text.includes('Show 1 finished'));
-    facts.count = await count(ui);
-    assert.equal(facts.count.text, '2');
-    assert.match(facts.count.title, /^2 sub-agents, 1 working/);
+    assert.match(port.text, /Port the restore code ·?\s*Opus 5 Working for \d/, 'name, model, how long: ' + port.text);
+    assert.ok(rows.rows.find(x => x.more).text.includes('1 finished'));
+    assert.equal(await ui.eval(`!!document.querySelector('.dispatch-subagent-count')`), false, 'no count on the session row');
     await ui.screenshot('01-sub-agents');
-    await ui.mark('Port the restore code', { what: '子 Agent', where: '左栏，Claude Code 终端会话下面', how: '方块、名字、· 模型、跑了多久；在跑的在前' });
-    await markMine(ui);
-    await ui.mark({ css: MY_COUNT }, { what: '子 Agent 数', where: '会话行尾，Claude 的标前面', how: '悬停说几个在跑，点一下收起和展开' });
-    await ui.click({ text: 'Show 1 finished' });
-    rows = await until(ui, async () => { const r = await subRows(ui); return { ok: r.filter(x => x.sub).length === 2 && !r.some(x => x.more), rows: r }; }, 'Show 1 finished shows it');
+    await ui.mark('Port the restore code', { what: '子 Agent', where: '左栏，Claude Code 终端会话下面', how: 'VS Code 原版胶囊：转圈、名字、· 模型、Working for' });
+    await ui.click({ css: '.session-chat-item.dispatch-subagent-more .dispatch-subagent-finished-toggle' });
+    rows = await until(ui, async () => { const r = await subRows(ui); return { ok: r.filter(x => x.sub).length === 2, rows: r }; }, '1 finished shows it');
     const read = rows.rows.find(x => x.text.startsWith('Read the termd sources'));
-    assert.match(read.text, /· Sonnet 1m/, 'the finished one with its model and how long it ran: ' + read.text);
+    assert.match(read.text, /Sonnet.*Worked for 1m/, 'the finished one with its model and how long it ran: ' + read.text);
     facts.rowsAll = rows.rows;
     await ui.screenshot('02-finished-shown');
     save();
 
     // 3 opening a sub-agent: its own record, read only, and back
-    await ui.click({ text: 'Port the restore code' });
+    await ui.click({ text: 'Port the restore code', within: '.session-chat-item.dispatch-subagent' });
     const head = await until(ui, async () => {
       const h = await ui.eval(`(() => { const v = [...document.querySelectorAll('.dispatch-terminal-view')].find(e => e.offsetParent); if (!v) return null; const head = v.querySelector('.dtc-record-head');
         return { head: head && head.offsetParent ? head.innerText.replace(/\\s+/g, ' ') : '', list: (v.querySelector('.dtc-list') || {}).innerText || '', composer: getComputedStyle(v.querySelector('.dtc-composer')).display }; })()`);
@@ -142,26 +133,9 @@ export default async function (ui) {
 
     // 4 the background one comes back: nothing works any more
     fs.appendFileSync(transcript, line({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: '<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>toolu_port</tool-use-id>\n<status>completed</status>\n</task-notification>' } }));
-    facts.countDone = await until(ui, async () => { const c = await count(ui); return { ok: !!c && /^2 sub-agents, 0 working/.test(c.title), ...c }; }, 'the count says none is working');
+    facts.rowsDone = await until(ui, async () => { const r = await subRows(ui); return { ok: r.some(x => x.more && /^2 finished/.test(x.text)), rows: r }; }, 'both behind 2 finished');
     facts.bar = await ui.eval(`(() => { const v = [...document.querySelectorAll('.dispatch-terminal-view')].find(e => e.offsetParent); return v ? v.querySelector('.dispatch-terminal-subs').innerText : ''; })()`);
     assert.match(facts.bar, /2 sub-agents, all done/);
-
-    // 5 the count folds them away and back
-    // the row's own buttons come on hover and the name gives them room: point at the count first, then press it
-    await markMine(ui);
-    await ui.hover({ css: MY_COUNT });
-    await ui.sleep(400);
-    await ui.click({ css: MY_COUNT });
-    await ui.sleep(800);
-    facts.countAfterClick = await count(ui);
-    save();
-    await until(ui, async () => { const r = await subRows(ui); return { ok: !r.some(x => x.sub || x.more), r, count: await count(ui) }; }, 'folded away');
-    await markMine(ui);
-    await ui.hover({ css: MY_COUNT });
-    await ui.sleep(400);
-    await ui.click({ css: MY_COUNT });
-    await until(ui, async () => { const r = await subRows(ui); return { ok: r.some(x => x.sub || x.more), r }; }, 'back again');
-    save();
 
     // 6 the session's own tabs: + Shell, side by side or one at a time
     const tabs = () => ui.eval(`(() => { const v = [...document.querySelectorAll('.dispatch-terminal-view')].find(e => e.offsetParent); return v ? { tabs: [...v.querySelectorAll('.dtt-tab')].map(t => t.innerText + (t.classList.contains('on') ? '*' : '')), panes: [...v.querySelectorAll('.dispatch-terminal-pane')].filter(p => p.offsetParent).length, layout: !!v.querySelector('.dtt-layout') } : null; })()`);

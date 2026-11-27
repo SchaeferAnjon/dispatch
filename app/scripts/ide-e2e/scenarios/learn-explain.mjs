@@ -5,14 +5,13 @@
 // agent's line, while it works and once it is done. The reply's words get a dotted line, each only its first time;
 // pointing at one shows VS Code's hover with a plain sentence and Ask more, and Tab onto one shows it too; Ask more puts
 // the word into the conversation's input (OpenCode has no side chats). Settings › Learning › Explain terms off: the
-// lines go, on again: back. In Changes, pointing at a block shows Why and More; Why opens one or two sentences under
-// the block (one model call for every block with nothing said; the next block's Why comes from that same answer, a new
-// file's from its first comment), they close with Why, with ⌃ and with Esc; More quotes the block's lines into the
-// input. The walk of the same turn then uses the same answers. Turn B: walked first, then Why on its block takes the
-// walk's sentence. Light and dark, facts in qa.json.
+// lines go, on again: back. Changes is VS Code's as it is (the user, 2026-11-16, task-rinkm): no Why / More on a block,
+// no step filter, no marks of who wrote a line; asking about a block goes through the selection's Quote / Ask Question,
+// so a selected line is quoted into the input from there. The walk of the turn asks its own one model call. Light and
+// dark, facts in qa.json.
 export const meta = { needs: ['opencode'], instance: { motion: true },
-  title: "边干边学：Now 一句为什么、术语悬停、Changes 每块 Why / More",
-  description: "OpenCode 会话先说一句计划再建一个文件、改另一个文件两处，回复里带 commit、dependency。Now 头下一行就是 Agent 开头那句；回复里的词下面点线、同一个词只标第一次，悬停和 Tab 都出解释和 Ask more，Ask more 把词放进原对话输入框；Settings 里 Explain terms 关掉点线没了。Changes 里悬停一块出 Why / More，Why 就地展开说明（记来源、用时）、能收起，More 把那几行放进输入框；导览和 Why 共用同一份说明。浅色深色截图。",
+  title: "边干边学：Now 一句为什么、术语悬停、Changes 照 VS Code 原样",
+  description: "OpenCode 会话先说一句计划再建一个文件、改另一个文件两处，回复里带 commit、dependency。Now 头下一行就是 Agent 开头那句；回复里的词下面点线、同一个词只标第一次，悬停和 Tab 都出解释和 Ask more，Ask more 把词放进原对话输入框；Settings 里 Explain terms 关掉点线没了。Changes 照 VS Code 原样：悬停一块没有 Why / More、没有按轮胶囊和谁写的标记；选中一行出 Quote / Ask Question，Quote 把那行放进输入框；导览自己问一次模型。浅色深色截图。",
   timeout: 2400,
 };
 
@@ -51,7 +50,6 @@ const APP = [
   "",
 ].join("\n");
 const TURN_A = `In the current folder do exactly this. Before you use any tool, write exactly this sentence as the start of your reply: "${PLAN}" Then, with your file tools and no commands: use your write tool to create the new file \`explain/notes.ts\` with exactly these two lines: \`// Keeps the reading notes in one list.\` and \`export const notes: string[] = [];\`. Then use your edit tool on the existing file \`explain/app.ts\` to replace the line \`export const theme = 'light';\` with \`export const theme = 'dark';\`. Then use your edit tool again on \`explain/app.ts\` to replace the line \`export const pageSize = 10;\` with \`export const pageSize = 20;\`. Do nothing else. When you are done, end your reply with exactly this text: "${ANSWER}"`;
-const TURN_B = "Use your edit tool on `explain/app.ts` to replace the line `export const fontSize = 16;` with `export const fontSize = 18;`. Run no commands and do nothing else, then reply with the single word DONE.";
 
 /** The Now tab's head: the agent's line and the why under it. */
 const NOW = `(() => {
@@ -86,22 +84,22 @@ const HOVER = `(() => {
 /** The quotes in the conversation's input. */
 const QUOTES = `[...document.querySelectorAll('.session-view .interactive-input-part .dispatch-quote')].filter(e => e.getClientRects().length).map(q => ({ text: (q.querySelector('.dispatch-quote-text') || {}).textContent || '', src: (q.querySelector('.dispatch-quote-src') || {}).textContent || '' }))`;
 
-/** The Changes tab's blocks: their buttons, which show, and the Whys open under them. */
+/** The Changes tab: its diffs, and anything Dispatch used to add there (Why / More, the step filter, marks of who wrote a line). */
 const CHANGES = `(() => {
   const root = document.querySelector('.session-changes-editor');
   if (!root) return null;
-  const diffs = [...root.querySelectorAll('.monaco-diff-editor')].filter(d => d.getClientRects().length);
-  const fileOf = el => { const item = el.closest('.multiDiffEntry, .monaco-component'); const head = item && item.querySelector('.header .monaco-icon-label, .header'); return head ? head.textContent.replace(/\\s+/g, ' ').trim().split(' ')[0] : ''; };
-  const box = e => { const b = e.getBoundingClientRect(); return { x: Math.round(b.left), y: Math.round(b.top), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right), b: Math.round(b.bottom) }; };
-  const buttons = [...root.querySelectorAll('.dispatch-hunk-why')].map(w => ({ start: +w.dataset.start, end: +w.dataset.end, on: w.classList.contains('on'), opacity: getComputedStyle(w).opacity, file: fileOf(w), box: box(w),
-    labels: [...w.querySelectorAll('button')].map(b => b.textContent), tab: [...w.querySelectorAll('button')].map(b => b.tabIndex), focus: !!(document.activeElement && w.contains(document.activeElement)), active: !!w.querySelector('.active') }));
-  const open = [...root.querySelectorAll('.dispatch-hunk-expl')].map(z => ({ ...z.dataset, file: fileOf(z), text: (z.querySelector('[data-part="hunk-why-text"]') || {}).textContent || '', box: box(z.querySelector('.dispatch-hunk-box') || z),
-    font: (() => { const t = z.querySelector('[data-part="hunk-why-text"]'); return t ? getComputedStyle(t).fontSize + '/' + getComputedStyle(t).lineHeight : ''; })() }));
-  return { diffs: diffs.length, buttons, open, readonly: [...root.querySelectorAll('.monaco-diff-editor .editor.modified .native-edit-context, .monaco-diff-editor .editor.modified textarea')].map(e => e.getAttribute('aria-readonly')) };
+  const n = css => [...document.querySelectorAll(css)].filter(e => e.getClientRects().length).length;
+  return { diffs: [...root.querySelectorAll('.monaco-diff-editor')].filter(d => d.getClientRects().length).length,
+    added: { hunkWhy: n('.dispatch-hunk-why, .dispatch-hunk-expl'), steps: n('.dispatch-attr-steps, .dispatch-attr-stepnote'),
+      hint: n('.dispatch-attr-hint'), marks: n('.dispatch-attr-mark'), rowMarks: n('.changes-file-list .dispatch-attr-chip, .session-changes-editor .dispatch-attr-chip'),
+      hintText: /Lines without a mark/.test(root.innerText) } };
 })()`;
 
+/** The selection box in a diff: its buttons in front of the input. */
+const SELECTION_BOX = `[...document.querySelectorAll('.agent-feedback-input-widget .agent-feedback-input-leading-action')].filter(b => b.getClientRects().length).map(b => b.dataset.action + ':' + (b.innerText.trim() || b.getAttribute('aria-label') || ''))`;
+
 export default async function (ui) {
-  const qa = { checks: [], failed: [], states: {}, why: [], model: [] };
+  const qa = { checks: [], failed: [], states: {}, model: [] };
   const note = () => fs.writeFileSync(path.join(ui.out, "qa.json"), JSON.stringify(qa, null, 2));
   const check = (name, ok, detail) => {
     (ok ? qa.checks : qa.failed).push(detail === undefined ? name : `${name}: ${JSON.stringify(detail).slice(0, 600)}`);
@@ -306,15 +304,13 @@ export default async function (ui) {
   const onAgain = qa.states.termsOn = await ui.eval(REPLY);
   check("Explain terms on again: the dotted lines are back", !!onAgain && onAgain.terms.length > 0 && onAgain.terms.every(t => !t.off && t.line.includes("underline") && t.tab === 0), onAgain && onAgain.terms);
 
-  // ======== Changes: Why and More on every block ========
+  // ======== Changes: VS Code's as it is, the selection's Quote / Ask Question ========
   await rest();
   await ui.openTab("Changes");
-  const ch0 = qa.states.changes0 = await until(ui, async () => { const c = await ui.eval(CHANGES); return c && c.buttons.length >= 3 ? c : null; }, 40000, "the blocks of Changes with their buttons", 500).catch(() => ui.eval(CHANGES));
-  check("Changes: every block has its buttons (notes.ts, and app.ts twice), Why and More, hidden until pointed at", !!ch0 && ch0.buttons.length >= 3 && ch0.buttons.every(b => b.labels.join() === "Why,More" && !b.on && b.opacity === "0"), ch0 && ch0.buttons.map(b => [b.file, b.start, b.on, b.opacity]));
-  check("…every button is a Tab stop", !!ch0 && ch0.buttons.every(b => b.tab.every(t => t === 0)));
-  qa.states.readonly = ch0 && ch0.readonly;
-  // the block of pageSize: point at its line
-  const lineOf = (token) => ui.eval(`(() => { const root = document.querySelector('.session-changes-editor'); const l = [...root.querySelectorAll('.editor.modified .view-line')].find(v => v.textContent.replace(/\\u00a0/g, ' ').includes(${JSON.stringify(token)})); if (!l) return null; const b = l.getBoundingClientRect(); return { x: b.left + 40, y: b.top + b.height / 2 }; })()`);
+  const ch0 = qa.states.changes0 = await until(ui, async () => { const c = await ui.eval(CHANGES); return c && c.diffs >= 2 ? c : null; }, 40000, "the diffs of Changes", 500).catch(() => ui.eval(CHANGES));
+  const nothingAdded = c => !!c && c.added.hunkWhy === 0 && c.added.steps === 0 && c.added.hint === 0 && c.added.marks === 0 && c.added.rowMarks === 0 && !c.added.hintText;
+  check("Changes: both files' diffs, and nothing Dispatch used to add (no Why / More, no step filter, no marks, no grey line)", !!ch0 && ch0.diffs >= 2 && nothingAdded(ch0), ch0);
+  const lineOf = (token) => ui.eval(`(() => { const root = document.querySelector('.session-changes-editor'); const l = [...root.querySelectorAll('.editor.modified .view-line')].filter(v => v.getBoundingClientRect().width > 0 && v.getBoundingClientRect().height > 0).find(v => v.textContent.replace(/\\u00a0/g, ' ').includes(${JSON.stringify(token)})); if (!l) return null; const b = l.getBoundingClientRect(); const first = l.querySelector('span > span'), last = l.querySelector('span > span:last-child') || l; return { x: b.left + 40, y: b.top + b.height / 2, x1: first ? first.getBoundingClientRect().left + 1 : b.left + 1, x2: last.getBoundingClientRect().right - 1 }; })()`);
   /** A line of Changes on screen, the list wheeled to it as a person scrolls (the side pane is short). */
   const seeLine = async (token) => {
     for (let i = 0; i < 16; i++) {
@@ -326,111 +322,45 @@ export default async function (ui) {
     }
     return lineOf(token);
   };
+  // point at the pageSize block, as a person does: still nothing of Dispatch's on it (a narrow side pane shows the
+  // list alone: the file is clicked first, as a person does)
+  if (!(await lineOf("pageSize = 20")) && await ui.exists({ text: "app.ts", exact: true, within: ".changes-file-list" })) {
+    await ui.click({ text: "app.ts", exact: true, within: ".changes-file-list" });
+    await until(ui, () => lineOf("pageSize = 20"), 30000, "the diff of app.ts", 400).catch(() => null);
+  }
   let at = await seeLine("pageSize = 20");
   if (at) await ui.mouse("mouseMoved", at.x, at.y);
-  await ui.sleep(500);
+  await ui.sleep(800);
   const ch1 = qa.states.changesHover = await ui.eval(CHANGES);
-  const pageBtn = ch1 && ch1.buttons.find(b => b.file.includes("app.ts") && b.on);
-  check("pointing at the pageSize block: its Why and More show, the others stay hidden", !!at && !!pageBtn && ch1.buttons.filter(b => b.on).length === 1 && pageBtn.opacity === "1", ch1 && ch1.buttons.map(b => [b.file, b.start, b.on]));
-  await ui.screenshot("07-changes-why-more-light");
-  await markIf({ css: ".session-changes-editor .dispatch-hunk-why.on" }, { what: "每块改动右上角的 Why / More", where: "右栏 Changes，这块改动第一行的右端", how: "指针放到这块上才出现；Tab 也能走到" });
-  // Why: one call for both app.ts blocks
-  const whyStart = Date.now();
-  await ui.click({ css: '.session-changes-editor .dispatch-hunk-why[data-start="15"] [data-part="hunk-why"]' });
-  const asking = await ui.eval(CHANGES);
-  qa.states.asking = asking && asking.open;
-  check("Why: the box opens under the block at once, looking for the reason", !!asking && asking.open.length === 1 && (asking.open[0].state === "asking" || asking.open[0].state === "done"), asking && asking.open);
-  const pageWhy = await until(ui, async () => { const c = await ui.eval(CHANGES); const o = c && c.open.find(x => x.state === "done"); return o ? o : null; }, 180000, "the reason for the pageSize block", 400).catch(() => null);
-  qa.why.push({ block: "app.ts pageSize", tookMs: Date.now() - whyStart, ...pageWhy });
-  check("…the reason comes: from the model, one call for the app.ts blocks nothing said (asked 2), the clicked one first", !!pageWhy && pageWhy.source === "model" && pageWhy.fromWalk === "false" && Number(pageWhy.asked) >= 2 && pageWhy.text.length > 10, pageWhy);
-  check("…13px words at 1.6 in the box under the block", !!pageWhy && /^13px\/20.8px$/.test(pageWhy.font), pageWhy && pageWhy.font);
-  await rest();
-  await ui.screenshot("08-why-open-light");
-  await markIf({ css: '.session-changes-editor .dispatch-hunk-expl[data-state="done"] .dispatch-hunk-box' }, { what: "Why 就地展开：为什么这么改，一两句", where: "这块改动下面，代码往下让", how: "再点 Why、点 ⌃ 或 Esc 收起；不打断 Agent" });
-  // the theme block: the same answer, no second call
-  at = await seeLine("theme = 'dark'");
-  if (at) await ui.mouse("mouseMoved", at.x, at.y);
-  await ui.sleep(500);
-  const t0 = Date.now();
-  await ui.click({ css: '.session-changes-editor .dispatch-hunk-why.on:not(:has(.active)) [data-part="hunk-why"]' });
-  const themeWhy = await until(ui, async () => { const c = await ui.eval(CHANGES); const o = c && c.open.find(x => x.state === "done" && x.text !== (pageWhy && pageWhy.text)); return o || null; }, 30000, "the reason for the theme block", 150).catch(() => null);
-  qa.why.push({ block: "app.ts theme", tookMs: Date.now() - t0, ...themeWhy });
-  check("the theme block's Why: from the same one answer, no second call (fast)", !!themeWhy && themeWhy.source === "model" && Number(themeWhy.ms) < 1500 && themeWhy.asked === pageWhy?.asked, themeWhy);
-  // the new file: its own first comment
-  at = await seeLine("Keeps the reading notes");
-  if (at) await ui.mouse("mouseMoved", at.x, at.y);
-  await ui.sleep(500);
-  await ui.click({ css: '.session-changes-editor .dispatch-hunk-why.on:not(:has(.active)) [data-part="hunk-why"]' });
-  const notesWhy = await until(ui, async () => { const c = await ui.eval(CHANGES); const o = c && c.open.find(x => x.state === "done" && x.source === "comment"); return o || null; }, 30000, "the new file's reason", 200).catch(() => ui.eval(CHANGES));
-  qa.why.push({ block: "notes.ts", ...notesWhy });
-  check("the new file's Why: its own first comment, no model", !!notesWhy && notesWhy.source === "comment" && notesWhy.text === "Keeps the reading notes in one list.", notesWhy);
-  // close: Why again, ⌃, Esc, on the new file's block (on screen now)
-  const openCount = async () => ((await ui.eval(CHANGES)) || { open: [] }).open.length;
-  const NOTES_WHY = '.session-changes-editor .dispatch-hunk-why[data-start="1"] [data-part="hunk-why"]';
-  /** A key straight to the window, only while a Why or More button has it (the runner's guard counts the editor's
-   *  buttons as the editor; a button edits no file). */
-  const key = async (name) => {
-    const on = await ui.eval(`!!document.activeElement && !!document.activeElement.closest('.dispatch-hunk-why, .dispatch-hunk-expl')`);
-    if (!on) throw new Error(`refusing to press ${name}: the keyboard is not on a Why or More button`);
-    const k = { Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" }, Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }, Tab: { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 } }[name];
-    await ui.cdp.send("Input.dispatchKeyEvent", { type: k.text ? "keyDown" : "rawKeyDown", ...k });
-    await ui.cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...k });
-    await ui.sleep(400);
-  };
-  const before = await openCount();
-  // out of the corner, where the walk's pill sits
-  await seeLine("Keeps the reading notes");
-  await ui.sleep(600);
-  const whileOpen = qa.states.whileOpen = await ui.eval(`(() => { const w = document.querySelector('.session-changes-editor .dispatch-hunk-why[data-start="1"]'); const x = document.querySelector('.session-changes-editor .dispatch-hunk-expl[data-start="1"]'); return { hidden: !!w && w.classList.contains('hidden') && getComputedStyle(w).opacity === '0', tab: w ? [...w.querySelectorAll('button')].map(b => b.tabIndex) : [], boxMore: !!x && !!x.querySelector('[data-part="hunk-why-more"]'), hide: !!x && !!x.querySelector('[data-part="hunk-why-hide"]') }; })()`);
-  check("while a block's Why is open its buttons step aside (out of the Tab order) and the box has More and ⌃", whileOpen.hidden && whileOpen.tab.every(t => t === -1) && whileOpen.boxMore && whileOpen.hide, whileOpen);
-  // what is under the pointer where ⌃ is (the box must not be cut off by the editor it sits in)
-  qa.states.hideHit = await ui.eval(`(() => { const b = document.querySelector('.session-changes-editor .dispatch-hunk-expl[data-start="1"] [data-part="hunk-why-hide"]'); if (!b) return null; const r = b.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { box: [r.left, r.top, r.width, r.height].map(Math.round), hit: e ? (e.closest('[data-part]')?.dataset.part || e.className.toString().slice(0, 60)) : null, view: innerHeight }; })()`);
-  check("⌃ is on screen and nothing covers it", !!qa.states.hideHit && qa.states.hideHit.hit === "hunk-why-hide", qa.states.hideHit);
-  await ui.click({ css: '.session-changes-editor .dispatch-hunk-expl[data-start="1"] [data-part="hunk-why-hide"]' });
-  await ui.sleep(400);
-  check("⌃ closes the box", (await openCount()) === before - 1, await openCount());
-  check("…and the keyboard goes back to its Why, which shows again", await ui.eval(`!!document.activeElement && document.activeElement.dataset.part === 'hunk-why' && getComputedStyle(document.activeElement.closest('.dispatch-hunk-why')).opacity === '1'`));
-  await key("Enter");
-  await until(ui, async () => (await openCount()) === before, 5000, "Enter on Why to open it again", 200).catch(() => {});
-  check("Enter on the focused Why opens it again (the keyboard way), the keyboard moves into the box", (await openCount()) === before && await ui.eval(`document.activeElement?.dataset.part === 'hunk-why-hide'`), await openCount());
-  await key("Escape");
-  check("Esc closes it, the keyboard back on Why", (await openCount()) === before - 1 && await ui.eval(`document.activeElement?.dataset.part === 'hunk-why'`), await openCount());
-  // the keyboard: Tab from Why to More in the same block, both show while they have it
-  await key("Tab");
-  const kb = qa.states.keyboard = await ui.eval(`(() => { const a = document.activeElement; const w = a && a.closest('.dispatch-hunk-why'); return { part: a ? a.dataset.part : '', shown: !!w && getComputedStyle(w).opacity === '1', visible: !!a && a.matches(':focus-visible') }; })()`);
-  check("Tab from Why goes to More of the same block, which shows with a ring", kb.part === "hunk-more" && kb.shown && kb.visible, kb);
-  // every box closed, so only the block pointed at shows its buttons
-  for (let i = 0; i < 6 && (await openCount()) > 0; i++) {
-    await ui.eval(`document.querySelector('.session-changes-editor .dispatch-hunk-expl [data-part="hunk-why-hide"]')?.click()`);
-    await ui.sleep(300);
+  check("pointing at the pageSize block: no Why / More shows", !!at && nothingAdded(ch1), ch1);
+  await ui.screenshot("07-changes-vscode-light");
+  // select the line: VS Code's box, with Quote and Ask Question in front
+  if (at) {
+    await ui.mouse("mouseMoved", at.x1, at.y);
+    await ui.mouse("mousePressed", at.x1, at.y, { clickCount: 1 });
+    for (let i = 1; i <= 6; i++) await ui.mouse("mouseMoved", at.x1 + (at.x2 - at.x1) * i / 6, at.y, { buttons: 1 });
+    await ui.mouse("mouseReleased", at.x2, at.y, { clickCount: 1 });
   }
-  await ui.eval(`document.activeElement?.blur()`);
-  await rest();
-  // More: the block's lines into the input (OpenCode has no side chats)
-  at = await seeLine("pageSize = 20");
-  if (at) await ui.mouse("mouseMoved", at.x, at.y);
-  await ui.sleep(500);
-  await ui.click({ css: '.session-changes-editor .dispatch-hunk-why[data-start="15"] [data-part="hunk-more"]' });
-  const moreQuote = qa.states.moreQuote = await until(ui, async () => { const q = await ui.eval(QUOTES); return q.length ? q : null; }, 10000, "the block in the input", 300).catch(() => []);
-  check("More (OpenCode): the block's lines go into the conversation's input as a quote, from app.ts in Changes", moreQuote.length === 1 && /pageSize = 20/.test(moreQuote[0].text) && /^app\.ts · line 15 · Changes$/.test(moreQuote[0].src.trim()), moreQuote);
-  await ui.screenshot("09-more-quote-light");
-  await markIf({ css: ".session-view .interactive-input-part .dispatch-quote" }, { what: "More 放进来的引用片：这块改动的那几行", where: "原对话输入框", how: "OpenCode 不支持旁聊，所以放进原对话；别的引擎开旁聊卡" });
+  const box = qa.states.selectionBox = await until(ui, async () => { const b = await ui.eval(SELECTION_BOX); return b.length ? b : null; }, 15000, "the selection box", 300).catch(() => []);
+  check("selecting the line: the box has Quote and Ask Question", box.some(b => /Quote/.test(b)) && box.some(b => /Ask Question/.test(b)), box);
+  await ui.screenshot("08-changes-selection-light");
+  await markIf({ css: ".agent-feedback-input-widget .agent-feedback-input-leading" }, { what: "选中 diff 里的字：Quote / Ask Question", where: "右栏 Changes，选区下面 VS Code 自己的批注框前面", how: "拖选一行；问为什么这么改就用 Ask Question" });
+  await ui.click({ css: '.agent-feedback-input-widget .agent-feedback-input-leading-action[data-action="quote"]' });
+  const moreQuote = qa.states.moreQuote = await until(ui, async () => { const q = await ui.eval(QUOTES); return q.length ? q : null; }, 10000, "the line in the input", 300).catch(() => []);
+  check("Quote: the line goes into the conversation's input, from app.ts", moreQuote.length === 1 && /pageSize = 20/.test(moreQuote[0].text) && /app\.ts/.test(moreQuote[0].src), moreQuote);
   await ui.hover({ css: ".session-view .interactive-input-part .dispatch-quote" });
   await ui.click({ css: ".session-view .interactive-input-part .dispatch-quote .dispatch-quote-rm" });
   await until(ui, async () => (await ui.eval(QUOTES)).length === 0, 10000, "the quote to go", 300);
 
-  // ---- dark: Changes with a Why open, and Now ----
+  // ---- dark: Changes, and Now ----
   await ui.setTheme("dark");
   await ui.openTab("Changes");
   at = await seeLine("pageSize = 20");
   if (at) await ui.mouse("mouseMoved", at.x, at.y);
   await ui.sleep(500);
-  await ui.click({ css: '.session-changes-editor .dispatch-hunk-why[data-start="15"] [data-part="hunk-why"]' });
-  const darkWhy = await until(ui, async () => { const c = await ui.eval(CHANGES); return c && c.open.find(x => x.state === "done") || null; }, 20000, "the reason in dark", 200).catch(() => null);
-  check("dark: the same reason again at once (kept for the turn)", !!darkWhy && darkWhy.source === "model" && Number(darkWhy.ms) < 1500, darkWhy);
-  await ui.screenshot("10-why-open-dark");
-  await markIf({ css: '.session-changes-editor .dispatch-hunk-expl[data-state="done"] .dispatch-hunk-box' }, { what: "Why 展开（深色）", where: "这块改动下面", how: "⌃ 收起" });
-  await ui.press("Escape");
+  const darkChanges = qa.states.changesDark = await ui.eval(CHANGES);
+  check("dark: Changes adds nothing either", nothingAdded(darkChanges), darkChanges);
+  await ui.screenshot("10-changes-vscode-dark");
   await ui.openNowTab();
   // the tab is drawn again when it comes back: its head first shows what it showed last, then the board's answer
   const nowDark = qa.states.nowDark = await until(ui, async () => { const n = await ui.eval(NOW); return n && n.why ? n : null; }, 20000, "the why line in dark", 300).catch(() => ui.eval(NOW));
@@ -444,7 +374,7 @@ export default async function (ui) {
   await markIf({ css: ".dispatch-term-hover" }, { what: "术语悬停（深色）", where: "dependency 下面", how: "Ask more 接着问" });
   await rest();
 
-  // ---- the walk of the same turn uses the answers Why got ----
+  // ---- the walk of the same turn: its own one model call ----
   await ui.setTheme("light");
   await ui.openNowTab();
   await until(ui, async () => !!(await ui.exists({ css: '[data-part="walk-me-through"]' })), 20000, "Walk me through in Now", 400).catch(() => {});
@@ -462,40 +392,11 @@ export default async function (ui) {
     await ui.press("Escape");
     qa.states.walkA = stops;
     const appStops = stops.filter(s => /app\.ts$/.test(s.path || ""));
-    check("the walk of turn A: the app.ts stops say the reasons Why got, no new call", appStops.length === 2 && appStops.every(s => s.source === "model" && s.model !== "asking") && stops.every(s => s.model !== "asking"), stops.map(s => [s.path, s.source, s.model, s.say]));
+    check("the walk of turn A: both app.ts stops, each with a sentence once its one call is back", appStops.length === 2 && appStops.every(s => s.say.trim().length > 0), stops.map(s => [s.path, s.source, s.model, s.say]));
   } else {
     check("Walk me through in Now after turn A", false);
   }
 
-  // ======== B. walked first: Why takes the walk's sentence ========
-  await focusInput(ui, ".session-view .interactive-input-part");
-  await ui.type(TURN_B);
-  await ui.press("Enter", { send: true });
-  await until(ui, () => ui.eval(RUNNING), 90000, "turn B to start", 300).catch(() => {});
-  qa.states.answerB = (await turnEnds()).slice(0, 200);
-  check("turn B changed the file", /fontSize = 18/.test(fs.readFileSync(path.join(ui.demoFolder, "explain", "app.ts"), "utf8")));
-  await ui.openNowTab();
-  await until(ui, async () => !!(await ui.exists({ css: '[data-part="walk-me-through"]' })), 30000, "Walk me through after turn B", 400).catch(() => {});
-  await ui.click({ css: '[data-part="walk-me-through"]' });
-  const walkB = await until(ui, () => ui.eval(`(() => { const c = document.querySelector('.dispatch-walk-card'); return c && c.dataset.model && c.dataset.model !== 'asking' ? { ...c.dataset, say: (c.querySelector('[data-part="walk-say"]') || {}).textContent || '' } : null; })()`), 180000, "turn B's walk sentence", 400).catch(() => null);
-  qa.states.walkB = walkB;
-  await ui.press("Escape");
-  await ui.openTab("Changes");
-  at = await seeLine("fontSize = 18");
-  if (at) await ui.mouse("mouseMoved", at.x, at.y);
-  await ui.sleep(500);
-  const tB = Date.now();
-  await ui.click({ css: '.session-changes-editor .dispatch-hunk-why.on [data-part="hunk-why"]' });
-  const fromWalk = await until(ui, async () => { const c = await ui.eval(CHANGES); return c && c.open.find(x => x.state === "done") || null; }, 30000, "turn B's Why", 150).catch(() => ui.eval(CHANGES));
-  qa.why.push({ block: "app.ts fontSize (turn B)", tookMs: Date.now() - tB, ...fromWalk });
-  check("turn B: Why on the block the walk went through takes the walk's sentence, no call", !!fromWalk && fromWalk.fromWalk === "true" && !!walkB && fromWalk.text === walkB.say && Number(fromWalk.ms) < 1500, { fromWalk, walkB });
-  await ui.screenshot("13-why-from-walk-light");
-  await markIf({ css: '.session-changes-editor .dispatch-hunk-expl[data-state="done"] .dispatch-hunk-box' }, { what: "导览拿过的说明直接复用；框头 More 接着问，⌃ 收起", where: "这块改动下面", how: "同一轮里先走了导览，Why 不再问模型" });
-  // More in the open box: the block into the input (the card shows its first line)
-  await ui.click({ css: '.session-changes-editor .dispatch-hunk-expl[data-state="done"] [data-part="hunk-why-more"]' });
-  const boxQuote = qa.states.boxMoreQuote = await until(ui, async () => { const q = await ui.eval(QUOTES); return q.length ? q : null; }, 10000, "the block from the box's More", 300).catch(() => []);
-  check("More in the open box: the block's lines into the input, \"app.ts · lines 3–4 · Changes\"", boxQuote.length === 1 && /theme = .dark.|fontSize = 18/.test(boxQuote[0].text) && /^app\.ts · lines 3–4 · Changes$/.test(boxQuote[0].src.trim()), boxQuote);
-  await ui.press("Escape");
   qa.states.final = { now: await ui.eval(NOW), changes: await ui.eval(CHANGES) };
   note();
   if (qa.failed.length) throw new Error(`${qa.failed.length} checks failed: ${qa.failed.join(" | ").slice(0, 1500)}`);

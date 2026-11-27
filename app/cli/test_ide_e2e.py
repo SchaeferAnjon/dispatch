@@ -662,6 +662,59 @@ class HiddenWindowsTest(Env):
         self.assertEqual(calls, [rec["inspect_port"]])
         self.assertEqual((rec["hidden"], rec["on_screen"]), ({"ok": True, "windows": 0}, []))
 
+    def start_left_on_screen(self, hidden, on_screen):
+        """A start whose hiding answers `hidden` (one answer per call) and whose window list reads `on_screen`
+        (one list per read). Returns (the error or None, the hide calls, the record)."""
+        app = make_fake_app(self.tmp)
+        hides, screens = list(hidden), list(on_screen)
+        calls = []
+        def hide(rec, wait=60):
+            calls.append(wait)
+            return hides.pop(0) if len(hides) > 1 else hides[0]
+        def shown(pid):
+            return screens.pop(0) if len(screens) > 1 else screens[0]
+        err = None
+        with patch.dict(os.environ, {"DISPATCH_E2E_SHOW": "0"}), patch.object(E.sys, "platform", "darwin"), \
+                patch.object(E, "hide_windows", side_effect=hide), patch.object(E, "onscreen_windows", side_effect=shown), \
+                patch.object(E.time, "sleep"):
+            try:
+                E.start("h2", app=app, do_seed=False, wait=30, log=lambda *_: None)
+            except E.E2EError as e:
+                err = e
+        rec = E.read_record("h2")
+        if err is None:
+            E.stop("h2", log=lambda *_: None)
+        return err, calls, rec
+
+    def test_a_start_that_cannot_hide_stops_the_instance(self):
+        err, calls, rec = self.start_left_on_screen([{"ok": False, "error": "hide-windows.mjs is missing"}], [[]])
+        self.assertIsNotNone(err)
+        self.assertEqual(err.code, "not_hidden")
+        self.assertIn("hide-windows.mjs is missing", str(err))
+        self.assertFalse(E.is_alive(rec))
+
+    def test_a_cli_without_the_helper_starts_nothing(self):
+        app = make_fake_app(self.tmp)
+        with self.helper(None), patch.dict(os.environ, {"DISPATCH_E2E_SHOW": "0"}), patch.object(E.sys, "platform", "darwin"):
+            with self.assertRaises(E.E2EError) as c:
+                E.start("h3", app=app, do_seed=False, wait=5, log=lambda *_: None)
+        self.assertEqual(c.exception.code, "not_hidden")
+        self.assertIn("hide-windows.mjs", str(c.exception))
+        self.assertFalse(os.path.exists(os.path.join(E.root_dir(), "h3")))  # nothing made, nothing started
+
+    def test_a_window_seen_after_the_start_is_hidden_again(self):
+        err, calls, rec = self.start_left_on_screen([{"ok": True, "windows": 0}], [[[36, 38, 1440, 884]]] * 10 + [[]])
+        self.assertIsNone(err)
+        self.assertEqual(len(calls), 2)  # before the first window, and again once it was seen
+        self.assertEqual(rec["on_screen"], [])
+
+    def test_a_window_that_stays_on_screen_stops_the_instance(self):
+        err, calls, rec = self.start_left_on_screen([{"ok": True, "windows": 0}], [[[36, 38, 1440, 884]]])
+        self.assertIsNotNone(err)
+        self.assertEqual(err.code, "not_hidden")
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(E.is_alive(rec))
+
     def test_show_leaves_the_windows_alone(self):
         rec, argv, calls = self.start(show=True)
         self.assertFalse([a for a in argv if a.startswith("--inspect")])
@@ -680,12 +733,46 @@ class HiddenWindowsTest(Env):
         self.assertFalse(got["ok"])
         self.assertIn("no inspector", got["error"])
 
+    def helper(self, body):
+        """A stand-in hide-windows.mjs in its own scripts folder, run by this Python (the binary runs it as a script)."""
+        scripts = os.path.join(self.tmp, "scripts")
+        os.makedirs(scripts, exist_ok=True)
+        if body is not None:
+            with open(os.path.join(scripts, "hide-windows.mjs"), "w") as f:
+                f.write(body)
+        return patch.object(E, "SCRIPTS", scripts)
+
+    def test_hide_windows_names_a_missing_helper(self):
+        # the 0.9.7 app's own CLI had no hide-windows.mjs (bundle.json): Electron printed "Cannot find module" on
+        # stderr, stdout was empty and the start said only "list index out of range" (task-4cpnb)
+        with self.helper(None):
+            got = E.hide_windows({"binary": sys.executable, "inspect_port": 1}, wait=1)
+        self.assertFalse(got["ok"])
+        self.assertIn("hide-windows.mjs", got["error"])
+        self.assertNotIn("list index", got["error"])
+
+    def test_hide_windows_says_what_a_silent_helper_said_on_stderr(self):
+        with self.helper("import sys\nsys.stderr.write('Error: Cannot find module cdp.mjs\\n')\nsys.exit(3)\n"):
+            got = E.hide_windows({"binary": sys.executable, "inspect_port": 1}, wait=1)
+        self.assertFalse(got["ok"])
+        self.assertNotIn("list index", got["error"])
+        self.assertIn("3", got["error"])
+        self.assertIn("Cannot find module cdp.mjs", got["error"])
+
+    def test_hide_windows_reads_the_answer_after_other_lines(self):
+        with self.helper("print('(node) a warning')\nprint('{\"ok\": true, \"windows\": 2}')\n"):
+            got = E.hide_windows({"binary": sys.executable, "inspect_port": 1}, wait=1)
+        self.assertEqual(got, {"ok": True, "windows": 2})
+
     def test_check_hidden_reports_a_window_left_on_screen(self):
         said = []
-        with patch.object(E, "onscreen_windows", return_value=[[36, 38, 1440, 884]]), patch.object(E.time, "sleep"):
+        hides = []
+        with patch.object(E, "onscreen_windows", return_value=[[36, 38, 1440, 884]]), patch.object(E.time, "sleep"), \
+                patch.object(E, "hide_windows", side_effect=lambda rec, wait=60: hides.append(wait) or {"ok": True, "windows": 1}):
             shown = E.check_hidden({"name": "t", "pid": 1, "inspect_port": 2}, tries=2, log=said.append)
         self.assertEqual(shown, [[36, 38, 1440, 884]])
-        self.assertTrue(said and "看得见" in said[0], said)
+        self.assertEqual(hides, [15])  # hidden once more before giving up
+        self.assertTrue(said and "没能藏起来" in said[-1], said)
         self.assertIsNone(E.check_hidden({"name": "t", "pid": 1}, log=said.append))
 
 

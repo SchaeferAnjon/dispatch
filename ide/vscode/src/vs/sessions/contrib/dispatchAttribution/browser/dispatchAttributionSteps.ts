@@ -9,9 +9,8 @@
  *    "Includes 2 lines you changed" when some of its lines were yours. A chevron opens the whole message.
  *  - A commit you made yourself after a turn (the commit button in Changes or Source Control, a terminal) gets
  *    the same card under that turn's reply: "You committed" and whose lines it holds.
- *  - Above the diffs in Changes, All / Turn 1 / You: each turn that changed files, and your latest changes, as
- *    a changeset of its own (two versions per file); a grey line under it says which step is shown, with
- *    Show all.
+ *  The row's click shows your lines as a changeset of their own (two versions per file) in Changes' own picker;
+ *  Changes adds nothing of its own above the diffs (VS Code's as it is, the user 2026-11-16).
  *
  *  Data: dispatch-bridge's dispatch.attributionSteps runs `dispatch attribution steps --host-session --cwd`
  *  (kanban app/cli/attribution.py), asked again when the session's changes change.
@@ -53,7 +52,7 @@ import { agentIcon } from '../../dispatchAgents/browser/dispatchAgentIcons.js';
 import { engineBlock } from '../../dispatchBlocks/browser/dispatchBlocks.js';
 import {
 	changesetId, clock, commitYoursLabel, hasCoAuthor, ownCommitLabel, IAttributionSteps, IStepCommit, IStepYours, parseSteps,
-	replyFor, StepFilterId, stepButtons, stepFiles, stepNote, stepOfChangeset, yoursLabel, yoursTip,
+	replyFor, stepFiles, stepNote, stepOfChangeset, YoursStep, yoursLabel, yoursTip,
 } from './dispatchAttributionStepsModel.js';
 
 const STEPS_COMMAND = 'dispatch.attributionSteps';
@@ -150,8 +149,8 @@ class VersionContent implements ITextModelContentProvider {
 	}
 }
 
-/** The changeset Changes shows for a step: each file as the version before and the version after. */
-function changesetFor(steps: IAttributionSteps, id: Exclude<StepFilterId, 'all'>): ISessionChangeset {
+/** The changeset Changes shows for your lines: each file as the version before and the version after. */
+function changesetFor(steps: IAttributionSteps, id: YoursStep): ISessionChangeset {
 	const note = stepNote(steps, id);
 	const changes: ISessionFileChange[] = stepFiles(steps, id).map(f => ({
 		uri: URI.file(f.path),
@@ -183,18 +182,12 @@ let shownFor: string | undefined;
 class StepOpener {
 	constructor(
 		@ISessionsService private readonly _sessions: ISessionsService,
-		@IChangesViewService private readonly _changesView: IChangesViewService,
 		@ISessionChangesService private readonly _sessionChanges: ISessionChangesService,
 		@IAgentWorkbenchLayoutService private readonly _layout: IAgentWorkbenchLayoutService,
 		@ICodeEditorService private readonly _editors: ICodeEditorService,
 	) { }
 
-	async open(session: ISession, id: StepFilterId, reveal = false): Promise<void> {
-		if (id === 'all') {
-			shownFor = undefined;
-			this._changesView.setChangesetId(undefined);
-			return;
-		}
+	async open(session: ISession, id: YoursStep): Promise<void> {
 		const steps = store?.get(session);
 		if (!steps) {
 			return;
@@ -208,7 +201,7 @@ class StepOpener {
 		this._layout.revealEditorPartExplicitly();
 		await this._sessionChanges.openChangesEditor(session.resource, { changesetSelection: { kind: 'transient', changeset } });
 		const modified = first && versionUri(first.path, first.after);
-		if (reveal && modified && first.first) {
+		if (modified && first.first) {
 			this.revealLine(modified, first.first);
 		}
 	}
@@ -325,7 +318,7 @@ class ReplyFooters {
 		f.store.add(this._hover.setupDelayedHover(row, { content: tip, style: HoverStyle.Pointer, position: { hoverPosition: HoverPosition.BELOW } }));
 		f.store.add(dom.addDisposableListener(row, dom.EventType.CLICK, e => {
 			dom.EventHelper.stop(e, true);
-			void this._opener.open(session, `you:${y.after_turn}`, true);
+			void this._opener.open(session, `you:${y.after_turn}`);
 		}));
 	}
 
@@ -423,104 +416,6 @@ class ReplyFooters {
 	}
 }
 
-// ---------------------------------------------------------------- All / Turn 1 / You above the diffs
-
-/**
- * Hook for the Changes editor (sessionChangesEditor.ts), under its header: a few choices, All, each turn that
- * changed files and You, and while a step is shown a grey line naming it with Show all.
- */
-export class DispatchStepFilter extends Disposable {
-	readonly domNode: HTMLElement;
-	private readonly _onDidChangeHeight = this._register(new Emitter<void>());
-	readonly onDidChangeHeight: Event<void> = this._onDidChangeHeight.event;
-	private readonly _content = this._register(new DisposableStore());
-	private readonly _opener: StepOpener;
-	private _lastHeight = 0;
-
-	constructor(
-		parent: HTMLElement,
-		@ISessionsService private readonly _sessions: ISessionsService,
-		@IChangesViewService private readonly _changesView: IChangesViewService,
-		@IHoverService private readonly _hover: IHoverService,
-		@IInstantiationService instantiationService: IInstantiationService,
-	) {
-		super();
-		this.domNode = dom.append(parent, $('.dispatch-attr-steps-host'));
-		this._register(toDisposable(() => this.domNode.remove()));
-		this._opener = instantiationService.createInstance(StepOpener);
-		const observer = new ResizeObserver(() => this.reportHeight());
-		observer.observe(this.domNode);
-		this._register(toDisposable(() => observer.disconnect()));
-		this._register(autorun(reader => {
-			const session = this._sessions.activeSession.read(reader);
-			const changeset = this._changesView.activeSessionChangesetObs.read(reader);
-			this.render(session, stepOfChangeset(changeset?.id));
-		}));
-		if (store) {
-			this._register(store.onDidChange(() => this.render(this._sessions.activeSession.get(), stepOfChangeset(this._changesView.activeSessionChangesetObs.get()?.id))));
-		}
-	}
-
-	get height(): number {
-		return this.domNode.offsetHeight;
-	}
-
-	private reportHeight(): void {
-		const h = this.domNode.offsetHeight;
-		if (h !== this._lastHeight) {
-			this._lastHeight = h;
-			this._onDidChangeHeight.fire();
-		}
-	}
-
-	private render(session: ISession | undefined, current: StepFilterId): void {
-		this._content.clear();
-		dom.clearNode(this.domNode);
-		const steps = session ? store?.get(session) : undefined;
-		if (session && store) {
-			void store.refresh(session);
-		}
-		const buttons = stepButtons(steps);
-		if (!session || !buttons.length) {
-			this.reportHeight();
-			return;
-		}
-		const bar = dom.append(this.domNode, $('.dispatch-attr-steps'));
-		const seg = dom.append(bar, $('.seg', { role: 'radiogroup', 'aria-label': localize('dispatchAttribution.steps', "Show changes from") }));
-		for (const b of buttons) {
-			const on = b.id === current;
-			const el = dom.append(seg, $('button.seg-b', { type: 'button', role: 'radio', 'aria-checked': String(on) }));
-			el.dataset.step = b.id;
-			el.classList.toggle('on', on);
-			if (b.kind === 'turn') {
-				dom.append(el, $('span.ag' + ThemeIcon.asCSSSelector(agentIcon(b.engine ?? '')), { 'aria-hidden': 'true' }));
-			} else if (b.kind === 'you') {
-				dom.append(el, $('span.dispatch-attr-chip.dispatch-attr-you.small', { 'aria-hidden': 'true' }));
-			}
-			dom.append(el, $('span.lbl', undefined, b.label));
-			this._content.add(this._hover.setupDelayedHover(el, { content: b.tip, style: HoverStyle.Pointer, position: { hoverPosition: HoverPosition.BELOW } }));
-			this._content.add(dom.addDisposableListener(el, dom.EventType.CLICK, () => void this._opener.open(session, b.id)));
-		}
-		const note = stepNote(steps, current);
-		if (note) {
-			const line = dom.append(this.domNode, $('.dispatch-attr-stepnote'));
-			if (current.startsWith('you:')) {
-				dom.append(line, $('span.dispatch-attr-chip.dispatch-attr-you.small', { 'aria-hidden': 'true' }));
-			} else {
-				const t = steps?.turns.find(t => `turn:${t.n}` === current);
-				dom.append(line, $('span.ag' + ThemeIcon.asCSSSelector(agentIcon(t?.engine ?? '')), { 'aria-hidden': 'true' }));
-			}
-			dom.append(line, $('b', undefined, note.title));
-			dom.append(line, $('span.rest', undefined, `· ${note.rest}`));
-			const all = dom.append(line, $('button.x', { type: 'button' }));
-			dom.append(all, $('span' + ThemeIcon.asCSSSelector(Codicon.close), { 'aria-hidden': 'true' }));
-			dom.append(all, $('span', undefined, localize('dispatchAttribution.showAll', "Show all")));
-			this._content.add(dom.addDisposableListener(all, dom.EventType.CLICK, () => void this._opener.open(session, 'all')));
-		}
-		this.reportHeight();
-	}
-}
-
 // ---------------------------------------------------------------- the contribution
 
 class DispatchAttributionStepsContribution extends Disposable implements IWorkbenchContribution {
@@ -575,7 +470,7 @@ class DispatchAttributionStepsContribution extends Disposable implements IWorkbe
 		this._register(autorun(reader => {
 			const session = sessions.activeSession.read(reader);
 			const id = changesView.activeSessionChangesetObs.read(reader)?.id;
-			if (stepOfChangeset(id) !== 'all' && session && session.resource.toString() !== shownFor) {
+			if (stepOfChangeset(id) && session && session.resource.toString() !== shownFor) {
 				log.info(`[dispatchAttribution] ${id} belongs to ${shownFor ?? 'no session'}: ${session.resource.toString()} shows all of its changes`);
 				shownFor = undefined;
 				changesView.setChangesetId(undefined);

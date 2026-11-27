@@ -50,8 +50,8 @@
 
 /* ---- the head: state, the line, and what goes under it ----------------------------------------------------- */
 
-/* the step it is on, said only in the head's one line below */
-.dispatch-now-count {
+/* the step it is on, said only in the head's one line below (the head's own count: a task row's "2 of 5" stays) */
+.dispatch-now-top > .dispatch-now-count {
 	display: none;
 }
 
@@ -258,6 +258,17 @@
 	transition: background-color 150ms ease;
 }
 .dispatch-now-task:hover { background: var(--now-hover); }
+/* a task link in the conversation opened it here: its row lights once (task-ewbvh) */
+.dispatch-now-task.flash { animation: dispatch-now-task-flash 1.2s ease-out; }
+@keyframes dispatch-now-task-flash {
+	0%, 30% { background: var(--vscode-list-activeSelectionBackground); }
+	100% { background: transparent; }
+}
+.monaco-reduce-motion .dispatch-now-task.flash { animation: none; background: var(--now-hover); }
+/* the title is words, not a button: its line is the row's height, so it sits on the caret's middle line */
+.dispatch-now-title { line-height: 32px; }
+/* a task without steps or deliveries has nothing to open: its title is plain words */
+.dispatch-now-title.static { cursor: default; }
 
 .dispatch-now-caret {
 	flex: none;
@@ -402,21 +413,18 @@
 .dispatch-now-rowbtn:hover,
 .dispatch-now-fold:hover { background: var(--now-hover); }
 
-.dispatch-now-agent {
+/* the sub-agents under the step it is on: "2 agents working", VS Code's pills, "N finished", the same as the strip
+   above the message box and the rows under the session (sessions/browser/media/dispatchSubAgentPill.css, task-518qw),
+   lined up with the steps' words */
+.dispatch-now-agents-block {
 	position: relative;
-	font-size: 12px;
-	font-weight: 400;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 2px 12px 6px 34px;
 }
-.dispatch-now-agent > .dispatch-now-rowbtn { padding-left: 34px; color: var(--now-text); }
-.dispatch-now-agent[data-state="done"] > .dispatch-now-rowbtn { color: var(--now-text-2); }
-/* the sub-agent's kind ("general", "designer") before what it was sent to do */
-.dispatch-now-agent-name { font-weight: 500; color: var(--now-text-2); margin-right: 8px; }
-.dispatch-now-finished {
-	padding-left: 56px;
-	font-size: 12px;
-	color: color-mix(in srgb, var(--now-text-2) 70%, transparent);
-}
-li.dispatch-now-body { position: relative; }
+/* no step to hang from (no task yet): from the panel's own inset, where a task row starts */
+.dispatch-now-agents > .dispatch-now-agents-block { padding-left: 12px; }
 
 .dispatch-now-dl { padding-left: 34px; color: var(--now-text); }
 .dispatch-now-tab .dispatch-now-dl .codicon { font-size: 14px; color: var(--now-text-2); }

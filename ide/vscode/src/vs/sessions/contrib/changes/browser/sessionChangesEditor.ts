@@ -57,7 +57,6 @@ import { IDiffEditorOptionsService } from '../../editor/common/diffEditorOptions
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { observableWorkbenchMultiDiffEditorVariant } from '../../../../workbench/contrib/multiDiffEditor/common/multiDiffEditor.js';
 import { DispatchFixCard } from '../../dispatchFixit/browser/dispatchFixCard.js';
-import { DispatchStepFilter } from '../../dispatchAttribution/browser/dispatchAttributionSteps.js';
 
 const HEADER_HEIGHT = 35;
 
@@ -205,7 +204,6 @@ export class SessionChangesEditor extends AbstractEditorWithViewState<IMultiDiff
 	/** Deferred focus request awaiting the active diff editor to be rendered. */
 	private readonly _pendingFocus = this._register(new MutableDisposable());
 	private _dispatchFixCard: DispatchFixCard | undefined;
-	private _dispatchSteps: DispatchStepFilter | undefined;
 	private _lastDimension: Dimension | undefined;
 
 	private readonly _logger: MultiDiffEditorLogger;
@@ -269,9 +267,6 @@ export class SessionChangesEditor extends AbstractEditorWithViewState<IMultiDiff
 		// Dispatch IDE: what went wrong with a commit, a push or a merge, in plain words, with "Let the agent fix it" (contrib/dispatchFixit)
 		this._dispatchFixCard = this._register(this.instantiationService.createInstance(DispatchFixCard, root, 'editor'));
 		this._register(this._dispatchFixCard.onDidChangeHeight(() => this._lastDimension && this.layout(this._lastDimension)));
-		// Dispatch IDE: All / Turn 1 / You, each step of the session on its own (contrib/dispatchAttribution)
-		this._dispatchSteps = this._register(this.instantiationService.createInstance(DispatchStepFilter, root));
-		this._register(this._dispatchSteps.onDidChangeHeight(() => this._lastDimension && this.layout(this._lastDimension)));
 
 		this.bodyContainer = append(root, $('.session-changes-editor-body'));
 
@@ -491,7 +486,7 @@ export class SessionChangesEditor extends AbstractEditorWithViewState<IMultiDiff
 		this._lastDimension = dimension;
 		// In single-pane the header is external (the editor part reserves a top inset),
 		// so the diff fills the full dimension; otherwise reserve the internal header.
-		const bodyHeight = Math.max(0, (this._singlePane ? dimension.height : Math.max(0, dimension.height - HEADER_HEIGHT)) - (this._dispatchFixCard?.height ?? 0) - (this._dispatchSteps?.height ?? 0));
+		const bodyHeight = Math.max(0, (this._singlePane ? dimension.height : Math.max(0, dimension.height - HEADER_HEIGHT)) - (this._dispatchFixCard?.height ?? 0));
 		this.widget?.layout(new Dimension(dimension.width, bodyHeight));
 	}
 }

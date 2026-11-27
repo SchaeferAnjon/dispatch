@@ -6,7 +6,8 @@
  *  （task-2vcx）」 shows 「仓库拆分修 Bug」 as one link; **Title**（task-2vcx） links the bold title; a
  *  bare task-2vcx is replaced by the task's title from the board (`dispatch task show` through
  *  dispatch-bridge's `dispatch.tasks`); one the board does not know reads "a task" (a bracket is
- *  dropped). A click in a reply opens the task in place in the side pane's Tasks tab and the conversation
+ *  dropped). A click in a reply opens a task the session's Now lists there, its row open (task-ewbvh); any other
+ *  task in place in the side pane's Tasks tab; the conversation
  *  stays (`dispatch.showTask`, task-86t0e); the reply's tasks are asked for as soon as it is drawn
  *  (dispatchTaskBriefs.ts), so the card is there at once. Where that command is not registered (the
  *  editor window) the reply is left alone. The Agents window's own pages and cards (Waiting for you, the
@@ -25,6 +26,8 @@ import { findTaskRefs, titleWrittenBefore } from './dispatchTaskRefs.js';
 const OPEN_TASK = '_dispatch.openTask';
 /** The side pane's Tasks tab opens the task in place (dispatchDocsOpen.ts). */
 const SHOW_TASK = 'dispatch.showTask';
+/** In this session's Now when it lists the task, its row opened in place; else SHOW_TASK (dispatchNow.contribution.ts, task-ewbvh). */
+const SHOW_TASK_IN_NOW = 'dispatch.showTaskInNow';
 const SKIP_SELECTOR = 'a, pre, code, button, textarea, .monaco-editor, .interactive-result-code-block, .chat-inline-anchor-widget, .dispatch-path-link, .dispatch-task-link, .chat-codeblock-pill-widget';
 const LABEL_ELEMENTS = new Set(['STRONG', 'B', 'EM', 'I']);
 
@@ -99,7 +102,7 @@ export function linkifyDispatchTasksWith(commandService: ICommandService, root: 
 			e.stopPropagation();
 			if (inPlace) {
 				// the words of the link are the title until the board's answer is there
-				void commandService.executeCommand(SHOW_TASK, id, title || (el.textContent ?? '').trim());
+				void commandService.executeCommand(CommandsRegistry.getCommand(SHOW_TASK_IN_NOW) ? SHOW_TASK_IN_NOW : SHOW_TASK, id, title || (el.textContent ?? '').trim());
 			} else {
 				void commandService.executeCommand(OPEN_TASK, id);
 			}

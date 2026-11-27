@@ -51,9 +51,11 @@ const KEYS = {
   F1: { key: "F1", code: "F1", keyCode: 112 },
   // ⌘, : Dispatch's own Settings in the Agents window, VS Code's settings in the editor window
   "Cmd+,": { key: ",", code: "Comma", keyCode: 188, modifiers: 4 },
+  // ⌃⇧S : Point and talk (Ctrl 2 + Shift 8)
+  "Ctrl+Shift+S": { key: "S", code: "KeyS", keyCode: 83, modifiers: 10 },
 };
 /** Keys that never change text: allowed wherever the focus is (Tab is not one: it indents in an editor). */
-const SAFE_KEYS = new Set(["Escape", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End", "F1", "Cmd+,"]);
+const SAFE_KEYS = new Set(["Escape", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End", "F1", "Cmd+,", "Ctrl+Shift+S"]);
 
 export class Ui {
   constructor(rec, out, opts = {}) {

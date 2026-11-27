@@ -611,7 +611,7 @@ export class AgentSideEffects extends Disposable {
 		}
 
 		if (signal.kind === 'subagent_completed') {
-			this.completeSubagentSession(signal.chat.toString(), signal.toolCallId);
+			this.completeSubagentSession(signal.chat.toString(), signal.toolCallId, signal.stopped);
 			return;
 		}
 
@@ -1179,7 +1179,7 @@ export class AgentSideEffects extends Disposable {
 	 * Completes the active turn for the subagent associated with a parent tool
 	 * call. The chat remains registered so a later steered turn can resume it.
 	 */
-	completeSubagentSession(parentChatURI: ProtocolURI, toolCallId: string): void {
+	completeSubagentSession(parentChatURI: ProtocolURI, toolCallId: string, stopped?: string): void {
 		// Drop any events that were buffered waiting for a `subagent_started`
 		// that never arrived (e.g. the parent tool failed before the subagent
 		// was created). Without this, the buffer entry would leak until the
@@ -1192,7 +1192,18 @@ export class AgentSideEffects extends Disposable {
 		}
 
 		const turnId = this._stateManager.getActiveTurnId(subagent.chatUri);
-		if (turnId) {
+		if (turnId && stopped) {
+			// Dispatch IDE: one that ended without finishing ends its turn stopped, not done (task-518qw)
+			const error = { errorType: 'stopped', message: stopped };
+			this._stateManager.dispatchServerAction(subagent.chatUri, {
+				type: ActionType.ChatError,
+				turnId,
+				duration: this._turnDuration(subagent.turnStopWatch),
+				part: createErrorResponsePart(error),
+			});
+			this._completeTurn(subagent.chatUri, turnId, 'error', { stage: 'provider', error });
+			this._toolCallTracker.clearSession(subagent.chatUri);
+		} else if (turnId) {
 			this._stateManager.dispatchServerAction(subagent.chatUri, {
 				type: ActionType.ChatTurnComplete,
 				turnId,

@@ -4,7 +4,7 @@
 
 Dispatch（调度台）是一个装在 Mac 上的**本地 Agent 工作台**。你在终端或编辑器里像平时一样用 Claude Code、Codex、pi、ZCode、Gemini CLI、OpenCode、Hermes 这些编程 Agent；Dispatch 只读它们已经写在本机的记录，按**项目**把每一段会话、每个任务和每项成果摆到一个台子上：谁在等你、谁在跑、做到哪了。看到 Agent 在等你，就在电脑或手机上直接回复原会话。
 
-当前版本 v0.9.8，支持 macOS 14 及以上，开源（GPL-3.0）。官网在 <https://dispatch.us-cloud.uk/>，源码在 <https://github.com/SchaeferAnjon/dispatch>。
+当前版本 v0.9.9，支持 macOS 14 及以上，开源（GPL-3.0）。官网在 <https://dispatch.us-cloud.uk/>，源码在 <https://github.com/SchaeferAnjon/dispatch>。
 
 ![工作台：每个项目此刻的情况](../assets/shot-home.png)
 

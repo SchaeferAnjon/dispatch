@@ -40,6 +40,7 @@ interface IRouterHarness {
 	readonly router: ClaudeSdkMessageRouter;
 	readonly signals: AgentSignal[];
 	readonly fileService: FileService;
+	readonly subagents: SubagentRegistry;
 }
 
 class RecordingAgentEditAttributionService extends NullAgentEditAttributionService {
@@ -88,7 +89,7 @@ function createRouter(
 	));
 	const signals: AgentSignal[] = [];
 	disposables.add(router.onDidProduceSignal(s => signals.push(s)));
-	return { router, signals, fileService };
+	return { router, signals, fileService, subagents };
 }
 
 function assistantMessage(content: unknown): Extract<SDKMessage, { type: 'assistant' }> {
@@ -107,6 +108,49 @@ suite('ClaudeSdkMessageRouter', () => {
 		const { router, signals } = createRouter(disposables);
 		await router.handle(makeStreamEvent('sess-1', makeMessageStart()), undefined);
 		assert.deepStrictEqual(signals, []);
+	});
+
+	// Dispatch IDE: a background sub-agent's end that comes while the parent is idle (no turn) still ends it (task-518qw)
+	test('a background sub-agent\'s end with no turn ends it, once', async () => {
+		const { router, signals, subagents } = createRouter(disposables);
+		subagents.recordSpawn('toolu_bg').background = true;
+		subagents.recordSpawn('toolu_other').background = true;
+		const end = { type: 'system', subtype: 'task_notification', tool_use_id: 'toolu_bg', status: 'completed' } as unknown as SDKMessage;
+		await router.handle(end, undefined);
+		await router.handle(end, undefined);
+		assert.deepStrictEqual(signals.map(s => s.kind === 'subagent_completed' ? s.toolCallId : s.kind), ['toolu_bg']);
+		assert.deepStrictEqual(subagents.openBackgroundSpawns(), ['toolu_other']);
+	});
+
+	test('the CLI\'s replayed <task-notification> note with no turn ends the sub-agent it names', async () => {
+		const { router, signals, subagents } = createRouter(disposables);
+		subagents.recordSpawn('toolu_bg').background = true;
+		await router.handle(userMessage('<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>toolu_bg</tool-use-id>\n<status>completed</status>\n</task-notification>'), undefined);
+		assert.deepStrictEqual(signals.map(s => s.kind), ['subagent_completed']);
+	});
+
+	test('a killed background sub-agent ends stopped, not done', async () => {
+		const { router, signals, subagents } = createRouter(disposables);
+		subagents.recordSpawn('toolu_bg').background = true;
+		await router.handle(userMessage('<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>toolu_bg</tool-use-id>\n<status>killed</status>\n</task-notification>'), undefined);
+		assert.deepStrictEqual(signals.map(s => s.kind === 'subagent_completed' ? [s.toolCallId, !!s.stopped] : s.kind), [['toolu_bg', true]]);
+	});
+
+	test('a note that names the agent only ends the open spawn that ran it', async () => {
+		const { router, signals, subagents } = createRouter(disposables);
+		subagents.recordSpawn('toolu_bg', { agentId: 'a8e9' }).background = true;
+		await router.handle(userMessage('<task-notification>\n<task-id>a8e9</task-id>\n<task-id>other</task-id>\n<status>stopped</status>\n</task-notification>'), undefined);
+		assert.deepStrictEqual(signals.map(s => s.kind === 'subagent_completed' ? [s.toolCallId, !!s.stopped] : s.kind), [['toolu_bg', true]]);
+	});
+
+	test('the process gone: every open background sub-agent ends stopped, a foreground one stays', () => {
+		const { router, signals, subagents } = createRouter(disposables);
+		subagents.recordSpawn('toolu_a').background = true;
+		subagents.recordSpawn('toolu_b').background = true;
+		subagents.recordSpawn('toolu_fg');
+		router.endOpenBackground('Stopped with its session.');
+		assert.deepStrictEqual(signals.map(s => s.kind === 'subagent_completed' ? [s.toolCallId, s.stopped] : s.kind), [['toolu_a', 'Stopped with its session.'], ['toolu_b', 'Stopped with its session.']]);
+		assert.ok(subagents.getSpawn('toolu_fg'));
 	});
 
 	test('handle with a turnId on a text content block produces ChatResponsePart + ChatDelta signals', async () => {

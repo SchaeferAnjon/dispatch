@@ -5,7 +5,7 @@
  *  tests it. No imports but types: Node runs this file as it is.
  *--------------------------------------------------------------------------------------------*/
 
-import type { SubAgentRowState } from '../../../browser/dispatchSubAgentRows.js';
+import type { SubAgentState } from '../../../browser/dispatchSubAgents.js';
 
 /** One sub-agent as the strip needs it, read from its chat by the window. */
 export interface IStripAgentInput {
@@ -13,7 +13,7 @@ export interface IStripAgentInput {
 	readonly id: string;
 	/** What it was sent to do: its chat's title. */
 	readonly name: string;
-	readonly state: SubAgentRowState;
+	readonly state: SubAgentState;
 	/** When it started (first seen working). */
 	readonly startedAt: number;
 	/** How long it has run, or ran. */
@@ -135,11 +135,17 @@ export function runningStep(parts: readonly IReplyPart[]): string {
 }
 
 /**
- * The step one sub-agent is on, from the reply of the conversation that sent it out: the Agent Host puts the
- * sub-agent's own calls there too, each marked with the call that started it. The sub-agent's chat is named
+ * The step one sub-agent is on (or the last it took, between two), from the reply of the conversation that sent it
+ * out: the Agent Host puts the sub-agent's own calls there too, each marked with the call that started it. The sub-agent's chat is named
  * `<session>/subagent/<call id>` or carries that call in its fragment.
  */
 export function subagentStep(parts: readonly IReplyPart[], chat: { readonly resource: string; readonly fragment: string }): string {
 	const start = parts.find(p => p.subagent && p.id && (p.subagent.chat === chat.resource || chat.fragment === `subagent/${p.id}` || chat.fragment === p.id || chat.resource.endsWith(`/subagent/${p.id}`)));
-	return start ? runningStep(parts.filter(p => p.parent === start.id)) : '';
+	if (!start) {
+		return '';
+	}
+	// the call it runs, else the last one it ran, as VS Code's sub-agent block under the pill (task-518qw)
+	const own = parts.filter(p => p.parent === start.id);
+	const last = [...own].reverse().find(p => p.tool && !p.hidden && p.message);
+	return runningStep(own) || (last ? last.message.replace(/\s+/g, ' ').trim() : '');
 }

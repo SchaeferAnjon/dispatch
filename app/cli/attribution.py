@@ -38,8 +38,8 @@ kept before the editor's (when every change outside a turn counted as yours) rea
       what you changed since that session's last turn ended (the text its next turn starts with).
   steps (--session ID | --host-session URI) --cwd DIR
       the session's turns (each changed file as two read-only versions, the commits it made and how
-      many of their lines were yours) and the lines you changed after each turn, for the chat and the
-      All / Turn 1 / You filter of Changes.
+      many of their lines were yours) and the lines you changed after each turn, for the chat's rows
+      (a click on "You changed 2 lines" shows only those lines in Changes).
   config [--co-author on|off]
       Settings › Agents: whether a turn also asks the agent to end its commits with a Co-authored-by
       line (off: Dispatch adds nothing to commit messages).
@@ -1232,8 +1232,8 @@ def your_lines_at(root, d, marks, contents, m, paths, base=None):
 
 def steps(cwd, agent, session, now=None, base=None):
     """The session's turns (what each changed, as two versions per file, and the commits it made) and the
-    lines you changed between them, for the chat's "You changed 2 lines" row, its commit card and the
-    All / Turn 1 / You filter of Changes."""
+    lines you changed between them, for the chat's "You changed 2 lines" row (a click shows only those lines in
+    Changes) and its commit card."""
     root = project_root(cwd)
     shown = root_as_asked(root, cwd)  # the files are named under the folder the window asked with
     agent, sid = canonical_session(agent, session)

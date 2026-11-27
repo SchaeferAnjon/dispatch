@@ -1,9 +1,7 @@
-// Who wrote each changed line: an agent, you, or something else (task-6qpx, task-m6hek), for the Agents window's Changes and diffs
-// (Dispatch IDE patches/340-attribution.patch). All the work is the CLI's (kanban app/cli/attribution.py);
-// these commands only run it.
+// Who wrote each changed line: an agent, you, or something else (task-6qpx, task-m6hek), for the rows under a reply and the
+// note an agent's next turn gets (Dispatch IDE patches/340-attribution.patch). All the work is the CLI's (kanban
+// app/cli/attribution.py); these commands only run it.
 //
-//   dispatch.attributionShow(file)                  → `attribution show <file>`: runs of lines by author
-//   dispatch.attributionFiles(files[])              → `attribution files …`: counts per file
 //   dispatch.attributionMark(event, session, cwd)   → `attribution mark --event --host-session --cwd`:
 //                                                     a session's turn started or ended in the window
 //   dispatch.attributionSteps(session, cwd)         → `attribution steps --host-session --cwd`: the session's
@@ -19,26 +17,6 @@ const local = (v: string) => (v.startsWith("file:") ? vscode.Uri.parse(v).fsPath
 
 export function registerAttribution(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(
-    vscode.commands.registerCommand("dispatch.attributionShow", async (file: unknown) => {
-      const p = local(str(file));
-      if (!p.startsWith("/")) return { ok: false, error: "bad_request" };
-      try {
-        return await runJson(["attribution", "show", p, "--json"], { timeoutMs: 20000 });
-      } catch (e) {
-        log(`attribution show ${p}: ${(e as Error).message}`);
-        return { ok: false, error: "failed" };
-      }
-    }),
-    vscode.commands.registerCommand("dispatch.attributionFiles", async (files: unknown) => {
-      const paths = (Array.isArray(files) ? files : []).map((f) => local(str(f))).filter((p) => p.startsWith("/")).slice(0, 200);
-      if (!paths.length) return { ok: true, files: {} };
-      try {
-        return await runJson(["attribution", "files", ...paths, "--json"], { timeoutMs: 30000 });
-      } catch (e) {
-        log(`attribution files: ${(e as Error).message}`);
-        return { ok: false, error: "failed" };
-      }
-    }),
     vscode.commands.registerCommand("dispatch.attributionSteps", async (session: unknown, cwd: unknown) => {
       const s = str(session), dir = local(str(cwd));
       if (!s || !dir.startsWith("/")) return { ok: false, error: "bad_request" };

@@ -1,22 +1,15 @@
 /*---------------------------------------------------------------------------------------------
  *  Dispatch IDE: the sub-agent strip above the message box (dispatchSubagentStrip.ts). Direction A, the person
- *  picked it 2026-11-12 (task-1rzdr, kanban design/subagent-strip/proto.html#dir=a): a --bg-2 block, 16 round,
- *  4 inside, 8 above the box; a 32 high head, two lines per sub-agent (26 + 20), "N finished" 28 high. No tokens and
- *  no Stop: no engine gives them for one sub-agent today (dispatchSubagentStrip.ts says why).
- *  The marks of the symbol table (VS Code's round state icons, task-o01fh): the purple filled circle while it works,
- *  the coral one once stopped, the grey filled check once back. The names on the right are DESIGN.md's tokens:
- *    --text  foreground     --text-2  descriptionForeground     --bg-2  sideBar.background
- *    --sel   list.activeSelectionBackground                     --chip  button.secondaryBackground
+ *  picked it 2026-11-12 (task-1rzdr): a --bg-2 block, 8 round, 4 inside, 8 above the box. Since 2026-11-16 (task-518qw)
+ *  what is in it is the same as under a session in the sidebar and in Now (sessions/browser/media/dispatchSubAgentPill.css):
+ *  the head "2 agents working", VS Code's sub-agent pills, "N finished". This file only places them in the block.
  *  In dark the conversation column is --bg-2 itself: the block goes one step up, to --chip, as the person's own
  *  message does there, and its hover is --text 6% over it (designer review, 2026-11-12).
  *--------------------------------------------------------------------------------------------*/
 
 .dispatch-subagents-slot {
-	--dsa-text: var(--vscode-foreground);
-	--dsa-text-2: var(--vscode-descriptionForeground);
 	--dsa-bg-2: var(--vscode-sideBar-background);
-	--dsa-sel: var(--vscode-list-activeSelectionBackground);
-	--dsa-hover: color-mix(in srgb, var(--dsa-sel) 70%, transparent);
+	--dsa-hover: var(--vscode-toolbar-hoverBackground);
 	--dsa-ease-out: cubic-bezier(0.2, 0, 0, 1);
 	min-width: 0;
 }
@@ -37,9 +30,7 @@
 	padding: 4px;
 	border-radius: var(--dispatch-radius-card);
 	background: var(--dsa-bg-2);
-	color: var(--dsa-text);
-	font-size: 13px;
-	line-height: 1.5;
+	color: var(--vscode-foreground);
 	animation: dispatch-subagents-in 200ms var(--dsa-ease-out);
 }
 @keyframes dispatch-subagents-in {
@@ -47,38 +38,29 @@
 	to { opacity: 1; transform: none; }
 }
 
-.dispatch-subagents button {
+/* the head: the shared "2 agents working" (dispatchSubAgentPill.css) as a button, folded the first one's step, the caret */
+.dispatch-subagents .dsa-head {
 	all: unset;
 	box-sizing: border-box;
-	cursor: pointer;
-}
-.dispatch-subagents button:focus-visible,
-.dispatch-subagents .dsa-row:focus-visible {
-	/* the prototype's ring: 2px --text 30%, only from the keyboard */
-	outline: 2px solid color-mix(in srgb, var(--dsa-text) 30%, transparent);
-	outline-offset: 0;
-}
-
-/* the head: the agent mark, "2 agents working", folded the first one's step, the caret */
-.dispatch-subagents .dsa-head {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--vscode-spacing-size60);
 	width: 100%;
-	height: 32px;
-	padding: 0 8px;
-	border-radius: var(--dispatch-radius-button);
-	font-size: 12px;
-	color: var(--dsa-text-2);
+	height: 28px;
+	padding: 0 6px;
+	border-radius: var(--vscode-cornerRadius-small);
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-body2);
+	line-height: 1.4em;
+	cursor: pointer;
 	transition: background-color 150ms ease;
 }
-.dispatch-subagents .dsa-head > .codicon {
-	flex: none;
-	font-size: 16px;
+.dispatch-subagents .dsa-head:hover {
+	background: var(--dsa-hover);
 }
-.dispatch-subagents .dsa-head b {
-	font-weight: 600;
-	white-space: nowrap;
+.dispatch-subagents .dsa-head:focus-visible {
+	outline: var(--vscode-strokeThickness, 1px) solid var(--vscode-focusBorder);
+	outline-offset: -1px;
 }
 .dispatch-subagents .dsa-line {
 	flex: 1;
@@ -87,136 +69,30 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
-.dispatch-subagents .dsa-head[aria-expanded="true"] .dsa-line {
-	visibility: hidden;
-}
 .dispatch-subagents .dsa-car.codicon {
 	flex: none;
-	font-size: 12px;
+	margin-left: auto;
+	font-size: var(--vscode-codiconFontSize-compact, 12px);
 	transition: transform 200ms var(--dsa-ease-out);
 }
 .dispatch-subagents .dsa-head[aria-expanded="true"] .dsa-car {
 	transform: rotate(180deg);
 }
 
-.dispatch-subagents .dsa-head:hover,
-.dispatch-subagents .dsa-row:hover,
-.dispatch-subagents .dsa-fin:hover {
-	background: var(--dsa-hover);
+/* the pills under the head, lined up with its words */
+.dispatch-subagents .dsa-body {
+	padding: 2px 6px 4px;
 }
 
-/* a sub-agent: two lines */
-.dispatch-subagents .dsa-row {
-	padding: 3px 8px 5px;
-	border-radius: var(--dispatch-radius-button);
-	cursor: pointer;
-	transition: background-color 150ms ease;
-}
-.dispatch-subagents .dsa-l1 {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	height: 26px;
-}
-.dispatch-subagents .dsa-slot {
-	flex: none;
-	display: grid;
-	place-items: center;
-	width: 14px;
-	height: 14px;
-}
-/* the slot holds the state mark (dispatchMarks.ts, DESIGN.md「符号表」): purple working, coral stopped, grey check back */
-.dispatch-subagents .dsa-name {
-	flex: 1;
-	min-width: 0;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	font-weight: 500;
-}
-.dispatch-subagents .dsa-row[data-state="stopped"] .dsa-name,
-.dispatch-subagents .dsa-row[data-state="done"] .dsa-name {
-	font-weight: 400;
-	color: var(--dsa-text-2);
-}
-.dispatch-subagents .dsa-meta,
-.dispatch-subagents .dsa-ago {
-	flex: none;
-	font-size: 11px;
-	color: var(--dsa-text-2);
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-}
-.dispatch-subagents .dsa-l2 {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	height: 20px;
-	padding-left: 22px;
-	font-size: 12px;
-	color: var(--dsa-text-2);
-}
-.dispatch-subagents .dsa-step {
-	flex: 1;
-	min-width: 0;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-/* the step it is on: the same light band as the Now tab's "Right now" (DESIGN.md「Agent 在想」), 2 s */
-.dispatch-subagents .dsa-step.shimmer {
-	background: linear-gradient(90deg, var(--dsa-text-2) 0 40%, var(--dsa-text) 50%, var(--dsa-text-2) 60% 100%);
-	background-size: 200% 100%;
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-	animation: dispatch-subagents-shimmer 2s linear infinite;
-	animation-delay: var(--dsa-phase, 0ms);
-}
-@keyframes dispatch-subagents-shimmer {
-	from { background-position: 100% 0; }
-	to { background-position: -100% 0; }
-}
-
-/* "1 finished": opens in place */
-.dispatch-subagents .dsa-fin {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	width: 100%;
-	height: 28px;
-	padding: 0 8px;
-	border-radius: var(--dispatch-radius-button);
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--dsa-text-2);
-	transition: background-color 150ms ease;
-}
-.dispatch-subagents .dsa-fin .dsa-car.codicon {
-	transform: none;
-}
-.dispatch-subagents .dsa-fin[aria-expanded="true"] .dsa-car {
-	transform: rotate(90deg);
-}
-
-/* reduce motion: still, the step in plain grey words */
 .monaco-reduce-motion .dispatch-subagents,
 .monaco-reduce-motion .dispatch-subagents * {
 	animation: none !important;
 	transition: none !important;
-}
-.monaco-reduce-motion .dispatch-subagents .dsa-step.shimmer {
-	background: none;
-	color: var(--dsa-text-2);
 }
 @media (prefers-reduced-motion: reduce) {
 	.dispatch-subagents,
 	.dispatch-subagents * {
 		animation: none !important;
 		transition: none !important;
-	}
-	.dispatch-subagents .dsa-step.shimmer {
-		background: none;
-		color: var(--dsa-text-2);
 	}
 }

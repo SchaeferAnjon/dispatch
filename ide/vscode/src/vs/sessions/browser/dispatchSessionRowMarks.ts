@@ -10,12 +10,11 @@
 import './media/dispatchSessionRowMarks.css';
 import * as DOM from '../../base/browser/dom.js';
 import { Codicon } from '../../base/common/codicons.js';
-import { DisposableStore, IDisposable, toDisposable } from '../../base/common/lifecycle.js';
+import { IDisposable, toDisposable } from '../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../base/common/themables.js';
 import { openCodeIcon } from '../../workbench/contrib/chat/browser/agentSessions/dispatchEngineIcons.js';
 import { getChatSessionType } from '../../workbench/contrib/chat/common/model/chatUri.js';
 import { ISession } from '../services/sessions/common/session.js';
-import { renderSubAgentCount } from './dispatchSubAgentRows.js';
 
 export interface IDispatchRowMark {
 	/** The agent's mark; undefined for a plain shell. */
@@ -66,14 +65,10 @@ export function dispatchRowMark(session: ISession): IDispatchRowMark | undefined
 	return chatMark(session);
 }
 
-/**
- * Fills `container` (a span at the end of the row's title line) with the session's mark, and before it the count of
- * the sub-agents it sent out (dispatchSubAgentRows.ts), kept up to date for as long as `store` lives.
- */
-export function renderDispatchRowMark(container: HTMLElement, session: ISession, store?: DisposableStore): void {
+/** Fills `container` (a span at the end of the row's title line) with the session's mark. */
+export function renderDispatchRowMark(container: HTMLElement, session: ISession): void {
 	DOM.clearNode(container);
 	const mark = dispatchRowMark(session);
-	renderSubAgentCount(container, session, store);
 	container.classList.toggle('empty', !mark);
 	if (!mark) {
 		container.removeAttribute('title');

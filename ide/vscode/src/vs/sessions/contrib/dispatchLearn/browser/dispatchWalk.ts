@@ -62,8 +62,7 @@ import { filesInMessage, headerComment, LEARN_MODE_SETTING, learnMode, lastSente
 import { asSentence, assignSaid, hunkOf, IWalkFile, IWalkHunk, IWalkStop, linesSentence, stopCode, stopLines, stopTag, walkStops, WalkSource } from '../common/dispatchWalkModel.js';
 import { localPath, localRoots } from './dispatchLearnTurn.js';
 import { DispatchWalkCard, DispatchWalkPill, IWalkCardStop } from './dispatchWalkCard.js';
-import { DISPATCH_WALK_COMMAND, IDispatchWalkService, IWalkOfferState, IWhyAnswer, IWhyRequest } from './dispatchWalkService.js';
-import { blockKey, blocksToAsk, IWhyBlock, knownFor, overlaps, WHY_NONE } from '../common/dispatchExplainModel.js';
+import { DISPATCH_WALK_COMMAND, IDispatchWalkService, IWalkOfferState } from './dispatchWalkService.js';
 
 /** A stop with what the window needs to show it. */
 interface IStop extends IWalkStop {
@@ -99,18 +98,11 @@ interface IAnswer {
 	by?: string;
 }
 
-/** A file's lines now and before, as read for a walk or a Why. */
+/** A file's lines now and before, as read for a walk. */
 interface IFileText {
 	readonly now: string[];
 	readonly before: string[];
 	readonly uri: URI;
-}
-
-/** A block of Changes the Why model call is told about. */
-interface IWhyAsk extends IWhyBlock {
-	readonly rel: string;
-	readonly isNew: boolean;
-	readonly code: string;
 }
 
 /** Per session: whether its turn runs, and whether the pill of the turn that just ended is up or was sent away. */
@@ -121,8 +113,6 @@ interface ITurnWatch {
 }
 
 const MAX_SNIPPET_LINES = 40;
-/** A Why reads at most this many files of Changes to find the blocks it asks about together. */
-const MAX_WHY_FILES = 40;
 const REFRESH_MS = 400;
 
 function text(m: string | IMarkdownString | undefined): string {
@@ -168,9 +158,6 @@ export class DispatchWalkService extends Disposable implements IDispatchWalkServ
 	private readonly _watch = new Map<string, ITurnWatch>();
 	private _plan: IPlan | undefined;
 	private readonly _answers = new Map<string, IAnswer>();
-	/** Why on Changes (task-39x97): the model's answers by turn, by block (`path:start-end`), and the call under way. */
-	private readonly _why = new Map<string, Map<string, { block: IWhyBlock; text: string; ms: number; asked: number; by: string }>>();
-	private readonly _whyAsking = new Map<string, { blocks: readonly IWhyBlock[]; done: Promise<void> }>();
 	private _walk: { plan: IPlan; index: number } | undefined;
 	private readonly _card = this._register(new MutableDisposable<DispatchWalkCard>());
 	private _pill: DispatchWalkPill | undefined;
@@ -620,8 +607,8 @@ export class DispatchWalkService extends Disposable implements IDispatchWalkServ
 		const stop = walk.plan.stops[walk.index];
 		const answer = this._answers.get(walk.plan.turn);
 		const said = stop.said;
-		// the model's sentence for these lines, from the walk's own call or a Why on Changes (task-39x97)
-		const fromModel = said ? undefined : answer?.texts.get(stopKey(stop)) ?? this.whyKnown(walk.plan.turn, stop)?.text;
+		// the model's sentence for these lines, from the walk's own call
+		const fromModel = said ? undefined : answer?.texts.get(stopKey(stop));
 		const source: WalkSource = said ? said.from : fromModel ? 'model' : 'lines';
 		const shown: IWalkCardStop = {
 			path: stop.path, rel: stop.rel, name: stop.name, isNew: stop.isNew, start: stop.start, end: stop.end,
@@ -641,15 +628,7 @@ export class DispatchWalkService extends Disposable implements IDispatchWalkServ
 		if (this._answers.has(plan.turn)) {
 			return;
 		}
-		// a Why on Changes may have asked about some of them already, or be asking now (task-39x97)
-		const pending = this._whyAsking.get(plan.turn);
-		if (pending) {
-			this._answers.set(plan.turn, { state: 'asking', texts: new Map() });
-			this.draw();
-			await pending.done;
-			this._answers.delete(plan.turn);
-		}
-		const need = plan.stops.filter(s => !s.said && !this.whyKnown(plan.turn, s));
+		const need = plan.stops.filter(s => !s.said);
 		const { engine, model } = writerOf(session);
 		const answer: IAnswer = { state: need.length && engine ? 'asking' : 'none', texts: new Map() };
 		this._answers.set(plan.turn, answer);
@@ -682,133 +661,6 @@ export class DispatchWalkService extends Disposable implements IDispatchWalkServ
 		answer.by = res?.by || '';
 		this._logService.info(`[dispatch] walk: ${engine} answered ${answer.texts.size} of ${need.length} in ${answer.ms} ms${res?.error ? `: ${res.error}` : ''}`);
 		this.draw();
-	}
-
-	// ---- Why on a block of Changes (task-39x97) ------------------------------------------------------------
-
-	/** What a Why's model call answered for these lines in this turn. */
-	private whyKnown(turn: string, block: IWhyBlock): { text: string; ms: number; asked: number; by: string } | undefined {
-		const map = this._why.get(turn);
-		return map ? knownFor(block, [...map.values()].map(v => ({ ...v.block, ...v }))) : undefined;
-	}
-
-	/** What the walk of this turn says about these lines: its sentence, or the answer its model call got. */
-	private walkSays(turn: string, block: IWhyBlock): IWhyAnswer | undefined {
-		const plan = this._plan;
-		if (!plan || plan.turn !== turn) {
-			return undefined;
-		}
-		const stop = knownFor(block, plan.stops);
-		if (!stop) {
-			return undefined;
-		}
-		if (stop.said) {
-			return { text: stop.said.text, source: stop.said.from, fromWalk: true };
-		}
-		const answer = this._answers.get(turn);
-		const t = answer?.texts.get(stopKey(stop));
-		return t ? { text: asSentence(t), source: 'model', fromWalk: true, ms: answer?.ms, by: answer?.by } : undefined;
-	}
-
-	async why(req: IWhyRequest): Promise<IWhyAnswer> {
-		const none: IWhyAnswer = { text: WHY_NONE, source: 'none', fromWalk: false };
-		const session = this._sessionsService.activeSession.get();
-		if (!session) {
-			return none;
-		}
-		const request = this._chatService.getSession(session.mainChat.get().resource)?.lastRequest;
-		const turn = request?.id ?? session.sessionId;
-		const block: IWhyBlock = { path: toLocal(req.uri).fsPath, start: req.start, end: req.end };
-		const fromModel = (k: { text: string; ms: number; asked: number; by: string }): IWhyAnswer => ({ text: asSentence(k.text), source: 'model', fromWalk: false, ms: k.ms, asked: k.asked, by: k.by });
-
-		// 1. the walk of this turn has it; 2. a Why's call has it, or is asking for it now
-		const walked = this.walkSays(turn, block);
-		if (walked) {
-			return walked;
-		}
-		const pending = this._whyAsking.get(turn);
-		if (pending?.blocks.some(b => overlaps(b, block))) {
-			await pending.done;
-		}
-		const known = this.whyKnown(turn, block);
-		if (known) {
-			return fromModel(known);
-		}
-
-		// 3. what the agent already said: a new file's first comment, its sentence before it changed the file
-		const roots = this.roots(session);
-		const { files, texts } = await this.readChanges(this._changesViewService.activeSessionChangesObs.get().slice(0, MAX_WHY_FILES), roots);
-		const agent = request ? this.agentSaid(request, roots) : new Map<string, string[]>();
-		const all: (IWhyAsk & { said?: { text: string; from: 'comment' | 'agent' } })[] = [];
-		for (const f of files) {
-			const t = texts.get(f.path);
-			if (f.deleted || !t) {
-				continue;
-			}
-			if (f.isNew) {
-				const comment = headerComment(t.now.slice(0, 40).join('\n'));
-				const stop = walkStops([f]).stops[0];
-				all.push({ path: f.path, rel: f.rel, start: 1, end: Math.max(1, f.lines), isNew: true, code: stop ? stopCode(stop, t.now, t.before) : '', said: comment ? { text: asSentence(comment), from: 'comment' } : undefined });
-				continue;
-			}
-			const stops = walkStops([f], Number.MAX_SAFE_INTEGER).stops;
-			const said = assignSaid(stops.length, agent.get(f.path) ?? []);
-			stops.forEach((s, k) => all.push({ path: f.path, rel: f.rel, start: s.start, end: s.end, isNew: false, code: stopCode(s, t.now, t.before), said: said[k] ? { text: asSentence(said[k]!), from: 'agent' } : undefined }));
-		}
-		const mine = knownFor(block, all);
-		if (mine?.said) {
-			return { text: mine.said.text, source: mine.said.from, fromWalk: false };
-		}
-
-		// 4. one call to the session's own agent for every block shown that nothing says anything about, this one first
-		const { engine, model } = writerOf(session);
-		if (!engine) {
-			return none;
-		}
-		const root = roots.find(r => isEqualOrParent(toLocal(req.uri), r));
-		const clicked: IWhyAsk = { ...block, rel: mine?.rel ?? (root ? toLocal(req.uri).path.slice(root.path.replace(/\/$/, '').length + 1) : toLocal(req.uri).path), isNew: req.isNew, code: req.code };
-		const ask = blocksToAsk<IWhyAsk & { said?: unknown }>(clicked, all.filter(b => !mine || !overlaps(b, mine)), b => !!b.said || !!this.whyKnown(turn, b) || !!this.walkSays(turn, b));
-		const payload = {
-			request: (request?.message.text ?? '').slice(0, 2000),
-			why: true,
-			stops: ask.map(b => ({ file: b.rel, start: b.start, end: b.end, kind: b.isNew ? 'new' : 'edit', code: b.code })),
-		};
-		const t0 = Date.now();
-		this._logService.info(`[dispatch] why: asking ${engine}${model ? ` (${model})` : ''} once for ${ask.length} blocks of ${turn}`);
-		const done = (async () => {
-			let res: { texts?: unknown; by?: string; error?: string } | undefined;
-			try {
-				res = await this._commandService.executeCommand<{ texts?: unknown; by?: string; error?: string }>('dispatch.write', 'walk', '', JSON.stringify(payload), engine, model);
-			} catch (err) {
-				this._logService.warn('[dispatch] why: the agent could not be asked', err);
-			}
-			const ms = Date.now() - t0;
-			const got = Array.isArray(res?.texts) ? res.texts : [];
-			let map = this._why.get(turn);
-			if (!map) {
-				map = new Map();
-				this._why.set(turn, map);
-			}
-			ask.forEach((b, i) => {
-				const t = got[i];
-				if (typeof t === 'string' && t.trim()) {
-					map!.set(blockKey(b), { block: { path: b.path, start: b.start, end: b.end }, text: t.trim(), ms, asked: ask.length, by: res?.by || '' });
-				}
-			});
-			this._logService.info(`[dispatch] why: ${engine} answered ${got.filter(x => typeof x === 'string' && x.trim()).length} of ${ask.length} in ${ms} ms${res?.error ? `: ${res.error}` : ''}`);
-			// the walk's card shows them too when it is on one of these lines
-			this.draw();
-		})();
-		this._whyAsking.set(turn, { blocks: ask, done });
-		try {
-			await done;
-		} finally {
-			if (this._whyAsking.get(turn)?.done === done) {
-				this._whyAsking.delete(turn);
-			}
-		}
-		const answered = this.whyKnown(turn, block);
-		return answered ? fromModel(answered) : { ...none, ms: Date.now() - t0, asked: ask.length };
 	}
 
 	/** Ask about this: the stop's lines in the side chat card, else quoted into the conversation's input. */

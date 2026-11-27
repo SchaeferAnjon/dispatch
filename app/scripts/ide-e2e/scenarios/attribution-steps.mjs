@@ -1,48 +1,19 @@
 // Who wrote which line, step by step (task-6qpx, direction B): an OpenCode session writes four lines of NOTES.md;
-// you change one and add one in the editor; a row under the reply says so and shows only your lines; Changes splits All / Turn 1 /
-// You; Settings › Agents turns on the co-author line; the next turn names your lines; the agent's commit gets a card
-// that counts your lines. Then the same pictures in light. Test model: OpenCode DeepSeek Flash (or GLM Flash, or
+// you change one and add one in the editor; a row under the reply says so and shows only your lines in Changes (in
+// VS Code's own picker: Changes adds no All / Turn 1 / You and no marks, the user 2026-11-16, task-rinkm); Settings ›
+// Agents turns on the co-author line; the next turn names your lines; the agent's commit gets a card that counts your
+// lines. Then the same pictures in light. Test model: OpenCode DeepSeek Flash (or GLM Flash, or
 // OpenCode's free MiMo Flash).
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { editInEditor } from './attribution.mjs';
+import { editInEditor, screenReaderOff } from './attribution.mjs';
 const SCALE = Math.max(1, Number(process.env.DISPATCH_E2E_TIME_SCALE) || 1); // a loaded Mac's waits (runner.mjs TIME_SCALE)
-export const meta = { needs: ['opencode'], title: 'Who wrote which line, step by step', description: 'You changed 2 lines under the reply, All / Turn 1 / You in Changes, the agent told at its next turn, the commit card, the co-author switch, light.', timeout: 2400 };
+export const meta = { needs: ['opencode'], title: 'Who wrote which line, step by step', description: 'You changed 2 lines under the reply, a click shows only them in Changes (no All / Turn 1 / You, no marks), the agent told at its next turn, the commit card, the co-author switch, light.', timeout: 2400 };
 
 const fresh = '.sessions-chat-editor';
 const AGENT_LINES = ['- Alpha: written by the agent', '- Beta: written by the agent', '- Gamma: written by the agent', '- Delta: written by the agent'];
 const PROMPT = `Append exactly these four lines to the end of NOTES.md, keep everything else as it is, use your file edit tool, then reply DONE:\n${AGENT_LINES.join('\n')}`;
-
-/** Hover a mark until its hover says `re` (the editor's hover can miss the first pointer move). */
-async function hoverText(ui, css, re) {
-  const log = [];
-  for (let i = 0; i < 5; i++) {
-    await ui.hover({ css: '.monaco-editor .view-lines' });
-    await ui.sleep(300);
-    await ui.hover({ css });
-    // the editor shows a glyph's hover once the pointer rests on it; its text has non-breaking spaces
-    for (let j = 0; j < 16; j++) {
-      await ui.sleep(500);
-      const seen = await ui.eval(`[...document.querySelectorAll('.monaco-hover')].map(h => ({ w: Math.round(h.getBoundingClientRect().width), cls: String(h.className), text: (h.innerText || '').replace(/\\u00a0/g, ' ').slice(0, 120) }))`);
-      log.push({ i, j, seen });
-      const hit = (seen || []).find(h => h.w > 0 && new RegExp(re.slice(1, -1)).test(h.text));
-      if (hit) {
-        const full = await ui.eval(`[...document.querySelectorAll('.monaco-hover')].map(h => (h.innerText || '').replace(/\\u00a0/g, ' ')).find(x => ${re}.test(x)) || ''`);
-        return full || hit.text;
-      }
-    }
-  }
-  writeFileSync(`${ui.out}/hover-log.json`, JSON.stringify(log, null, 1));
-  const seen = await ui.eval(`(() => {
-    const m = document.querySelector('${css}'); if (!m) return { mark: 'none' };
-    const r = m.getBoundingClientRect(); const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    const chain = []; for (let e = at; e && chain.length < 6; e = e.parentElement) chain.push(e.tagName + '.' + String(e.className).split(' ').slice(0, 3).join('.'));
-    const hovers = [...document.querySelectorAll('[class*="hover"]')].filter(h => h.getBoundingClientRect().width > 0).map(h => String(h.className).slice(0, 60) + ': ' + (h.innerText || '').slice(0, 80));
-    return { chain, hovers: hovers.slice(0, 8) };
-  })()`);
-  throw new Error(`No hover matching ${re} on ${css}: ${JSON.stringify(seen)}`);
-}
 
 async function until(ui, fn, what, ms = 120000) {
   const end = Date.now() + ms * SCALE;
@@ -115,7 +86,6 @@ function diagnose(ui) {
   writeFileSync(`${ui.out}/diagnose.json`, JSON.stringify(d, null, 2));
 }
 
-const marks = (cls) => `document.querySelectorAll('.monaco-editor .dispatch-attr-mark.dispatch-attr-${cls}').length`;
 
 /** The pointer goes to an empty part of the window before a picture, as a hand rests off the buttons
  *  (a tooltip left under it would cover the diff's header). */
@@ -240,20 +210,12 @@ async function theme(ui, value) {
   throw new Error(`theme did not change: ${value}`);
 }
 
-const steps = () => `({ buttons: [...document.querySelectorAll('.dispatch-attr-steps .seg-b')].map(b => ({ id: b.dataset.step, text: b.innerText.trim(), on: b.classList.contains('on'), w: Math.round(b.getBoundingClientRect().width) })),
-  bar: Math.round(document.querySelector('.dispatch-attr-steps')?.getBoundingClientRect().width || 0),
-  note: document.querySelector('.dispatch-attr-stepnote')?.innerText.replace(/\\s+/g, ' ').trim() || '',
-  diffs: [...document.querySelectorAll('.monaco-diff-editor .editor.modified')].filter(e => e.getBoundingClientRect().width > 0).length,
+/** Changes: its diffs and what its header says, and anything Dispatch used to add there (the step filter, the marks). */
+const changes = () => `({ diffs: [...document.querySelectorAll('.monaco-diff-editor .editor.modified')].filter(e => e.getBoundingClientRect().width > 0).length,
   added: [...document.querySelectorAll('.monaco-diff-editor .editor.modified .line-insert, .monaco-diff-editor .editor.modified .char-insert')].length,
-  you: ${marks('you')}, mix: ${marks('mix')} })`;
-
-async function stepTo(ui, id, re) {
-  await closeTips(ui); // a first-run tip about Changes can sit right over the choices
-  await ui.click({ css: `.dispatch-attr-steps .seg-b[data-step="${id}"]`, webview: false });
-  let seen;
-  return until(ui, async () => { const s = seen = await ui.eval(steps()); return re.test(s.note) && s.buttons.find(b => b.id === id)?.on ? s : null; }, `the ${id} step`, 30000)
-    .catch(e => { throw new Error(`${e.message}; last seen: ${JSON.stringify({ buttons: seen?.buttons, bar: seen?.bar, note: seen?.note })}`); });
-}
+  yours: /Your changes/.test(document.body.innerText),
+  steps: document.querySelectorAll('.dispatch-attr-steps, .dispatch-attr-stepnote').length,
+  marks: document.querySelectorAll('.monaco-editor .dispatch-attr-mark, .dispatch-attr-hint').length })`;
 
 export default async function (ui) {
   try {
@@ -266,6 +228,7 @@ export default async function (ui) {
 async function run(ui) {
   const facts = {};
   const save = () => writeFileSync(`${ui.out}/result.json`, JSON.stringify(facts, null, 2));
+  screenReaderOff(ui);
   await ui.openAgents(ui.demoFolder);
   await offScreen(ui);
   await newSessionInProject(ui, ui.demoFolder);
@@ -313,50 +276,20 @@ async function run(ui) {
   await ui.screenshot('01-you-changed-row');
   await ui.mark({ css: row, webview: false }, { what: '对话里这一轮下面：You changed 2 lines in NOTES.md', where: '你改过的那一轮回复下面', how: 'Agent 写完后你在编辑器里改几行，存盘就出现；点它只看这两行' });
 
-  // 2. click it: Changes shows only your two lines, the You step on
+  // 2. click it: Changes shows only your two lines, named in VS Code's own picker; nothing of Dispatch's above the diffs
   await ui.click({ css: row, webview: false });
-  facts.you = await until(ui, async () => { const s = await ui.eval(steps()); return /Your changes/.test(s.note) && s.diffs > 0 && s.buttons.find(b => b.on)?.text === 'You' ? s : null; }, 'Changes showing only your lines', 60000);
-  facts.youMarks = await until(ui, async () => { const s = await ui.eval(steps()); return s.you + s.mix >= 2 ? s : null; }, 'the marks on your two lines in the You step', 30000).catch(() => null);
+  facts.you = await until(ui, async () => { const s = await ui.eval(changes()); return s.yours && s.diffs > 0 ? s : null; }, 'Changes showing only your lines', 60000);
   facts.fileRows = await ui.eval(`[...document.querySelectorAll('.changes-file-list .monaco-list-row')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())`);
   await closeTips(ui);
   await restPointer(ui);
   await ui.screenshot('02-only-your-lines');
-  await ui.mark({ css: '.dispatch-attr-steps', webview: false }, { what: 'All / Turn 1 / You：按轮看改动', where: '右栏 Changes 顶上', how: '点 Turn 1 只看 Agent 这一轮写的，点 You 只看你改的' });
-  await ui.mark({ css: '.dispatch-attr-stepnote', webview: false }, { what: '正在看哪一步，Show all 回到全部', where: '按轮选择下面一行灰字', how: '点对话里那一行，或点上面的 You' });
 
-  // 3. Turn 1, then All
-  facts.turn = await stepTo(ui, 'turn:1', /Turn 1/); // the grey line under the choices still says which turn
-  await restPointer(ui);
-  await ui.screenshot('03-turn-1');
-  await ui.mark({ css: '.dispatch-attr-steps .seg-b[data-step="turn:1"]', webview: false }, { what: '这一轮按你那条消息的开头命名：只看 Agent 这一轮写的四行', where: '右栏 Changes 顶上', how: '点它' });
-  // the turn is named by the start of your message, not "Turn 1" (task-92l8p); its hover has the whole message and the file
-  const turnButton = facts.turn.buttons.find(b => b.id === 'turn:1');
-  if (!turnButton?.text.startsWith('Append exactly these four lines')) throw new Error(`the turn is not named by your message: ${JSON.stringify(turnButton)}`);
-  const narrow = facts.turn.buttons.filter(b => b.w < (b.id.startsWith('turn:') ? 56 : 24));
-  if (narrow.length) throw new Error(`a choice is squeezed: ${JSON.stringify(facts.turn.buttons)} in ${facts.turn.bar}px`);
-  facts.turnLabelCut = await ui.eval(`(() => { const l = document.querySelector('.dispatch-attr-steps .seg-b[data-step="turn:1"] .lbl'); return l ? { shown: Math.round(l.getBoundingClientRect().width), full: l.scrollWidth } : null; })()`);
-  await closeTips(ui);
-  await ui.hover({ css: '.dispatch-attr-steps .seg-b[data-step="turn:1"]', webview: false });
-  facts.turnTip = await until(ui, async () => {
-    const t = await ui.eval(`[...document.querySelectorAll('.workbench-hover, .monaco-hover')].filter(h => h.getBoundingClientRect().width > 0).map(h => h.innerText).join('|')`);
-    return /OpenCode changed NOTES\.md in turn 1/.test(t) ? t : null;
-  }, 'the turn hover with your message and the file', 20000);
-  if (!facts.turnTip.includes('Alpha: written by the agent')) throw new Error(`the hover lacks the whole message: ${facts.turnTip}`);
-  await ui.screenshot('03b-turn-hover');
-  await restPointer(ui);
-  await closeTips(ui);
-  await ui.click({ css: '.dispatch-attr-steps .seg-b[data-step="all"]', webview: false });
-  facts.all = await until(ui, async () => { const s = await ui.eval(steps()); return !s.note && s.buttons.find(b => b.on)?.id === 'all' ? s : null; }, 'All again', 30000);
-
-  // 3c. the same choices in light, before the agent commits (after its commit Changes has nothing left to show, so no You)
+  // 3. the same in light
   await theme(ui, 'light');
   await ui.sleep(1500);
-  await stepTo(ui, (await ui.eval(steps())).buttons.find(b => b.text === 'You')?.id || 'you:1', /Your changes/);
+  facts.youLight = await ui.eval(changes());
   await restPointer(ui);
   await ui.screenshot('08-light-only-your-lines');
-  await ui.mark({ css: '.dispatch-attr-steps', webview: false }, { what: '浅色：All / 这一轮 / You', where: '右栏 Changes 顶上', how: '点 You' });
-  await closeTips(ui);
-  await ui.click({ css: '.dispatch-attr-steps .seg-b[data-step="all"]', webview: false });
   await theme(ui, 'dark');
 
   // 4. Settings › Agents: sign commits as co-authored by the AI (off by default), turned on
@@ -423,7 +356,7 @@ async function run(ui) {
   save();
 
   if (facts.rowBefore) throw new Error('The row showed before you changed anything');
-  if (!facts.youMarks) throw new Error(`The You step has no marks on your lines: ${JSON.stringify(facts.you)}`);
+  if (facts.you.steps || facts.you.marks || facts.youLight.steps || facts.youLight.marks) throw new Error(`Changes still adds steps or marks: ${JSON.stringify([facts.you, facts.youLight])}`);
   if (!facts.toldTip) throw new Error('The row never said the agent was told');
   if (!/\b5\b|Beta/.test(facts.reply2) || !/\b8\b|Epsilon/.test(facts.reply2)) throw new Error(`The agent did not name your lines: ${facts.reply2}`);
   if (!/Message by OpenCode/.test(facts.card)) throw new Error(`The card: ${facts.card}`);

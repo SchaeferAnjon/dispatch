@@ -21,7 +21,6 @@ import { ITextFileService } from '../../../services/textfile/common/textfiles.js
 import { editKinds } from './dispatchEditorEditsModel.js';
 
 const EDIT_COMMAND = 'dispatch.attributionEdit';
-const RECORDED_COMMAND = 'dispatch.attributionRecorded';
 /** characters; a larger file is not kept (the CLI does not attribute files over 2 MB either) */
 const MAX_TEXT = 2 * 1024 * 1024;
 
@@ -118,8 +117,6 @@ class DispatchEditorEditsContribution extends Disposable implements IWorkbenchCo
 			return; // the save holds an agent's lines too: it vouches for nothing
 		}
 		this._commands.executeCommand(EDIT_COMMAND, path, state.before, saved, state.since, at)
-			// the Agents window's diffs ask about the file again (the editor window has none: no such command there)
-			.then(() => this._commands.executeCommand(RECORDED_COMMAND, path))
 			.catch(e => this._log.trace(`[dispatchEditorEdits] ${path}: ${e}`)); // no bridge: no record
 	}
 }

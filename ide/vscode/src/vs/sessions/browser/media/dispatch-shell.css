@@ -312,3 +312,21 @@
 .monaco-workbench .ai-customization-management-editor .welcome-prompts-heading {
 	font-size: 17px;
 }
+
+/* a chat tab that can be closed (a sub-agent's, read only): its × is always there, with its room kept, and the spinner
+   while it works moves left of the title, so nothing ever sits under the × (task-518qw; VS Code puts the spinner where
+   the × comes on hover, and a sub-agent that works for long looked as if it could not be closed) */
+.agent-sessions-workbench .session-chat-tabs-bar .chat-composite-bar-tabs > .chat-composite-bar-tab.modern-ui-editor-tab:not([data-is-main-chat="true"]):not(.editing) {
+	padding-right: calc(var(--vscode-spacing-size240) + var(--vscode-spacing-size40)) !important;
+}
+.agent-sessions-workbench .session-chat-tabs-bar .chat-composite-bar-tab:not([data-is-main-chat="true"]) > .chat-composite-bar-tab-indicator {
+	order: -1;
+	margin-left: 0;
+	margin-right: var(--vscode-spacing-size40);
+}
+.agent-sessions-workbench .session-chat-tabs-bar .chat-composite-bar-tab:not([data-is-main-chat="true"]) > .chat-composite-bar-tab-actions {
+	pointer-events: auto;
+}
+.agent-sessions-workbench .session-chat-tabs-bar .chat-composite-bar-tab:not([data-is-main-chat="true"]) > .chat-composite-bar-tab-actions .action-label {
+	opacity: 1;
+}

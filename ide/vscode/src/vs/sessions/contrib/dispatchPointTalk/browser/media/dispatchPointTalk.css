@@ -48,6 +48,54 @@
 	display: none !important;
 }
 
+/* the new-session composer (task-3w0lf): the same box, its own parts (dispatchPointTalkBox.ts) */
+.new-chat-input-area.dispatch-pt-recording > .sessions-chat-editor,
+.new-chat-input-area.dispatch-pt-recording > .sessions-chat-toolbar,
+.new-chat-input-area.dispatch-pt-recording > .sessions-chat-attach-row,
+.new-chat-input-area.dispatch-pt-review > .sessions-chat-editor,
+.sessions-chat-attachment-pill.dispatch-pt-hidden {
+	display: none !important;
+}
+
+.new-chat-input-area.dispatch-pt-review > .sessions-chat-attach-row:not(:has(.sessions-chat-attachment-pill:not(.dispatch-pt-hidden))) {
+	display: none !important;
+}
+
+/* the same insets as in a session's .chat-input-container (measured: frames 13 in and 13 to 17 down, the recording
+   box 96 high) */
+.new-chat-input-area > .dispatch-pt-slot {
+	padding: 1px 6px 0;
+}
+
+.new-chat-input-area.dispatch-pt-recording > .dispatch-pt-slot {
+	padding-bottom: 5px;
+}
+
+/* the card 8 above the composer's stack (a session's input part has its own gap) */
+.new-chat-input-container > .dispatch-pt-card-slot {
+	margin-bottom: 8px;
+}
+
+.new-chat-input-area.dispatch-pt-review:has(> .dispatch-pt-slot:focus-within) {
+	border-color: var(--vscode-agentsChatInput-focusBorder, var(--vscode-focusBorder));
+}
+
+/* the camera in the composer's tool row: the size of its neighbours (the voice controls, send) */
+.sessions-chat-toolbar > .dispatch-pt-camera {
+	display: flex;
+	align-items: center;
+}
+
+.sessions-chat-toolbar > .dispatch-pt-camera .monaco-action-bar .action-item > .action-label {
+	box-sizing: border-box;
+	width: 22px;
+	height: 22px;
+	justify-content: center;
+	/* VS Code's square-ish corners (DESIGN.md「尺寸」圆角), as the camera in a session's tool row */
+	border-radius: var(--dispatch-radius-button);
+	font-size: 16px;
+}
+
 .dispatch-pt-slot {
 	display: block;
 	min-width: 0;
@@ -60,7 +108,8 @@
 /* the review takes the focus (Enter sends, Delete removes a frame): VS Code's [tabindex="-1"]:focus outline
    (workbench/browser/media/style.css) drew a second, darker frame inside the box (task-dd4hw). The box shows the
    focus on its own border instead, with the colours VS Code gives it while you type (sessions chatView.css) */
-.monaco-workbench .chat-input-container .dispatch-pt-slot:focus {
+.monaco-workbench .chat-input-container .dispatch-pt-slot:focus,
+.monaco-workbench .new-chat-input-area .dispatch-pt-slot:focus {
 	outline: none;
 }
 

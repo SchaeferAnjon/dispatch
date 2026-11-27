@@ -16,6 +16,7 @@ import { ActionType } from '../../common/state/sessionActions.js';
 import { ClaudeFileEditObserver } from './claudeFileEditObserver.js';
 import { ClaudeMapperState, mapSDKMessageToAgentSignals } from './claudeMapSessionEvents.js';
 import type { SubagentRegistry } from './claudeSubagentRegistry.js';
+import { endOpenBackground, endSignals } from './dispatchSubagentEnd.js';
 
 interface IClaudeSdkMessageContext {
 	readonly turnDuration?: number;
@@ -68,6 +69,13 @@ export class ClaudeSdkMessageRouter extends Disposable {
 		this._clientToolOwner = clientToolOwner;
 	}
 
+	/** Dispatch IDE: the Claude Code process is gone, and its background sub-agents with it: they end stopped (task-518qw). */
+	endOpenBackground(why: string): void {
+		for (const signal of endOpenBackground(this._chatChannelUri, this._subagents, why)) {
+			this._onDidProduceSignal.fire(signal);
+		}
+	}
+
 	async handle(message: SDKMessage, turnId: string | undefined, context?: IClaudeSdkMessageContext): Promise<void> {
 		if (message.type === 'assistant') {
 			this._editObserver.observeAssistant(message, context?.mode, context?.clientContext);
@@ -75,6 +83,11 @@ export class ClaudeSdkMessageRouter extends Disposable {
 			await this._editObserver.observeUser(message, turnId, this._mapperState);
 		}
 		if (turnId === undefined) {
+			// Dispatch IDE: a background sub-agent's end comes when the parent may be idle, with no turn to map it to;
+			// it still ends the sub-agent (dispatchSubagentEnd.ts, task-518qw)
+			for (const signal of endSignals(message, this._chatChannelUri, this._subagents)) {
+				this._onDidProduceSignal.fire(signal);
+			}
 			return;
 		}
 		try {

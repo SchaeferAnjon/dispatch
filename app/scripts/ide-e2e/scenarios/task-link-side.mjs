@@ -1,4 +1,5 @@
-// A task link in a reply opens the task in place in the side pane's Tasks tab (user 2026-11-15, task-86t0e): the
+// A task link in a reply opens a task of this session in Now, its row open (user 2026-11-16, task-ewbvh, section 7);
+// any other task in place in the side pane's Tasks tab (user 2026-11-15, task-86t0e): the
 // conversation in the middle stays, the side pane opens when it was closed, Tasks comes to the front and the task is
 // there opened (title, state mark, plan, what it delivered), although it belongs to another project and session; from
 // the click to the opened card in less than a second (the reply's tasks are asked for as soon as it is drawn). The
@@ -196,6 +197,66 @@ export default async function (ui) {
   const t2 = await until(ui, async () => { const t = await ui.eval(`window.__dispatchTaskLink2`); return t && t.fresh ? t : null; }, 20000, "the board's newer plan in the opened task", 100).catch(async () => ui.eval(`window.__dispatchTaskLink2`));
   qa.msAgain = { shown: t2.shown ? Math.round(t2.shown - t2.click) : null, boardAnswer: t2.fresh ? Math.round(t2.fresh - t2.click) : null };
   check("clicked again after the board changed: the known task at once (< 1000 ms), the board's answer fills in after", !!t2.shown && t2.shown - t2.click < 1000 && !!t2.fresh, qa.msAgain);
+
+  // 7. a link to a task of this very session (task-ewbvh, the person 2026-11-16): the side pane goes to Now, not Tasks,
+  // and the task's row there opens in place and flashes once; a link to any other task still opens in Tasks (above)
+  await ui.openNowTab();
+  const sid = (await until(ui, async () => ui.eval(`document.querySelector('.dispatch-now-tab')?.dataset.session || ''`), 30000, "the Now tab's session", 500)).replace(/^[a-z][\w+.-]*:\/*/i, "").split("/").pop();
+  const mine = { DISPATCH_SESSION_ID: sid };
+  const OWN = "Hang the pills under the step";
+  await cli(ui, mine, "begin", OWN, "-P", "demo", "--session", sid, "-d", "Seeded by task-link-side: a task of this session, which Now lists.", "-a", "- [ ] Now lists it");
+  const tl = json(await cli(ui, mine, "task", "list", "--session", sid, "--json"));
+  const own = (tl.tasks || tl).find(t => t.title === OWN).id;
+  qa.ownTask = own;
+  await cli(ui, mine, "task", "plan", own, "--set", "Draw the pill", "--set", "Put it in Now", "--set", "Check it", "--done", "1", "--active", "2");
+  const rowCss = `.dispatch-now-tab .dispatch-now-task[data-task="${own}"]`;
+  // the shown Now tab's row (a closed group can keep a Now tab of its own, hidden)
+  const ROW = `[...document.querySelectorAll('${rowCss}')].find(e => e.offsetParent)`;
+  await until(ui, async () => ui.exists({ css: rowCss }), 60000, "the session's own task in Now", 1000);
+  // the side pane was closed above (section 2): open it again, so the row can be closed by hand first
+  await until(ui, async () => {
+    if (await ui.eval(`!!${ROW}`)) return true;
+    if (await ui.exists({ aria: "Show side panel", webview: false })) await ui.click({ aria: "Show side panel", webview: false });
+    await ui.openNowTab().catch(() => undefined);
+    return ui.eval(`!!${ROW}`);
+  }, 60000, "the session's own task row on screen in Now", 1500);
+  // its row closed, and the side pane on another tab: the click has to bring Now back and open the row
+  if (await ui.eval(`${ROW}?.querySelector('.dispatch-now-caret')?.getAttribute('aria-expanded') === 'true'`)) {
+    await ui.click({ css: `${rowCss} .dispatch-now-caret` });
+    await ui.sleep(400);
+  }
+  const closedBefore = await ui.eval(`${ROW}?.querySelector('.dispatch-now-caret')?.getAttribute('aria-expanded')`);
+  await ui.click({ css: '.tabs-container .tab[aria-label^="Tasks"]' }).catch(() => undefined);
+  await ui.sleep(800);
+  const before2 = await responses(ui);
+  await focusInput(ui, ".interactive-input-part");
+  await ui.type(`Reply with exactly this sentence and nothing else, no tools: I am on ${OWN} (${own}).`);
+  await ui.press("Enter", { send: true });
+  const ownLink = `.interactive-response .dispatch-task-link[data-task="${own}"]`;
+  await until(ui, async () => (await responses(ui)) > before2 && await ui.exists({ css: ownLink }), 300000, "the reply with this session's task link", 2000);
+  await until(ui, async () => !(await ui.eval(`[...document.querySelectorAll('.interactive-input-part [aria-label]')].some(e => e.offsetParent && /^(Stop|Cancel)\\b/.test(e.getAttribute('aria-label')))`)), 120000, "the end of the turn", 1000);
+  await ui.sleep(2000);
+  await closeTips(ui);
+  const tabBeforeOwn = await activeTab(ui);
+  await ui.eval(`(() => { const t = window.__dispatchOwnLink = { click: 0, open: 0, flash: false };
+    document.addEventListener('click', e => { if (e.target.closest && e.target.closest('.dispatch-task-link[data-task="${own}"]')) t.click = performance.now(); }, true);
+    // the row opened, then (a frame later) its flash: looked for during a second after the click
+    const look = () => { const row = ${ROW}; const c = row && row.querySelector('.dispatch-now-caret');
+      if (t.click && row && c && c.getAttribute('aria-expanded') === 'true' && !t.open) t.open = performance.now();
+      if (t.click && row && row.classList.contains('flash')) t.flash = true;
+      if (t.click && performance.now() - t.click > 1500 && t.open) return;
+      requestAnimationFrame(look); };
+    requestAnimationFrame(look); })()`);
+  await ui.click({ css: ownLink });
+  await until(ui, async () => { const t = await ui.eval(`window.__dispatchOwnLink`); return t && t.open ? t : null; }, 15000, "the row opened in Now", 100).catch(() => null);
+  await ui.sleep(1700);
+  const ownTiming = await ui.eval(`window.__dispatchOwnLink`);
+  const ownAfter = { tab: await activeTab(ui), open: await ui.eval(`${ROW}?.querySelector('.dispatch-now-caret')?.getAttribute('aria-expanded')`), flash: !!ownTiming.flash, tasksShown: await ui.eval(`!![...document.querySelectorAll('.dispatch-tasks')].find(e => e.offsetParent)`), chat: await ui.eval(`!![...document.querySelectorAll('.interactive-session')].find(e => e.offsetParent)`), ms: ownTiming.open ? Math.round(ownTiming.open - ownTiming.click) : null };
+  qa.ownLink = { closedBefore, tabBeforeOwn, ...ownAfter };
+  check("a link to this session's own task: the side pane goes to Now (not Tasks), its row opens and flashes, the chat stays", closedBefore === "false" && !/^Now/.test(tabBeforeOwn) && /^Now/.test(ownAfter.tab) && ownAfter.open === "true" && ownAfter.flash && !ownAfter.tasksShown && ownAfter.chat, qa.ownLink);
+  await ui.screenshot("task-link-own-now");
+  await ui.mark({ css: ownLink }, { what: "回复里本会话任务的链接", where: "中间对话里", how: "点它：右栏切到 Now，这件任务那一行就地展开、闪一次" }).catch(() => undefined);
+  await ui.mark({ css: rowCss }, { what: "Now 里展开的那一行", where: "右栏 Now", how: "不跳 Tasks" }).catch(() => undefined);
 
   note();
   if (qa.failed.length) throw new Error(`${qa.failed.length} check(s) failed: ${qa.failed.join(" | ").slice(0, 1500)}`);

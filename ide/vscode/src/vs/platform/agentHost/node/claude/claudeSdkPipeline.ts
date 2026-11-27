@@ -576,6 +576,8 @@ export class ClaudeSdkPipeline extends Disposable {
 		// Mark unhealthy but keep the `_query` handle: the next `send` rebinds,
 		// and `shutdownAndWait` still needs it to await the subprocess exit.
 		this._needsRebind = true;
+		// Dispatch IDE: the stopped process takes its background sub-agents with it (task-518qw)
+		this._router.endOpenBackground('Stopped with its session.');
 	}
 
 	/**
@@ -730,6 +732,8 @@ export class ClaudeSdkPipeline extends Disposable {
 		void Promise.resolve(oldWarm[Symbol.asyncDispose]()).catch((err: unknown) =>
 			this._logService.warn(`[ClaudeSdkPipeline:${this.sessionId}] previous WarmQuery dispose failed during rebind: ${err}`));
 		this._warm = built.warm;
+		// Dispatch IDE: the old process is gone, its background sub-agents with it (task-518qw)
+		this._router.endOpenBackground('Stopped: its Claude Code process was restarted.');
 		this._abortController = built.abortController;
 		this._wireAbortHandler(built.abortController);
 		this._queue.resetForRebind();
@@ -806,6 +810,8 @@ export class ClaudeSdkPipeline extends Disposable {
 				// there and the steering message's own turn starts, so what the model says from then on is the answer under
 				// the person's second message (task-pd2i3). Replays are never turn output.
 				if (message.type === 'user' && (message as { isReplay?: boolean }).isReplay) {
+					// Dispatch IDE: the `<task-notification>` note the CLI replays ends the background sub-agent it names (task-518qw)
+					await this._router.handle(message, undefined);
 					const steering = this._queue.peekAfterHead();
 					if (steering?.steering && !steering.steeringStarted && steering.sdkUuid === message.uuid) {
 						const joined = this._queue.settleHead();
@@ -894,6 +900,8 @@ export class ClaudeSdkPipeline extends Disposable {
 				this._clearUnstartedSteering();
 				this._queue.failAll(fatal);
 				this._needsRebind = true;
+				// Dispatch IDE: the process ended, its background sub-agents with it (task-518qw)
+				this._router.endOpenBackground('Stopped: its Claude Code process ended.');
 			}
 			if (!isCancellationError(fatal)) {
 				throw fatal;

@@ -2,7 +2,8 @@
 """`dispatch docs list | add | seen | rm` as the Docs tab of the Agents window reads them
 (design/docs-tab/redesign, direction A; Dispatch IDE patches/435-docs.patch).
 
-dispatch.py keeps the storage (one bd memory per project, `docs_registered` / `docs_save`) and the
+dispatch.py keeps the storage (one bd memory per project, `docs_registered` / `docs_save`; a memory holds 65,535
+bytes, so `docs_fit` drops the oldest handoffs first when the list grows past DOCS_MAX_BYTES) and the
 scan of design/, docs/ and 研究/. This module turns those rows into the list the tab shows:
 
   * one row per document: a README.md and the index.html next to it are one row (the page is the
@@ -624,7 +625,7 @@ def register(project, value, title="", kind="", tasks=(), session="", delivered_
     if is_delivery_page(target):
         entries, entry = _absorb_registered_sources(entries, entry, target)
     entries.append(entry)
-    D.docs_save(name, entries)
+    D.docs_save(name, entries, keep=did)
     return D.docs_registered_rows([entry])[0]
 
 

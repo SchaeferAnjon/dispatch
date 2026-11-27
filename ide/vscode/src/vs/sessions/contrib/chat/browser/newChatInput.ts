@@ -82,6 +82,7 @@ import { VariableCompletionHandler } from './variableCompletions.js';
 import { SessionReferenceCompletionHandler } from './sessionReferenceCompletions.js';
 import { AgentHostInputCompletionHandler } from './agentHostInputCompletions.js';
 import { DispatchSlashMenu } from './dispatchSlashMenu.js';
+import { IDispatchPointTalkComposerHandle, renderDispatchPointTalkComposer } from '../../dispatchPointTalk/browser/dispatchPointTalkBox.js';
 import { IChatModelInputState } from '../../../../workbench/contrib/chat/common/model/chatModel.js';
 import { IChatRequestVariableEntry, isExplicitFileOrImageVariableEntry, toFileVariableEntry, toPasteVariableEntry } from '../../../../workbench/contrib/chat/common/attachments/chatVariableEntries.js';
 import { IChatSessionsService } from '../../../../workbench/contrib/chat/common/chatSessionsService.js';
@@ -495,6 +496,7 @@ export class NewChatInputWidget extends Disposable implements IHistoryNavigation
 	private _sendButtonContainer: HTMLElement | undefined;
 	private _sendButton: Button | undefined;
 	private _sending = false;
+	private _dispatchPointTalk: IDispatchPointTalkComposerHandle | undefined; // Dispatch IDE: Point and talk (dispatchPointTalkBox.ts)
 
 	// Loading state
 	private _initializationLoadingSpinner: HTMLElement | undefined;
@@ -1311,6 +1313,16 @@ export class NewChatInputWidget extends Disposable implements IHistoryNavigation
 			this.logService.error('Failed to create new-session voice input mode pill:', error);
 		}
 
+		// Dispatch IDE: Point and talk's camera before send, and this box for its recording and review (dispatchPointTalkBox.ts)
+		this._dispatchPointTalk = this._register(renderDispatchPointTalkComposer(this._scopedInstantiationService, toolbar, {
+			area: container,
+			attachments: this._contextAttachments,
+			getText: () => this._editor.getModel()?.getValue() ?? '',
+			setText: text => this._editor.getModel()?.setValue(text),
+			submit: () => this._send(),
+			focus: () => this.focus(),
+		}));
+
 		this._sendButtonContainer = this.options.renderSendButton !== false
 			? dom.append(toolbar, dom.$('.sessions-chat-send-button'))
 			: undefined;
@@ -1722,6 +1734,7 @@ export class NewChatInputWidget extends Disposable implements IHistoryNavigation
 				return false;
 			}
 			this.chatInputNotificationService.handleMessageSent(notificationContext);
+			this._dispatchPointTalk?.sent(); // Dispatch IDE: Point and talk's review is done (dispatchPointTalkBox.ts)
 			this._contextAttachments.clear();
 			this._editor.getModel()?.setValue('');
 		} catch (e) {

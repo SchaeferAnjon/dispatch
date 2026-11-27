@@ -419,8 +419,7 @@ class Note(Base):
 
 
 class Steps(Base):
-    """The session's turns and your changes between them: the chat's rows, its commit card and the
-    All / Turn 1 / You filter of Changes."""
+    """The session's turns and your changes between them: the chat's rows and its commit card."""
 
     def setUp(self):
         super().setUp()

@@ -702,6 +702,7 @@ class Sidebar(unittest.TestCase):
         kanban = next(p for p in result["projects"] if p["name"] == "kanban")
         self.assertEqual(kanban["worktree_group"], {"id": "worktrees", "label": "Worktrees", "collapsed": True})
         self.assertIn("c", index)  # search history is not pruned or archived
+        self.assertNotIn("subagents", result)  # a sub-agent stays under the session that sent it (task-518qw)
 
     def test_native_sdk_conversation_kept_without_chatd_registration(self):
         import ide_sessions as I
@@ -725,92 +726,6 @@ class Sidebar(unittest.TestCase):
         self.assertEqual(res["projects"][0]["name"], "demo")
         self.assertFalse(res["sessions"]["claude:demo"]["hidden"])
 
-
-class SubAgentsAtWork(unittest.TestCase):
-    """A sub-agent the Assistant sent out runs in the Assistant's folder: the sidebar learns its project from what it does."""
-
-    def setUp(self):
-        import dispatch as real
-        self.tmp = tempfile.TemporaryDirectory()
-        home = self.home = self.tmp.name
-        self.kanban = os.path.join(home, "Projects", "kanban")
-        self.eml = os.path.join(home, "Projects", "ALG")
-        board = [{"id": "task-ab12", "title": "Show running sessions", "labels": ["project:kanban"]},
-                 {"id": "task-cd34", "title": "Lecture two", "labels": ["project:ALG"]}]
-        self.tv = types.SimpleNamespace(D=None, board_export=lambda: board)
-        D = types.SimpleNamespace(HOME=home, DISPATCH_DIR=os.path.join(home, ".dispatch"), claims_of=real.claims_of,
-                                  _index_rx=real._index_rx, task_prefix=lambda: "task", _mod=lambda name: self.tv)
-        self.addCleanup(setattr, PV, "D", PV.D)
-        PV.D = D
-        self.by_dir = [(self.kanban, "kanban"), (self.eml, "ALG")]
-        self.by_name = {"kanban": "kanban", "alg": "ALG"}
-        self.parent = os.path.join(home, ".claude", "projects", "-x-dispatch-assistant", "p1.jsonl")
-        os.makedirs(os.path.join(self.parent[:-6], "subagents"))
-        with open(self.parent, "w") as f:
-            f.write("{}\n")
-        env = patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": os.path.join(home, ".claude")})
-        env.start()
-        self.addCleanup(env.stop)
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def sub(self, aid, tool_use, *lines, age=0):
-        path = os.path.join(self.parent[:-6], "subagents", f"agent-{aid}.jsonl")
-        with open(path[:-6] + ".meta.json", "w") as f:
-            json.dump({"agentType": "opus-high", "description": aid, "toolUseId": tool_use}, f)
-        with open(path, "a") as f:
-            for line in lines:
-                f.write(json.dumps(line, ensure_ascii=False) + "\n")
-        if age:
-            os.utime(path, (time.time() - age, time.time() - age))
-        return path
-
-    @staticmethod
-    def brief(text):
-        return {"type": "user", "message": {"role": "user", "content": text}}
-
-    @staticmethod
-    def call(name, **inp):
-        return {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t", "name": name, "input": inp}]}}
-
-    def test_the_claimed_task_names_the_project_and_its_title_comes_along(self):
-        self.sub("a1", "toolu_A", self.brief(f"You are in {self.eml}."), self.call("mcp__dispatch__task_claim", task="task-ab12"))
-        got = PV.subagents_at_work(self.by_dir, self.by_name)
-        self.assertEqual(got, {"toolu_A": {"project": "kanban", "task": "task-ab12", "task_title": "Show running sessions"}})
-
-    def test_without_a_claim_the_folder_its_own_calls_name_most_wins_over_its_brief(self):
-        self.sub("a2", "toolu_B", self.brief(f"Repo: {self.eml}"),
-                 self.call("Bash", command=f"cd {self.kanban} && git status"), self.call("Read", file_path=f"{self.kanban}/README.md"),
-                 {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t", "content": f"{self.eml} {self.eml} {self.eml}"}]}})
-        self.sub("a3", "toolu_C", self.brief(f"Read-only look at {self.eml}, report back."))
-        got = PV.subagents_at_work(self.by_dir, self.by_name)
-        self.assertEqual(got["toolu_B"]["project"], "kanban")
-        self.assertEqual(got["toolu_C"]["project"], "ALG")
-
-    def test_a_folder_that_only_starts_like_a_project_is_not_it_and_old_records_are_left_out(self):
-        self.sub("a4", "toolu_D", self.brief("hello"), self.call("Bash", command=f"cd {self.kanban}-old && ls"))
-        self.sub("a5", "toolu_E", self.brief(f"Repo {self.kanban}"), age=PV.SUBAGENT_WINDOW + 60)
-        self.assertEqual(PV.subagents_at_work(self.by_dir, self.by_name), {})
-
-    def test_a_record_is_read_on_from_where_it_stopped(self):
-        path = self.sub("a6", "toolu_F", self.brief(f"Repo {self.kanban}"))
-        self.assertEqual(PV.subagents_at_work(self.by_dir, self.by_name)["toolu_F"]["project"], "kanban")
-        with open(os.path.join(PV.D.DISPATCH_DIR, "subagent-work.json")) as f:
-            self.assertEqual(json.load(f)["records"][path]["off"], os.path.getsize(path))
-        self.sub("a6", "toolu_F", self.call("mcp__dispatch__task_claim", task="task-cd34"))
-        got = PV.subagents_at_work(self.by_dir, self.by_name)["toolu_F"]
-        self.assertEqual((got["project"], got["task_title"]), ("ALG", "Lecture two"))
-        # a half-written last line waits for the next read
-        with open(path, "a") as f:
-            f.write('{"type":"assistant","message":')
-        PV.subagents_at_work(self.by_dir, self.by_name)
-        with open(os.path.join(PV.D.DISPATCH_DIR, "subagent-work.json")) as f:
-            self.assertEqual(json.load(f)["records"][path]["off"], os.path.getsize(path) - len('{"type":"assistant","message":'))
-
-    def test_no_claude_folder_is_nothing_at_work(self):
-        shutil.rmtree(os.path.join(self.home, ".claude"))
-        self.assertEqual(PV.subagents_at_work(self.by_dir, self.by_name), {})
 
 if __name__ == "__main__":
     unittest.main()

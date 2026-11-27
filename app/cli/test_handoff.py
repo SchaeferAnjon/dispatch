@@ -89,7 +89,7 @@ class Store(Fixture, unittest.TestCase):
         registered = []
         with patch.object(docs_view, "D", None), patch.object(docs_view, "register", REGISTER_DOC), \
              patch.object(D, "docs_registered", return_value=[]), \
-             patch.object(D, "docs_save", side_effect=lambda project, entries: registered.extend(entries)), \
+             patch.object(D, "docs_save", side_effect=lambda project, entries, keep="": registered.extend(entries)), \
              patch.object(D, "docs_registered_rows", side_effect=lambda entries: entries):
             rec = self.write()
         self.assertTrue(rec["registered"])

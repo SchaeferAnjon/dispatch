@@ -67,12 +67,14 @@ const READ = `(() => {
     planGap: plan && head ? Math.round(plan.getBoundingClientRect().top - head.getBoundingClientRect().bottom) : null,
     tasks: [...(plan ? plan.querySelectorAll(':scope > .dispatch-now-task') : [])].map(t => ({ id: t.dataset.task, title: t.querySelector('.dispatch-now-title').textContent, count: (t.querySelector('.dispatch-now-count') || {}).textContent || '', h: h(t), titleFont: font(t.querySelector('.dispatch-now-title')), countFont: font(t.querySelector('.dispatch-now-count')), open: t.querySelector('.dispatch-now-caret').getAttribute('aria-expanded'), caretLabel: t.querySelector('.dispatch-now-caret').getAttribute('aria-label') })),
     steps: [...n.querySelectorAll('[data-part="now-plan"] > .dispatch-now-body.open > .dispatch-now-body-in > [data-part="steps"] > .dispatch-now-step')].filter(shown).map(s => ({ kind: ['done', 'now', 'ask', 'stop', 'todo'].find(k => s.classList.contains(k)), text: s.textContent, h: h(s), font: font(s.querySelector('.dispatch-now-words')), mark: (() => { const m = s.querySelector('.dispatch-now-slot > *'); return m ? { cls: String(m.getAttribute('class')), w: m.classList.contains('codicon') ? parseFloat(cs(m, 'fontSize')) : w(m), color: cs(m, 'color'), breath: m.classList.contains('live') ? cs(m, 'animationName') : '' } : null; })(), line: getComputedStyle(s, '::before').content !== 'none' || getComputedStyle(s, '::after').content !== 'none' })),
-    agents: [...n.querySelectorAll('[data-part="now-plan"] .dispatch-now-agent:not(.more)')].filter(e => shown(e) && !e.closest('.dispatch-now-body:not(.open)')).map(a => {
-      let p = (a.parentElement.closest('li.dispatch-now-body') || a).previousElementSibling; while (p && !p.classList.contains('dispatch-now-step')) p = p.previousElementSibling;
-      const dot = a.querySelector('.dispatch-now-slot > *');
-      return { text: a.textContent, name: (a.querySelector('.dispatch-now-agent-name') || {}).textContent || '', state: a.dataset.state, under: p ? p.textContent : '', inSteps: !!a.closest('[data-part="steps"]'), dot: dot ? String(dot.getAttribute('class')) : '', dotW: dot ? Math.round(dot.getBoundingClientRect().width) : 0, dotColor: dot ? cs(dot, 'color') : '', indent: Math.round(a.querySelector('.dispatch-now-slot').getBoundingClientRect().left - a.getBoundingClientRect().left), font: font(a.querySelector('.dispatch-now-words')) };
+    // the sub-agents under the step: VS Code's own pills under "N agents working", the same as the strip and the sidebar (task-518qw)
+    agents: [...n.querySelectorAll('[data-part="now-plan"] [data-part="now-subagents"] .dispatch-subagent-pill')].filter(e => shown(e) && !e.closest('.dispatch-now-body:not(.open)')).map(a => {
+      const li = a.closest('[data-part="now-subagents"]');
+      let p = li.previousElementSibling; while (p && !p.classList.contains('dispatch-now-step')) p = p.previousElementSibling;
+      const pill = a.querySelector('.chat-subagent-pill-content');
+      return { text: a.innerText.replace(/\s+/g, ' ').trim(), state: a.dataset.state, under: p ? p.textContent : '', inSteps: !!a.closest('[data-part="steps"]'), spinner: !!a.querySelector('.chat-subagent-pill-icon .monaco-pixel-spinner'), widget: !!a.querySelector('.action-item.chat-subagent-pill-widget'), border: pill ? cs(pill, 'borderTopWidth') + ' ' + cs(pill, 'borderTopStyle') : '', head: (li.querySelector('.dispatch-subagent-head-label') || {}).textContent || '' };
     }),
-    finished: (n.querySelector('[data-part="finished"]') || {}).textContent || '',
+    finished: (n.querySelector('[data-part="now-subagents"] [data-part="finished"]') || {}).textContent || '',
     delivered: [...n.querySelectorAll('[data-part="now-plan"] > .dispatch-now-body.open .dispatch-now-dl')].filter(shown).map(d => ({ text: d.textContent, h: h(d), icon: String((d.querySelector('.codicon') || {}).className || '') })),
     folds: [...n.querySelectorAll('.dispatch-now-fold')].map(f => ({ part: f.dataset.part, text: f.textContent, open: f.getAttribute('aria-expanded'), h: h(f), font: font(f) })),
     cut: [...n.querySelectorAll('.dispatch-now-title, .dispatch-now-words, .dispatch-now-sub, .dispatch-now-state, .dispatch-now-fold-label')].filter(shown).filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent.slice(0, 80)),
@@ -83,7 +85,7 @@ const READ = `(() => {
 })()`;
 
 // two sub-agents one after the other, each counting a while: the session works with one running under the step it is
-// on, then both are back (subagent-rows.mjs sends OpenCode the same kind of message)
+// on, then both are back (subagent-three-places.mjs sends OpenCode the same kind of message)
 const MESSAGE = 'Use your task tool twice, one after the other, to start two general subagents. First: description "Count to 1500 A", prompt "SUBCOUNT A: count from 1 to 3000, one number per line, then reply DONE.". Second: description "Count to 1500 B", prompt "SUBCOUNT B: count from 1 to 3000, one number per line, then reply DONE.". After both are back, reply with one short line: BLOCKS DONE.';
 
 /** The test window goes off-screen: it must not jump in front of the person (shared brief). */
@@ -278,7 +280,8 @@ export default async function (ui) {
       check(`${head}: tasks start 24 under the three lines`, s.planGap === 24, s.planGap);
     }
     if (s.steps.length) check(`${head}: steps 28 high`, s.steps.every(x => x.h === 28), s.steps.map(x => x.h));
-    for (const b of s.buttons) check(`${head}: button ${b.text} is a 32 high pill, 13/500`, b.h === 32 && b.font === "13px/500" && parseFloat(b.radius) >= 16, b);
+    // VS Code's square-round corners since 2026-11-16 (DESIGN.md 圆角, radius-button 4), no longer pills
+    for (const b of s.buttons) check(`${head}: button ${b.text} is 32 high, radius-button 4, 13/500`, b.h === 32 && b.font === "13px/500" && parseFloat(b.radius) === 4, b);
     if (s.buttons.length) check(`${head}: the buttons 12 under the line (the why line when there is one, task-39x97)`, s.buttonsGap === 12, s.buttonsGap);
     qa.cut = { ...(qa.cut || {}), [head]: s.cut };
   };
@@ -307,7 +310,7 @@ export default async function (ui) {
   })()`);
   assert(box.sendRadius === "6px", "send key is not a block: " + JSON.stringify(box));
   assert(/dispatch-blocks/.test(box.arrowFont || ""), "send arrow is not Dispatch's: " + JSON.stringify(box));
-  assert(box.engineBox && box.engineBox[0] === "18px" && box.engineBox[1] === "5px", "engine is not in a small block: " + JSON.stringify(box));
+  assert(box.engineBox && box.engineBox[0] === "18px" && box.engineBox[1] === "4px", "engine is not in a small block (radius-button 4, DESIGN.md 圆角): " + JSON.stringify(box));
   if (box.labels.some(l => /Ask Before Edits|Manual permissions|^Default$/i.test(l))) throw new Error("permission still in engine words: " + JSON.stringify(box.labels));
   await closeTips(ui);
   await ui.screenshot("06-input-box");
@@ -368,7 +371,7 @@ export default async function (ui) {
   check("working, dark: still running with Right now and the sub-agent when shot", workingDark.mode === "working" && /^Right now: /.test(workingDark.sub) && workingDark.agents.some(a => a.state === "sub-agent"), workingDark);
   await ui.screenshot("now-working-dark");
   await ui.setTheme("light");
-  check("working: a sub-agent working hangs under the step it is on, indented 22, the 14 px purple filled circle, 12 px", working.agents.some(a => a.state === "sub-agent" && a.inSteps && a.under === "Hang the sub-agents under it" && a.dotW === 14 && /codicon-circle-large-filled .*dispatch-mark sub-agent/.test(a.dot) && a.dotColor === working.tokens.plan && a.indent === 34 && a.font === "12px/400"), working.agents);
+  check("working: a sub-agent working hangs under the step it is on as VS Code's pill (outlined, its spinner) under N agent(s) working", working.agents.some(a => a.state === "sub-agent" && a.inSteps && a.under === "Hang the sub-agents under it" && a.widget && a.spinner && /^1px solid$/.test(a.border) && /^\d+ agents? working$/.test(a.head)), working.agents);
   sizes(working, "working");
   check("working: status reads Working · step 3 of 5 · <time>", /^Working · step 3 of 5 · \d+ min$/.test(working.status), working.status);
   check("working: the line is the agent's own", working.say === "Drawing the steps on one thin line", working.say);
@@ -398,7 +401,7 @@ export default async function (ui) {
   // Done in this session opens in place
   await ui.click({ css: '[data-part="fold-done"]' });
   await ui.sleep(450);
-  const doneFold = await ui.eval(`(() => { const b = document.querySelector('[data-part="fold-done-body"]'); return { open: b.classList.contains('open'), rows: [...b.querySelectorAll('.dispatch-now-task')].map(t => t.innerText.replace(/\\s+/g, ' ')) }; })()`);
+  const doneFold = await ui.eval(`(() => { const b = document.querySelector('[data-part="fold-done-body"]'); return { open: b.classList.contains('open'), rows: [...b.querySelectorAll('.dispatch-now-task')].map(t => t.innerText.replace(/\\s+/g, ' ')), counts: [...b.querySelectorAll('.dispatch-now-task')].map(t => { const c = t.querySelector('.dispatch-now-count'); return c ? c.textContent + '/' + getComputedStyle(c).display : 'none'; }) }; })()`);
   check("Done in this session opens in place with the earlier request", doneFold.open && doneFold.rows.length === 1 && /Rename the demo button/.test(doneFold.rows[0]) && /Done/.test(doneFold.rows[0]), doneFold);
   await ui.screenshot("07a-now-working-folds-open");
   await ui.click({ css: '[data-part="fold-done"]' });
@@ -414,29 +417,40 @@ export default async function (ui) {
   check("reduce motion: the session's blocks stand still", /still|^$/.test(still.blocks), still.blocks);
   await ui.cdp.send("Emulation.setEmulatedMedia", { features: [] });
 
-  // the task's title shows it in place, in Tasks
+  // the task's title opens and closes its steps in place, as the caret does; the side pane stays on Now (task-ewbvh)
+  const expanded = () => ui.eval(`document.querySelector('.dispatch-now-task[data-task="${tid}"] .dispatch-now-caret').getAttribute('aria-expanded')`);
+  const tabBefore = await activeTab(ui);
+  const wasOpen = await expanded();
   await ui.click({ css: `.dispatch-now-task[data-task="${tid}"] .dispatch-now-title` });
-  await until(ui, async () => /^Tasks/.test(await activeTab(ui)), 20000, "the Tasks tab after clicking the task's title", 300).then(() => check("the task's title opens it in Tasks, in the side pane", true)).catch(async () => check("the task's title opens it in Tasks, in the side pane", false, await activeTab(ui)));
-  await ui.openNowTab();
+  await ui.sleep(450);
+  const afterOne = { open: await expanded(), tab: await activeTab(ui) };
+  await ui.click({ css: `.dispatch-now-task[data-task="${tid}"] .dispatch-now-title` });
+  await ui.sleep(450);
+  const afterTwo = { open: await expanded(), tab: await activeTab(ui) };
+  qa.titleClick = { tabBefore, wasOpen, afterOne, afterTwo };
+  check("the task's title opens and closes its steps in place; the side pane stays on Now", afterOne.open !== wasOpen && afterTwo.open === wasOpen && afterOne.tab === tabBefore && afterTwo.tab === tabBefore && /^Now/.test(tabBefore), qa.titleClick);
 
   // the sub-agents back: one row "2 finished" under the step, it opens in place, a click opens what one did
   const back = await waitNow(s => !s.agents.some(a => a.state === "sub-agent") && /^2 finished$/.test(s.finished), "2 finished under the step", 900000).catch(async e => { qa.heads.finishedTimeout = await read(); note(); throw e; });
   qa.heads.finished = back;
   check("both back: one row 2 finished, no sub-agent rows shown", back.finished === "2 finished" && back.agents.length === 0, { finished: back.finished, agents: back.agents });
   await ui.screenshot("07b-now-2-finished");
-  await ui.click({ css: '[data-part="finished"]' });
+  await ui.click({ css: '.dispatch-now-tab [data-part="finished"]' });
   await ui.sleep(450);
   const listed2 = await ui.eval(READ);
   qa.heads.finishedOpen = listed2;
-  check("2 finished opens in place: the two with the grey filled check, under the step", listed2.agents.length === 2 && listed2.agents.every(a => a.state === "done" && /codicon-pass-filled .*dispatch-mark seen/.test(a.dot) && a.under === "Hang the sub-agents under it") && listed2.agents.some(a => /Count to 1500 A/.test(a.text)) && listed2.agents.some(a => /Count to 1500 B/.test(a.text)), listed2.agents);
+  check("2 finished opens in place: the two pills, no spinner, Worked for …, under the step", listed2.agents.length === 2 && listed2.agents.every(a => a.state === "done" && !a.spinner && /Worked for/.test(a.text) && a.under === "Hang the sub-agents under it") && listed2.agents.some(a => /Count to 1500 A/.test(a.text)) && listed2.agents.some(a => /Count to 1500 B/.test(a.text)), listed2.agents);
   await ui.screenshot("07c-now-finished-open");
   fs.writeFileSync(path.join(ui.out, "now-subagents.json"), JSON.stringify({ working: working.agents, back: { finished: back.finished, agents: back.agents }, opened: listed2.agents }, null, 1));
-  await ui.click({ text: "Count to 1500 A", within: '.dispatch-now-tab [data-part="steps"]' });
+  await ui.click({ text: "Count to 1500 A", within: '.dispatch-now-tab [data-part="now-subagents"]' });
   const opened = await until(ui, () => ui.eval(`(() => {
-    const req = [...document.querySelectorAll('.interactive-request')].filter(e => e.offsetParent).map(e => e.innerText).join(' ');
-    return /SUBCOUNT A/.test(req) && !/Use your task tool/.test(req) ? req.slice(0, 200) : null;
+    // it opens next to the session's conversation (task-518qw): one of the conversations on screen is the sub-agent's own
+    const own = [...document.querySelectorAll('.interactive-session')].filter(e => e.offsetParent)
+      .map(c => [...c.querySelectorAll('.interactive-request')].map(e => e.innerText).join(' '))
+      .find(req => /SUBCOUNT A/.test(req) && !/Use your task tool/.test(req));
+    return own ? own.slice(0, 200) : null;
   })()`), 30000, "the sub-agent's own conversation", 500).catch(() => null);
-  check("a click on a sub-agent opens its own conversation (its prompt, not the session's)", !!opened, opened);
+  check("a click on a sub-agent opens its own conversation (its prompt, not the session's), read only next to the session's", !!opened, opened);
   await ui.screenshot("07d-subagent-opened");
   await ui.openNowTab();
 

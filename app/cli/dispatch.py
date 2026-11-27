@@ -6200,7 +6200,16 @@ def wiki_store(key, content):
         return key
     code, o, err = sh(["bd", "remember", content, "--key", key])
     if code != 0:
-        print(err.strip() or o.strip(), file=sys.stderr)
+        msg = err.strip() or o.strip()
+        if "too large for column" in msg:
+            # bd's own message is the whole value (65 KB) inside "Error 1105: string '…' is too large"
+            n = len(content.encode())
+            msg = L.t(f"Could not save the board entry {key}: it is {n:,} bytes and the task board keeps at most "
+                      f"{MEMORY_MAX_BYTES:,} bytes in one entry (bd's \"Error 1105 … too large for column 'value'\"). "
+                      "Make it shorter and run the command again.",
+                      f"任务板的条目 {key} 存不进：它有 {n:,} 字节，任务板一个条目最多存 {MEMORY_MAX_BYTES:,} 字节"
+                      f"（bd 报的「Error 1105 … too large for column 'value'」）。把它删短后再运行一次。")
+        print(msg, file=sys.stderr)
         sys.exit(code)
     return key
 
@@ -6220,6 +6229,7 @@ def wiki_all():
 # (synced between the Macs with the board). Keys under this prefix are Dispatch's own
 # bookkeeping and stay out of the wiki, prime and the knowledge-base view.
 INTERNAL_MEMORY_PREFIX = "dispatch-"
+MEMORY_MAX_BYTES = 65535  # bd stores a memory in a Dolt TEXT column; one byte more is "Error 1105 … too large"
 PROJECT_FLAGS_KEY = "dispatch-projects"
 PROJECT_FLAG_FIELDS = ("starred", "archived")
 PROJECT_CMD_FIELDS = ("test_cmd", "installed_probe")
@@ -6851,8 +6861,44 @@ def docs_registered(project):
     return docs_entries_parse(d.get(docs_key(project), ""))
 
 
-def docs_save(project, entries):
-    wiki_store(docs_key(project), json.dumps(entries, ensure_ascii=False, sort_keys=True))
+# bd keeps a memory in one Dolt column of 65,535 bytes (MEMORY_MAX_BYTES). A project's Docs list grows by one entry per
+# delivery and handoff: canvas-notes reached the limit at 188 entries, and from then on every handoff and delivery
+# failed with "Error 1105 … too large for column 'value'" (task-w97qw). The list keeps some room below the limit.
+DOCS_MAX_BYTES = 60000
+
+
+def _docs_json(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def docs_fit(entries, keep="", limit=DOCS_MAX_BYTES):
+    """`entries` cut to `limit` bytes, the oldest first within each group, in this order: tombstones of files that are
+    gone, handoffs (each stays on its task as a comment and in `dispatch handoff show`), other documents (a delivery
+    stays in its task's deliverables, a file under design/ or docs/ comes back through the scan), tombstones of files
+    that are still there. `keep` (the id just registered) stays."""
+    total = len(_docs_json(entries).encode())
+    if total <= limit:
+        return entries
+
+    def rank(i):
+        e = entries[i]
+        if e.get("hidden"):
+            group = 3 if docs_is_url(e["path"]) or os.path.exists(e["path"]) else 0
+        else:
+            group = 1 if e.get("kind") == "handoff" else 2
+        return group, e.get("added_at") or 0
+
+    drop = set()
+    for i in sorted((i for i, e in enumerate(entries) if e["id"] != keep), key=rank):
+        if total <= limit:
+            break
+        drop.add(i)
+        total -= len(_docs_json(entries[i]).encode()) + 2  # the entry and its ", "
+    return [e for i, e in enumerate(entries) if i not in drop]
+
+
+def docs_save(project, entries, keep=""):
+    wiki_store(docs_key(project), _docs_json(docs_fit(entries, keep)))
 
 
 def docs_git_root(path):

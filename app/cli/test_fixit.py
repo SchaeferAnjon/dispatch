@@ -576,8 +576,7 @@ class WalkSentences(unittest.TestCase):
         self.assertEqual((r["texts"], r["ai"], len(r["errors"])), ([], False, 1))
         self.assertEqual(F.write_walk({"stops": []})["reason"], "no stops")
 
-    def test_why_asks_why_each_block_changed_up_to_sixteen_in_one_answer(self):
-        """Why on the blocks of Changes (task-39x97): the same one call, a why question, up to 16 blocks."""
+    def test_at_most_eight_stops_in_the_one_answer(self):
         asked = []
 
         def fake_agent(agent, path, system, user, timeout=90, model=""):
@@ -586,20 +585,11 @@ class WalkSentences(unittest.TestCase):
 
         blocks = [{"file": f"f{i}.ts", "start": i + 1, "end": i + 2, "kind": "edit", "code": "-a\n+b"} for i in range(20)]
         with patch.object(F, "writer_order", return_value=[("opencode", "/x")]), patch.object(F, "run_agent", side_effect=fake_agent):
-            r = F.write_walk({"request": "make it dark", "stops": blocks, "why": True}, "opencode", only=True)
+            r = F.write_walk({"stops": blocks}, "opencode", only=True)
         self.assertEqual(len(asked), 1)
-        self.assertIn("why it was changed this way", asked[0])
-        self.assertIn("exactly 16 strings", asked[0])
-        self.assertIn("Block 16: f15.ts (lines 16-17; - was there before, + is there now)", asked[0])
-        self.assertNotIn("Block 17", asked[0])
-        self.assertEqual(len(r["texts"]), 16)
-        self.assertEqual(r["texts"][0], "Reason 0.")
-        # without why: the walk's question, at most 8
-        asked.clear()
-        with patch.object(F, "writer_order", return_value=[("opencode", "/x")]), patch.object(F, "run_agent", side_effect=fake_agent):
-            F.write_walk({"stops": blocks}, "opencode", only=True)
         self.assertIn("exactly 8 strings", asked[0])
         self.assertIn("Place 1:", asked[0])
+        self.assertEqual(len(r["texts"]), 8)
 
     def test_parse_pads_and_cuts_to_the_stops(self):
         self.assertEqual(F.parse_walk('["a", "b", "c"]', 2), ["a", "b"])

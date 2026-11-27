@@ -110,6 +110,8 @@ export function renderDispatchImageTile(element: HTMLElement, entry: IChatReques
 	store.add(blob);
 	element.classList.add('dispatch-draw-tile');
 	element.classList.toggle('annotated', !!meta);
+	// a Point and talk keyframe in the new-session composer: the review in the box draws it (task-3w0lf)
+	element.classList.toggle('dispatch-pt-hidden', !!entry._meta?.['dispatch.pointTalk']);
 	const tile = $('.dispatch-draw-thumbwrap');
 	// an annotated attachment is the picture with its boxes burned in
 	const thumb = renderDispatchWhereThumb(blob.url, meta ? { size: meta.size, marks: marksOf(meta), drawn: true } : undefined, {
@@ -120,7 +122,7 @@ export function renderDispatchImageTile(element: HTMLElement, entry: IChatReques
 	element.prepend(tile);
 	store.add(toDisposable(() => {
 		tile.remove();
-		element.classList.remove('dispatch-draw-tile', 'annotated');
+		element.classList.remove('dispatch-draw-tile', 'annotated', 'dispatch-pt-hidden');
 	}));
 	if (actions) {
 		const title = localize('dispatchDraw.annotate', "Draw and ask");

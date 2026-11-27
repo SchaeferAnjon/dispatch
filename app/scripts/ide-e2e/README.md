@@ -30,7 +30,7 @@ dispatch ide e2e suite first-run onboarding --app …    # 只跑这几个
 
 `instance start` 做的事：独立的 user data、扩展、shared data、Agents 窗口的 user data 和插件目录（这个构建默认把几样放在 `~/.dispatch-ide*`，全部改到实例目录里）；`--force-disable-user-env`（macOS 上 VS Code 会拿登录 shell 的环境盖掉进程环境，`~/.zshrc` 里的 `BEADS_DIR` 会让测试实例读写真任务板）；`--password-store=basic`（不用钥匙串，临时签名的构建不会弹授权框）；预写 settings.json 关掉更新检查和遥测；用构建自己那个 kanban 提交的 dispatch CLI（`git archive` 到实例目录），界面、bridge 和 CLI 是同一版。记录在 `~/.dispatch/state/instances/<名>.json`。
 
-窗口不出现在你屏幕上：`instance start` 让 App 的主进程带 `--inspect=<端口>`（只听 127.0.0.1）起来，第一个窗口出来之前 `hide-windows.mjs` 连进去，把每个窗口设成全透明、鼠标穿透，显示时不激活 App（不抢焦点），App 也不进 Dock。透明的窗口照样渲染，截图、点击、打字都走 CDP；runner 连上窗口时让页面按「有焦点」处理，再查一遍屏幕上有没有看得见的窗口，有就重新藏一次，还看得见就在 stderr 报出来并写进 steps.json 的 `on_screen`。想亲眼看着跑就设 `DISPATCH_E2E_SHOW=1`。不用的做法：CDP 的 `Browser.setWindowBounds` 这个 Electron 没有；`window.moveTo` 挪到屏幕边就停；⌘H 把 App 藏起来的话，藏着时才显示的窗口一直不画，截图永远等不到。
+窗口不出现在你屏幕上：`instance start` 让 App 的主进程带 `--inspect=<端口>`（只听 127.0.0.1）起来，第一个窗口出来之前 `hide-windows.mjs` 连进去，把每个窗口设成全透明、鼠标穿透，显示时不激活 App（不抢焦点），App 也不进 Dock。透明的窗口照样渲染，截图、点击、打字都走 CDP；runner 连上窗口时让页面按「有焦点」处理，再查一遍屏幕上有没有看得见的窗口，有就重新藏一次，还看得见就在 stderr 报出来并写进 steps.json 的 `on_screen`。App 自己也认测试实例（环境变量 `DISPATCH_E2E_INSTANCE`）：窗口先不显示地建好，再用 showInactive 显示。建窗时就显示的话，macOS 会立刻把 App 换到最前面，透明的窗口拿走你的键盘焦点（task-4cpnb 查到）。场景 `stays-hidden` 验这两条：读窗口列表和 `lsappinfo front`，不截屏。`instance start` 藏不住就不起：hide-windows.mjs 没答上（缺这个文件、没连上 inspector、超时），或者起好以后再藏一次窗口仍看得见，都结束这个实例并报 `not_hidden`，不留窗口在你屏幕上。想亲眼看着跑就设 `DISPATCH_E2E_SHOW=1`。不用的做法：CDP 的 `Browser.setWindowBounds` 这个 Electron 没有；`window.moveTo` 挪到屏幕边就停；⌘H 把 App 藏起来的话，藏着时才显示的窗口一直不画，截图永远等不到。
 
 `e2e run` 之前会查三件事：记录里的 pid 还是这个 App、带这个 user data；CDP 端口现在是这个实例的进程在听（lsof）；App 在磁盘上没被别的构建换掉（product.json、bridge 和 workbench 的指纹）。任何一条不对就不连。
 

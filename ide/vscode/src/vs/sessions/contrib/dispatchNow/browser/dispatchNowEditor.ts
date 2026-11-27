@@ -26,7 +26,7 @@ import { Codicon } from '../../../../base/common/codicons.js';
 import { onUnexpectedError } from '../../../../base/common/errors.js';
 import { DisposableStore, IDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { RunOnceScheduler } from '../../../../base/common/async.js';
-import { autorun } from '../../../../base/common/observable.js';
+import { autorun, observableValue } from '../../../../base/common/observable.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { localize } from '../../../../nls.js';
 import { IAccessibilityService } from '../../../../platform/accessibility/common/accessibility.js';
@@ -50,7 +50,8 @@ import { IChat, ISession, SessionStatus } from '../../../services/sessions/commo
 import { IActiveSession, ISessionsManagementService } from '../../../services/sessions/common/sessionsManagement.js';
 import { ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { createDispatchBlocks } from '../../../browser/dispatchStatusBlocks.js';
-import { elapsedLabel, onSubAgentRowClick, subAgentElapsed, subAgentsOf, subAgentState } from '../../../browser/dispatchSubAgentRows.js';
+import { DispatchSubAgentPill, renderSubAgentList, renderWorkingHead } from '../../../browser/dispatchSubAgentPill.js';
+import { subAgentsOf, subAgentState } from '../../../browser/dispatchSubAgents.js';
 import { VIEW_SESSION_CHANGES_COMMAND_ID } from '../../changes/common/changes.js';
 import { whenChatWidgetForSession } from '../../chat/browser/chatWidgetUtils.js';
 import { DispatchBlockIcons } from '../../dispatchBlocks/browser/dispatchBlocks.js';
@@ -59,7 +60,6 @@ import { stateMark } from '../../dispatchBlocks/browser/dispatchMarks.js';
 import { replyParts } from '../../dispatchSubagents/browser/dispatchSubagentStrip.js';
 import { runningStep } from '../../dispatchSubagents/browser/dispatchSubagentsModel.js';
 import { DispatchNextUpView } from '../../dispatchCapture/browser/dispatchNextUp.js';
-import { DISPATCH_SHOW_TASK_COMMAND } from '../../dispatchDocs/browser/dispatchDocsOpen.js';
 import { ago, deliverableLabel, deliverableTooltip, DISPATCH_OPEN_TASK_COMMAND, IDispatchDeliverable, IDispatchPlanItem, openDeliverable, withoutTaskId } from '../../dispatchTasks/browser/dispatchTasksModel.js';
 import { dispatchProjectsRegistry, projectOfSession } from '../../sessions/browser/dispatchProjectsModel.js';
 import { waitingChangedAt } from '../../sessions/browser/dispatchWaitingGroups.js';
@@ -220,6 +220,14 @@ interface IHeadFacts {
  *  again on the way back): coming back shows that at once, not a guessed state, until the new answer is in. */
 const SEEN = new Map<string, IDispatchNow>();
 
+/** The tasks a session's Now lists, from its last answer; undefined when it was never read in this window. */
+export function nowTaskIds(session: string, answer: IDispatchNow | undefined = SEEN.get(session)): readonly string[] | undefined {
+	return answer && [...(answer.session_tasks ?? []).map(t => t.id), ...(answer.task ? [answer.task.id] : [])];
+}
+
+/** A task to open in place in Now, from a task link in the conversation (task-ewbvh, dispatchNow.contribution.ts). */
+export const dispatchNowReveal = observableValue<{ readonly session: string; readonly id: string; readonly at: number } | undefined>('dispatchNowReveal', undefined);
+
 /** Sessions whose last turn the person stopped: the number of requests each had then (stoppedByPerson). */
 const STOPPED_KEY = 'dispatch.now.stoppedTurns';
 const STOPPED_KEPT = 200;
@@ -240,6 +248,10 @@ export class DispatchNowEditor extends EditorPane {
 	private readonly _taskOpen = new Map<string, boolean>();
 	/** Folds the person opened: 'done', 'next', 'handoffs', 'finished'. */
 	private readonly _folds = new Set<string>();
+	/** A task a link in the conversation asked to open here; done once its row is drawn open (or after 10 s). */
+	private _reveal: { readonly id: string; readonly at: number } | undefined;
+	/** The sub-agents' pills drawn this round (VS Code's, sessions/browser/dispatchSubAgentPill.ts). */
+	private _pills: DispatchSubAgentPill[] = [];
 	/** A terminal session's last line, read with the board every round. */
 	private _terminalLine = '';
 	/** The head being drawn: the task it is on takes its state for the step it is on. */
@@ -285,6 +297,15 @@ export class DispatchNowEditor extends EditorPane {
 		this._register(dom.addDisposableListener(this._root, dom.EventType.CLICK, () => {
 			if (this._oneLine) {
 				void this._commandService.executeCommand(DISPATCH_SIDE_CHAT_RESET_SPLIT_COMMAND);
+			}
+		}));
+		// a task link in the conversation: its row opens here, in place (task-ewbvh)
+		this._register(autorun(reader => {
+			const reveal = dispatchNowReveal.read(reader);
+			if (reveal && reveal.session === this._sessionsService.activeSession.get()?.resource.toString()) {
+				this._reveal = reveal;
+				this._lastSig = '';
+				this.render();
 			}
 		}));
 		// Waiting for you says what the session asks: the head follows it
@@ -505,25 +526,6 @@ export class DispatchNowEditor extends EditorPane {
 		return runningStep(replyParts(this._chatService, session.mainChat.get().resource));
 	}
 
-	/**
-	 * The kind of each sub-agent the conversation sent out ("general", "designer"), by what it was sent to do: the tool
-	 * call that started it carries both; the sub-agent's own chat only the second.
-	 */
-	private agentNames(session: ISession): Map<string, string> {
-		const names = new Map<string, string>();
-		for (const request of this._chatService.getSession(session.mainChat.get().resource)?.getRequests() ?? []) {
-			for (const part of request.response?.response.value ?? []) {
-				if ((part.kind === 'toolInvocation' || part.kind === 'toolInvocationSerialized') && part.toolSpecificData?.kind === 'subagent') {
-					const name = part.toolSpecificData.agentDisplayName || part.toolSpecificData.agentName;
-					if (name && part.toolSpecificData.description) {
-						names.set(part.toolSpecificData.description, name);
-					}
-				}
-			}
-		}
-		return names;
-	}
-
 	/** What the agent wrote at the start of its last turn before it did anything (dispatchExplainModel's openingWords). */
 	private opening(session: ISession): string {
 		const parts = this._chatService.getSession(session.mainChat.get().resource)?.getRequests().at(-1)?.response?.response.value ?? [];
@@ -545,16 +547,18 @@ export class DispatchNowEditor extends EditorPane {
 		const provided = session && (this._sessionsManagementService.getSession(session.resource) ?? session);
 		const facts = session && provided ? this.headFacts(session, provided) : undefined;
 		const still = this._accessibilityService.isMotionReduced();
-		const agentsSig = provided ? subAgentsOf(provided).map(c => [c.resource.toString(), subAgentState(c), c.title.get(), elapsedLabel(subAgentElapsed(c))]) : [];
+		const agentsSig = provided ? subAgentsOf(provided).map(c => [c.resource.toString(), subAgentState(c), c.title.get()]) : []; // the pills keep their own clocks
 		// what the head and the rows show; the live part without its clock, which moves every round
 		const shown = d && { ...d, live: d.live && { status: d.live.status, doing: d.live.doing, said: d.live.said } };
 		const sig = JSON.stringify([this._key, shown, session?.status.get(), session?.modelId.get(), Math.floor(Date.now() / 60000), facts && [facts.mode, facts.canceled, facts.asked?.id, facts.asked && waitingDetail(facts.asked), facts.design?.id, facts.design?.open],
 			facts?.mode === 'done' ? this._nextUp?.signature() : '', agentsSig, this.walkStops(session), [...this._taskOpen], [...this._folds], this._terminalLine, still, session && this.turnStartedAt(session), session ? this.opening(session) : '', facts?.mode === 'working' && session ? this.runningTool(session) : '', session?.lastTurnEnd.get()?.getTime()]);
 		if (sig === this._lastSig) {
+			this._pills.forEach(pill => pill.update()); // the step a sub-agent is on, on the pills there are
 			return;
 		}
 		this._lastSig = sig;
 		this._renderStore.clear();
+		this._pills = [];
 		dom.clearNode(this._root);
 		if (!session || !provided || !facts) {
 			this.empty(localize('dispatchNow.noSession', "Nothing open"), localize('dispatchNow.noSessionMore', "Open a session to see what it is doing."));
@@ -610,8 +614,23 @@ export class DispatchNowEditor extends EditorPane {
 
 		// the tasks: the one it is on first and open, the others not finished under it; no heading over them
 		const { rows, done } = splitTasks(tasks, d.task?.id);
-		const working = agents.filter(c => subAgentState(c) === 'sub-agent').reverse();
-		const back = agents.filter(c => subAgentState(c) !== 'sub-agent').reverse();
+		// a task link in the conversation: its row opens (in Done in this session too), comes into view and flashes once
+		const reveal = this._reveal && Date.now() - this._reveal.at < 10_000 ? this._reveal : undefined;
+		if (reveal && tasks.some(t => t.id === reveal.id)) {
+			this._reveal = undefined;
+			this._taskOpen.set(reveal.id, true);
+			if (done.some(t => t.id === reveal.id)) {
+				this._folds.add('done');
+			}
+			dom.getWindow(this._root).requestAnimationFrame(() => {
+				const row = this._root.querySelector<HTMLElement>(`.dispatch-now-task[data-task="${CSS.escape(reveal.id)}"]`);
+				row?.scrollIntoView({ block: 'nearest' });
+				row?.classList.add('flash');
+			});
+		}
+		// in the order they were sent out, as in the conversation, the strip and the sidebar
+		const working = agents.filter(c => subAgentState(c) === 'sub-agent');
+		const back = agents.filter(c => subAgentState(c) !== 'sub-agent');
 		const current = rows.find(t => t.id === d.task?.id);
 		// the sub-agents hang under the step it is on; with no step to hang from they come first, on their own
 		const anchored = !!current && current.status !== 'done' && agentAnchor(current.plan ?? []) >= 0;
@@ -894,9 +913,14 @@ export class DispatchNowEditor extends EditorPane {
 		row.classList.toggle('done', t.status === 'done');
 		const caret = dom.append(row, dom.$<HTMLButtonElement>('button.dispatch-now-caret', { type: 'button' }));
 		caret.appendChild(icon(Codicon.chevronRight));
-		const label = dom.append(row, dom.$<HTMLButtonElement>('button.dispatch-now-title', { type: 'button', title: title }, title));
-		label.setAttribute('aria-label', localize('dispatchNow.showTaskAria', "{0}, show it in Tasks", title));
-		this._renderStore.add(dom.addDisposableListener(label, dom.EventType.CLICK, () => void this._commandService.executeCommand(DISPATCH_SHOW_TASK_COMMAND, t.id, title)));
+		// the title opens and closes the steps in place, as the caret does; it no longer goes to the Tasks tab (the person,
+		// 2026-11-16, task-ewbvh). The caret is the one stop for the keyboard and the screen reader, so a row is one stop.
+		const label = dom.append(row, dom.$('span.dispatch-now-title', { title }, title));
+		if (hasBody) {
+			this._renderStore.add(dom.addDisposableListener(label, dom.EventType.CLICK, () => caret.click()));
+		} else {
+			label.classList.add('static');
+		}
 		const done = plan.filter(p => p.state === 'done').length;
 		const count = t.status === 'done' ? localize('dispatchNow.taskDone', "Done") : plan.length ? localize('dispatchNow.planCount', "{0} of {1}", done, plan.length) : '';
 		if (count) {
@@ -969,53 +993,25 @@ export class DispatchNowEditor extends EditorPane {
 		li.setAttribute('aria-label', `${kind === 'done' ? localize('dispatchNow.stepDone', "Done") : kind === 'now' ? localize('dispatchNow.stepNow', "Doing this now") : kind === 'ask' ? localize('dispatchNow.stepAsk', "Waiting for you") : kind === 'stop' ? localize('dispatchNow.stepStop', "Stopped here") : localize('dispatchNow.stepTodo', "Not started")}: ${text}`);
 	}
 
-	/** The sub-agents: the ones working one row each, the ones back folded into "N finished". `through`: the line goes on. */
+	/**
+	 * The sub-agents as the strip above the message box and the sidebar show them (task-518qw): "2 agents working",
+	 * VS Code's pill for each that works, "N finished" opening the ones back in place. `through`: the steps' line goes on.
+	 */
 	private agentRows(list: HTMLElement, session: ISession, working: readonly IChat[], back: readonly IChat[], through: boolean): void {
-		for (const chat of working) {
-			this.agentRow(list, session, chat, through);
+		if (!working.length && !back.length) {
+			return; // nothing sent out: no block, the steps keep their 28
 		}
-		if (!back.length) {
-			return;
-		}
-		const li = dom.append(list, dom.$('li.dispatch-now-agent.more'));
+		const li = dom.append(list, dom.$('li.dispatch-now-agents-block'));
+		li.dataset.part = 'now-subagents';
 		li.classList.toggle('through', through);
-		const more = dom.append(li, dom.$<HTMLButtonElement>('button.dispatch-now-rowbtn.dispatch-now-finished', { type: 'button' }, localize('dispatchNow.finished', "{0} finished", back.length)));
-		more.dataset.part = 'finished';
-		const body = dom.append(list, dom.$('li.dispatch-now-body'));
-		body.classList.toggle('through', through);
-		const inner = dom.append(body, dom.$('ol.dispatch-now-body-in'));
-		for (const chat of back) {
-			this.agentRow(inner, session, chat, through);
+		if (working.length) {
+			renderWorkingHead(li, working.length);
 		}
-		this.bindToggle(more, body, this._folds.has('finished'), opened => opened ? this._folds.add('finished') : this._folds.delete('finished'), {
-			open: localize('dispatchNow.showFinished', "Show the {0} sub-agents that came back", back.length),
-			close: localize('dispatchNow.hideFinished', "Hide the {0} sub-agents that came back", back.length),
-		});
-	}
-
-	/** A sub-agent: its dot, what it was sent to do, how long; a click opens what it did. */
-	private agentRow(list: HTMLElement, session: ISession, chat: IChat, through: boolean): void {
-		const state = subAgentState(chat);
-		const li = dom.append(list, dom.$('li.dispatch-now-agent'));
-		li.dataset.state = state;
-		li.classList.toggle('through', through);
-		const what = chat.title.get();
-		const time = elapsedLabel(subAgentElapsed(chat));
-		const b = dom.append(li, dom.$<HTMLButtonElement>('button.dispatch-now-rowbtn', { type: 'button', title: what }));
-		dom.append(b, dom.$('span.dispatch-now-slot')).appendChild(stateMark(state === 'done' ? 'seen' : state));
-		const words = dom.append(b, dom.$('span.dispatch-now-words'));
-		const name = this.agentNames(session).get(what);
-		if (name) {
-			dom.append(words, dom.$('b.dispatch-now-agent-name', undefined, name));
-		}
-		dom.append(words, dom.$('span', undefined, what));
-		dom.append(b, dom.$('span.dispatch-now-time', undefined, time));
-		const said = state === 'sub-agent' ? localize('dispatchNow.agentWorking', "working for {0}", time) : state === 'stopped' ? localize('dispatchNow.agentStopped', "stopped after {0}", time) : localize('dispatchNow.agentBack', "back, took {0}", time);
-		b.setAttribute('aria-label', localize('dispatchNow.agentAria', "Sub-agent: {0}, {1}. Open what it did", what, said));
-		this._renderStore.add(dom.addDisposableListener(b, dom.EventType.CLICK, () => {
-			if (!onSubAgentRowClick(session, chat)) {
-				void this._sessionsService.openChat(session, chat.resource);
+		this._pills.push(...renderSubAgentList(li, session, working, back, this._folds.has('finished'), this._renderStore, this._instantiationService, () => {
+			if (!this._folds.delete('finished')) {
+				this._folds.add('finished');
 			}
+			this.render();
 		}));
 	}
 

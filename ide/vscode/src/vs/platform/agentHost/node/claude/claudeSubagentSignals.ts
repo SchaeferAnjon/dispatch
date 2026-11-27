@@ -14,6 +14,7 @@ import type { ClaudeMapperState } from './claudeMapSessionEvents.js';
 import { SUBAGENT_TOOL_NAMES, type SubagentRegistry } from './claudeSubagentRegistry.js';
 import { buildClaudeToolCallMeta, buildClaudeToolMeta, getClaudeInvocationMessage, getClaudeToolDisplayName, getClaudeToolInputString } from './claudeToolDisplay.js';
 import { hasClientToolNamePrefix, stripClientToolNamePrefix } from './clientTools/claudeClientToolMcpServer.js';
+import { stoppedReason } from './dispatchSubagentEndModel.js';
 
 /**
  * Phase 12 — SDK tool names that spawn subagent sessions. Re-exported
@@ -126,7 +127,9 @@ export function mapSubagentSystemMessage(
 		}
 		const toolUseId = m.tool_use_id;
 		registry.removeSpawn(toolUseId);
-		return [{ kind: 'subagent_completed', chat, toolCallId: toolUseId }];
+		// Dispatch IDE: a failed or stopped one shows stopped, not done (dispatchSubagentEndModel.ts, task-518qw)
+		const stopped = stoppedReason(status);
+		return [{ kind: 'subagent_completed', chat, toolCallId: toolUseId, ...(stopped ? { stopped } : {}) }];
 	}
 	return [];
 }

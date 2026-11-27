@@ -127,7 +127,7 @@ class Base(unittest.TestCase):
         self.patches = [patch.object(T, "_sh", self.board), patch.object(T, "D", fake_d),
                         patch.object(deliver, "D", dispatch), patch.object(docs_view, "D", dispatch),
                         patch.object(dispatch, "docs_registered", side_effect=lambda p: dispatch.docs_entries_parse(json.dumps(self.docs.get(p, [])))),
-                        patch.object(dispatch, "docs_save", side_effect=lambda p, e: self.docs.__setitem__(p, json.loads(json.dumps(e)))),
+                        patch.object(dispatch, "docs_save", side_effect=lambda p, e, keep="": self.docs.__setitem__(p, json.loads(json.dumps(e)))),
                         patch.dict(os.environ, {"DISPATCH_DIR": os.path.join(self.tmp, "state")})]
         for p in self.patches:
             p.start()

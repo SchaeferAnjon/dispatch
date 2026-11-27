@@ -1,0 +1,130 @@
+/* Dispatch IDE: a sub-agent as VS Code's own pill (dispatchSubAgentPill.ts), and "N finished", the same in the
+   sidebar, the strip above the message box and the Now tab. The pill's own look is VS Code's
+   (chatSubagentOpenChat.css); this only fits it to a row. */
+
+.dispatch-subagent-pill {
+	width: 100%;
+	min-width: 0;
+}
+
+/* in a narrow place the name keeps its words longest: the agent's kind and the model give way first (the name still
+   ends in an ellipsis when it must) */
+.dispatch-subagent-pill .action-item.chat-subagent-pill-widget .chat-subagent-pill-agent-type,
+.dispatch-subagent-pill .action-item.chat-subagent-pill-widget .chat-subagent-pill-model {
+	flex-shrink: 1000;
+}
+
+.dispatch-subagent-pill .action-item.chat-subagent-pill-widget .chat-subagent-pill-label {
+	flex: 0 1 auto;
+	min-width: 2ch;
+}
+
+/* the active tool line keeps VS Code's look but not its 560 cap inside a narrow pane */
+.dispatch-subagent-pill .action-item.chat-subagent-pill-widget .chat-subagent-pill-active-tool {
+	max-width: calc(100% - var(--vscode-spacing-size80));
+}
+
+/* "N finished": VS Code's quiet description line, a chevron and the words */
+.dispatch-subagent-finished {
+	display: flex;
+	align-items: center;
+	gap: var(--vscode-spacing-size40);
+	min-width: 0;
+	height: var(--vscode-spacing-size240, 24px);
+}
+
+.dispatch-subagent-finished-toggle {
+	display: inline-flex;
+	align-items: center;
+	/* the chevron in a 16 slot, the words 6 after it: lined up with "2 agents working" above (its 16 icon, gap 6) */
+	gap: var(--vscode-spacing-size60);
+	height: var(--vscode-spacing-size220, 22px);
+	padding: 0 var(--vscode-spacing-size60) 0 0;
+	border: 0;
+	border-radius: var(--vscode-cornerRadius-small);
+	background: none;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: var(--vscode-fontSize-body2);
+	line-height: 1.4em;
+	cursor: pointer;
+}
+
+.dispatch-subagent-finished-toggle:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.dispatch-subagent-finished-toggle:focus-visible,
+.dispatch-subagent-dismiss:focus-visible {
+	outline: var(--vscode-strokeThickness, 1px) solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.dispatch-subagent-finished-chevron.codicon {
+	display: inline-flex;
+	justify-content: center;
+	width: 16px;
+	font-size: var(--vscode-codiconFontSize-compact, 12px);
+}
+
+/* the × that puts finished ones away: VS Code's toolbar button, shown when the row is pointed at or focused */
+.dispatch-subagent-dismiss.codicon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--vscode-cornerRadius-small);
+	background: none;
+	color: var(--vscode-icon-foreground);
+	font-size: var(--vscode-codiconFontSize, 16px);
+	cursor: pointer;
+	opacity: 0;
+}
+
+.dispatch-subagent-dismiss.codicon:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+:is(.monaco-list-row:hover, .monaco-list-row.focused, .dispatch-subagent-finished:hover, .dispatch-subagent-finished:focus-within) .dispatch-subagent-dismiss,
+.dispatch-subagent-dismiss:focus-visible {
+	opacity: 1;
+}
+
+/* "2 agents working": the head of the strip and of the sub-agents in Now */
+.dispatch-subagent-head {
+	display: flex;
+	align-items: center;
+	gap: var(--vscode-spacing-size60);
+	min-width: 0;
+	height: var(--vscode-spacing-size240, 24px);
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-body2);
+	line-height: 1.4em;
+}
+
+.dispatch-subagent-head-icon.codicon {
+	flex: none;
+	font-size: var(--vscode-codiconFontSize, 16px);
+}
+
+.dispatch-subagent-head-label {
+	flex: none;
+	font-weight: var(--vscode-fontWeight-semiBold, 600);
+}
+
+/* the pills one under another, 4 apart, as the blocks in the conversation */
+.dispatch-subagent-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size40);
+	min-width: 0;
+}
+
+.dispatch-subagent-row {
+	min-width: 0;
+}

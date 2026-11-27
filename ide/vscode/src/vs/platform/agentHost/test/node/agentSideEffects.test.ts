@@ -6388,6 +6388,20 @@ suite('AgentSideEffects', () => {
 			assert.strictEqual(innerTool, undefined, 'stale buffered inner tool call must not be replayed');
 		});
 
+		// Dispatch IDE: one that ended without finishing (killed, stopped, its process gone) ends its turn as an error (task-518qw)
+		test('a stopped subagent_completed ends the subagent turn as an error, with why', () => {
+			setupSession();
+			startTurn('turn-1');
+			disposables.add(sideEffects.registerProgressListener(agent));
+			agent.fireProgress({ kind: 'action', resource: URI.parse(defaultChatUri), action: { type: ActionType.ChatToolCallStart, turnId: 'turn-1', toolCallId: 'tc-1', toolName: 'runSubagent', displayName: 'Run Subagent', contributor: undefined, _meta: { toolKind: undefined, language: undefined } } });
+			agent.fireProgress({ kind: 'action', resource: URI.parse(defaultChatUri), action: { type: ActionType.ChatToolCallReady, turnId: 'turn-1', toolCallId: 'tc-1', invocationMessage: 'Delegating...', toolInput: undefined, confirmed: ToolCallConfirmationReason.NotNeeded } });
+			agent.fireProgress({ kind: 'subagent_started', chat: URI.parse(defaultChatUri), toolCallId: 'tc-1', agentName: 'helper', agentDisplayName: 'Helper', agentDescription: 'Helps' });
+			agent.fireProgress({ kind: 'subagent_completed', chat: URI.parse(defaultChatUri), toolCallId: 'tc-1', stopped: 'Stopped before it finished.' });
+			const subState = stateManager.getSessionState(buildSubagentChatUri(sessionUri.toString(), 'tc-1'));
+			assert.strictEqual(subState!.activeTurn, undefined, 'the subagent no longer works');
+			assert.strictEqual(subState!.turns.at(-1)?.state, TurnState.Error);
+		});
+
 		test('subagent_completed signal completes the subagent turn', () => {
 			setupSession();
 			startTurn('turn-1');

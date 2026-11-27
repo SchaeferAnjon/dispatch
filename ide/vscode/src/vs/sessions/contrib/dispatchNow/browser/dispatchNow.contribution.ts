@@ -25,10 +25,15 @@ import { IAgentWorkbenchLayoutService } from '../../../browser/workbench.js';
 import { SessionsCategories } from '../../../common/categories.js';
 import { ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { SessionStatus } from '../../../services/sessions/common/session.js';
-import { DispatchNowEditor, DispatchNowEditorInput, DispatchNowEditorSerializer } from './dispatchNowEditor.js';
+import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
+import { ICustomViewService } from '../../../services/customView/browser/customViewService.js';
+import { DISPATCH_SHOW_TASK_COMMAND, flashSidePaneTab } from '../../dispatchDocs/browser/dispatchDocsOpen.js';
+import { DispatchNowEditor, DispatchNowEditorInput, DispatchNowEditorSerializer, dispatchNowReveal, type IDispatchNow, nowTaskIds } from './dispatchNowEditor.js';
 import './dispatchEmptySidePane.js';
 
 export const DISPATCH_NOW_TAB_COMMAND_ID = 'workbench.action.agentSessions.dispatchNowTab';
+/** A task link in the conversation: in this session's Now when it lists the task, else the Tasks tab (task-ewbvh). */
+export const DISPATCH_SHOW_TASK_IN_NOW_COMMAND = 'dispatch.showTaskInNow';
 
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
 	EditorPaneDescriptor.create(DispatchNowEditor, DispatchNowEditor.ID, localize('dispatchNow.editor', "Now")),
@@ -84,6 +89,38 @@ registerAction2(class extends Action2 {
 	override run(accessor: ServicesAccessor): Promise<void> {
 		return openNowTab(accessor);
 	}
+});
+
+/**
+ * A task link in the conversation (dispatchTaskLinks.ts): a task the session's Now lists opens there, in place, its
+ * row open and flashing once; any other task opens in the Tasks tab as before (`dispatch.showTask`). The person,
+ * 2026-11-16 (task-ewbvh).
+ */
+CommandsRegistry.registerCommand(DISPATCH_SHOW_TASK_IN_NOW_COMMAND, async (accessor, id: string, title?: string) => {
+	if (typeof id !== 'string' || !id) {
+		return false;
+	}
+	const commandService = accessor.get(ICommandService);
+	const customViews = accessor.get(ICustomViewService);
+	const instantiationService = accessor.get(IInstantiationService);
+	const key = accessor.get(ISessionsService).activeSession.get()?.resource.toString();
+	let ids = key ? nowTaskIds(key) : undefined;
+	if (key && !ids) {
+		// Now was not read for this session in this window yet: ask the board once (the bridge missing: Tasks, as before)
+		const answer = await commandService.executeCommand<IDispatchNow>('dispatch.now', { session: key, live: false }).catch(() => undefined);
+		ids = nowTaskIds(key, answer);
+	}
+	if (!key || !ids?.includes(id)) {
+		return commandService.executeCommand(DISPATCH_SHOW_TASK_COMMAND, id, typeof title === 'string' ? title : '');
+	}
+	// a page in the middle (Waiting for you, Projects) stays where it is: the side pane opens next to it
+	if (customViews.activeCustomView.get()) {
+		customViews.setSidePane(true);
+	}
+	await instantiationService.invokeFunction(openNowTab);
+	dispatchNowReveal.set({ session: key, id, at: Date.now() }, undefined);
+	flashSidePaneTab('Now');
+	return true;
 });
 
 /**

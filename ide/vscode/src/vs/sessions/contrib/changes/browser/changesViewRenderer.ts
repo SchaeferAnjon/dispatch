@@ -29,7 +29,6 @@ import { ISessionsService } from '../../../services/sessions/browser/sessionsSer
 import { GITHUB_REMOTE_FILE_SCHEME, ISessionFileChange } from '../../../services/sessions/common/session.js';
 import { ActiveSessionContextKeys, ChangesContextKeys, ChangesViewMode } from '../common/changes.js';
 import { IChangesViewService } from '../common/changesViewService.js';
-import { DispatchAttributionRows } from '../../dispatchAttribution/browser/dispatchAttribution.js';
 
 const $ = dom.$;
 
@@ -368,9 +367,6 @@ export class ChangesTreeRenderer implements ICompressibleTreeRenderer<ChangesTre
 			// eslint-disable-next-line no-restricted-syntax
 			templateData.label.element.querySelector('.monaco-icon-name-container')?.classList.remove('modified');
 		}
-
-		// Dispatch: who wrote the lines, the agent or you (dispatchAttribution.ts)
-		DispatchAttributionRows.get(this.instantiationService).render(data, badge, templateData.lineCountsContainer, templateData.elementDisposables);
 
 		templateData.toolbar.context = data;
 		templateData.changeKindContextKey.set('file');

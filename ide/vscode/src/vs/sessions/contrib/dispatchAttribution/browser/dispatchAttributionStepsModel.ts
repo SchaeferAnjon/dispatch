@@ -186,73 +186,35 @@ export function hasCoAuthor(message: string): boolean {
 	return /^co-authored-by:/im.test(message);
 }
 
-// ---------------------------------------------------------------- the filter in Changes
+// ---------------------------------------------------------------- your lines on their own in Changes
 
-export type StepFilterId = 'all' | `turn:${number}` | `you:${number}`;
+/** Your changes after a turn, shown on their own when you click their row under the reply. */
+export type YoursStep = `you:${number}`;
 
-/** The changeset id Changes shows for a step (Dispatch's own, so it is told from VS Code's). */
-export function changesetId(step: Exclude<StepFilterId, 'all'>): string {
+/** The changeset id Changes shows for them (Dispatch's own, so it is told from VS Code's). */
+export function changesetId(step: YoursStep): string {
 	return `dispatch-attr:${step}`;
 }
 
-export function stepOfChangeset(id: string | undefined): StepFilterId {
-	const m = /^dispatch-attr:((?:turn|you):\d+)$/.exec(id ?? '');
-	return m ? m[1] as StepFilterId : 'all';
+export function stepOfChangeset(id: string | undefined): YoursStep | undefined {
+	const m = /^dispatch-attr:(you:\d+)$/.exec(id ?? '');
+	return m ? m[1] as YoursStep : undefined;
 }
 
-export interface IStepButton {
-	readonly id: StepFilterId;
-	readonly label: string;
-	readonly kind: 'all' | 'turn' | 'you';
-	readonly tip: string;
-	readonly engine?: string;
+function yoursOf(s: IAttributionSteps | undefined, step: YoursStep): IStepYours | undefined {
+	const n = Number(step.slice('you:'.length));
+	return s?.yours.find(y => y.after_turn === n);
 }
 
-/** Your message as one line: the turn's name in the filter, so it reads "Fix the login button", not "Turn 15". */
-const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
-
-/** All, then the last few turns that changed files, each named by the start of your message, then You (your latest changes), when there is more than All. */
-export function stepButtons(s: IAttributionSteps | undefined, maxTurns = 3): IStepButton[] {
-	if (!s) {
-		return [];
-	}
-	const out: IStepButton[] = [];
-	for (const t of s.turns.filter(t => t.files.length).slice(-maxTurns)) {
-		const said = oneLine(t.text);
-		const where = t.files.length === 1 ? baseName(t.files[0].rel) : `${t.files.length} files`;
-		out.push({
-			id: `turn:${t.n}`, label: said || `Turn ${t.n}`, kind: 'turn', engine: t.engine,
-			tip: said ? `“${said}”\n${t.agent} changed ${where} in turn ${t.n}` : `What ${t.agent} changed in turn ${t.n}: ${where}`,
-		});
-	}
-	const y = s.yours.at(-1);
-	if (y) {
-		out.push({ id: `you:${y.after_turn}`, label: 'You', kind: 'you', tip: `What you changed after turn ${y.after_turn}` });
-	}
-	return out.length ? [{ id: 'all', label: 'All', kind: 'all', tip: 'Every change in this session' }, ...out] : [];
-}
-
-/** The grey line under the filter while a step is shown: "Turn 1 · 4 lines · OpenCode · 5:56 AM" (the count first: a narrow pane cuts the end). */
-export function stepNote(s: IAttributionSteps | undefined, id: StepFilterId): { title: string; rest: string } | undefined {
-	if (!s || id === 'all') {
-		return undefined;
-	}
-	const [kind, n] = id.split(':');
-	if (kind === 'turn') {
-		const t = s.turns.find(t => t.n === Number(n));
-		return t ? { title: `Turn ${t.n}`, rest: [lines(t.added + t.removed), t.agent, clock(t.end ?? t.start)].filter(Boolean).join(' · ') } : undefined;
-	}
-	const y = s.yours.find(y => y.after_turn === Number(n));
+/** The changeset's name in Changes' picker: "Your changes", then "2 lines · after turn 1 · 5:58 AM". */
+export function stepNote(s: IAttributionSteps | undefined, step: YoursStep): { title: string; rest: string } | undefined {
+	const y = yoursOf(s, step);
 	return y ? { title: 'Your changes', rest: [lines(y.count), `after turn ${y.after_turn}`, clock(y.ts)].filter(Boolean).join(' · ') } : undefined;
 }
 
-/** The files of a step, for Changes: before and after per file. */
-export function stepFiles(s: IAttributionSteps | undefined, id: StepFilterId): readonly IStepFile[] {
-	if (!s || id === 'all') {
-		return [];
-	}
-	const [kind, n] = id.split(':');
-	return kind === 'turn' ? s.turns.find(t => t.n === Number(n))?.files ?? [] : s.yours.find(y => y.after_turn === Number(n))?.files ?? [];
+/** The files of your changes, for Changes: before and after per file. */
+export function stepFiles(s: IAttributionSteps | undefined, step: YoursStep): readonly IStepFile[] {
+	return yoursOf(s, step)?.files ?? [];
 }
 
 // ---------------------------------------------------------------- which reply a row goes under

@@ -12,7 +12,10 @@
 // and Page.captureScreenshot waits for ever. Prints one JSON line: {ok, windows, error}.
 import { hideMain } from "./cdp.mjs";
 
+// the answer is written out before the exit: on macOS a pipe is written asynchronously, and an exit right after
+// console.log can leave the caller an empty stdout
+const answer = (v, code) => process.stdout.write(JSON.stringify(v) + "\n", () => process.exit(code));
 hideMain(Number(process.argv[2]), Number(process.argv[3] || 30000), Number(process.argv[4] || 0)).then(
-  (v) => { console.log(JSON.stringify({ ok: true, ...v })); process.exit(0); },
-  (e) => { console.log(JSON.stringify({ ok: false, error: String(e.message || e) })); process.exit(1); },
+  (v) => answer({ ok: true, ...v }, 0),
+  (e) => answer({ ok: false, error: String(e.message || e) }, 1),
 );

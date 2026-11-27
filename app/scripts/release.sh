@@ -108,4 +108,4 @@ ZIP="$OUT" UPDATE_DIR="$(cd .. && pwd)/docs/updates" DOWNLOAD_BASE="https://gith
 gh release create "v${V}" "$DMG" "$OUT" "$CLI" "$OUTDIR/SHA256SUMS" -R "$RELEASE_REPO" --target main --title "Dispatch v${V}" --notes-file "$NOTES" --latest
 rm -rf "$OUTDIR"
 echo "已发布 v${V}：$(gh release view "v${V}" -R "$RELEASE_REPO" --json url -q .url)"
-echo "更新通道：提交 docs/updates/，再 app/scripts/public-sync.sh 同步并推到 $RELEASE_REPO，Pages 就指向这个 Release"
+echo "更新通道：提交 docs/updates/，再 app/scripts/public-sync.sh 同步并推到 ${RELEASE_REPO}，Pages 就指向这个 Release"

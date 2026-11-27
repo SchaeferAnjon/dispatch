@@ -1,7 +1,6 @@
-// Learning while the agent works, the third part (user 2026-11-15, task-39x97, kanban design/learn-scene frames 1, 4
-// and 5): Now's one sentence of why (only what the agent said: its `dispatch now` line, else what it wrote at the start
-// of the turn before it did anything) and which blocks of Changes one model call asks Why for (the clicked one first,
-// only those nothing says anything about yet, at most 16).
+// Learning while the agent works, the third part (user 2026-11-15, task-39x97, kanban design/learn-scene frame 1): Now's
+// one sentence of why (only what the agent said: its `dispatch now` line, else what it wrote at the start of the turn
+// before it did anything).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -59,27 +58,4 @@ test('the same words: case, spaces and marks aside, or one holding the other', (
 	assert.ok(M.sameWords('Adding a daily reminder', 'Adding a daily reminder so the app can nudge you.'));
 	assert.ok(!M.sameWords('Fix', 'Fix the build so the tests pass'));
 	assert.ok(!M.sameWords('', ''));
-});
-
-test('Why on a block: what is said for the same lines first, else a block of the same file that shares a line', () => {
-	const known = [{ path: '/p/a.ts', start: 3, end: 4, text: 'walk' }, { path: '/p/a.ts', start: 10, end: 12, text: 'x' }, { path: '/p/b.ts', start: 1, end: 9, text: 'new' }];
-	assert.equal(M.knownFor({ path: '/p/a.ts', start: 3, end: 4 }, known).text, 'walk');
-	assert.equal(M.knownFor({ path: '/p/a.ts', start: 12, end: 15 }, known).text, 'x');
-	assert.equal(M.knownFor({ path: '/p/a.ts', start: 5, end: 9 }, known), undefined);
-	assert.equal(M.knownFor({ path: '/p/c.ts', start: 1, end: 9 }, known), undefined);
-	assert.equal(M.blockKey({ path: '/p/a.ts', start: 3, end: 4 }), '/p/a.ts:3-4');
-});
-
-test('one model call for the blocks shown: the clicked one first, only the unsaid ones, at most 16, none twice', () => {
-	const b = (path, start) => ({ path, start, end: start + 1 });
-	const all = [b('/a', 1), b('/a', 10), b('/b', 5), b('/c', 2), b('/a', 10)];
-	const said = x => x.path === '/b';
-	assert.deepEqual(M.blocksToAsk(all[3], all, said).map(M.blockKey), ['/c:2-3', '/a:1-2', '/a:10-11']);
-	// the clicked one is said already: no call
-	assert.deepEqual(M.blocksToAsk(all[2], all, said), []);
-	const many = Array.from({ length: 40 }, (_, i) => b('/m', i * 10));
-	const asked = M.blocksToAsk(many[30], many, () => false);
-	assert.equal(asked.length, M.WHY_MAX_BLOCKS);
-	assert.equal(asked[0], many[30]);
-	assert.equal(M.WHY_MAX_BLOCKS, 16);
 });

@@ -171,6 +171,11 @@ export class SubagentRegistry extends Disposable {
 		this._evictInnerEdgesFor(toolUseId);
 	}
 
+	/** Dispatch IDE: the background spawns still open, whose end dispatchSubagentEnd.ts also reads from their meta.json. */
+	openBackgroundSpawns(): string[] {
+		return [...this._spawns.values()].filter(spawn => spawn.background).map(spawn => spawn.toolUseId);
+	}
+
 	/** Mapper records the parent of an inner `tool_use` block when an inner subagent message arrives. */
 	noteInnerTool(innerToolUseId: string, parentToolUseId: string): void {
 		this._innerToParent.set(innerToolUseId, parentToolUseId);

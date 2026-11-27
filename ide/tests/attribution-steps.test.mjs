@@ -49,30 +49,16 @@ test('the commit card counts your lines only when there are some', () => {
 	assert.ok(!m.hasCoAuthor('Add notes'));
 });
 
-test('a turn is named by the start of your message, and its hover has the whole message and the files', () => {
-	const said = 'Fix the login\n  button and the footer';
-	const s = m.parseSteps(answer({ turns: [{ ...answer().turns[0], n: 15, text: said }] }));
-	const b = m.stepButtons(s).find(b => b.kind === 'turn');
-	assert.equal(b.label, 'Fix the login button and the footer');
-	assert.equal(b.tip, '“Fix the login button and the footer”\nOpenCode changed NOTES.md in turn 15');
-	const two = m.parseSteps(answer({ turns: [{ ...answer().turns[0], text: '', files: [answer().turns[0].files[0], { rel: 'a.ts', path: '/p/a.ts' }] }] }));
-	const t = m.stepButtons(two).find(b => b.kind === 'turn');
-	assert.equal(t.label, 'Turn 1');
-	assert.equal(t.tip, 'What OpenCode changed in turn 1: 2 files');
-});
-
-test('All, the turns that changed files, then You', () => {
+test('your lines on their own in Changes: their changeset, its name and files', () => {
 	const s = m.parseSteps(answer());
-	assert.deepEqual(m.stepButtons(s).map(b => b.id), ['all', 'turn:1', 'you:1']);
-	assert.deepEqual(m.stepButtons(m.parseSteps(answer({ yours: [], turns: [] }))), []);
 	assert.equal(m.stepOfChangeset(m.changesetId('you:1')), 'you:1');
-	assert.equal(m.stepOfChangeset('branch'), 'all');
-	assert.equal(m.stepNote(s, 'all'), undefined);
-	assert.equal(m.stepNote(s, 'turn:1').title, 'Turn 1');
-	assert.match(m.stepNote(s, 'turn:1').rest, /^4 lines · OpenCode · .+$/);
+	assert.equal(m.stepOfChangeset('branch'), undefined);
+	assert.equal(m.stepOfChangeset('dispatch-attr:turn:1'), undefined);
+	assert.equal(m.stepNote(s, 'you:1').title, 'Your changes');
 	assert.match(m.stepNote(s, 'you:1').rest, /^2 lines · after turn 1 · .+$/);
+	assert.equal(m.stepNote(s, 'you:9'), undefined);
 	assert.equal(m.stepFiles(s, 'you:1')[0].after, '/v/c/NOTES.md');
-	assert.deepEqual(m.stepFiles(s, 'turn:9'), []);
+	assert.deepEqual(m.stepFiles(s, 'you:9'), []);
 });
 
 test('a row goes under the reply whose request came last before it', () => {
